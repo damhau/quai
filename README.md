@@ -41,6 +41,15 @@ With no configuration, Quai creates a local bare repository at `data/gitops.git`
 
 For development with hot reload: `npm run dev` (API on :8080, UI on :5173).
 
+Or with Docker, no Node needed:
+
+```bash
+docker compose up --build   # http://localhost:8080
+docker compose down -v      # stop and start over with a fresh repository
+```
+
+The compose file has commented settings for pointing Quai at your own repository, either a bare clone on your PC or a remote over SSH with a deploy key. Set `QUAI_GIT_SEED: ""` whenever the repository is yours, so the demo content is never copied into it.
+
 Try it like this:
 
 1. As **Bob** (developer), request a *Linux virtual machine* with `environment: prod` and `size: large`. The preview shows that the `production` rule (platform-admins) and the `large-vm-cost` rule (finops) both apply.
@@ -165,7 +174,7 @@ Only the `file` strategy exists today. Entries inside shared files (`entry`) and
 
 ## Running it for real
 
-Copy [`quai.config.example.yaml`](quai.config.example.yaml) to `quai.config.yaml`. Environment variables override it: `PORT`, `QUAI_DATA_DIR`, `QUAI_GIT_REMOTE`, `QUAI_GIT_BRANCH`, `QUAI_AUTH_MODE`, `QUAI_WEBHOOK_TOKEN`, `QUAI_SIMULATE_SYNC`.
+Copy [`quai.config.example.yaml`](quai.config.example.yaml) to `quai.config.yaml`. Environment variables override it: `PORT`, `QUAI_DATA_DIR`, `QUAI_GIT_REMOTE`, `QUAI_GIT_BRANCH`, `QUAI_GIT_SEED`, `QUAI_AUTH_MODE`, `QUAI_WEBHOOK_TOKEN`, `QUAI_SIMULATE_SYNC`.
 
 - **Git:** point `git.remote` at your GitOps repository. Quai pushes directly to the branch, retries on non-fast-forward, and picks up commits made outside Quai. If the branch is protected, give Quai's deploy key a bypass; approvals already happened in Quai.
 - **Auth:** `auth.mode: proxy` trusts `X-Forwarded-User`, `X-Forwarded-Email` and `X-Forwarded-Groups` from an authenticating proxy such as oauth2-proxy (OIDC against Keycloak, Entra ID, Okta…). Only run proxy mode behind that proxy. **Dev mode lets anyone pick any identity.**

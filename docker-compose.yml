@@ -1,0 +1,47 @@
+# Local demo of Quai.
+#
+#   docker compose up --build        then open http://localhost:8080
+#
+# Out of the box Quai creates its own Git repository in the `quai-data` volume,
+# seeds it with examples/gitops-repo (blueprints plus a small Terraform repo
+# with existing VMs), lets you switch identities in the sidebar (dev auth) and
+# simulates a successful apply a few seconds after each commit.
+#
+# Start over with a fresh repository:  docker compose down -v
+
+services:
+  quai:
+    build: .
+    image: quai:local
+    ports:
+      - "8080:8080"
+    environment:
+      QUAI_AUTH_MODE: dev
+      QUAI_SIMULATE_SYNC: "true"
+
+      # --- Use your own repository instead of the seeded demo one ---------
+      # A bare clone on your PC (create it with: git clone --bare <url> repos/infra.git),
+      # mounted below. The container runs as uid 1000, which must be able to write to it.
+      # QUAI_GIT_REMOTE: /repos/infra.git
+      #
+      # Or a remote over SSH with a deploy key that may push:
+      # QUAI_GIT_REMOTE: git@github.com:acme/platform-gitops.git
+      # GIT_SSH_COMMAND: ssh -i /run/secrets/deploy_key -o StrictHostKeyChecking=accept-new
+      #
+      # Never copy the demo content into your repository:
+      # QUAI_GIT_SEED: ""
+      # QUAI_GIT_BRANCH: main
+    volumes:
+      - quai-data:/data
+      # - ./repos:/repos
+      # - ./deploy_key:/run/secrets/deploy_key:ro
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:8080/healthz').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+volumes:
+  quai-data:

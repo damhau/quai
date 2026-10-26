@@ -79,7 +79,7 @@ export function loadConfig(overrides: Partial<QuaiConfig> | Record<string, unkno
   cfg = merge(cfg, {
     port: env.PORT ? Number(env.PORT) : undefined,
     dataDir: env.QUAI_DATA_DIR,
-    git: { remote: env.QUAI_GIT_REMOTE, branch: env.QUAI_GIT_BRANCH },
+    git: { remote: env.QUAI_GIT_REMOTE, branch: env.QUAI_GIT_BRANCH, seed: env.QUAI_GIT_SEED },
     auth: { mode: env.QUAI_AUTH_MODE },
     webhookToken: env.QUAI_WEBHOOK_TOKEN,
     simulateSync: env.QUAI_SIMULATE_SYNC === undefined ? undefined : env.QUAI_SIMULATE_SYNC === "true",

@@ -17,4 +17,4 @@ ENV NODE_ENV=production QUAI_DATA_DIR=/data PORT=8080
 VOLUME /data
 EXPOSE 8080
 USER node
-CMD ["npx", "tsx", "server/src/main.ts"]
+CMD ["node", "--import", "tsx", "server/src/main.ts"]
