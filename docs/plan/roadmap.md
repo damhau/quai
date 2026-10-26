@@ -11,7 +11,7 @@ requests, real run status and enterprise identity.
 ## Assumptions
 
 - Implementation is AI-assisted; the owner reviews, tests and decides. Calendar estimates assume that setup with one person reviewing full-time. They are rough: **re-estimate after Phase 0**, whose actual duration is the best calibration available.
-- The pilot uses **Azure DevOps**, so the Azure DevOps connector is built first ([ADR 0010](../adr/0010-git-connectors-azure-devops-first.md)), with Azure Pipelines as the first runner adapter. Whether the pilot runs Services or Server is still open ([open questions](open-questions.md)); Phase 1 targets the one they use, the other follows.
+- The pilot uses **Azure DevOps Server on-premises**, so the Azure DevOps connector is built first and accepted on Server; **Azure DevOps Services** is delivered in the same phase or right after ([ADR 0010](../adr/0010-git-connectors-azure-devops-first.md)). Azure Pipelines is the first runner adapter. The exact Server version is still open ([open questions](open-questions.md)).
 - Phases overlap where dependencies allow.
 
 ## Overview
@@ -75,14 +75,15 @@ and [delivery and approvals](../design/05-delivery-and-approvals.md).
 | Secrets | `SecretStore` with Vault, Azure Key Vault, Kubernetes and environment backends |
 | Git layer | Mirror cache, worktrees, sparse/partial clone, per-repository locks, webhook ingestion with de-duplication, polling reconciliation |
 | Connector framework | `Connector` interface with capabilities, normalized webhook events, shared conformance suite ([Git connectors](../design/12-git-connectors.md)) |
-| Azure DevOps connector | Entra service principal (workload identity federation) or PAT auth; Git over HTTPS with bearer tokens; PRs, iterations, PR statuses, "Status check" policy verification with authorized identity, auto-complete, policy evaluations, path-based reviewer policies as `codeowners`, service hook subscriptions with secret header, throttling; conformance suite green against the pilot's edition |
+| Azure DevOps Server connector (first) | Week 1: verify the Go SDK and REST API 7.0 against a Server 2022 instance. Then: collection URLs, PAT authentication, internal CA bundles, version detection and API pinning, PRs and iterations, PR statuses, "Status check" policy verification with authorized identity, auto-complete, policy evaluations, path-based reviewer policies as `codeowners`, service hooks with secret header and a polling mode when Server cannot reach Quai, `tf git permission` guidance for branch folders; conformance suite green on the pilot's Server version |
+| Azure DevOps Services (alongside or right after) | Entra service principal with workload identity federation (`azidentity`), bearer tokens for Git, `dev.azure.com` URLs, throttling headers; conformance suite green on a sandbox organization |
 | Gitea connector | Reference connector in testcontainers; anchors the conformance suite and the end-to-end tests |
 | Definitions | Load per commit, last-valid fallback, preview from branches, audit of definition changes, CODEOWNERS check |
 | PR protocol | Branches, signed commits with trailers, PR body and labels, `quai/approval` check, auto and manual merge, branch deletion |
 | Content-bound approvals | Change set hash, staleness detection, branch rebuilds, outside-push and bypass detection |
 | Enforcement verification | Hourly branch protection check; block delivery when enforcement is missing |
 
-**Exit:** the pilot's Azure DevOps repository is connected; a request opens a PR, the build validation pipeline plans, approvals in Quai flip the `quai/approval` status, auto-complete merges once every policy passes; removing the status-check policy (or its authorized identity) is detected within an hour and blocks delivery.
+**Exit:** the pilot's Azure DevOps **Server** repository is connected; a request opens a PR, the build validation pipeline plans, approvals in Quai flip the `quai/approval` status, auto-complete merges once every policy passes; removing the status-check policy (or its authorized identity) is detected within an hour and blocks delivery. The conformance suite also passes on Azure DevOps Services (at the latest by the end of Phase 2).
 
 ## Phase 2: Runs and status (4 weeks)
 
@@ -187,7 +188,10 @@ See [onboarding](../design/10-onboarding.md) and [integrations](../design/11-int
 | Platform edition lacks enforcement features (e.g. GitLab tier, older Azure DevOps Server) | Medium | High | Check during registration; alternative mechanisms per connector; health page shows the active one |
 | Azure DevOps service hooks are unsigned | Certain | Medium | Dedicated webhook host, secret header, re-read every object from the API, polling reconciliation |
 | `azure-devops-go-api` gaps or slow maintenance | Medium | Low | Wrapped in Quai's own client; missing endpoints called through `net/http` |
-| No Azure DevOps Server instance available for conformance tests | Medium | Medium | Ask the pilot for a test project on their Server, or run a licensed Server VM in the lab |
+| No Azure DevOps Server instance available for conformance tests | Medium | High | Ask the pilot for a test project on their Server; in parallel, set up a Server 2022 VM in the lab (licensing to be checked) |
+| The Go SDK sends API versions newer than Server accepts | Medium | Medium | Quai's wrapper controls API versions and falls back to `net/http`; verified in week 1 of Phase 1 |
+| Server cannot reach Quai for service hooks (firewalls) | Medium | Low | Polling mode with the same functions and higher latency |
+| Pilot runs a Server version older than 2022 | Low | Medium | Support 2020 only if needed, with the missing capabilities shown explicitly; 2019 and older are out of scope |
 | Pilot's runner cannot report plan JSON | Medium | Medium | `quai report` step; fall back to check status only, without per-resource plan |
 | Customers' repositories are too irregular for declarative types | Medium | High | Mapping generator, shared-file locators, plugins; onboarding metrics after three customers decide whether to invest more |
 | Approval enforcement removed by repository admins | Medium | High | Hourly verification, delivery blocked, alerts, audit |

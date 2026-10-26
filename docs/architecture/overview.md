@@ -20,7 +20,7 @@ not an enterprise product.
 | Area | Prototype today | Needed for enterprise |
 | --- | --- | --- |
 | Stack | Node/TypeScript backend, React frontend with hand-written CSS | Go backend; React with TanStack Router/Query, Tailwind and shadcn/ui ([ADR 0006](../adr/0006-go-backend-react-frontend.md)) |
-| Git | One repository, push to `main` | Many repositories through per-platform connectors (Azure DevOps first, then GitHub, GitLab, Bitbucket); pull requests by default; per-repository credentials |
+| Git | One repository, push to `main` | Many repositories through per-platform connectors (Azure DevOps Server first, Azure DevOps Services alongside, then GitHub, GitLab, Bitbucket); pull requests by default; per-repository credentials |
 | Definitions | Blueprints in `blueprints/`, resource types in `.quai/types/` of the one repo | Types live next to the IaC in each repository; blueprints compose types across repositories; versioned and previewable |
 | Generation | Identity mapping (file = form) and Kubernetes component renderers; `file` and `dir` layouts | Mapping generators with read-back, `entry` and `field` locators, JSON, tfvars and HCL editing, WASM plugins |
 | Approvals | Rules with groups and thresholds; Quai commits after approval | Quai's approval enforced as a required check on the PR; content-bound approvals; separation of duties, delegation, change windows, ITSM |
@@ -48,7 +48,7 @@ flowchart LR
     X[Engine<br/>Go package]
   end
   subgraph Customer
-    G[Git platforms<br/>Azure DevOps · GitHub · GitLab]
+    G[Git platforms<br/>Azure DevOps Server · Services · GitHub · GitLab]
     R[Runners<br/>CI · Atlantis · Spacelift · HCP Terraform · Argo CD · Flux]
     I[IdP<br/>OIDC]
     V[Vault / secret store]

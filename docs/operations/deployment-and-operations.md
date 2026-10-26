@@ -40,14 +40,14 @@ Egress needed, all configurable through an HTTP proxy:
 
 | Destination | Why |
 | --- | --- |
-| Git platforms (HTTPS or SSH) | Fetch, push, platform API (`dev.azure.com` or the Azure DevOps Server URL first) |
-| Microsoft Entra ID (`login.microsoftonline.com`) | Tokens for Azure DevOps Services and Azure Key Vault, when service principals are used |
+| Git platforms (HTTPS or SSH) | Fetch, push, platform API: the Azure DevOps Server URL first (internal, often with an internal CA), `dev.azure.com` for Services |
+| Microsoft Entra ID (`login.microsoftonline.com`) | Only for Azure DevOps Services and Azure Key Vault with service principals; not needed for Azure DevOps Server |
 | IdP | OIDC discovery, token exchange, JWKS |
 | Secret store | Credentials |
 | ITSM, chat, SIEM | Optional integrations |
 | Executors (Kubernetes API, AWX, vCenter) | Imperative actions |
 
-Ingress: users and CLI (HTTPS), Git platform webhooks (Azure DevOps service hooks), runner reports. Webhook
+Ingress: users and CLI (HTTPS), Git platform webhooks (Azure DevOps service hooks; on Server this needs a firewall path from the Server to Quai, otherwise Quai runs in polling mode), runner reports. Webhook
 and run-report endpoints can be exposed on a separate host name for firewalling.
 
 ## Scale targets

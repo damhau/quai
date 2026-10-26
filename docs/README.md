@@ -15,7 +15,7 @@ repositories; their pipelines apply it.
    - [Repository connections](design/01-repository-connections.md): connections, credentials, definitions, and how catalog items bind to repositories.
    - [Resource types and generators](design/02-resource-types-and-generators.md): locators, generators, formats, ownership, validation.
    - [File editing](design/03-file-editing.md): minimal-diff editing of YAML, JSON and HCL in Go.
-   - [Git connectors](design/12-git-connectors.md): one connector per platform, Azure DevOps first.
+   - [Git connectors](design/12-git-connectors.md): one connector per platform; Azure DevOps Server first, then Services.
 4. [Roadmap](plan/roadmap.md) and [open questions](plan/open-questions.md).
 
 ## Map
@@ -42,7 +42,7 @@ repositories; their pipelines apply it.
 | [0007](adr/0007-postgresql-for-state-and-jobs.md) | PostgreSQL for state and jobs | Proposed |
 | [0008](adr/0008-pull-requests-by-default.md) | Pull requests by default | Accepted |
 | [0009](adr/0009-cel-expressions.md) | CEL as the expression language | Proposed |
-| [0010](adr/0010-git-connectors-azure-devops-first.md) | Per-platform Git connectors, Azure DevOps first | Accepted |
+| [0010](adr/0010-git-connectors-azure-devops-first.md) | Per-platform Git connectors; Azure DevOps Server first, then Services | Accepted |
 
 ## Conventions
 

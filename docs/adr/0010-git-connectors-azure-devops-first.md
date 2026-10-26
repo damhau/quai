@@ -7,14 +7,16 @@ Status: Accepted · 2026-10-26
 Quai must work with the Git platforms customers already use. They differ in
 everything beyond Git itself: authentication, pull request models, how a
 required status is enforced, ownership rules, webhook security, pipelines and
-API limits. The pilot customer uses Azure DevOps.
+API limits. The pilot customer uses Azure DevOps Server on-premises; other
+prospects use Azure DevOps Services.
 
 ## Decision
 
 - Each platform gets its own **connector**: a Go package in `internal/connectors/<platform>` implementing one capability-based interface. Connectors are compiled in, not loaded as plugins, because they hold credentials and call external APIs.
 - Git transport is shared (the `git` CLI); connectors only supply credentials for it.
 - Every connector must pass a shared **conformance suite** against a real instance of its platform before it ships.
-- **Order:** Azure DevOps first (Services and Server), with Gitea as the container-based reference connector for tests; then GitHub; then GitLab; then Bitbucket.
+- **Order:** Azure DevOps first, as one connector for both editions: **Azure DevOps Server (on-premises) first**, the M1 pilot's acceptance target, with **Azure DevOps Services** in the same phase or right after. Gitea is the container-based reference connector for tests. Then GitHub, then GitLab, then Bitbucket.
+- The Azure DevOps connector is written against the lowest supported REST API version (7.0, Server 2022) and detects newer capabilities per instance.
 
 Details: [Git connectors](../design/12-git-connectors.md).
 
@@ -22,7 +24,8 @@ Details: [Git connectors](../design/12-git-connectors.md).
 
 - The core never branches on platform names; differences are expressed as capabilities (`enforced-status`, `auto-complete`, `signed-webhooks`…), and the UI explains what a missing capability means.
 - Azure DevOps shapes the first implementation: PR statuses on iterations, status-check branch policies with an authorized identity, auto-complete, path-based required reviewers instead of `CODEOWNERS`, unsigned service hooks (handled by re-reading every object from the API).
-- Conformance testing needs access to real platform instances: an Azure DevOps Services sandbox organization, and an Azure DevOps Server instance if the pilot runs Server.
+- Server first means PAT authentication of a service account, internal CA certificates, collection-based URLs, possibly no network path for service hooks (polling mode), and API versions older than the Go SDK expects (the connector controls API versions itself).
+- Conformance testing needs an Azure DevOps Server 2022 instance (lab VM or a test project on the pilot's Server) and an Azure DevOps Services sandbox organization.
 
 ## Alternatives considered
 

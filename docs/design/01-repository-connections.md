@@ -68,7 +68,7 @@ metadata:
   owners: [team:platform]          # who administers this connection
 spec:
   connector: azure-devops          # azure-devops | github | gitlab | bitbucket | gitea | generic
-  url: https://dev.azure.com/acme/infrastructure/_git/live
+  url: https://devops.acme.ch/tfs/DefaultCollection/Infrastructure/_git/live   # Azure DevOps Server
   defaultBranch: main
   credentials:
     ref: vault:kv/quai/repositories/infra-live    # or azkv:quai-kv/infra-live, k8s:quai/infra-live-git, env:QUAI_GIT_INFRA_LIVE
@@ -114,7 +114,7 @@ Each Git platform has its own connector: authentication, pull requests,
 statuses, branch policies, ownership rules, webhooks and pipelines. Git
 transport (clone, fetch, push) always uses the `git` CLI, so SSH, HTTPS,
 proxies and partial clones behave as customers expect; the connector supplies
-the credentials. Azure DevOps is built first. The interface, the conformance
+the credentials. Azure DevOps is built first: Server (on-premises), then Services. The interface, the conformance
 suite and the per-platform mappings are in [Git connectors](12-git-connectors.md).
 
 How each platform enforces Quai's approval. Features marked † depend on the
@@ -123,7 +123,8 @@ during onboarding.
 
 | Platform | Order | Enforcing `quai/approval` |
 | --- | --- | --- |
-| Azure DevOps Services / Server | **1st** | Branch policy "Status check" requiring the `quai/approval` PR status, with Quai as the authorized identity and status reset on new changes |
+| Azure DevOps Server (on-premises) | **1st** | Branch policy "Status check" requiring the `quai/approval` PR status, with Quai as the authorized identity and status reset on new changes |
+| Azure DevOps Services | **1st, right after or alongside Server** | Same as Server |
 | Gitea / Forgejo | with the 1st (tests) | Required status check in branch protection |
 | GitHub / GitHub Enterprise Server | 2nd | Required check in branch protection or a ruleset, pinned to the Quai GitHub App |
 | GitLab.com / self-managed | 3rd | External status checks†, an approval rule requiring the Quai bot†, or a protected branch only the Quai bot may merge |
@@ -138,8 +139,8 @@ webhook subscription.
 
 | Platform | Recommended | Why |
 | --- | --- | --- |
+| Azure DevOps Server | PAT of a dedicated Active Directory service account, with expiry and rotation | Entra service principals are not available on-premises; Quai warns before the PAT expires. |
 | Azure DevOps Services | Microsoft Entra service principal with workload identity federation (no secret), or a certificate | No long-lived secret; Entra conditional access and audit apply. Managed identity when Quai runs on Azure; PAT only as a last resort. |
-| Azure DevOps Server | PAT of a dedicated service account, with expiry and rotation | Entra service principals are not available on-premises. |
 | GitHub | GitHub App installed on the selected repositories | Short-lived installation tokens, fine-grained permissions, verified commits, no user seat. |
 | GitLab | Project or group access token for a bot, with `api` and `write_repository` | Scoped to the project or group; rotate with expiry. |
 | Generic | SSH deploy key with write access | The only option without an API. |

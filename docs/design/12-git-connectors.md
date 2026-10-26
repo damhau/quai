@@ -6,7 +6,8 @@ A connector is everything Quai needs to work with one Git platform: authenticati
 statuses, branch policies, ownership rules, webhooks and, optionally, pipelines. Each platform
 does these differently, so each gets its own connector behind one interface.
 
-**Build order:** Azure DevOps first (the pilot's platform), then GitHub, then GitLab, then
+**Build order:** Azure DevOps first, starting with **Azure DevOps Server (on-premises)** and
+followed closely, or in parallel, by **Azure DevOps Services**; then GitHub, then GitLab, then
 Bitbucket. Gitea is built alongside Azure DevOps as the reference connector for tests.
 
 ## Architecture
@@ -96,31 +97,68 @@ instance of the platform:
 7. Receive and verify each webhook event type; reject a payload with a wrong secret.
 8. Rate limiting: honour `Retry-After` and back off.
 
-A connector ships when the suite passes against the platform editions the customer runs.
+A connector ships when the suite passes against the platform editions the customer runs. For
+Azure DevOps that means an **Azure DevOps Server 2022 instance** (a Windows Server VM in the lab, or
+a test project on the pilot's own Server) and, for Services, a sandbox organization.
 
-## Azure DevOps (first)
+## Azure DevOps (first): Server, then Services
 
-Covers Azure DevOps Services (cloud) and Azure DevOps Server (on-premises). The connector detects
-which one it talks to and the highest REST API version the instance supports (for example 7.1 on
-Services, 7.0 on Server 2022) and uses that.
+One connector covers both editions. **Azure DevOps Server (on-premises) is the first target**: it is
+what the pilot runs, and the M1 pilot is accepted on it. **Azure DevOps Services (SaaS)** follows in
+the same phase or right after: the REST APIs are almost identical, so the extra work is mainly
+Entra authentication and running the conformance suite against a Services organization.
+
+### Editions and versions
+
+| Edition | REST API version | Status in Quai |
+| --- | --- | --- |
+| Azure DevOps Server 2022 (and its updates) | 7.0 | **Baseline for the pilot** |
+| Azure DevOps Server releases after 2022 | 7.x, detected | Supported once the conformance suite passes on them |
+| Azure DevOps Server 2020 | 6.0 | Only if the pilot still runs it; some features (PR labels, parts of the policy API) need verification |
+| Azure DevOps Server 2019 and older (TFS) | 5.0 and below | Not supported |
+| Azure DevOps Services | 7.1 | Second target, same phase or right after |
+
+The connector reads the instance's version at registration (`_apis/connectionData` and the
+resource-area version lists), stores it on the connection, and pins every call to an API version
+the instance supports. Code is written against the **lowest supported version (7.0)**; features
+only available in newer versions are capabilities, detected and reported, never assumed.
+
+### URLs
+
+| Edition | Repository URL |
+| --- | --- |
+| Server | `https://devops.acme.ch/{virtual-directory}/{collection}/{project}/_git/{repository}`, e.g. `https://devops.acme.ch/tfs/DefaultCollection/Infrastructure/_git/live`. The virtual directory (`tfs`) is optional and configurable on the server. |
+| Services | `https://dev.azure.com/{organization}/{project}/_git/{repository}` (and the legacy `https://{organization}.visualstudio.com/...`) |
+
+The connector parses both forms into collection or organization, project and repository, and
+builds API URLs from the collection URL. Repository and project names may contain spaces and
+non-ASCII characters; they are always URL-encoded and stored by their IDs once resolved, so a
+rename does not break the connection.
 
 ### Library
 
 `github.com/microsoft/azure-devops-go-api/azuredevops/v7` for the Git, Policy, Pipelines and
-Service Hooks clients, wrapped in Quai's own thin client. Endpoints the SDK lacks or models
-incorrectly are called through `net/http` in the same wrapper, so the rest of the code never sees
-the difference.
+Service Hooks clients, wrapped in Quai's own thin client. The SDK targets Services and pins API
+versions per endpoint, some of them newer than Server 2022 accepts. The wrapper therefore controls
+the API version of every call, and calls endpoints the SDK lacks, models incorrectly or pins too
+new through `net/http`. Verifying this against a Server 2022 instance is the first task of Phase 1.
 
 ### Authentication
 
-| Instance | Recommended | Alternatives |
+| Edition | Recommended | Alternatives |
 | --- | --- | --- |
+| **Server (first)** | **PAT of a dedicated service account** (an Active Directory account used only by Quai), with expiry and rotation reminders | SSH key for Git transport only (API calls still need a PAT). Windows authentication (NTLM or Kerberos) is not supported in the first release: it is awkward from Linux containers and rarely needed when PATs are enabled. |
 | Services | **Microsoft Entra service principal** added to the organization, using workload identity federation from the cluster (no secret), or a certificate | Managed identity (when Quai runs on Azure); client secret; PAT as a last resort |
-| Server | **PAT** of a dedicated service account, with expiry and rotation | Windows authentication (NTLM or Kerberos) if PATs are disabled |
 
-- Entra tokens are requested with `azidentity` for the Azure DevOps resource (`499b84ac-1321-427f-aa17-267ca6975798/.default`) and refreshed before expiry.
-- Git over HTTPS uses the same token as a bearer header (`http.extraHeader: Authorization: Bearer …`), so Git and API calls share one identity.
-- PAT scopes when a PAT is used: Code (read and write), Code (status), and Build (read and execute) only if the pipeline features are used.
+- **Server, PAT:** API calls use basic authentication with an empty user name and the PAT as password; Git over HTTPS uses the same as an `http.extraHeader` (`Authorization: Basic …`). PAT scopes: Code (read and write), Code (status), and Build (read and execute) only if pipeline features are used. Quai shows the PAT's expiry on the repository health page and warns 30 days ahead.
+- **Services, Entra:** tokens are requested with `azidentity` for the Azure DevOps resource (`499b84ac-1321-427f-aa17-267ca6975798/.default`) and refreshed before expiry. Git over HTTPS uses the same token as a bearer header, so Git and API calls share one identity.
+
+### Network (Server)
+
+- Quai runs on-premises next to the Server. No internet access is needed for the connector.
+- **Corporate TLS:** Server usually presents a certificate from an internal CA. The CA bundle configured for Quai applies to API calls and to `git`; certificate verification is never disabled.
+- **HTTP proxy:** honoured for both API and Git if configured; Server is usually reached directly.
+- **Service hooks need a path from the Server to Quai's webhook endpoint.** If firewalls do not allow it, the connection runs in **polling mode** (pull requests and refs polled every minute, policies every few minutes) with no loss of function, only latency.
 
 ### Permissions
 
@@ -136,9 +174,10 @@ The registration access test verifies each one and reports what is missing.
 | Project | Edit subscriptions (optional) | Create the service hook subscription automatically; otherwise a project admin creates it once |
 | Pipelines | Queue builds (optional) | Trigger drift-check runs |
 
-Restricting Quai to the `quai/` branch folder is done with branch-level security (in the UI, or
-with the security REST API or `az devops security`). The registration wizard shows the exact
-commands.
+Restricting Quai to the `quai/` branch folder is done with branch-level security: in the web UI,
+with the security REST API, or on Server with `tf git permission` (the same command administrators
+use to require branches in folders). The registration wizard shows the exact commands for the
+detected edition.
 
 ### Mapping Quai concepts to Azure DevOps
 
@@ -153,7 +192,7 @@ commands.
 | Labels | PR labels (`quai`, `env:prod`, `stack:envs/prod`). |
 | CODEOWNERS | Azure Repos has **no CODEOWNERS file**. The equivalent is the **"Automatically included reviewers"** branch policy with path filters. The `codeowners` approver kind resolves to the reviewers of the policies whose path filters match the change. |
 | Protecting `.quai/` | A required-reviewer policy with path filter `/.quai/*` on the target branch. Quai checks that one exists and warns if not. |
-| Webhooks | **Service hook subscriptions** (Web Hooks consumer) for `git.push`, `git.pullrequest.created`, `git.pullrequest.updated` and `git.pullrequest.merged`, plus pipeline run state changes when runner features are used. |
+| Webhooks | **Service hook subscriptions** (Web Hooks consumer, available on Server and Services) for `git.push`, `git.pullrequest.created`, `git.pullrequest.updated` and `git.pullrequest.merged`, plus pipeline run state changes when runner features are used. |
 | Webhook authentication | Azure DevOps does **not sign** service hook payloads. Quai uses a per-subscription secret in a custom HTTP header (or basic auth) over TLS, accepts hooks only on the dedicated webhook host name, and **re-reads every object from the API** before acting. |
 | Pipelines | Build validation results come through policy evaluations; drift checks are triggered with the Pipelines **runs** API; run results arrive through service hooks or `quai report` (see [runs](06-runs-status-and-drift.md)). |
 | Commit signing | Quai signs commits with its SSH or GPG key so history can be verified offline; Azure Repos does not display signature verification in its UI at the time of writing. |
@@ -186,7 +225,9 @@ sequenceDiagram
 ### Azure DevOps specifics to handle
 
 - **Throttling:** Azure DevOps throttles by resource usage and returns `Retry-After` and `X-RateLimit-*` headers. The client honours them and spreads polling.
-- **Server versions:** API versions and some features (for example PR labels, auto-complete details) differ on older Server versions. The connector records the detected version and the conformance suite runs against each supported Server release.
+- **Server versions:** API versions and some features (for example PR labels, auto-complete details) differ between Server releases. The connector records the detected version, and the conformance suite runs against every supported Server release before it is listed as supported.
+- **Collections:** a Server can host several collections; one Quai installation can connect repositories from any of them, each with its own credentials if the service account differs.
+- **Identities on Server:** commit authors are matched to Active Directory accounts by email. If the directory has no email for an account, the PR description still names the requester, and the request record keeps the IdP identity.
 - **Proxies and certificates:** on-premises Server often sits behind corporate TLS. Custom CA bundles and HTTP proxy settings apply to both API calls and `git`.
 - **Large repositories:** Azure Repos supports partial clone; the mirror cache uses `--filter=blob:none`.
 
