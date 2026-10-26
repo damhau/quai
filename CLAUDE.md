@@ -10,14 +10,17 @@ every request becomes a reviewed change in their Git repositories. Start with
   port behaviour and tests from it, do not extend it. It is deleted at the end of Phase 0 (P0-29).
 - **Target**: Go backend in `backend/`, React frontend in `frontend/`
   ([ADR 0006](docs/adr/0006-go-backend-react-frontend.md)).
-- **Work in progress**: Phase 0, task by task, in [`docs/plan/phase-0-backlog.md`](docs/plan/phase-0-backlog.md).
-  That file says how an iteration works and when to stop.
+- **Tasks are GitHub issues** in [damhau/quai](https://github.com/damhau/quai/issues), grouped in
+  milestones M1–M3 and labelled `phase:N`, `type:task` / `type:epic`, `area:*`. GitHub is the only
+  task list. Phase 0 tasks are issues #1–#29 (`P0-NN` is `#NN`); how an iteration works and when to
+  stop is in [`docs/plan/phase-0-backlog.md`](docs/plan/phase-0-backlog.md).
 
 ## Rules
 
 - The docs are the spec. If an implementation must deviate, update the relevant document in the
   same commit. If a decision is not covered, add it to `docs/plan/open-questions.md` and stop to ask.
-- Commit straight to `main`, one task per commit or a few small commits, message `P0-NN: summary`.
+- Commit straight to `main`, one task per commit or a few small commits, message
+  `P0-NN: summary (closes #NN)` (`refs #NN` for STOP tasks, which only the owner closes).
   Never add `Co-Authored-By` or other attribution trailers. Push after each task and check CI.
 - If `git config user.name` is empty, stop and ask the owner to configure a Git identity.
 - Never commit secrets, never disable TLS verification, never weaken a test to make it pass.

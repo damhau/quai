@@ -16,7 +16,7 @@ repositories; their pipelines apply it.
    - [Resource types and generators](design/02-resource-types-and-generators.md): locators, generators, formats, ownership, validation.
    - [File editing](design/03-file-editing.md): minimal-diff editing of YAML, JSON and HCL in Go.
    - [Git connectors](design/12-git-connectors.md): one connector per platform; Azure DevOps Server first, then Services.
-4. [Roadmap](plan/roadmap.md), the task-level [Phase 0 backlog](plan/phase-0-backlog.md) and [open questions](plan/open-questions.md).
+4. [Roadmap](plan/roadmap.md) and [open questions](plan/open-questions.md). Tasks and epics are [GitHub issues](https://github.com/damhau/quai/issues) by milestone (M1 Pilot, M2 Beta, M3 GA); how autonomous sessions work through them is in [Phase 0: how autonomous sessions work](plan/phase-0-backlog.md).
 
 ## Map
 
@@ -27,7 +27,7 @@ repositories; their pipelines apply it.
 | Operations | [deployment and operations](operations/deployment-and-operations.md) |
 | Engineering | [backend (Go)](engineering/backend.md) · [frontend (React)](engineering/frontend.md) · [testing](engineering/testing.md) · [migration from the prototype](engineering/migration-from-prototype.md) |
 | Decisions | [ADR index](#decisions) |
-| Plan | [roadmap](plan/roadmap.md) · [Phase 0 backlog](plan/phase-0-backlog.md) · [open questions](plan/open-questions.md) |
+| Plan | [roadmap](plan/roadmap.md) · [autonomous sessions](plan/phase-0-backlog.md) · [open questions](plan/open-questions.md) · [GitHub milestones](https://github.com/damhau/quai/milestones) |
 
 ## Decisions
 
