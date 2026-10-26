@@ -18,7 +18,7 @@ Status: Draft · 2026-10-26 · Decision: [ADR 0006](../adr/0006-go-backend-react
 | Code editors | CodeMirror 6 (YAML, JSON, CEL) | `<textarea>` |
 | Diffs | `diff` (jsdiff) for line diffs, rendered with our own component | Engine's `lineDiff` from the shared TS core |
 | Expressions | A JavaScript CEL implementation for instant `visibleIf` (selected in Phase 0 against cel-go's conformance tests); server remains authoritative | Shared TS engine |
-| i18n | `react-i18next`; English, French, German | None |
+| Languages | English only; no translation framework for now. UI copy stays in components; adding a framework later is a contained refactor | English only |
 | Tests | Vitest + Testing Library, MSW for API mocks, Playwright end-to-end | Playwright scripts used ad hoc |
 
 The frontend no longer shares an engine with the backend. Previews, validation
@@ -49,8 +49,7 @@ frontend/
 │   │   ├── diff/                  # change set diff viewer
 │   │   └── approval/              # approval chain, review box
 │   ├── stores/                    # zustand stores (designer, layout)
-│   ├── lib/                       # cel, formatting, auth helpers
-│   └── i18n/
+│   └── lib/                       # cel, formatting, auth helpers
 ├── index.html
 └── vite.config.ts
 ```

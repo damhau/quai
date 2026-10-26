@@ -41,7 +41,8 @@ Egress needed, all configurable through an HTTP proxy:
 | Destination | Why |
 | --- | --- |
 | Git platforms (HTTPS or SSH) | Fetch, push, platform API: the Azure DevOps Server URL first (internal, often with an internal CA), `dev.azure.com` for Services |
-| Microsoft Entra ID (`login.microsoftonline.com`) | Only for Azure DevOps Services and Azure Key Vault with service principals; not needed for Azure DevOps Server |
+| Microsoft Entra ID (`login.microsoftonline.com`) | Quai's own user login (OIDC; the pilot's IdP), and tokens for Azure DevOps Services and Azure Key Vault. Not needed for Azure DevOps Server itself |
+| Microsoft Graph (`graph.microsoft.com`) | Only if group memberships must be resolved beyond what the token carries (see [identity](../design/08-identity-access-tenancy.md#directory)) |
 | IdP | OIDC discovery, token exchange, JWKS |
 | Secret store | Credentials |
 | ITSM, chat, SIEM | Optional integrations |

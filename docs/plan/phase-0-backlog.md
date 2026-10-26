@@ -58,7 +58,7 @@ commit and say so in the commit message.
 - [ ] **P0-21: Frontend scaffold.** `frontend/` with Vite, React 19, TypeScript strict, TanStack Router and Query, Tailwind v4, shadcn/ui (new-york), Zustand, Vitest, MSW; API client generated from the backend OpenAPI document with a CI check that it is up to date; app shell, navigation, login redirect. See [frontend](../engineering/frontend.md).
 - [ ] **P0-22: Catalog and requests.** Catalog (blueprints and types), request pages with the schema form and live plan preview, JavaScript CEL library chosen by running cel-go's conformance cases (record the choice and results in `docs/engineering/frontend.md`).
 - [ ] **P0-23: Approvals and inventory.** Requests list and detail with timeline and review, approvals inbox, inventory with filters, resource and deployment pages with day-2 action dialogs and diffs.
-- [ ] **P0-24: Designer and Git log.** React Flow designer on the new stack, Git log page, i18n scaffolding (English first).
+- [ ] **P0-24: Designer and Git log.** React Flow designer on the new stack, Git log page.
 
 ### Packaging and parity
 

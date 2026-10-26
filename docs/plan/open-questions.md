@@ -1,25 +1,37 @@
 # Open questions
 
-Status: Draft · 2026-10-26
+Status: Draft · 2026-10-27
 
-Decisions needed, with the default the plan assumes until they are answered.
+## Still open
+
+Decisions still needed, with the default the plan assumes until they are answered.
 
 | # | Question | Why it matters | Default assumed | Needed by |
 | --- | --- | --- | --- | --- |
-| 1 | ~~Which Git platform, and which edition first?~~ **Azure DevOps Server (on-premises) first, Services alongside or right after** (decided, [ADR 0010](../adr/0010-git-connectors-azure-devops-first.md)). Still open: **which Server version and update** does the pilot run, with which collection(s), and is IIS configured with the `/tfs` virtual directory? | API version baseline, feature availability, URL parsing | Azure DevOps Server 2022 with its latest update | Phase 1 start |
-| 2 | Does the pilot plan and apply Terraform in Azure Pipelines (YAML pipelines, build validation on PRs)? | First run adapter; whether plan JSON is available | Azure Pipelines with build validation, where a `quai report` step can be added | Phase 2 start |
-| 2a | On Server: can we get a dedicated AD service account with a PAT (and what maximum PAT lifetime does the Server allow)? Who can grant it branch-folder permissions (`tf git permission`) and create service hook subscriptions? On Services later: an Entra service principal with workload identity federation? | Credential setup, registration wizard | PAT of a service account on Server; a project collection admin sets permissions and the service hook once | Phase 1 start |
-| 2b | Can we get a test project on the pilot's Server for conformance tests, or should we run our own Server 2022 VM (licensing)? Plus a Services sandbox organization. | Nightly tests against the real platforms | Our own Server 2022 VM, plus a test project on the pilot's Server for acceptance; a Services sandbox organization owned by us | Phase 1 start |
-| 2c | Can the pilot's Server reach Quai's webhook endpoint (firewall), and does it use an internal CA for TLS? | Service hooks vs polling mode; CA bundle configuration | Internal CA; service hooks allowed, polling as fallback | Phase 1 |
-| 3 | Which IdP for Quai's own login (Entra ID, ADFS, Keycloak, Okta)? Are groups in the token, or is SCIM needed? With Azure DevOps Server on-premises, Active Directory through ADFS or Entra ID (hybrid) are both likely. | Team mapping, manager attribute, step-up | Entra ID (hybrid) with group claims; ADFS supported through OIDC | Phase 0 |
-| 4 | Is Quai's approval the only authority, or must platform reviews (Azure DevOps required-reviewer policies, CODEOWNERS elsewhere) also be required? | `merge: auto` vs `manual`, approver kinds | Quai is the authority ([ADR 0002](../adr/0002-quai-is-the-approval-authority.md)) | Phase 1 |
-| 5 | Is there an ITSM (ServiceNow?) that must hold change records? | Phase 4 scope | ServiceNow, phase 4 | Phase 4 |
-| 6 | Where does Quai run: Kubernetes, OpenShift, VMs? Air-gapped? | Packaging priorities | OpenShift, with restricted egress | Phase 0 |
-| 7 | Secret store: Vault, CyberArk, Azure Key Vault, Kubernetes Secrets only? | `SecretStore` backends | Kubernetes Secrets and Vault for on-premises; Azure Key Vault when Services customers come | Phase 1 |
-| 8 | Which resource types does the pilot want first (VMs, namespaces and quotas, DNS, firewall rules, buckets)? | Order of locators and generators | VMs (file), then namespace quotas (entry) | Phase 1 |
-| 9 | Product model: single-tenant self-hosted only, or also a managed offering? Open source, open core or proprietary? | Multi-organization support, licensing features, telemetry | Single-tenant self-hosted, proprietary | M2 |
-| 10 | Are LLM-assisted onboarding features acceptable for target customers, and with which model endpoints? | Phase 7 design | Opt-in, customer-chosen endpoint | Phase 7 |
-| 11 | Required languages for the UI? | i18n scope | English, French, German | Phase 8 |
-| 12 | Audit retention period and any legal hold requirements? | Storage sizing, pseudonymization design | 10 years | Phase 4 |
-| 13 | Do customers keep resource data in HCL (`.tfvars`, `locals`) in practice? | Priority of the HCL editor | Some do; Phase 3 | Phase 3 |
-| 14 | Name and trademark: are `quai` domains and the trademark (Swissreg, EUIPO, class 42) available? | Branding before beta | Unverified | M2 |
+| 1 | Where do the Azure DevOps Server conformance tests run: our own Server 2022 lab VM, a test project on the pilot's Server, or both? | Nightly tests against the real platform; acceptance before releases | Both: our lab VM (licensing to check) for nightly runs, a test project on the pilot's Server for acceptance | Phase 1 start |
+| 2 | Pilot Server details: which collection(s) hold the IaC repositories, is the `/tfs` virtual directory in use, who can grant the service account its branch-folder permissions (`tf git permission`) and create the service hook subscription, and what maximum PAT lifetime does the Server allow? | URL parsing, registration wizard, rotation reminders | One collection, `/tfs` in use; a project collection administrator does the setup once; PAT lifetime 1 year | Phase 1 start |
+| 3 | Is Quai's approval the only authority, or must Azure DevOps required-reviewer policies also pass? | Auto-complete vs waiting for both; approver kinds | Quai is the sole authority ([ADR 0002](../adr/0002-quai-is-the-approval-authority.md)); Azure DevOps path-based reviewers feed Quai's rules through the `codeowners` approver kind | Phase 1 |
+| 4 | Is there an ITSM tool (ServiceNow, Jira Service Management) that must hold change records? | Phase 4 scope | ServiceNow in Phase 4 | Phase 4 |
+| 5 | Product name. "Quai" stays the working name in code; choose the final name before beta. Candidates from earlier discussion: Talus, Guichet, Comptoir, Cairn, Arête, Mandat, Requisite, Ledger. Each needs a domain check (.com, .ch, .io) and a trademark search (Swissreg, EUIPO, class 42). | Branding, Go module path, binary and Helm chart names: cheap to rename before M2, costly after | "Quai" until decided | M2 |
+
+## Decided
+
+| Question | Decision | Date | Consequences |
+| --- | --- | --- | --- |
+| Git platform and edition | **Azure DevOps Server first, Services alongside or right after** | 2026-10-26 | [ADR 0010](../adr/0010-git-connectors-azure-devops-first.md), [Git connectors](../design/12-git-connectors.md) |
+| Pilot's Azure DevOps Server version | **Server 2022, latest update** (REST API 7.0) | 2026-10-27 | API 7.0 is the connector's baseline |
+| Authentication to Azure DevOps Server | **PAT of a dedicated Active Directory service account** | 2026-10-27 | Scopes Code (read and write), Code (status), Build (read and execute) for pipelines; expiry warnings |
+| Network between Server and Quai | **Service hooks can reach Quai; Server uses an internal CA** | 2026-10-27 | Webhooks are the primary signal, polling stays as a safety net; Quai is configured with the internal CA bundle |
+| Runner | **Azure Pipelines (YAML)**: plan through build validation on PRs, apply on merge | 2026-10-27 | First runner adapter; a `quai report` step in their pipelines |
+| Identity provider for Quai | **Microsoft Entra ID (hybrid AD)** | 2026-10-27 | OIDC with app roles or group claims; see [identity](../design/08-identity-access-tenancy.md#directory) |
+| Hosting | **OpenShift** | 2026-10-27 | UBI-based image, `restricted-v2` SCC, Routes ([operations](../operations/deployment-and-operations.md)) |
+| Secret store | **Kubernetes Secrets** for the pilot | 2026-10-27 | `SecretStore` Kubernetes backend first; Vault and Azure Key Vault later |
+| First resource types | **VMs at the pilot; namespaces and quotas, DNS records, firewall rules at beta** | 2026-10-27 | M1 stays ~week 14 with the `file` locator; the other three types need `entry`/`field` locators and arrive with Phase 3 |
+| HCL data | **Some data in HCL; HCL editor at beta** (Phase 3, as planned) | 2026-10-27 | HCL-backed types are a beta requirement for the pilot |
+| Product model | **Self-hosted, single-tenant, proprietary** | 2026-10-27 | No multi-organization work before GA |
+| LLM-assisted onboarding | **Opt-in, customer-chosen endpoint**; structure only, values redacted | 2026-10-27 | As in [onboarding](../design/10-onboarding.md) |
+| Audit retention | **Configurable, default 1 year** | 2026-10-27 | Customers with regulatory duties set longer periods; see [security](../design/09-security-and-compliance.md#data-protection) |
+| UI languages | **English only** | 2026-10-27 | No translation framework for now ([frontend](../engineering/frontend.md)) |
+| Expressions, state and plugins | **CEL; PostgreSQL with River; WASM plugins** | 2026-10-27 | ADRs [0009](../adr/0009-cel-expressions.md), [0007](../adr/0007-postgresql-for-state-and-jobs.md), [0004](../adr/0004-structured-generators-no-text-templates.md) |
+| Backend and frontend stack | **Go backend, React frontend** | 2026-10-26 | [ADR 0006](../adr/0006-go-backend-react-frontend.md) |
+| Where autonomous work is committed | **Straight to `main`** | 2026-10-27 | [Phase 0 backlog](phase-0-backlog.md) |

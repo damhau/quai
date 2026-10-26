@@ -80,7 +80,7 @@ sample, and what Quai attaches to ITSM change requests.
 
 - Personal data is limited to identity attributes from the IdP, reasons and comments people write, and IP addresses in the audit log.
 - Self-hosted by default: data stays in the customer's environment. No telemetry leaves the installation unless an admin enables it.
-- Retention: requests and audit events are kept for a configurable period (default 10 years for audit, matching common financial-sector retention; confirm per customer). Personal data in old records can be pseudonymized without breaking the hash chain by hashing it into the event at write time and storing the clear values in a separate, deletable table.
+- Retention: requests and audit events are kept for a configurable period, **default 1 year**. Customers with regulatory duties set longer periods (financial institutions often need 10 years); the export to their SIEM or archive is the long-term record. Signed checkpoints are kept for the whole retention period so a pruned chain can still be verified from the last kept checkpoint. Personal data in old records can be pseudonymized without breaking the hash chain by hashing it into the event at write time and storing the clear values in a separate, deletable table.
 
 ## Compliance mapping
 

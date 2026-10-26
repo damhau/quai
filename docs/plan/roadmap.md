@@ -42,8 +42,8 @@ gantt
 
 | Milestone | Target | Meaning |
 | --- | --- | --- |
-| **M1 Pilot** | ~week 14 | The pilot customer uses Quai on their real repository: forms from their schema, PRs, approvals enforced by a required check, plan and apply status from their pipeline, OIDC login. |
-| **M2 Beta** | ~week 21 | Two or three design partners. Mapping generators, shared-file locators, full governance (roles, SoD, change windows, break-glass, ITSM), tamper-evident audit. |
+| **M1 Pilot** | ~week 14 | The pilot customer uses Quai on their real Azure DevOps Server repository for **VMs**: forms from their schema, PRs, approvals enforced by a required status, plan and apply status from Azure Pipelines, Entra ID login, on OpenShift. |
+| **M2 Beta** | ~week 21 | The pilot gets **namespaces and quotas, DNS records and firewall rules**, including the data kept in HCL. Two or three design partners. Mapping generators, shared-file locators, full governance (roles, SoD, change windows, break-glass, ITSM if needed), tamper-evident audit. |
 | **M3 GA** | ~week 37 | Composite blueprints across repositories, imperative actions, drift, onboarding assistant, hardened, load-tested, pentested, documented. |
 
 ## Phase 0: Foundations and port (6 weeks)
@@ -73,7 +73,7 @@ and [delivery and approvals](../design/05-delivery-and-approvals.md).
 | Epic | Deliverables |
 | --- | --- |
 | Repository connections | `Repository` resource (UI, API, config-as-code); registration wizard with access checks; health page and metrics; floor rules |
-| Secrets | `SecretStore` with Vault, Azure Key Vault, Kubernetes and environment backends |
+| Secrets | `SecretStore` with the Kubernetes and environment backends (the pilot uses Kubernetes Secrets); Vault and Azure Key Vault backends follow when a customer needs them |
 | Git layer | Mirror cache, worktrees, sparse/partial clone, per-repository locks, webhook ingestion with de-duplication, polling reconciliation |
 | Connector framework | `Connector` interface with capabilities, normalized webhook events, shared conformance suite ([Git connectors](../design/12-git-connectors.md)) |
 | Azure DevOps Server connector (first) | Week 1: verify the Go SDK and REST API 7.0 against a Server 2022 instance. Then: collection URLs, PAT authentication, internal CA bundles, version detection and API pinning, PRs and iterations, PR statuses, "Status check" policy verification with authorized identity, auto-complete, policy evaluations, path-based reviewer policies as `codeowners`, service hooks with secret header and a polling mode when Server cannot reach Quai, `tf git permission` guidance for branch folders; conformance suite green on the pilot's Server version |
@@ -116,7 +116,7 @@ and [file editing](../design/03-file-editing.md).
 | Type lifecycle | Schema evolution (non-conforming resources, migrate expressions), deletion policy |
 | GitHub connector | GitHub App auth, check runs, branch protection and rulesets pinned to the app, auto-merge and merge queue, `CODEOWNERS`, signed webhooks; conformance suite green on github.com and GHES |
 
-**Exit:** a namespace-quota type on a shared `namespaces.yaml` and a tfvars-based type both pass round-trip lint on real repositories; concurrent requests on two entries of one file do not conflict.
+**Exit:** the pilot's namespace-and-quota, DNS record and firewall rule types (including those backed by HCL) pass round-trip lint on the pilot's repository and are live in their Quai; concurrent requests on two entries of one file do not conflict.
 
 ## Phase 4: Enterprise governance (7 weeks)
 
@@ -176,7 +176,7 @@ See [onboarding](../design/10-onboarding.md) and [integrations](../design/11-int
 | Scale and resilience | k6 load tests to the [scale targets](../operations/deployment-and-operations.md#scale-targets); worker crash and provider outage tests; HA failover |
 | Security | External penetration test and fixes; ZAP; threat model review; `SECURITY.md` |
 | Operations | OpenShift validation, air-gapped bundle, dashboards and alerts, runbooks, DR drill |
-| Product | Documentation site, admin and user guides, French and German translations, accessibility audit (WCAG 2.1 AA) |
+| Product | Documentation site, admin and user guides (English), accessibility audit (WCAG 2.1 AA) |
 | Compliance | Control mapping reviewed with a design partner's compliance team |
 
 **Exit (M3 GA).**

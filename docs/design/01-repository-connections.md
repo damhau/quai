@@ -71,7 +71,7 @@ spec:
   url: https://devops.acme.ch/tfs/DefaultCollection/Infrastructure/_git/live   # Azure DevOps Server
   defaultBranch: main
   credentials:
-    ref: vault:kv/quai/repositories/infra-live    # or azkv:quai-kv/infra-live, k8s:quai/infra-live-git, env:QUAI_GIT_INFRA_LIVE
+    ref: k8s:quai/infra-live-ado-pat     # Kubernetes Secret (pilot); or vault:…, azkv:…, env:…
   definitions:
     path: .quai                    # where types live in this repository
     branch: main                   # definitions are read from here, pinned per request by commit
@@ -91,10 +91,10 @@ spec:
   runner:
     kind: azure-pipelines          # see runs-status-and-drift.md
     reportToken:
-      ref: vault:kv/quai/run-tokens/infra-live
+      ref: k8s:quai/infra-live-run-token
   webhooks:
     secret:
-      ref: vault:kv/quai/webhooks/infra-live
+      ref: k8s:quai/infra-live-webhook-secret
   sync:
     pollInterval: 5m               # safety net for lost webhooks
 ```
@@ -148,9 +148,10 @@ webhook subscription.
 The exact permissions per platform, and how the registration wizard verifies
 them, are in [Git connectors](12-git-connectors.md#permissions).
 
-Secrets are resolved through a `SecretStore` interface with implementations for
-HashiCorp Vault (KV v2, with Kubernetes or JWT auth), Azure Key Vault,
-Kubernetes Secrets and environment variables. Quai checks expiry where the
+Secrets are resolved through a `SecretStore` interface. Kubernetes Secrets and
+environment variables come first (the pilot uses Kubernetes Secrets); HashiCorp
+Vault (KV v2, with Kubernetes or JWT auth) and Azure Key Vault follow when a
+customer needs them. Quai checks expiry where the
 platform exposes it and warns 30 days ahead.
 
 ## Definitions
