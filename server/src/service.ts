@@ -44,7 +44,10 @@ export interface Deployment {
 export interface Plan {
   kind: RequestKind;
   action?: string;
-  blueprint: Blueprint;
+  /** The blueprint or resource type this change comes from. */
+  source: { name: string; version: string };
+  resourceType?: string;
+  stack?: string;
   deployment: string;
   dir: string;
   inputs: Record<string, unknown>;
@@ -55,9 +58,12 @@ export interface Plan {
   rules: ReturnType<typeof matchingRules>;
 }
 
-const BUILTIN_ACTIONS: ActionDef[] = [
-  { name: "update", title: "Edit configuration", icon: "edit", description: "Change any input of the deployment." },
-  { name: "delete", title: "Delete", icon: "trash", description: "Remove the deployment from Git; the controller prunes it." },
+/** A blueprint deployment name, or `<type>/<key>` for a repo-defined resource. */
+const RESOURCE_ID = /^[a-z][a-z0-9-]*(\/[A-Za-z0-9][A-Za-z0-9_.-]*)*$/;
+
+export const BUILTIN_ACTIONS: ActionDef[] = [
+  { name: "update", title: "Edit configuration", icon: "edit", description: "Change any field. Locked fields are set at creation." },
+  { name: "delete", title: "Delete", icon: "trash", description: "Remove it from Git; the next reconcile or apply removes the real resource." },
 ];
 
 export class Quai {
@@ -77,10 +83,11 @@ export class Quai {
   }
 
   async init() {
-    const seedDir = this.cfg.git.seedBlueprints;
+    const seedDir = this.cfg.git.seed;
     await this.git.init(async (workdir) => {
-      if (existsSync(join(workdir, "blueprints")) || !seedDir || !existsSync(seedDir)) return false;
-      await cp(seedDir, join(workdir, "blueprints"), { recursive: true });
+      // Only ever seed an empty repository; an existing IaC repo is left exactly as it is.
+      if (!seedDir || !existsSync(seedDir) || (await readdir(workdir)).some((f) => f !== ".git")) return false;
+      await cp(seedDir, workdir, { recursive: true });
       return true;
     });
   }
@@ -226,7 +233,7 @@ export class Quai {
     }
   }
 
-  private rulesFor(policy: ApprovalPolicy | undefined, scope: Record<string, unknown>) {
+  rulesFor(policy: ApprovalPolicy | undefined, scope: Record<string, unknown>) {
     try {
       return matchingRules(policy, scope);
     } catch (e) {
@@ -254,7 +261,7 @@ export class Quai {
     const scope = { inputs: v.values, deployment: { name, owner: user.name }, request: { kind: "create" }, user };
     return {
       kind: "create",
-      blueprint: bp,
+      source: { name: bp.metadata.name, version: bp.metadata.version ?? "0.0.0" },
       deployment: name,
       dir: r.dir,
       inputs: v.values,
@@ -280,7 +287,7 @@ export class Quai {
     const plan = (kind: RequestKind, inputs: Record<string, unknown>, files: RenderedFile[], policy: ApprovalPolicy | undefined, actionInputs?: Record<string, unknown>): Plan => ({
       kind,
       action: kind === "action" ? actionName : undefined,
-      blueprint: bp,
+      source: { name: bp.metadata.name, version: bp.metadata.version ?? "0.0.0" },
       deployment: name,
       dir: d.dir,
       inputs,
@@ -330,8 +337,10 @@ export class Quai {
       {
         kind: plan.kind,
         action: plan.action,
-        blueprint: plan.blueprint.metadata.name,
-        blueprintVersion: plan.blueprint.metadata.version ?? "0.0.0",
+        blueprint: plan.source.name,
+        blueprintVersion: plan.source.version,
+        resourceType: plan.resourceType,
+        stack: plan.stack,
         deployment: plan.deployment,
         dir: plan.dir,
         requester: user.name,
@@ -441,11 +450,12 @@ export class Quai {
     const verb = r.kind === "create" ? "create" : r.kind === "delete" ? "delete" : r.kind === "update" ? "update" : r.action;
     const author = this.author(r.requester);
     const message = [
-      `quai: ${verb} ${r.deployment} (${r.blueprint})`,
+      r.resourceType ? `quai: ${verb} ${r.deployment}` : `quai: ${verb} ${r.deployment} (${r.blueprint})`,
       "",
       r.reason || "No reason given.",
       "",
       `Quai-Request: #${r.number} ${r.id}`,
+      ...(r.stack ? [`Quai-Stack: ${r.stack}`] : []),
       `Requested-by: ${author.name} <${author.email}>`,
       ...approvers.map((a) => {
         const x = this.author(a);
@@ -458,7 +468,8 @@ export class Quai {
           throw new HttpError(409, `${r.dir} changed in Git after this request was submitted; submit a new request`);
       });
       this.store.addEvent({ requestId: r.id, deployment: r.deployment, type: "request.committed", actor: "quai", message: `Committed ${sha.slice(0, 7)} to ${this.cfg.git.branch}` });
-      this.store.setSync({ deployment: r.deployment, revision: sha, sync: "OutOfSync", health: r.kind === "delete" ? "Deleting" : "Progressing", message: "Waiting for the GitOps controller" });
+      const waitingFor = r.resourceType ? `Waiting for plan/apply${r.stack ? ` of ${r.stack}` : ""}` : "Waiting for the GitOps controller";
+      this.store.setSync({ deployment: r.deployment, revision: sha, sync: "OutOfSync", health: r.kind === "delete" ? "Deleting" : "Progressing", message: waitingFor });
       if (this.cfg.simulateSync) this.simulateReconcile(r.deployment, sha, r.kind === "delete");
       return this.store.updateRequest(r.id, { status: "committed", commit: sha });
     } catch (e) {
@@ -473,7 +484,7 @@ export class Quai {
   /** Receives status from Argo CD notifications, Flux alerts or any CI job. */
   reportSync(body: { deployment?: string; app?: string; revision?: string; sync?: string; health?: string; message?: string }) {
     const deployment = body.deployment ?? body.app;
-    if (!deployment || !DEPLOYMENT_NAME.test(deployment)) throw new HttpError(422, "deployment is required");
+    if (!deployment || !RESOURCE_ID.test(deployment) || deployment.includes("..")) throw new HttpError(422, "deployment is required");
     this.store.setSync({ deployment, revision: body.revision, sync: body.sync ?? "Unknown", health: body.health ?? "Unknown", message: body.message });
     this.store.addEvent({ deployment, type: "sync", actor: "gitops", message: `${body.sync ?? "Unknown"} / ${body.health ?? "Unknown"}${body.revision ? ` at ${body.revision.slice(0, 7)}` : ""}` });
   }

@@ -8,7 +8,8 @@ A self-service infrastructure portal in the spirit of vRealize Automation, built
 | Cloud template designer | **Canvas designer**: drag components, wire them, bind properties to form inputs, YAML kept in sync | Massdriver, Brainboard |
 | Approval policies | **Access-request style approvals**: reason required, per-rule reviewer groups and thresholds, no self-approval, one denial rejects, TTL | Teleport |
 | Day-2 actions | Built-in *edit* and *delete*, plus blueprint-defined actions (resize, scale, upgrade…) with their own approval rules | Port actions |
-| Deployments inventory | Read **from Git**: every directory with a `quai.yaml` is a deployment | GitOps |
+| Inventory | Read **from Git**: blueprint deployments, plus every file that matches a **resource type**, including files written before Quai existed | GitOps |
+| Existing IaC | **Resource types** describe an existing repository's layout and JSON Schema; Quai edits those files with minimal diffs and leaves Terraform alone | Backstage templates, Port |
 | vRO workflows | None. The commit is the integration point; controllers do the work | Crossplane, Argo CD |
 
 ## How it works
@@ -36,7 +37,7 @@ npm run build        # builds the web UI
 npm start            # http://localhost:8080
 ```
 
-With no configuration, Quai creates a local bare repository at `data/gitops.git`, seeds it with the example blueprints, runs in **dev auth mode** (a user switcher in the sidebar), and simulates a GitOps controller reporting "Synced / Healthy" a few seconds after each commit.
+With no configuration, Quai creates a local bare repository at `data/gitops.git`, seeds it with [`examples/gitops-repo`](examples/gitops-repo) (blueprints plus a small Terraform repository with existing VMs), runs in **dev auth mode** (a user switcher in the sidebar), and simulates a GitOps controller reporting "Synced / Healthy" a few seconds after each commit.
 
 For development with hot reload: `npm run dev` (API on :8080, UI on :5173).
 
@@ -46,12 +47,14 @@ Try it like this:
 2. Switch to **Alice** and then to **Fiona**, and approve from *Approvals*. The second approval commits. Open *Git log* to see the commit.
 3. As Bob, open the deployment and run **Resize** or **Extend disk**. The modal shows the minimal diff before you submit.
 4. As Alice, open the **Blueprint designer**, drop a VM and a PostgreSQL database onto the canvas, connect them, and click *Commit to catalog*.
+5. Open **Inventory**. The four *Virtual machine (Terraform)* rows are hand-written files from the example repo, not Quai deployments. As Bob, open `web01` and **Resize** it: the diff touches only the `cpu` line and keeps its `# bumped in INC-4411` comment. `legacy-ftp` has no owner, so only Alice can change it.
+6. From the catalog, request a new *Virtual machine (Terraform)*. The form is generated from `catalog/schemas/vm.schema.json`, and the preview shows the one file Quai will add under `envs/<env>/vms/`.
 
 Tests: `npm test` (core unit tests, plus API tests that drive real commits into a temporary repository). Typecheck: `npm run typecheck`.
 
 ## Blueprints
 
-Blueprints are YAML files in the GitOps repository under `blueprints/`, so the catalog itself is versioned and reviewable. The designer edits the same format; see [`examples/blueprints/`](examples/blueprints).
+Blueprints are YAML files in the GitOps repository under `blueprints/`, so the catalog itself is versioned and reviewable. The designer edits the same format; see [`examples/gitops-repo/blueprints/`](examples/gitops-repo/blueprints).
 
 ```yaml
 apiVersion: quai.dev/v1alpha1
@@ -101,6 +104,65 @@ The Crossplane claim kinds (`database.platform.quai.dev`, `storage.platform.quai
 
 Each deployment directory gets the rendered manifests, a `kustomization.yaml`, and a `quai.yaml` record (blueprint, version, owner, inputs). Day-2 actions re-render the whole directory from the current blueprint, so publishing a new blueprint version upgrades deployments the next time they change, and the diff shows exactly what that means.
 
+## Resource types: plugging into an existing IaC repository
+
+Blueprints suit things Quai renders from scratch. Most organizations already have an IaC repository with its own conventions, for example Terraform stacks per environment that read one YAML file per resource:
+
+```hcl
+# envs/prod/main.tf
+locals {
+  vms = { for f in fileset("${path.module}/vms", "*.yaml") : trimsuffix(f, ".yaml") => yamldecode(file("${path.module}/vms/${f}")) }
+}
+module "vm" {
+  source   = "../../modules/vm"
+  for_each = local.vms
+  cpu      = each.value.cpu
+  # ...
+}
+```
+
+A **resource type** teaches Quai that layout without changing it. It lives in the repository under `.quai/types/`:
+
+```yaml
+apiVersion: quai.dev/v1alpha1
+kind: ResourceType
+metadata: { name: vm, title: Virtual machine (Terraform), icon: server, category: Compute, version: 1.0.0 }
+spec:
+  locate:
+    strategy: file                       # one file per resource
+    path: envs/{env}/vms/{name}.yaml     # {params} identify a resource
+  params:
+    - { name: env, type: enum, discover: true }   # offer the environments that exist in the repo
+    - { name: name, pattern: "[a-z][a-z0-9-]{1,30}" }
+  schema: catalog/schemas/vm.schema.json # the file contract; CI can validate with the same file
+  ownerField: owner                      # set to the requester on create; owners may run day-2
+  stack: envs/{env}                      # where plan/apply runs (recorded as Quai-Stack trailer)
+  ui:
+    order: [description, template, cpu, memory_gb]
+    fields:
+      template: { immutable: true }
+      backup_policy: { visibleIf: "inputs.backup == true" }
+  approval:
+    rules:
+      - { name: production, when: "params.env == 'prod'", approvers: [group:platform-admins] }
+      - { name: large-vm, when: "inputs.cpu > 8 && !(previous.cpu > 8)", approvers: [group:finops] }
+  actions:
+    - name: extend-disk
+      inputs: [{ name: size_gb, type: integer, min: 10, max: 4096, required: true }]
+      set: { disks.0.size_gb: ${{ action.size_gb }} }   # dotted paths into the file
+```
+
+What Quai does with it:
+
+- **Inventory.** Every file matching `locate.path` is a resource, whoever wrote it. Unparseable files are listed but never edited.
+- **Forms.** The request form is generated from the JSON Schema: nested objects, arrays of objects, string maps, enums of any type, `default`, `minimum`/`maximum`, `format`. Layout hints live in the type, not the schema, so the schema stays valid for strict CI validators.
+- **Minimal diffs.** On day-2, Quai splices changed values into the original text, so comments, alignment and key order survive and reviewers see only the lines that changed. Structural changes (adding or removing keys, resizing lists) fall back to a tree edit that keeps comments but may normalize spacing. New files follow the schema's key order.
+- **Guardrails.** Path params are validated as single safe path segments. The owner field, fields mirrored from params (`paramFields`) and `immutable`/`readOnly` fields cannot be changed through an edit. Fields the schema doesn't describe are preserved. Approval rules see `inputs` (the resulting file content), `previous`, `params`, `request` and `user`.
+- **Who can change what.** The owner recorded in `ownerField`, principals listed in `operators`, and admins. Resources without an owner are admin-only.
+- **Status.** Committed changes show as *Progressing* until your pipeline posts to `/api/webhooks/sync` with `deployment: <type>/<key>` (for example `vm/prod/web01`).
+
+Only the `file` strategy exists today. Entries inside shared files (`entry`) and patching a subtree of a file owned by someone else (`field`) are next.
+
 ## Running it for real
 
 Copy [`quai.config.example.yaml`](quai.config.example.yaml) to `quai.config.yaml`. Environment variables override it: `PORT`, `QUAI_DATA_DIR`, `QUAI_GIT_REMOTE`, `QUAI_GIT_BRANCH`, `QUAI_AUTH_MODE`, `QUAI_WEBHOOK_TOKEN`, `QUAI_SIMULATE_SYNC`.
@@ -120,24 +182,33 @@ Copy [`quai.config.example.yaml`](quai.config.example.yaml) to `quai.config.yaml
 | `GET /api/requests?view=mine\|inbox\|all`, `GET /api/requests/:id` | requests, with approval status per rule |
 | `POST /api/requests/:id/review` | `{decision: approve\|deny, comment}` |
 | `POST /api/requests/:id/cancel`, `/retry` | |
-| `GET /api/deployments`, `GET /api/deployments/:name` | inventory from Git, with files, history, actions |
+| `GET /api/deployments`, `GET /api/deployments/:name` | blueprint deployments, with files, history, actions |
 | `POST /api/deployments/:name/actions/:action[/plan]` | day-2: `update`, `delete` or a blueprint action |
+| `GET /api/inventory` | deployments and typed resources in one list |
+| `GET /api/types`, `GET /api/types/:type` | resource types with resolved schema and discovered params |
+| `POST /api/types/:type/plan`, `POST /api/types/:type/requests` | `{params, document, reason}`; errors on params are keyed `@param` |
+| `GET /api/types/:type/resources/:key` | a resource (`key` is the URL-encoded params, e.g. `prod%2Fweb01`) |
+| `POST /api/types/:type/resources/:key/actions/:action[/plan]` | `update` takes `{document}`, custom actions take `{inputs}` |
 | `GET /api/git/log`, `GET /api/git/commits/:sha`, `POST /api/git/sync` | |
 | `POST /api/webhooks/sync` | sync/health reports (`Authorization: Bearer <webhookToken>`) |
 
 ## Layout
 
 ```
-packages/core   blueprint model, expression engine, rendering, approval policy (shared by server and UI)
+packages/core   blueprints, resource types, expressions, rendering, JSON Schema, YAML patching, approval policy
 server          Fastify API, Git engine, SQLite workflow store
-web             React UI: catalog, request forms, approvals, deployments, designer (React Flow)
-examples        seed blueprints
+web             React UI: catalog, schema forms, approvals, inventory, designer (React Flow)
+examples        gitops-repo: seed with blueprints and a small Terraform repository
 deploy          Argo CD integration
 ```
 
 ## Not done yet
 
-- Pull-request mode (commit to a branch and open a PR instead of pushing to `main`) for teams that want CI checks or policy-as-code (OPA/Kyverno) on the rendered manifests before merge.
+- Pull-request mode: commit to a branch, let CI run `terraform plan` and policy checks, show the plan on the request page, and merge when Quai's approval (a required `quai/approval` status check) passes. Approvals are invalidated if the branch has to be rebuilt.
+- Status reported per stack (one apply covers every resource changed in that commit).
+- `entry` and `field` locate strategies for shared files such as `namespaces.yaml`.
+- Imperative day-2 actions (reboot, snapshot, console) that call an API directly and are written to the audit trail, next to the Git-backed ones.
+- Assisted onboarding: propose resource types for an existing repository, and accept a type only if parsing and re-writing every existing file reproduces it exactly.
 - Cost estimates on the request form, and quotas per team.
 - Lease or expiry on deployments, with automatic delete requests.
 - Dynamic form options from live data (clusters, networks, existing secrets).

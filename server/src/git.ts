@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import type { RenderedFile } from "@quai/core";
 
@@ -17,7 +17,7 @@ export interface GitConfig {
 }
 
 export interface CommitOp {
-  /** Directories to clear before writing (a deployment is always rewritten whole). */
+  /** Directories or files to remove before writing (a resource is always rewritten whole). */
   removeDirs: string[];
   write: RenderedFile[];
   message: string;
@@ -124,10 +124,11 @@ export class GitRepo {
     }
   }
 
-  /** All files under a directory, recursively, with repo-relative paths. */
+  /** All files under a directory (or the file itself), recursively, with repo-relative paths. */
   async readDir(dir: string): Promise<RenderedFile[]> {
     const root = this.abs(dir);
     if (!existsSync(root)) return [];
+    if (!(await stat(root)).isDirectory()) return [{ path: dir, content: await readFile(root, "utf8") }];
     const out: RenderedFile[] = [];
     const walk = async (d: string) => {
       for (const e of await readdir(d, { withFileTypes: true })) {
@@ -139,6 +140,27 @@ export class GitRepo {
     };
     await walk(root);
     return out.sort((a, b) => a.path.localeCompare(b.path));
+  }
+
+  /** Every file and directory under `prefix` (repo-relative), skipping .git. */
+  async walk(prefix = ""): Promise<{ files: string[]; dirs: string[] }> {
+    const files: string[] = [];
+    const dirs: string[] = [];
+    const root = this.abs(prefix || ".");
+    if (!existsSync(root) || !(await stat(root)).isDirectory()) return { files, dirs };
+    const rel = (p: string) => relative(this.cfg.workdir, p).split(sep).join("/");
+    const go = async (d: string) => {
+      for (const e of await readdir(d, { withFileTypes: true })) {
+        if (e.name === ".git") continue;
+        const full = join(d, e.name);
+        if (e.isDirectory()) {
+          dirs.push(rel(full));
+          await go(full);
+        } else files.push(rel(full));
+      }
+    };
+    await go(root);
+    return { files: files.sort(), dirs: dirs.sort() };
   }
 
   /** Repo-relative paths of every file with the given basename. */

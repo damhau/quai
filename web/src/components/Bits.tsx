@@ -20,8 +20,8 @@ export function StatusBadge({ status }: { status: RequestStatus }) {
   return <span className={`badge ${s.tone}`}>{s.label}</span>;
 }
 
-export function SyncBadge({ sync }: { sync?: SyncView }) {
-  if (!sync) return <span className="badge muted">Unknown</span>;
+export function SyncBadge({ sync, fallback = "Unknown" }: { sync?: SyncView; fallback?: string }) {
+  if (!sync) return <span className="badge muted">{fallback}</span>;
   const tone = sync.health === "Healthy" ? "ok" : sync.health === "Degraded" || sync.health === "Missing" ? "bad" : sync.health === "Progressing" || sync.health === "Deleting" ? "info" : "muted";
   return (
     <span className={`badge ${tone}`} title={sync.message}>

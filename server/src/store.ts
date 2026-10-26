@@ -13,8 +13,13 @@ export interface RequestRecord {
   number: number;
   kind: RequestKind;
   action?: string;
+  /** Blueprint or resource type name, and its version. */
   blueprint: string;
   blueprintVersion: string;
+  /** Set for requests on a repo-defined resource type. */
+  resourceType?: string;
+  /** Where plan/apply runs (e.g. `envs/prod`), when the type declares it. */
+  stack?: string;
   deployment: string;
   dir: string;
   requester: string;
@@ -80,12 +85,14 @@ export class Store {
         deployment TEXT PRIMARY KEY, revision TEXT, sync TEXT, health TEXT, message TEXT, at TEXT
       );
     `);
+    const cols = (this.db.prepare("PRAGMA table_info(requests)").all() as { name: string }[]).map((c) => c.name);
+    for (const col of ["resourceType", "stack"]) if (!cols.includes(col)) this.db.exec(`ALTER TABLE requests ADD COLUMN "${col}" TEXT`);
   }
 
   private row(r: any): RequestRecord {
     const out: any = { ...r };
     for (const c of JSON_COLS) out[c] = r[c] ? JSON.parse(r[c]) : c === "actionInputs" ? undefined : [];
-    for (const k of ["action", "commit", "error"]) if (out[k] === null) delete out[k];
+    for (const k of ["action", "commit", "error", "resourceType", "stack"]) if (out[k] === null) delete out[k];
     return out;
   }
 

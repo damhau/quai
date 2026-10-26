@@ -19,7 +19,7 @@ export function DeploymentDetail() {
   return (
     <div className="page">
       <div className="crumb small muted">
-        <Link to="/deployments">Deployments</Link> / {d.name}
+        <Link to="/inventory">Inventory</Link> / {d.name}
       </div>
       <header className="page-head">
         <div>

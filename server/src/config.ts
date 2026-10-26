@@ -10,8 +10,10 @@ export interface QuaiConfig {
     remote: string;
     branch: string;
     committer: { name: string; email: string };
-    /** Directory with blueprints copied into an empty repository on first start. */
-    seedBlueprints?: string;
+    /** Directory copied into the repository on first start, only if the repository is empty. */
+    seed?: string;
+    /** Pull commits made outside Quai this often (0 disables). */
+    pullIntervalSeconds: number;
   };
   auth: {
     /**
@@ -43,7 +45,8 @@ const defaults = (): QuaiConfig => ({
     remote: "",
     branch: "main",
     committer: { name: "Quai", email: "quai@localhost" },
-    seedBlueprints: resolve(root, "examples/blueprints"),
+    seed: resolve(root, "examples/gitops-repo"),
+    pullIntervalSeconds: 60,
   },
   auth: {
     mode: "dev",

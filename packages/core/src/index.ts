@@ -6,3 +6,5 @@ export * from "./policy.ts";
 export * from "./components.ts";
 export * from "./render.ts";
 export * from "./blueprint.ts";
+export * from "./resourcetype.ts";
+export * from "./yamlpatch.ts";

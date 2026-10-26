@@ -1,12 +1,14 @@
 import { createContext, lazy, Suspense, useContext, useEffect, useState } from "react";
-import { NavLink, Route, Routes } from "react-router-dom";
+import { Navigate, NavLink, Route, Routes } from "react-router-dom";
 import { api, currentUserName, setCurrentUserName, useApi, type Me, type RequestView } from "./api";
 import { Icon } from "./components/Icon";
 import { Catalog } from "./pages/Catalog";
 import { NewRequest } from "./pages/NewRequest";
 import { Requests } from "./pages/Requests";
 import { RequestDetail } from "./pages/RequestDetail";
-import { Deployments } from "./pages/Deployments";
+import { Inventory } from "./pages/Inventory";
+import { NewTypedRequest } from "./pages/NewTypedRequest";
+import { ResourceDetail } from "./pages/ResourceDetail";
 import { DeploymentDetail } from "./pages/DeploymentDetail";
 import { GitLog } from "./pages/GitLog";
 import type { Principal } from "@quai/core";
@@ -59,8 +61,8 @@ export function App() {
             <NavLink to="/" end>
               <Icon name="grid" /> Catalog
             </NavLink>
-            <NavLink to="/deployments">
-              <Icon name="server" /> Deployments
+            <NavLink to="/inventory">
+              <Icon name="server" /> Inventory
             </NavLink>
             <NavLink to="/requests">
               <Icon name="list" /> My requests
@@ -109,7 +111,10 @@ export function App() {
             <Route path="/requests" element={<Requests view="mine" />} />
             <Route path="/approvals" element={<Requests view="inbox" onChange={inbox.reload} />} />
             <Route path="/requests/:id" element={<RequestDetail onChange={inbox.reload} />} />
-            <Route path="/deployments" element={<Deployments />} />
+            <Route path="/request/type/:type" element={<NewTypedRequest />} />
+            <Route path="/inventory" element={<Inventory />} />
+            <Route path="/deployments" element={<Navigate to="/inventory" replace />} />
+            <Route path="/types/:type/resources/:key" element={<ResourceDetail />} />
             <Route path="/deployments/:name" element={<DeploymentDetail />} />
             <Route path="/designer" element={<Suspense fallback={<div className="page muted">Loading designer…</div>}><Designer /></Suspense>} />
             <Route path="/designer/:name" element={<Suspense fallback={<div className="page muted">Loading designer…</div>}><Designer /></Suspense>} />

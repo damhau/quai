@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { api, ApiError, ago, requestTitle, useApi, type RequestView } from "../api";
+import { api, ApiError, ago, requestTitle, targetHref, useApi, type RequestView } from "../api";
 import { ApprovalChain, ChangesView, ErrorNote, Sha, StatusBadge } from "../components/Bits";
 import { Icon } from "../components/Icon";
 import { useMe } from "../App";
@@ -46,11 +46,11 @@ export function RequestDetail({ onChange }: { onChange?: () => void }) {
             {requestTitle(r)} <StatusBadge status={r.status} />
           </h1>
           <p className="muted">
-            <b>{r.requester}</b> requested this {ago(r.createdAt)} from blueprint <b>{r.blueprint}</b> v{r.blueprintVersion}
-            {r.kind !== "create" && (
+            <b>{r.requester}</b> requested this {ago(r.createdAt)} from {r.resourceType ? "resource type" : "blueprint"} <b>{r.blueprint}</b> v{r.blueprintVersion}
+            {(r.kind !== "create" || r.status === "committed") && (
               <>
                 {" "}
-                on <Link to={`/deployments/${r.deployment}`}>{r.deployment}</Link>
+                on <Link to={targetHref(r)}>{r.deployment}</Link>
               </>
             )}
             {r.status === "pending" && <> · expires {ago(r.expiresAt)}</>}
@@ -90,7 +90,15 @@ export function RequestDetail({ onChange }: { onChange?: () => void }) {
             ))}
           </dl>
           <h2>
-            Diff <span className="small muted">— exactly what will land in <code>{r.dir}/</code></span>
+            Diff{" "}
+            <span className="small muted">
+              — exactly what will land in <code>{r.resourceType ? r.dir : `${r.dir}/`}</code>
+              {r.stack && (
+                <>
+                  , applied by stack <code>{r.stack}</code>
+                </>
+              )}
+            </span>
           </h2>
           <ChangesView changes={r.changes} />
         </div>

@@ -8,8 +8,11 @@ git:
   remote: git@github.com:acme/platform-gitops.git
   branch: main
   committer: { name: Quai, email: quai@acme.example }
-  # Copied into blueprints/ only when the repository has no catalog yet.
-  seedBlueprints: ./examples/blueprints
+  # Demo content copied into an empty repository on first start. Keep it empty
+  # for real use, or Quai will push the examples into a new repository.
+  seed: ""
+  # How often to pull commits made outside Quai (humans, CI, Renovate).
+  pullIntervalSeconds: 60
 
 auth:
   # proxy: run behind oauth2-proxy (or similar) which sets X-Forwarded-User,
@@ -19,6 +22,6 @@ auth:
 
 adminGroups: [platform-admins]
 requestTtlHours: 168
-# Bearer token Argo CD notifications / Flux alerts must send to /api/webhooks/sync.
+# Bearer token Argo CD notifications / Flux alerts / CI must send to /api/webhooks/sync.
 webhookToken: change-me
 simulateSync: false

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import type { ApprovalRule, Blueprint, DeploymentRecord, FileChange, InputDef, Principal, RenderedFile, ActionDef } from "@quai/core";
+import type { ApprovalRule, Blueprint, DeploymentRecord, FileChange, InputDef, Principal, RenderedFile, ActionDef, JsonSchema, ResourceType } from "@quai/core";
 
 export class ApiError extends Error {
   constructor(public status: number, message: string, public fields: Record<string, string> = {}, public details?: unknown) {
@@ -91,6 +91,8 @@ export interface RequestView {
   action?: string;
   blueprint: string;
   blueprintVersion: string;
+  resourceType?: string;
+  stack?: string;
   deployment: string;
   dir: string;
   requester: string;
@@ -159,6 +161,8 @@ export interface CommitView {
 
 export interface PlanView {
   kind: string;
+  resourceType?: string;
+  stack?: string;
   deployment: string;
   dir: string;
   inputs: Record<string, unknown>;
@@ -194,3 +198,50 @@ export const ago = (iso?: string) => {
 
 export const requestTitle = (r: Pick<RequestView, "kind" | "action" | "deployment">) =>
   r.kind === "create" ? `Create ${r.deployment}` : r.kind === "delete" ? `Delete ${r.deployment}` : r.kind === "update" ? `Update ${r.deployment}` : `${r.action} ${r.deployment}`;
+
+export interface TypeView extends ResourceType {
+  file: string;
+  resolvedSchema: JsonSchema;
+  paramInputs: InputDef[];
+  locked: string[];
+  count?: number;
+}
+
+export interface InventoryItem {
+  kind: "deployment" | "resource";
+  id: string;
+  name: string;
+  source: string;
+  sourceTitle: string;
+  icon?: string;
+  path: string;
+  env?: string;
+  owner?: string;
+  error?: string;
+  sync?: SyncView;
+  openRequests: number;
+  href: string;
+}
+
+export interface ResourceDetail {
+  type: TypeView;
+  key: string;
+  id: string;
+  params: Record<string, string>;
+  path: string;
+  stack?: string;
+  document?: Record<string, unknown>;
+  raw: string;
+  owner?: string;
+  error?: string;
+  canOperate: boolean;
+  actions: ActionDef[];
+  sync?: SyncView;
+  history: CommitView[];
+  requests: RequestView[];
+  events: EventView[];
+}
+
+/** Where a request's target lives in the UI. */
+export const targetHref = (r: Pick<RequestView, "resourceType" | "deployment">) =>
+  r.resourceType ? `/types/${r.resourceType}/resources/${encodeURIComponent(r.deployment.slice(r.resourceType.length + 1))}` : `/deployments/${r.deployment}`;

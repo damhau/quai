@@ -5,11 +5,13 @@ import { timingSafeEqual } from "node:crypto";
 import { components, type Principal } from "@quai/core";
 import type { QuaiConfig } from "./config.ts";
 import { HttpError, Quai } from "./service.ts";
+import { Resources, typeView } from "./resources.ts";
 import type { RequestRecord } from "./store.ts";
 
 export async function buildApp(cfg: QuaiConfig) {
   const quai = new Quai(cfg);
   await quai.init();
+  const resources = new Resources(quai);
   const app = Fastify({ logger: process.env.NODE_ENV === "test" ? false : { level: "info" }, bodyLimit: 2 * 1024 * 1024 });
 
   app.setErrorHandler((err: any, _req, reply) => {
@@ -70,6 +72,8 @@ export async function buildApp(cfg: QuaiConfig) {
   const planView = (p: Awaited<ReturnType<Quai["planCreate"]>>) => ({
     kind: p.kind,
     action: p.action,
+    resourceType: p.resourceType,
+    stack: p.stack,
     deployment: p.deployment,
     dir: p.dir,
     inputs: p.inputs,
@@ -124,6 +128,89 @@ export async function buildApp(cfg: QuaiConfig) {
     return view(await quai.retry(me, req.params.id), me, true);
   });
 
+  // ------------------------------------------------- repo-defined resource types
+
+  app.get("/api/types", async () => {
+    const { types, errors } = await resources.types();
+    const inventory = await resources.inventory();
+    const items = [];
+    for (const t of types) {
+      items.push({ ...typeView(t, await resources.discover(t)), count: inventory.filter((i) => i.type === t.type.metadata.name).length });
+    }
+    return { items, errors };
+  });
+
+  app.get<{ Params: { type: string } }>("/api/types/:type", async (req) => {
+    const t = await resources.type(req.params.type);
+    return typeView(t, await resources.discover(t));
+  });
+
+  type TypedCreate = { params?: Record<string, unknown>; document?: Record<string, unknown>; reason?: string };
+  type TypedAction = { document?: Record<string, unknown>; inputs?: Record<string, unknown>; reason?: string };
+
+  app.post<{ Params: { type: string }; Body: TypedCreate }>("/api/types/:type/plan", async (req) => planView(await resources.planCreate(user(req), req.params.type, req.body ?? {})));
+
+  app.post<{ Params: { type: string }; Body: TypedCreate }>("/api/types/:type/requests", async (req, reply) => {
+    const me = user(req);
+    const r = await quai.submit(me, await resources.planCreate(me, req.params.type, req.body ?? {}), req.body?.reason ?? "");
+    return reply.status(201).send(view(r, me, true));
+  });
+
+  app.get<{ Params: { type: string; key: string } }>("/api/types/:type/resources/:key", async (req) => {
+    const me = user(req);
+    const d = await resources.detail(me, req.params.type, req.params.key);
+    return { ...d, requests: d.requests.map((r) => view(r, me)) };
+  });
+
+  app.post<{ Params: { type: string; key: string; action: string }; Body: TypedAction }>("/api/types/:type/resources/:key/actions/:action/plan", async (req) =>
+    planView(await resources.planAction(user(req), req.params.type, req.params.key, req.params.action, req.body ?? {})),
+  );
+
+  app.post<{ Params: { type: string; key: string; action: string }; Body: TypedAction }>("/api/types/:type/resources/:key/actions/:action", async (req, reply) => {
+    const me = user(req);
+    const plan = await resources.planAction(me, req.params.type, req.params.key, req.params.action, req.body ?? {});
+    const r = await quai.submit(me, plan, req.body?.reason ?? "");
+    return reply.status(201).send(view(r, me, true));
+  });
+
+  /** One list for everything Quai can operate: blueprint deployments and typed resources found in the repo. */
+  app.get("/api/inventory", async () => {
+    const open = quai.store.listRequests({ status: ["pending", "approved"] });
+    const openFor = (id: string) => open.filter((r) => r.deployment === id).length;
+    const { types } = await resources.types();
+    const titles = new Map(types.map((t) => [t.type.metadata.name, t.type]));
+    const deployments = (await quai.deployments()).map((d) => ({
+      kind: "deployment" as const,
+      id: d.name,
+      name: d.name,
+      source: d.record.spec.blueprint,
+      sourceTitle: d.record.spec.blueprint,
+      icon: undefined as string | undefined,
+      path: d.dir,
+      env: typeof d.record.spec.inputs.environment === "string" ? d.record.spec.inputs.environment : undefined,
+      owner: d.record.metadata.owner,
+      sync: d.sync,
+      openRequests: openFor(d.name),
+      href: `/deployments/${d.name}`,
+    }));
+    const typed = (await resources.inventory()).map((i) => ({
+      kind: "resource" as const,
+      id: i.id,
+      name: i.params.name ?? i.key,
+      source: i.type,
+      sourceTitle: titles.get(i.type)?.metadata.title ?? i.type,
+      icon: titles.get(i.type)?.metadata.icon,
+      path: i.path,
+      env: i.params.env,
+      owner: i.owner,
+      error: i.error,
+      sync: quai.store.getSync(i.id),
+      openRequests: openFor(i.id),
+      href: `/types/${i.type}/resources/${encodeURIComponent(i.key)}`,
+    }));
+    return [...deployments, ...typed];
+  });
+
   // ----------------------------------------------------------------- git
 
   app.get<{ Querystring: { path?: string; limit?: string } }>("/api/git/log", async (req) =>
@@ -168,6 +255,11 @@ export async function buildApp(cfg: QuaiConfig) {
     });
   }
 
+  if (cfg.git.pullIntervalSeconds > 0) {
+    const timer = setInterval(() => quai.git.sync().catch((e) => app.log.warn(`git pull failed: ${(e as Error).message}`)), cfg.git.pullIntervalSeconds * 1000);
+    timer.unref();
+    app.addHook("onClose", async () => clearInterval(timer));
+  }
   app.addHook("onClose", async () => quai.store.close());
   return { app, quai };
 }
