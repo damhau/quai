@@ -12,12 +12,12 @@ Decisions still needed, with the default the plan assumes until they are answere
 | 2 | Pilot Server details: which collection(s) hold the IaC repositories, is the `/tfs` virtual directory in use, who can grant the service account its branch-folder permissions (`tf git permission`) and create the service hook subscription, and what maximum PAT lifetime does the Server allow? | URL parsing, registration wizard, rotation reminders | One collection, `/tfs` in use; a project collection administrator does the setup once; PAT lifetime 1 year | Phase 1 start |
 | 3 | Is Quai's approval the only authority, or must Azure DevOps required-reviewer policies also pass? | Auto-complete vs waiting for both; approver kinds | Quai is the sole authority ([ADR 0002](../adr/0002-quai-is-the-approval-authority.md)); Azure DevOps path-based reviewers feed Quai's rules through the `codeowners` approver kind | Phase 1 |
 | 4 | Is there an ITSM tool (ServiceNow, Jira Service Management) that must hold change records? | Phase 4 scope | ServiceNow in Phase 4 | Phase 4 |
-| 5 | Product name. "Quai" stays the working name in code; choose the final name before beta. Candidates from earlier discussion: Talus, Guichet, Comptoir, Cairn, Arête, Mandat, Requisite, Ledger. Each needs a domain check (.com, .ch, .io) and a trademark search (Swissreg, EUIPO, class 42). | Branding, Go module path, binary and Helm chart names: cheap to rename before M2, costly after | "Quai" until decided | M2 |
 
 ## Decided
 
 | Question | Decision | Date | Consequences |
 | --- | --- | --- | --- |
+| Product name | **Keep "Quai"** | 2026-10-27 | Revisit only if a domain or trademark check (Swissreg, EUIPO, class 42) shows a conflict |
 | Git platform and edition | **Azure DevOps Server first, Services alongside or right after** | 2026-10-26 | [ADR 0010](../adr/0010-git-connectors-azure-devops-first.md), [Git connectors](../design/12-git-connectors.md) |
 | Pilot's Azure DevOps Server version | **Server 2022, latest update** (REST API 7.0) | 2026-10-27 | API 7.0 is the connector's baseline |
 | Authentication to Azure DevOps Server | **PAT of a dedicated Active Directory service account** | 2026-10-27 | Scopes Code (read and write), Code (status), Build (read and execute) for pipelines; expiry warnings |
