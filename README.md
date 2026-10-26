@@ -2,6 +2,8 @@
 
 A self-service infrastructure portal in the spirit of vRealize Automation, built the modern way: **every request becomes a reviewed Git commit**. Quai is a front end to GitOps, not a system of record. Argo CD or Flux reconciles what Quai commits, and Crossplane, KubeVirt or Terraform provision it.
 
+The plan for turning this prototype into an enterprise product (Go backend, React frontend, multi-repository pull-request delivery) is in [`docs/`](docs/README.md).
+
 | vRA concept | Quai | Inspired by |
 | --- | --- | --- |
 | Service Broker catalog | Catalog of **blueprints** with dynamic request forms | Port |
