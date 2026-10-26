@@ -16,7 +16,7 @@ repositories; their pipelines apply it.
    - [Resource types and generators](design/02-resource-types-and-generators.md): locators, generators, formats, ownership, validation.
    - [File editing](design/03-file-editing.md): minimal-diff editing of YAML, JSON and HCL in Go.
    - [Git connectors](design/12-git-connectors.md): one connector per platform; Azure DevOps Server first, then Services.
-4. [Roadmap](plan/roadmap.md) and [open questions](plan/open-questions.md).
+4. [Roadmap](plan/roadmap.md), the task-level [Phase 0 backlog](plan/phase-0-backlog.md) and [open questions](plan/open-questions.md).
 
 ## Map
 
@@ -27,7 +27,7 @@ repositories; their pipelines apply it.
 | Operations | [deployment and operations](operations/deployment-and-operations.md) |
 | Engineering | [backend (Go)](engineering/backend.md) · [frontend (React)](engineering/frontend.md) · [testing](engineering/testing.md) · [migration from the prototype](engineering/migration-from-prototype.md) |
 | Decisions | [ADR index](#decisions) |
-| Plan | [roadmap](plan/roadmap.md) · [open questions](plan/open-questions.md) |
+| Plan | [roadmap](plan/roadmap.md) · [Phase 0 backlog](plan/phase-0-backlog.md) · [open questions](plan/open-questions.md) |
 
 ## Decisions
 
@@ -36,12 +36,12 @@ repositories; their pipelines apply it.
 | [0001](adr/0001-git-is-the-system-of-record.md) | Git is the system of record | Accepted |
 | [0002](adr/0002-quai-is-the-approval-authority.md) | Quai is the approval authority, enforced by a required check | Accepted |
 | [0003](adr/0003-definitions-live-next-to-the-iac.md) | Definitions live next to the IaC | Accepted |
-| [0004](adr/0004-structured-generators-no-text-templates.md) | Structured generators, no text templates; plugins in WASM | Proposed |
+| [0004](adr/0004-structured-generators-no-text-templates.md) | Structured generators, no text templates; plugins in WASM | Accepted |
 | [0005](adr/0005-minimal-diff-file-editing.md) | Minimal-diff editing of human-maintained files | Accepted |
 | [0006](adr/0006-go-backend-react-frontend.md) | Go backend, React frontend | Accepted |
-| [0007](adr/0007-postgresql-for-state-and-jobs.md) | PostgreSQL for state and jobs | Proposed |
+| [0007](adr/0007-postgresql-for-state-and-jobs.md) | PostgreSQL for state and jobs | Accepted |
 | [0008](adr/0008-pull-requests-by-default.md) | Pull requests by default | Accepted |
-| [0009](adr/0009-cel-expressions.md) | CEL as the expression language | Proposed |
+| [0009](adr/0009-cel-expressions.md) | CEL as the expression language | Accepted |
 | [0010](adr/0010-git-connectors-azure-devops-first.md) | Per-platform Git connectors; Azure DevOps Server first, then Services | Accepted |
 
 ## Conventions

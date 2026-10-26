@@ -1,0 +1,55 @@
+# Quai
+
+Governed self-service portal in front of infrastructure that customers already manage as code:
+every request becomes a reviewed change in their Git repositories. Start with
+[`docs/README.md`](docs/README.md); the design documents are the specification.
+
+## Current state
+
+- **Prototype** (TypeScript): `packages/core`, `server/`, `web/`, `examples/`. Reference only:
+  port behaviour and tests from it, do not extend it. It is deleted at the end of Phase 0 (P0-29).
+- **Target**: Go backend in `backend/`, React frontend in `frontend/`
+  ([ADR 0006](docs/adr/0006-go-backend-react-frontend.md)).
+- **Work in progress**: Phase 0, task by task, in [`docs/plan/phase-0-backlog.md`](docs/plan/phase-0-backlog.md).
+  That file says how an iteration works and when to stop.
+
+## Rules
+
+- The docs are the spec. If an implementation must deviate, update the relevant document in the
+  same commit. If a decision is not covered, add it to `docs/plan/open-questions.md` and stop to ask.
+- Commit straight to `main`, one task per commit or a few small commits, message `P0-NN: summary`.
+  Never add `Co-Authored-By` or other attribution trailers. Push after each task and check CI.
+- If `git config user.name` is empty, stop and ask the owner to configure a Git identity.
+- Never commit secrets, never disable TLS verification, never weaken a test to make it pass.
+- If an action is blocked by Veto (`[BLOCKED BY POLICY]`, guardrail exception) or by the sandbox,
+  stop and ask; do not work around it.
+- Do not touch untracked local files at the repository root (`.bashrc`, `.idea`, `.mcp.json`, …)
+  or `.claude/` directories.
+
+## Commands
+
+Backend (from `backend/`, Go 1.27):
+
+```bash
+make check     # build, vet, staticcheck, gosec, govulncheck, go test -race
+go test ./internal/engine/...            # fast loop on the engine
+go test -fuzz=FuzzYAMLEdit -fuzztime=60s ./internal/engine/edit/yamledit
+```
+
+Frontend (from `frontend/`, Node 20+):
+
+```bash
+npm run typecheck && npm run lint && npm run test && npm run build
+```
+
+Prototype (reference, from the repository root): `npm test` runs its unit and API tests.
+
+## Conventions
+
+- Backend: [docs/engineering/backend.md](docs/engineering/backend.md). `internal/engine` is pure:
+  no database, network, clock, environment or logging.
+- Frontend: [docs/engineering/frontend.md](docs/engineering/frontend.md). Server state in TanStack
+  Query, generated API client, shadcn components edited in place.
+- Testing: [docs/engineering/testing.md](docs/engineering/testing.md). No mocks for PostgreSQL or Git.
+- File editing must never touch bytes outside a resource's region:
+  [docs/design/03-file-editing.md](docs/design/03-file-editing.md).

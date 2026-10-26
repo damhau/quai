@@ -55,6 +55,12 @@ Rules:
 - Domain packages own their handlers, queries and jobs. No layer-wide `services/` or `utils/` packages.
 - Packages talk through small interfaces defined by the consumer. The `Connector` interface ([Git connectors](../design/12-git-connectors.md)) is the exception: it is shared by `delivery`, `repositories`, `runs` and webhook ingestion, and lives in `internal/connectors`.
 
+## Toolchain
+
+Go 1.27: `go.mod` declares `go 1.27` and `toolchain go1.27.3`. An older local Go (1.21 or later)
+downloads that toolchain automatically through the Go module proxy (`GOTOOLCHAIN=auto`, the
+default), but a current local install is preferred.
+
 ## Libraries
 
 | Concern | Choice | Why |

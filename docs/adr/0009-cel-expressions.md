@@ -1,6 +1,6 @@
 # ADR 0009: CEL as the expression language
 
-Status: Proposed · 2026-10-26
+Status: Accepted · 2026-10-27
 
 ## Context
 

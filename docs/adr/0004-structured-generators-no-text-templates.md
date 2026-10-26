@@ -1,6 +1,6 @@
 # ADR 0004: Structured generators, no text templates; plugins in WASM
 
-Status: Proposed · 2026-10-26
+Status: Accepted · 2026-10-27
 
 ## Context
 

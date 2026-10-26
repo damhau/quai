@@ -1,6 +1,6 @@
 # ADR 0007: PostgreSQL for state and jobs
 
-Status: Proposed · 2026-10-26
+Status: Accepted · 2026-10-27
 
 ## Context
 

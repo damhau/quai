@@ -50,6 +50,7 @@ gantt
 
 Goal: the prototype's features on the target stack, with production-grade
 foundations. See [migration from the prototype](../engineering/migration-from-prototype.md).
+Task-level breakdown, for autonomous sessions: [Phase 0 backlog](phase-0-backlog.md).
 
 | Epic | Deliverables |
 | --- | --- |
