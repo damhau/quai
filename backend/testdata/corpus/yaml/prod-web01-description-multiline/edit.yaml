@@ -1,0 +1,6 @@
+# A multi-line string is written as a literal block indented like its siblings' children.
+set:
+  - path: [description]
+    value: |
+      Shop front-end
+      Owned by the web team

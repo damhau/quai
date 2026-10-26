@@ -1,0 +1,4 @@
+# A quoted string becomes a number: the quotes go, nothing else moves.
+set:
+  - path: [tags, cost_center]
+    value: 4712

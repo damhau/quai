@@ -1,0 +1,6 @@
+# The trailing comment and its alignment survive.
+set:
+  - path: [disks, 1, size_gb]
+    value: 2000
+  - path: [disks, 1, tier]
+    value: standard

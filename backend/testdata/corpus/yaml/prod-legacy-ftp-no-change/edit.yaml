@@ -1,0 +1,4 @@
+# Setting a value to what it already is leaves the file untouched.
+set:
+  - path: [cpu]
+    value: 2

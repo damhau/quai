@@ -1,0 +1,115 @@
+// Package yamledit edits YAML files that people also maintain, changing only the bytes of the
+// values that differ.
+//
+// It implements docs/design/03-file-editing.md for YAML. The original file is parsed into a
+// syntax tree that keeps comments and positions; the semantic change between the current and the
+// intended document is computed; each changed scalar becomes a text edit on the original bytes;
+// and the result is verified before it is returned: it parses, it decodes to exactly the intended
+// document, and every byte outside the edited spans is unchanged. When an edit cannot be made
+// safely, Edit refuses with a *RefusalError instead of rewriting the file.
+//
+// Documents use the JSON data model: mappings with string keys, sequences, strings, numbers,
+// booleans and null. Numbers compare by value, so 8 and 8.0 are equal, but 8 and "8" are not.
+//
+// Only scalar changes are supported so far. Adding or removing keys and list items, and changing
+// a scalar into a mapping or a list, are refused.
+package yamledit
+
+import (
+	"fmt"
+	"regexp"
+	"strings"
+)
+
+// Edit returns src edited so that it decodes to want, changing as few bytes as it can.
+//
+// want is a document in the JSON data model: nil, bool, string, any Go integer or float type,
+// json.Number, []any and map[string]any, nested freely. When src already decodes to want, Edit
+// returns src itself. An edit that cannot be made safely returns a *RefusalError; any other error
+// means want is not a valid document.
+func Edit(src []byte, want any) ([]byte, error) {
+	want, err := normalize(want, path{})
+	if err != nil {
+		return nil, err
+	}
+	f, err := parse(src)
+	if err != nil {
+		return nil, err
+	}
+	changes, err := diff(f.value, want, path{}, nil)
+	if err != nil {
+		return nil, err
+	}
+	if len(changes) == 0 {
+		return src, nil
+	}
+	edits := make([]textEdit, 0, len(changes))
+	for _, c := range changes {
+		e, err := f.edit(c)
+		if err != nil {
+			return nil, err
+		}
+		edits = append(edits, e)
+	}
+	out, err := apply(src, edits)
+	if err != nil {
+		return nil, err
+	}
+	if err := verify(src, out, edits, want); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// RefusalError reports an edit that Edit will not make because it cannot be made safely.
+type RefusalError struct {
+	// Path is the document path concerned, such as "$.disks[0].size_gb", or empty when the
+	// refusal is about the whole file.
+	Path   string
+	Reason string
+}
+
+func (e *RefusalError) Error() string {
+	if e.Path == "" {
+		return "yamledit: refused: " + e.Reason
+	}
+	return fmt.Sprintf("yamledit: refused at %s: %s", e.Path, e.Reason)
+}
+
+// refuse returns a *RefusalError about p, or about the whole file when p is nil.
+func refuse(p path, format string, args ...any) error {
+	e := &RefusalError{Reason: fmt.Sprintf(format, args...)}
+	if p != nil {
+		e.Path = p.String()
+	}
+	return e
+}
+
+// path addresses a value in a document: string elements are mapping keys, int elements are
+// sequence indices. The empty path is the document root.
+type path []any
+
+func (p path) key(k string) path { return append(p[:len(p):len(p)], k) }
+
+func (p path) index(i int) path { return append(p[:len(p):len(p)], i) }
+
+var identifier = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]*$`)
+
+// String renders p as "$", "$.network.ip", "$.disks[0]" or `$["dotted.key"]`.
+func (p path) String() string {
+	var b strings.Builder
+	b.WriteString("$")
+	for _, step := range p {
+		switch step := step.(type) {
+		case int:
+			fmt.Fprintf(&b, "[%d]", step)
+		case string:
+			if identifier.MatchString(step) {
+				b.WriteString("." + step)
+			} else {
+				fmt.Fprintf(&b, "[%q]", step)
+			}
+		}
+	}
+	return b.String()
+}

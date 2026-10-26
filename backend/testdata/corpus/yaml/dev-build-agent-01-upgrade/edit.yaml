@@ -1,0 +1,8 @@
+# Several kinds of scalar at once: a plain string, an integer and a boolean.
+set:
+  - path: [template]
+    value: ubuntu-26.04
+  - path: [cpu]
+    value: 16
+  - path: [backup]
+    value: true

@@ -1,0 +1,4 @@
+# A value with ": " must be quoted; the file uses no quotes, so double quotes are the default.
+set:
+  - path: [description]
+    value: "Partner file drop: retire by 2027"

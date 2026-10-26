@@ -1,0 +1,4 @@
+# A scalar inside a flow mapping is replaced inside the braces.
+set:
+  - path: [network, ip]
+    value: 10.0.13.21

@@ -1,0 +1,9 @@
+# The prototype's patchYaml case: three values in three places; the comment on the cpu line and
+# the quoted cost centre stay as they are.
+set:
+  - path: [cpu]
+    value: 8
+  - path: [disks, 0, size_gb]
+    value: 120
+  - path: [tags, cost_center]
+    value: "4712"

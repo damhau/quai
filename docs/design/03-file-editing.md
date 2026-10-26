@@ -57,14 +57,14 @@ strings, line ending (LF or CRLF).
 After applying the edits, the engine checks all of these. Any failure refuses the write.
 
 1. The edited file parses without errors or warnings.
-2. Decoding it yields exactly the intended document (deep equality, with type-aware comparison so `8` and `"8"` differ).
+2. Decoding it yields exactly the intended document (deep equality in the JSON data model, with type-aware comparison so `8` and `"8"` differ; numbers compare by value, so `8` and `8.0` are equal).
 3. Every byte outside the region's span is unchanged. For `entry` and `field` regions this is checked against the original byte ranges of the other items.
 4. Within the region, the changed lines are only those that contain changed paths (computed from node positions).
 5. For YAML: no anchor or alias is involved in a changed node. Editing a node that other nodes alias would silently change them too.
 
 ## YAML
 
-- Library: `github.com/goccy/go-yaml`, parsed with comments (`parser.ParseComments`). Each AST node exposes its token with line, column and offset.
+- Library: `github.com/goccy/go-yaml`, parsed with comments (`parser.ParseComments`). Each AST node exposes its token with line and column (counted in runes). The token's byte offset is not reliable (it drifts after comments and multi-byte characters), so Quai computes byte offsets from line and column and checks that the token's text is at that offset before editing; block scalar content is located by scanning its lines.
 - Multi-document files (`---`) are supported for `dir` regions (Kubernetes manifests); each document is addressed by index or by `kind`/`metadata.name`.
 - Refused: edits to anchored or aliased nodes; merge keys (`<<:`); custom tags other than the core schema; files with a byte-order mark or mixed indentation inside the region.
 - Fallback for files Quai created and that nobody else edits: if a file has a `# managed by quai` header, a full rewrite is allowed. It is off by default.

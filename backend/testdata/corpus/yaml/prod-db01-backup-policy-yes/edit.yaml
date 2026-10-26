@@ -1,0 +1,4 @@
+# A string that YAML 1.1 tools read as a boolean is quoted.
+set:
+  - path: [backup_policy]
+    value: "yes"
