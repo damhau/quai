@@ -10,7 +10,7 @@ binding.
 | Mode | What happens | Use for |
 | --- | --- | --- |
 | `pull-request` (default) | Branch + PR at submit; CI plans while approvals are pending; Quai merges when approved and green. | Every production repository. |
-| `direct` | Quai commits to the branch after approval, as the prototype does. No CI plan before approval. | Sandboxes, demos, repositories without a supported provider API. |
+| `direct` | Quai commits to the branch after approval, as the prototype does. No CI plan before approval. | Sandboxes, demos, repositories without a supported connector. |
 
 See [ADR 0008](../adr/0008-pull-requests-by-default.md).
 
@@ -20,7 +20,7 @@ See [ADR 0008](../adr/0008-pull-requests-by-default.md).
 sequenceDiagram
   actor U as Requester
   participant Q as Quai
-  participant G as Git provider
+  participant G as Git platform
   participant C as CI / runner
   actor A as Approver
   U->>Q: submit request
@@ -72,8 +72,13 @@ sequenceDiagram
 
 Branch protection on the target branch must require `quai/approval`. Quai
 verifies this at registration and hourly; see
-[repository connections](01-repository-connections.md#health). On GitHub the
-required check is pinned to the Quai app so no other actor can satisfy it.
+[repository connections](01-repository-connections.md#health). How the check
+is published and enforced differs per platform; see
+[Git connectors](12-git-connectors.md):
+
+- **Azure DevOps (first):** a pull request status (`genre: quai`, `name: approval`) on the latest iteration, required by a "Status check" branch policy whose authorized identity is Quai, with status reset on new changes. Quai then sets auto-complete and Azure DevOps completes the PR once every policy passes.
+- **GitHub:** a check run, required by branch protection or a ruleset pinned to the Quai app.
+- **GitLab:** a commit status, enforced with the mechanism the edition offers.
 
 ### Merge
 
@@ -130,7 +135,7 @@ approval:
 | `group:<name>` | IdP group |
 | `user:<name>` | A named user |
 | `owners` | The resource's owner (user or team) |
-| `codeowners` | `CODEOWNERS` entries for the paths in the change set |
+| `codeowners` | `CODEOWNERS` entries for the paths in the change set; on Azure DevOps, the reviewers of "Automatically included reviewers" policies whose path filters match |
 | `manager` | The requester's manager, from the IdP attribute |
 | `external: <integration>` | An external system (ServiceNow change request, generic webhook) that returns approved or rejected |
 

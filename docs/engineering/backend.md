@@ -35,8 +35,9 @@ quai/
 │   │   ├── notify/                     # email, Teams, Slack, outgoing webhooks
 │   │   ├── itsm/                       # ServiceNow, JSM
 │   │   ├── gitx/                       # mirror cache, worktrees, git CLI wrapper
-│   │   ├── providers/                  # github, gitlab, azuredevops, bitbucket, gitea
-│   │   ├── secrets/                    # SecretStore: vault, kubernetes, env
+│   │   ├── connectors/                 # azuredevops (first), gitea, github, gitlab, bitbucket, generic
+│   │   │   └── conformance/            # shared suite every connector must pass
+│   │   ├── secrets/                    # SecretStore: vault, azure key vault, kubernetes, env
 │   │   ├── jobs/                       # River workers and periodic jobs
 │   │   ├── store/                      # sqlc queries, generated code, transactions
 │   │   └── config/                     # configuration loading and validation
@@ -52,7 +53,7 @@ Rules:
 
 - **`internal/engine` imports nothing outside the standard library and its own format libraries.** No database, network, clock, environment or logging. This keeps it deterministic and lets `quai lint` run anywhere.
 - Domain packages own their handlers, queries and jobs. No layer-wide `services/` or `utils/` packages.
-- Packages talk through small interfaces defined by the consumer (`delivery` defines the `Provider` it needs; `providers/github` implements it).
+- Packages talk through small interfaces defined by the consumer. The `Connector` interface ([Git connectors](../design/12-git-connectors.md)) is the exception: it is shared by `delivery`, `repositories`, `runs` and webhook ingestion, and lives in `internal/connectors`.
 
 ## Libraries
 
@@ -72,10 +73,12 @@ Rules:
 | Policy (optional) | `open-policy-agent/opa` (`rego` package) | Evaluate the repository's own Rego bundle in-process |
 | OIDC | `coreos/go-oidc/v3`, `golang.org/x/oauth2` | Standard, certified flows |
 | Sessions | `alexedwards/scs` with PostgreSQL store | Server-side sessions, rotation, idle timeout |
+| Azure DevOps (first connector) | `microsoft/azure-devops-go-api/azuredevops/v7`, wrapped in Quai's own client with `net/http` for gaps | Official client for Git, Policy, Pipelines and Service Hooks |
+| Entra ID tokens | `Azure/azure-sdk-for-go/sdk/azidentity` | Workload identity federation, certificates, managed identity |
+| Azure Key Vault | `Azure/azure-sdk-for-go/sdk/security/keyvault/azsecrets` | `SecretStore` backend for Azure-centric customers |
+| Gitea (test reference) | `code.gitea.io/sdk/gitea` | Official client; runs in a container for the conformance suite |
 | GitHub | `google/go-github` + `bradleyfalzon/ghinstallation` | GitHub App installation tokens |
 | GitLab | `gitlab.com/gitlab-org/api/client-go` | Official client |
-| Azure DevOps | `microsoft/azure-devops-go-api` | Official client |
-| Gitea | `code.gitea.io/sdk/gitea` | Official client |
 | Kubernetes | `k8s.io/client-go` (dynamic client) | Executors and observers without pulling every CRD's typed client |
 | Git transport | `git` CLI through `os/exec` | Full protocol support: SSH, partial clone, sparse checkout, worktrees, signing |
 | Logging | `log/slog` | JSON handler in production, text in development |
@@ -91,7 +94,7 @@ standard library is not enough.
 - **Context everywhere.** Every function doing I/O takes `ctx context.Context` first; cancellation and deadlines propagate to `git` subprocesses and provider calls.
 - **Errors.** Wrap with `fmt.Errorf("…: %w", err)`. Domain errors are typed (`ErrNotFound`, `ErrStale`, `ValidationError{Fields}`) and mapped to problem details in one place in `internal/api`. Handlers never build HTTP errors from domain logic directly.
 - **Transactions.** A state change and the jobs it triggers are written in one transaction (River's `InsertTx`), so a crash can never leave a request "submitted" without its delivery job.
-- **Idempotency.** Every job can run twice: provider calls carry idempotency keys or check current state first (a PR for this request already exists → reuse it).
+- **Idempotency.** Every job can run twice: connector calls carry idempotency keys or check current state first (a PR for this request already exists → reuse it).
 - **Authorization.** Every handler and job calls `authz.Authorize`; a static check in CI fails the build for handlers that do not.
 - **Logging.** One log line per request (middleware) and per job, plus one per domain event and per caught error, at `Info` or above. Never log bodies, tokens, credentials or file contents.
 - **No global state** besides the configuration loaded at start-up.

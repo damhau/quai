@@ -25,7 +25,7 @@ Status: Draft · 2026-10-26
 | Malicious WASM plugin | Pinned by digest; `wazero` with no WASI file system, network, clock or random; memory and fuel limits; no host functions beyond the generator ABI. |
 | Secrets written into Git | Secret inputs are references only (Vault path, ExternalSecret name); rendered output is scanned for secret patterns (gitleaks rules) before commit, and the request is refused on a match. |
 | SSRF through webhooks or executors | Outgoing calls only to admin-configured endpoints; allow-lists per executor; no URLs taken from definitions. |
-| Webhook spoofing | Per-repository secrets, constant-time comparison, delivery IDs de-duplicated, replay window. |
+| Webhook spoofing | Per-repository secrets, constant-time comparison, delivery IDs de-duplicated, replay window. Platforms that do not sign payloads (Azure DevOps service hooks) are accepted only on the dedicated webhook host with a secret header, and every event is treated as a notification: Quai re-reads the object from the platform API before acting. |
 | Privilege escalation through day-2 actions | Ownership and role checks in one authorization function; executors limited by their own RBAC. |
 | Session theft, CSRF, XSS | HttpOnly cookies, CSRF tokens, strict Content Security Policy, React escaping, no `dangerouslySetInnerHTML`, no third-party scripts or CDNs. |
 | Tampering with the audit log | Append-only table, insert-only database role, hash chain, signed checkpoints, export to SIEM. |
@@ -73,7 +73,7 @@ sample, and what Quai attaches to ITSM change requests.
 ## Commit signing and attribution
 
 - GitHub: commits created through the GitHub App API are signed by GitHub and shown as verified.
-- Other providers: commits are signed with an SSH or GPG key held in the secret store; the public key is registered as Quai's signing key on the provider.
+- Azure DevOps and other platforms: commits are signed with an SSH or GPG key held in the secret store, so history can be verified offline; where the platform supports signature verification, the public key is registered there. Azure Repos does not display signature verification at the time of writing.
 - The commit author is the requester; trailers carry the request ID, change set hash and stack. Approvers are recorded in the merge commit message or on the PR.
 
 ## Data protection

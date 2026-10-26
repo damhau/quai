@@ -57,7 +57,8 @@ Content-Type: application/json
 
 | Runner | How results reach Quai |
 | --- | --- |
-| GitHub Actions, GitLab CI, Azure Pipelines, Jenkins | A `quai report` step after plan and apply (container image or binary). Quai also reads check and pipeline status from provider webhooks as a fallback. |
+| Azure Pipelines (first) | A `quai report` step (or task) after plan and apply. Build validation results are also read through the Azure DevOps policy evaluations API, and pipeline run state changes through service hooks. Drift checks are queued with the Pipelines runs API. |
+| GitHub Actions, GitLab CI, Jenkins | A `quai report` step after plan and apply (container image or binary). Quai also reads check and pipeline status from platform webhooks as a fallback. |
 | Atlantis | A custom workflow step calling `quai report`; Quai also reads the `atlantis/plan` and `atlantis/apply` statuses. |
 | Spacelift | Spacelift webhooks for run state changes; plan JSON through its API. |
 | HCP Terraform / Terraform Enterprise | Run notifications (webhook); plan JSON through the API. |
@@ -99,7 +100,7 @@ Apply succeeded · 09:46     web01 created
 Drift is the difference between Git and reality. Quai detects it through the
 runner:
 
-1. A scheduled job per stack (default daily) asks the runner for a drift check: it triggers a pipeline through the provider API, or uses the runner's own feature (Spacelift drift detection, HCP Terraform health assessments).
+1. A scheduled job per stack (default daily) asks the runner for a drift check: it triggers a pipeline through the platform API (Azure Pipelines runs API first), or uses the runner's own feature (Spacelift drift detection, HCP Terraform health assessments).
 2. The check runs `terraform plan -detailed-exitcode` (exit code 2 means changes) and reports `kind: drift-check` with plan JSON.
 3. Quai maps the drifted addresses to resources and marks them *Drifted*, with the attributes that differ.
 

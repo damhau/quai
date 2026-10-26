@@ -11,7 +11,7 @@ requests, real run status and enterprise identity.
 ## Assumptions
 
 - Implementation is AI-assisted; the owner reviews, tests and decides. Calendar estimates assume that setup with one person reviewing full-time. They are rough: **re-estimate after Phase 0**, whose actual duration is the best calibration available.
-- The pilot's Git platform and CI runner are still open ([open questions](open-questions.md)). Phase 1 and 2 build the provider and runner they use first; the others follow.
+- The pilot uses **Azure DevOps**, so the Azure DevOps connector is built first ([ADR 0010](../adr/0010-git-connectors-azure-devops-first.md)), with Azure Pipelines as the first runner adapter. Whether the pilot runs Services or Server is still open ([open questions](open-questions.md)); Phase 1 targets the one they use, the other follows.
 - Phases overlap where dependencies allow.
 
 ## Overview
@@ -72,15 +72,17 @@ and [delivery and approvals](../design/05-delivery-and-approvals.md).
 | Epic | Deliverables |
 | --- | --- |
 | Repository connections | `Repository` resource (UI, API, config-as-code); registration wizard with access checks; health page and metrics; floor rules |
-| Secrets | `SecretStore` with Vault, Kubernetes and environment backends |
+| Secrets | `SecretStore` with Vault, Azure Key Vault, Kubernetes and environment backends |
 | Git layer | Mirror cache, worktrees, sparse/partial clone, per-repository locks, webhook ingestion with de-duplication, polling reconciliation |
-| Providers | The pilot's provider (GitHub, GitLab or Azure DevOps), plus Gitea for tests; the second major provider follows in Phase 3 |
+| Connector framework | `Connector` interface with capabilities, normalized webhook events, shared conformance suite ([Git connectors](../design/12-git-connectors.md)) |
+| Azure DevOps connector | Entra service principal (workload identity federation) or PAT auth; Git over HTTPS with bearer tokens; PRs, iterations, PR statuses, "Status check" policy verification with authorized identity, auto-complete, policy evaluations, path-based reviewer policies as `codeowners`, service hook subscriptions with secret header, throttling; conformance suite green against the pilot's edition |
+| Gitea connector | Reference connector in testcontainers; anchors the conformance suite and the end-to-end tests |
 | Definitions | Load per commit, last-valid fallback, preview from branches, audit of definition changes, CODEOWNERS check |
 | PR protocol | Branches, signed commits with trailers, PR body and labels, `quai/approval` check, auto and manual merge, branch deletion |
 | Content-bound approvals | Change set hash, staleness detection, branch rebuilds, outside-push and bypass detection |
 | Enforcement verification | Hourly branch protection check; block delivery when enforcement is missing |
 
-**Exit:** the pilot repository is connected; a request opens a PR, CI runs, approvals in Quai flip the check, Quai merges; removing the branch protection rule is detected within an hour and blocks delivery.
+**Exit:** the pilot's Azure DevOps repository is connected; a request opens a PR, the build validation pipeline plans, approvals in Quai flip the `quai/approval` status, auto-complete merges once every policy passes; removing the status-check policy (or its authorized identity) is detected within an hour and blocks delivery.
 
 ## Phase 2: Runs and status (4 weeks)
 
@@ -90,7 +92,7 @@ Goal: approvers see the plan; owners see whether their change is live. See
 | Epic | Deliverables |
 | --- | --- |
 | Run reports | `POST /api/v1/runs`, per-repository run tokens, `quai report` CLI and container image |
-| Adapters | The pilot's runner first; generic CI (GitHub Actions, GitLab CI, Azure Pipelines) through `quai report`; Argo CD and Flux templates |
+| Adapters | **Azure Pipelines first**: `quai report` task, build validation results through policy evaluations, run state through service hooks, drift runs queued through the Pipelines runs API. Then generic CI (GitHub Actions, GitLab CI) through `quai report`; Argo CD and Flux templates |
 | Plan mapping | `terraform-json` parsing, address patterns, per-resource plan summary on the request page, sensitive-value handling |
 | Status | Per-stack runs, derived resource status, request timeline, notifications on apply success and failure |
 
@@ -109,7 +111,8 @@ and [file editing](../design/03-file-editing.md).
 | Formats | JSON and `*.tfvars.json` editors; HCL editor on `hclwrite` with literal-only rule |
 | Components | Generic `crossplane.claim`, `argocd.application`, `flux.kustomization` |
 | Plugins | `wazero` runtime, ABI, limits, Go plugin SDK and template repository |
-| Type lifecycle | Schema evolution (non-conforming resources, migrate expressions), deletion policy, second Git provider |
+| Type lifecycle | Schema evolution (non-conforming resources, migrate expressions), deletion policy |
+| GitHub connector | GitHub App auth, check runs, branch protection and rulesets pinned to the app, auto-merge and merge queue, `CODEOWNERS`, signed webhooks; conformance suite green on github.com and GHES |
 
 **Exit:** a namespace-quota type on a shared `namespaces.yaml` and a tfvars-based type both pass round-trip lint on real repositories; concurrent requests on two entries of one file do not conflict.
 
@@ -162,7 +165,7 @@ See [onboarding](../design/10-onboarding.md) and [integrations](../design/11-int
 | Onboarding assistant | Repository scanner, pattern and schema inference, Terraform analysis, verification gates, review UI, PR with `.quai/`; optional LLM assistance with redaction |
 | `quai schema from-terraform` | Variables to JSON Schema |
 | Ecosystem | Backstage plugin (entities, scaffolder action), MCP server, outgoing webhooks, Port action |
-| Remaining providers | Bitbucket; the remaining runner adapters (Spacelift, HCP Terraform, Atlantis) |
+| Remaining connectors | GitLab (edition-dependent enforcement), then Bitbucket; the remaining runner adapters (Spacelift, HCP Terraform, Atlantis) |
 
 ## Phase 8: Hardening and GA (6 weeks)
 
@@ -181,7 +184,10 @@ See [onboarding](../design/10-onboarding.md) and [integrations](../design/11-int
 | Risk | Likelihood | Impact | Mitigation |
 | --- | --- | --- | --- |
 | Minimal-diff YAML editing in Go does not reach the prototype's quality | Low | High | Week-1 spike with go/no-go; corpus and fuzzing; fallback: refuse edits rather than rewrite |
-| Provider edition lacks enforcement features (e.g. GitLab tier) | Medium | High | Check during registration; alternative mechanisms per provider; health page shows the active one |
+| Platform edition lacks enforcement features (e.g. GitLab tier, older Azure DevOps Server) | Medium | High | Check during registration; alternative mechanisms per connector; health page shows the active one |
+| Azure DevOps service hooks are unsigned | Certain | Medium | Dedicated webhook host, secret header, re-read every object from the API, polling reconciliation |
+| `azure-devops-go-api` gaps or slow maintenance | Medium | Low | Wrapped in Quai's own client; missing endpoints called through `net/http` |
+| No Azure DevOps Server instance available for conformance tests | Medium | Medium | Ask the pilot for a test project on their Server, or run a licensed Server VM in the lab |
 | Pilot's runner cannot report plan JSON | Medium | Medium | `quai report` step; fall back to check status only, without per-resource plan |
 | Customers' repositories are too irregular for declarative types | Medium | High | Mapping generator, shared-file locators, plugins; onboarding metrics after three customers decide whether to invest more |
 | Approval enforcement removed by repository admins | Medium | High | Hourly verification, delivery blocked, alerts, audit |

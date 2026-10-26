@@ -32,7 +32,7 @@ erDiagram
 | --- | --- | --- |
 | **Organization** | One Quai installation's tenant. A single organization per install for v1; several for managed-service providers later. | DB |
 | **Team** | A group of people that owns resources and catalog items. Mapped to IdP groups. | DB, synced from IdP |
-| **Repository** | A connection to one Git repository: provider, URL, credentials, delivery mode, runner. See [repository connections](../design/01-repository-connections.md). | DB, optionally config-as-code |
+| **Repository** | A connection to one Git repository: connector (Azure DevOps, GitHub…), URL, credentials, delivery mode, runner. See [repository connections](../design/01-repository-connections.md). | DB, optionally config-as-code |
 | **Definitions** | Resource types (and optionally blueprints) stored in a repository under `.quai/`. Versioned by commit. | Git |
 | **Resource type** | Describes one kind of thing in one repository: where instances live (locator), what their content looks like (schema), how a form becomes file content (generator), who owns them, which stack applies them, approval rules and day-2 actions. See [resource types](../design/02-resource-types-and-generators.md). | Git, `.quai/types/` |
 | **Locator** | The part of a type that maps a resource key to a region of the repository: a file, a directory, an entry in a shared file, or fields inside an entry. | Type |
@@ -46,7 +46,8 @@ erDiagram
 | **Instance** | One deployment of a blueprint: the set of resources it created, under one name. | Instance record in Git |
 | **Request** | A user's ask: create, update, delete, or a day-2 action. Holds the reason, the plan and the approval state. | DB |
 | **Change set** | The rendered change of a request: per repository, the file operations, the region fingerprints and a content hash. | DB |
-| **Delivery** | How a change reaches a repository: a pull request (default) or a direct commit. | DB, provider |
+| **Delivery** | How a change reaches a repository: a pull request (default) or a direct commit. | DB, Git platform |
+| **Connector** | The per-platform integration (Azure DevOps first) that Quai uses for pull requests, statuses, policies, webhooks and pipelines. See [Git connectors](../design/12-git-connectors.md). | Code |
 | **Review** | One approver's decision on a request, bound to the change set hash. | DB |
 | **Run** | A plan, apply, sync or drift check reported by a runner for a stack at a commit. | DB |
 | **Action** | A day-2 operation. *Declarative* actions change Git through the request flow; *imperative* actions call an executor. | Type |

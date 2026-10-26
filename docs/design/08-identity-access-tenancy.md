@@ -11,7 +11,7 @@ Status: Draft · 2026-10-26
 | CLI | OIDC device authorization grant (`quai login`), then a short-lived session token. |
 | Automation | API tokens: personal or service tokens, scoped (`requests:write`, `catalog:read`…), with expiry, hashed at rest, shown once. |
 | Runners | Per-repository run tokens, scoped to `runs:write` for that repository only. |
-| Git provider webhooks | HMAC or token per repository, verified by the provider adapter. |
+| Git platform webhooks | Verified by the connector: HMAC signatures where the platform signs (GitHub), a secret header or basic auth where it does not (Azure DevOps service hooks, GitLab). Payloads are never trusted; Quai re-reads the object from the API before acting. |
 | AI agents (MCP) | Service principals with their own entitlements; every request they make is attributed to the agent and to the human who configured it. |
 
 The dev user switcher remains for local development only and is refused when

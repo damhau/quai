@@ -20,7 +20,7 @@ not an enterprise product.
 | Area | Prototype today | Needed for enterprise |
 | --- | --- | --- |
 | Stack | Node/TypeScript backend, React frontend with hand-written CSS | Go backend; React with TanStack Router/Query, Tailwind and shadcn/ui ([ADR 0006](../adr/0006-go-backend-react-frontend.md)) |
-| Git | One repository, push to `main` | Many repositories on GitHub, GitLab, Azure DevOps; pull requests by default; per-repository credentials |
+| Git | One repository, push to `main` | Many repositories through per-platform connectors (Azure DevOps first, then GitHub, GitLab, Bitbucket); pull requests by default; per-repository credentials |
 | Definitions | Blueprints in `blueprints/`, resource types in `.quai/types/` of the one repo | Types live next to the IaC in each repository; blueprints compose types across repositories; versioned and previewable |
 | Generation | Identity mapping (file = form) and Kubernetes component renderers; `file` and `dir` layouts | Mapping generators with read-back, `entry` and `field` locators, JSON, tfvars and HCL editing, WASM plugins |
 | Approvals | Rules with groups and thresholds; Quai commits after approval | Quai's approval enforced as a required check on the PR; content-bound approvals; separation of duties, delegation, change windows, ITSM |
@@ -48,7 +48,7 @@ flowchart LR
     X[Engine<br/>Go package]
   end
   subgraph Customer
-    G[Git providers<br/>GitHub · GitLab · Azure DevOps]
+    G[Git platforms<br/>Azure DevOps · GitHub · GitLab]
     R[Runners<br/>CI · Atlantis · Spacelift · HCP Terraform · Argo CD · Flux]
     I[IdP<br/>OIDC]
     V[Vault / secret store]
@@ -81,7 +81,7 @@ by the server or by any web server.
 | --- | --- |
 | **Web UI** | Catalog, request forms, approvals inbox, inventory, resource pages, designer, admin. Client-rendered SPA. |
 | **API** | Authentication, authorization, planning (dry run of a change), request lifecycle, webhook and run-report ingestion, admin endpoints. Stateless; scales horizontally. |
-| **Workers** | Everything slow or external: Git fetch, branches and PRs, merges, provider API calls, notifications, ITSM calls, scheduled drift checks, imperative actions. Jobs are durable and retried. Work on one repository is serialized. |
+| **Workers** | Everything slow or external: Git fetch, branches and PRs, merges, connector API calls, notifications, ITSM calls, scheduled drift checks, imperative actions. Jobs are durable and retried. Work on one repository is serialized. |
 | **Engine** | Pure Go package with no network or database access: CEL expressions, JSON Schema, locators, generators, format-preserving editors for YAML, JSON and HCL, diffing, approval policy evaluation. The API, the workers and `quai lint` all use it, so customer CI runs exactly the checks Quai runs. |
 | **PostgreSQL** | Operational state and the job queue: requests, approvals, change sets, runs, inventory index, audit log, configuration. |
 | **Git mirror cache** | A bare mirror per connected repository, with a short-lived worktree per job. It is a cache: losing it costs a re-clone, not data. |
@@ -110,7 +110,7 @@ These hold across every design document. Breaking one needs an ADR.
 ## Further reading
 
 - Domain model and lifecycles: [domain-model.md](domain-model.md)
-- Connecting repositories: [01-repository-connections.md](../design/01-repository-connections.md)
+- Connecting repositories: [01-repository-connections.md](../design/01-repository-connections.md) and [12-git-connectors.md](../design/12-git-connectors.md)
 - How files are generated: [02-resource-types-and-generators.md](../design/02-resource-types-and-generators.md)
 - How files are edited: [03-file-editing.md](../design/03-file-editing.md)
 - Backend and frontend engineering: [../engineering/](../engineering)

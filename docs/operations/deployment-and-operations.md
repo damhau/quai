@@ -14,7 +14,7 @@ flowchart LR
   W2[quai worker] --> PG
   W1 --> GC1[(git mirror cache)]
   W2 --> GC2[(git mirror cache)]
-  W1 & W2 --> EXT[Git providers · Vault · IdP · ITSM · executors]
+  W1 & W2 --> EXT[Git platforms · Vault · IdP · ITSM · executors]
 ```
 
 | Process | Replicas | State |
@@ -40,13 +40,14 @@ Egress needed, all configurable through an HTTP proxy:
 
 | Destination | Why |
 | --- | --- |
-| Git providers (HTTPS or SSH) | Fetch, push, provider API |
+| Git platforms (HTTPS or SSH) | Fetch, push, platform API (`dev.azure.com` or the Azure DevOps Server URL first) |
+| Microsoft Entra ID (`login.microsoftonline.com`) | Tokens for Azure DevOps Services and Azure Key Vault, when service principals are used |
 | IdP | OIDC discovery, token exchange, JWKS |
 | Secret store | Credentials |
 | ITSM, chat, SIEM | Optional integrations |
 | Executors (Kubernetes API, AWX, vCenter) | Imperative actions |
 
-Ingress: users and CLI (HTTPS), Git provider webhooks, runner reports. Webhook
+Ingress: users and CLI (HTTPS), Git platform webhooks (Azure DevOps service hooks), runner reports. Webhook
 and run-report endpoints can be exposed on a separate host name for firewalling.
 
 ## Scale targets
@@ -75,7 +76,7 @@ snoozed and retried. Different repositories proceed in parallel.
 ## Observability
 
 - **Logs:** structured JSON (`log/slog`), one line per request and per job with request ID, job ID, repository and duration. No bodies, tokens or credentials.
-- **Traces:** OpenTelemetry across HTTP handlers, database queries, jobs, `git` subprocesses and provider API calls; exported over OTLP.
+- **Traces:** OpenTelemetry across HTTP handlers, database queries, jobs, `git` subprocesses and connector API calls; exported over OTLP.
 - **Metrics** (Prometheus):
   - request lead time (submit → applied), approval wait time, PR open → merge time;
   - plan, submit and merge failures by reason;

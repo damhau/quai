@@ -23,7 +23,7 @@ enterprise design splits it into three layers, each owned by different people.
 ```mermaid
 flowchart TB
   subgraph Q[Quai — owned by platform admins]
-    RC[Repository connection<br/>provider · URL · credentials · delivery · runner]
+    RC[Repository connection<br/>platform · URL · credentials · delivery · runner]
   end
   subgraph IAC[Each IaC repository — owned by its maintainers]
     DEF[.quai/types/*.yaml<br/>locator · schema · generator · stack · approvals · actions]
@@ -67,11 +67,11 @@ metadata:
   title: Infrastructure (Terraform)
   owners: [team:platform]          # who administers this connection
 spec:
-  provider: gitlab                 # github | gitlab | azure-devops | bitbucket | gitea | generic
-  url: https://gitlab.acme.ch/infra/live.git
+  connector: azure-devops          # azure-devops | github | gitlab | bitbucket | gitea | generic
+  url: https://dev.azure.com/acme/infrastructure/_git/live
   defaultBranch: main
   credentials:
-    ref: vault:kv/quai/repositories/infra-live    # or k8s:quai/infra-live-git, or env:QUAI_GIT_INFRA_LIVE
+    ref: vault:kv/quai/repositories/infra-live    # or azkv:quai-kv/infra-live, k8s:quai/infra-live-git, env:QUAI_GIT_INFRA_LIVE
   definitions:
     path: .quai                    # where types live in this repository
     branch: main                   # definitions are read from here, pinned per request by commit
@@ -79,8 +79,8 @@ spec:
     mode: pull-request             # pull-request | direct
     branchPrefix: quai/
     merge: auto                    # auto: Quai merges when approved and green | manual: a human merges
-    mergeMethod: squash            # merge | squash | rebase (as the provider supports)
-    waitForChecks: [plan, policy]  # CI checks that must pass before Quai merges
+    mergeMethod: squash            # merge | squash | rebase (as the platform supports)
+    waitForChecks: [plan, policy]  # other checks or branch policies that must pass before merge
     deleteBranch: true
   enforcement:
     requiredCheck: quai/approval   # Quai verifies the branch protection really requires it
@@ -89,7 +89,7 @@ spec:
         when: "params.env == 'prod'"
         approvers: [group:platform-admins]
   runner:
-    kind: gitlab-ci                # see runs-status-and-drift.md
+    kind: azure-pipelines          # see runs-status-and-drift.md
     reportToken:
       ref: vault:kv/quai/run-tokens/infra-live
   webhooks:
@@ -108,65 +108,49 @@ spec:
 | `spec.enforcement.floorRules` | Lets admins guarantee, for example, that nothing reaches `prod` without platform approval, whatever a type's author writes. Types can add rules, never remove floor rules. |
 | `spec.runner` | Where plan and apply results come from. Optional: without it, resources show *In repo* after merge. |
 
-## Providers
+## Connectors
 
-Every provider implements one Go interface. Git transport (clone, fetch, push)
-always uses the `git` CLI, so SSH, HTTPS, proxies and partial clones behave as
-customers expect. Provider APIs are used for everything Git cannot do.
+Each Git platform has its own connector: authentication, pull requests,
+statuses, branch policies, ownership rules, webhooks and pipelines. Git
+transport (clone, fetch, push) always uses the `git` CLI, so SSH, HTTPS,
+proxies and partial clones behave as customers expect; the connector supplies
+the credentials. Azure DevOps is built first. The interface, the conformance
+suite and the per-platform mappings are in [Git connectors](12-git-connectors.md).
 
-```go
-type Provider interface {
-    // Pull requests
-    OpenPullRequest(ctx context.Context, pr PullRequestSpec) (PullRequest, error)
-    UpdatePullRequest(ctx context.Context, id string, upd PullRequestUpdate) error
-    GetPullRequest(ctx context.Context, id string) (PullRequest, error)
-    Merge(ctx context.Context, id string, opts MergeOptions) (MergeResult, error)
-    Close(ctx context.Context, id string, comment string) error
-
-    // Status reported by Quai, and by others
-    SetCheck(ctx context.Context, commit string, check CheckSpec) error
-    ListChecks(ctx context.Context, commit string) ([]Check, error)
-
-    // Repository facts Quai needs to verify
-    BranchProtection(ctx context.Context, branch string) (Protection, error)
-    CodeOwners(ctx context.Context, ref string) (CodeOwners, error)
-
-    // Webhooks
-    VerifyWebhook(r *http.Request, secret []byte) (Event, error)
-    EnsureWebhook(ctx context.Context, url string, secret []byte) error
-}
-```
-
-How each provider enforces Quai's approval. Features marked † depend on the
-provider's edition or plan; confirm them against the customer's installation
+How each platform enforces Quai's approval. Features marked † depend on the
+platform's edition or plan; confirm them against the customer's installation
 during onboarding.
 
-| Provider | API library | Enforcing `quai/approval` | Notes |
-| --- | --- | --- | --- |
-| GitHub / GitHub Enterprise Server | `google/go-github` + GitHub App auth | Required status check, pinned to the Quai GitHub App so nobody else can set it | Check runs give a rich "pending approval" view in the PR. GitHub App commits made through the API show as verified. |
-| GitLab (SaaS / self-managed) | `gitlab.com/gitlab-org/api/client-go` | External status checks†, or a merge request approval rule† requiring the Quai bot user, or protected branch where only the Quai bot may merge | Pick the mechanism per edition during onboarding; Quai's health page shows which one is active. |
-| Azure DevOps (Services / Server) | `microsoft/azure-devops-go-api` | Branch policy "Require a successful status", restricted to Quai's identity as the authorized poster | Pull request statuses and policies map cleanly. |
-| Bitbucket Cloud / Data Center | REST over `net/http` | Required builds or merge checks† | Phase 2. |
-| Gitea / Forgejo | `code.gitea.io/sdk/gitea` | Required status check in branch protection | Also used for integration tests. |
-| Generic Git | none | Not enforceable; direct mode only | For repositories without a supported API. |
+| Platform | Order | Enforcing `quai/approval` |
+| --- | --- | --- |
+| Azure DevOps Services / Server | **1st** | Branch policy "Status check" requiring the `quai/approval` PR status, with Quai as the authorized identity and status reset on new changes |
+| Gitea / Forgejo | with the 1st (tests) | Required status check in branch protection |
+| GitHub / GitHub Enterprise Server | 2nd | Required check in branch protection or a ruleset, pinned to the Quai GitHub App |
+| GitLab.com / self-managed | 3rd | External status checks†, an approval rule requiring the Quai bot†, or a protected branch only the Quai bot may merge |
+| Bitbucket Cloud / Data Center | 4th | Required builds or merge checks† |
+| Generic Git | — | Not enforceable; direct delivery only |
 
 ## Credentials
 
-Recommended credential per provider. Quai needs: read the repository, push
-branches under its prefix, open and merge pull requests, write checks or
-statuses, read branch protection, manage its webhook.
+Quai needs to: read the repository, push branches under its prefix, open and
+complete pull requests, publish statuses, read branch policies, and manage its
+webhook subscription.
 
-| Provider | Recommended | Why |
+| Platform | Recommended | Why |
 | --- | --- | --- |
+| Azure DevOps Services | Microsoft Entra service principal with workload identity federation (no secret), or a certificate | No long-lived secret; Entra conditional access and audit apply. Managed identity when Quai runs on Azure; PAT only as a last resort. |
+| Azure DevOps Server | PAT of a dedicated service account, with expiry and rotation | Entra service principals are not available on-premises. |
 | GitHub | GitHub App installed on the selected repositories | Short-lived installation tokens, fine-grained permissions, verified commits, no user seat. |
 | GitLab | Project or group access token for a bot, with `api` and `write_repository` | Scoped to the project or group; rotate with expiry. |
-| Azure DevOps | Service principal or managed identity (Entra ID) | No long-lived PAT; Entra policies apply. PAT as fallback. |
 | Generic | SSH deploy key with write access | The only option without an API. |
 
+The exact permissions per platform, and how the registration wizard verifies
+them, are in [Git connectors](12-git-connectors.md#permissions).
+
 Secrets are resolved through a `SecretStore` interface with implementations for
-HashiCorp Vault (KV v2, with Kubernetes or JWT auth), Kubernetes Secrets and
-environment variables. Quai checks expiry where the provider exposes it and
-warns 30 days ahead.
+HashiCorp Vault (KV v2, with Kubernetes or JWT auth), Azure Key Vault,
+Kubernetes Secrets and environment variables. Quai checks expiry where the
+platform exposes it and warns 30 days ahead.
 
 ## Definitions
 
@@ -196,7 +180,7 @@ How Quai loads definitions:
 Definitions are code: whoever can merge to `.quai/` decides what forms show,
 what gets written and which approval rules apply. Quai therefore:
 
-- checks that `.quai/` is covered by `CODEOWNERS` (or the provider's equivalent) and that the default branch is protected, and shows a red warning on the repository and its catalog items if not;
+- checks that `.quai/` is covered by `CODEOWNERS` (on Azure DevOps, which has no `CODEOWNERS` file: a required-reviewer branch policy with path filter `/.quai/*`) and that the default branch is protected, and shows a red warning on the repository and its catalog items if not;
 - applies the connection's `floorRules` regardless of what types say;
 - records in the audit log every change to definitions, with the commit and its author;
 - never runs code from the repository except WASM plugins pinned by digest, in a sandbox with no file system or network access ([ADR 0004](../adr/0004-structured-generators-no-text-templates.md)).
@@ -233,7 +217,7 @@ spec:
 | Mechanism | Purpose |
 | --- | --- |
 | Webhooks (push, pull request, check/status, merge) | Primary signal. Verified with the per-repository secret, de-duplicated by delivery ID, processed as jobs. |
-| Polling | Safety net: fetch every `pollInterval`, compare heads, reconcile open PRs. Covers lost webhooks and providers without webhooks. |
+| Polling | Safety net: fetch every `pollInterval`, compare heads, reconcile open PRs. Covers lost webhooks and platforms without webhooks. |
 | Mirror cache | One bare mirror per repository (`git clone --mirror`, partial clone with `--filter=blob:none` for large monorepos). Each job gets a temporary `git worktree`, with sparse checkout limited to the paths it needs. |
 | Inventory index | On every new head, only the paths changed since the last indexed commit are re-read (`git diff --name-only`). A full re-index runs nightly and on demand. |
 
@@ -241,12 +225,12 @@ spec:
 
 The admin flow, in the UI or API:
 
-1. **Provider and URL.** Choose the provider, paste the URL, select a credential reference.
+1. **Platform and URL.** Choose the platform, paste the URL, select a credential reference.
 2. **Access test.** Quai checks read access, that it can push a branch under its prefix (then deletes it), open and close a draft pull request, write a check, and read branch protection. Each check shows pass or fail with the missing permission.
 3. **Scan.** Quai looks for `.quai/`. If there is none, it offers the [onboarding assistant](10-onboarding.md), which proposes types from the repository's existing files.
 4. **Delivery and enforcement.** Choose the delivery mode and merge policy. Quai shows exactly what branch protection must look like and verifies it.
 5. **Runner.** Choose how plan and apply results come back and copy the generated report token.
-6. **Webhook.** Installed automatically through the provider API where the credential allows, or shown for manual setup.
+6. **Webhook.** Installed automatically through the platform API where the credential allows (on Azure DevOps, a service hook subscription), or shown for manual setup.
 
 ### Health
 
