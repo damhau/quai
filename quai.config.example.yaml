@@ -1,0 +1,24 @@
+# Copy to quai.config.yaml (or point QUAI_CONFIG at it). Every key is optional.
+port: 8080
+dataDir: ./data
+
+git:
+  # Any URL git can push to. With SSH, mount a deploy key and set GIT_SSH_COMMAND.
+  # With HTTPS, use a credential helper or a token in the URL (from a secret, never committed).
+  remote: git@github.com:acme/platform-gitops.git
+  branch: main
+  committer: { name: Quai, email: quai@acme.example }
+  # Copied into blueprints/ only when the repository has no catalog yet.
+  seedBlueprints: ./examples/blueprints
+
+auth:
+  # proxy: run behind oauth2-proxy (or similar) which sets X-Forwarded-User,
+  # X-Forwarded-Email and X-Forwarded-Groups. Never expose Quai directly in this mode.
+  mode: proxy
+  users: []
+
+adminGroups: [platform-admins]
+requestTtlHours: 168
+# Bearer token Argo CD notifications / Flux alerts must send to /api/webhooks/sync.
+webhookToken: change-me
+simulateSync: false
