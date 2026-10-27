@@ -237,6 +237,8 @@ func TestEditRefuses(t *testing.T) {
 		{"next-line character", "a: x\u0085y\n", func(any) any { return map[string]any{"a": 2} }, "", "line breaks other than"},
 		// Found by fuzzing: \v is not a printable character, which YAML does not allow.
 		{"control character", "-\t\v-", func(any) any { return []any{[]any{"0"}} }, "", "not valid YAML"},
+		// yaml/v3 drops a non-specific tag on an empty value from the tree.
+		{"empty value with a non-specific tag", "a: !\nb: 1\n", func(d any) any { return with(d, path{"a"}, 1) }, "$.a", "positions do not match"},
 		{"empty value in a flow mapping", "m: {a: }\n", func(d any) any { return with(d, path{"m", "a"}, 1) }, "$.m.a", "flow collection"},
 	}
 	for _, tt := range tests {

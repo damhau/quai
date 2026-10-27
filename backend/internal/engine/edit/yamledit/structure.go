@@ -393,6 +393,9 @@ func (f *file) replace(c change) (textEdit, error) {
 	}
 	if isEmpty(loc.node) && !loc.flow && loc.owner >= 0 {
 		at := loc.owner
+		if !f.emptyAfter(at) {
+			return textEdit{}, refuse(c.path, "the syntax tree's positions do not match the file")
+		}
 		return f.keepLineComment(textEdit{start: at, end: at, text: f.valueText(c.to, loc.indent, loc.dash, f.newline(at)), depth: depth}), nil
 	}
 	start, err := f.nodeStart(loc.node, c.path)

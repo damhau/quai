@@ -18,7 +18,7 @@ compiler catches, and distribution on-premises.
 
 ## Rationale
 
-- Go has the infrastructure ecosystem's libraries natively: `hclwrite` (the only format-preserving HCL editor), `terraform-json`, `client-go`, OPA, CEL, and `goccy/go-yaml` with positions for minimal-diff YAML editing.
+- Go has the infrastructure ecosystem's libraries natively: `hclwrite` (the only format-preserving HCL editor), `terraform-json`, `client-go`, OPA, CEL, and `go.yaml.in/yaml/v3`, whose node tree has the positions minimal-diff YAML editing needs.
 - A single static binary suits air-gapped installs, OpenShift and customer CI.
 - A small dependency surface and the Go checksum database answer security reviews in regulated organizations.
 - A strict compiler and plain style make generated code easier to review.

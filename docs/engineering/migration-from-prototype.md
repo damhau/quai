@@ -12,7 +12,7 @@ in place.
 | --- | --- | --- |
 | `packages/core/src/expr.ts` (custom expressions) | `internal/engine/expr` (CEL) | Re-implemented on cel-go; a converter rewrites `v1alpha1` expressions (see [ADR 0009](../adr/0009-cel-expressions.md)) |
 | `inputs.ts`, `blueprint.ts`, `resourcetype.ts` | `internal/engine/schema`, `definitions`, `locate` | Ported; `v1alpha1` definitions are converted on read |
-| `yamlpatch.ts` (minimal-diff YAML) | `internal/engine/edit/yamledit` | Ported to `goccy/go-yaml`; TS tests ported first |
+| `yamlpatch.ts` (minimal-diff YAML) | `internal/engine/edit/yamledit` | Ported to `go.yaml.in/yaml/v3`; TS tests ported first |
 | `components.ts` (K8s renderers) | `internal/engine/generate/component` | Ported; Crossplane renderer made generic |
 | `render.ts`, `policy.ts` | `internal/engine/plan`, `policy` | Ported |
 | `server/src/git.ts` | `internal/gitx` + `internal/delivery` | Re-designed for mirrors, worktrees and PRs |

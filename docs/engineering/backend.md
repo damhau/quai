@@ -71,7 +71,7 @@ default), but a current local install is preferred.
 | Jobs | `riverqueue/river` | Durable jobs in PostgreSQL; enqueue in the same transaction as the state change; retries, uniqueness, periodic jobs |
 | Expressions | `google/cel-go` | Typed, sandboxed, cost-limited; the Kubernetes standard ([ADR 0009](../adr/0009-cel-expressions.md)) |
 | JSON Schema | `santhosh-tekuri/jsonschema/v6` | Draft 2020-12 and 2019-09, formats, `$ref`; RE2 regexes |
-| YAML editing | `goccy/go-yaml` | AST with comments and positions ([file editing](../design/03-file-editing.md)) |
+| YAML editing | `go.yaml.in/yaml/v3` | Node tree with positions; spec-conformant decoding ([file editing](../design/03-file-editing.md)) |
 | JSON editing | `tidwall/gjson`, `tidwall/sjson` | Path edits that keep formatting |
 | HCL | `hashicorp/hcl/v2` (`hclwrite`, `hclsyntax`) | HashiCorp's own parser and format-preserving editor |
 | Terraform plans | `hashicorp/terraform-json` | Official types for `terraform show -json` |

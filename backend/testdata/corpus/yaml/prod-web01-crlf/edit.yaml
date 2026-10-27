@@ -1,6 +1,5 @@
-# A CRLF file with comments: goccy counts an extra line after each comment in CRLF files, so
-# positions come from an LF view and edits are mapped back; line breaks stay CRLF (found by the
-# real-world sweep).
+# A CRLF file with comments: line breaks stay CRLF (goccy, the first library tried, miscounted
+# lines after comments in CRLF files; found by the real-world sweep).
 set:
   - path: [cpu]
     value: 8

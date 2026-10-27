@@ -55,6 +55,12 @@ func TestSweep(t *testing.T) {
 			if len(ops) > maxSweepEdits {
 				ops = ops[:maxSweepEdits]
 			}
+			if f.body == nil {
+				// An empty document has no line for a scalar to change; filling it adds one.
+				for i := range ops {
+					ops[i].oneLiner = false
+				}
+			}
 			for _, op := range ops {
 				out, err := Edit(src, op.want)
 				var refusal *RefusalError

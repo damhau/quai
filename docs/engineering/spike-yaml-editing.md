@@ -4,21 +4,114 @@ Status: For decision · 2026-10-27 · Tasks: P0-02 ([#2](https://github.com/damh
 P0-03 ([#3](https://github.com/damhau/quai/issues/3)), report P0-04
 ([#4](https://github.com/damhau/quai/issues/4))
 
-The question: can Quai edit human-maintained YAML in Go, with `goccy/go-yaml`, well enough to
-build the engine on it? The bar is [file editing](../design/03-file-editing.md): bytes outside
+The question: can Quai edit human-maintained YAML in Go well enough to build the engine on it,
+and with which library? The bar is [file editing](../design/03-file-editing.md): bytes outside
 the edited region never change, inside it only what changed changes, the result means exactly
 what was intended, and Quai refuses rather than guesses.
 
-**Recommendation: go, with one condition.** The editor meets the four requirements on every
-case we have, and everything it cannot do safely is refused with a reason. But `goccy/go-yaml`
-misreads some valid YAML, including a form Quai's own blueprints use, so its decoder should not
-be the only judge of what a file means: add a second decoder (`go.yaml.in/yaml/v3`) and refuse
-edits when the two disagree. Details below; the decision is recorded as open question 5 in
-[open questions](../plan/open-questions.md).
+**Recommendation: go, on `go.yaml.in/yaml/v3` instead of `goccy/go-yaml`.** The editor meets
+the four requirements on every case we have, and everything it cannot do safely is refused with a
+reason. The spike was first built on `goccy/go-yaml`, which misreads some valid YAML, including a
+form Quai's own blueprints use; the first version of this report therefore recommended keeping
+goccy with `yaml/v3` as a second decoder. At the owner's request the editor was then ported to
+`yaml/v3` and put through the same tests. It passes all of them, reads correctly everything goccy
+got wrong, needs none of goccy's workarounds, and is faster; with it, no second decoder is needed
+(see [the comparison](#second-candidate-goyamlinyamlv3)). The decision is recorded as open
+question 5 in [open questions](../plan/open-questions.md).
+
+The sections after the comparison describe the editor as first built and tested on goccy; except
+where the comparison says otherwise, they hold for both.
+
+## Second candidate: `go.yaml.in/yaml/v3`
+
+The port is on the branch `spike/yaml-v3`. Only the layer that reads the syntax tree changed
+(`file.go` and the tree-walking parts of `structure.go` and `render.go`); the diff, rendering and
+verification, the tests, the corpus, the fuzz target and the sweep are the same. goccy is no
+longer a dependency; `yaml/v3` (the YAML organization's maintained fork of `gopkg.in/yaml.v3`)
+was already in the module graph through cobra.
+
+How the port works:
+
+- **Positions.** A `yaml/v3` node has a start line and column (counted in runes), no end and no
+  byte offset. The end of each value is found by scanning the file from its start, as the goccy
+  version already did because goccy's offsets were unreliable; the `:` after a key and the `-`
+  before an item, which `yaml/v3` does not report, are found the same way. Every position is
+  checked against the file's text before it is used: the key's or value's words must be there, a
+  quoted value is parsed again on its own and compared, the items of a block list share the
+  column of their `-`.
+- **Values.** `yaml/v3`'s decoder turns dates into `time.Time` and a mapping with a non-string key
+  (`200:`, common in OpenAPI files) into a map with `interface{}` keys; neither fits the JSON data
+  model. The editor converts the tree itself: scalars are still resolved by `yaml/v3`, dates keep
+  their text, keys are their text, merge keys merge as `yaml/v3` merges them, duplicate keys are
+  refused, and alias expansion is bounded. Dates and keys come out as goccy's decoder produced
+  them; values differ only where goccy departs from the spec (the cases below) and for integers
+  beyond 64 bits, which become floats instead of strings.
+- **Dropped workarounds.** No LF copy for CRLF files, no search for tokens shifted by trailing
+  whitespace, no byte offsets to distrust.
+- **New refusals.** Files with line breaks other than LF and CRLF (a CR alone, NEL, LS, PS),
+  which `yaml/v3` counts as lines; an empty value holding only a non-specific tag (`key: !`),
+  which `yaml/v3` leaves out of the tree.
+
+Results, same machine, same inputs:
+
+| | `goccy/go-yaml` v1.19.2 | `go.yaml.in/yaml/v3` v3.0.5 |
+| --- | --- | --- |
+| Unit and corpus tests | All pass | All pass. The three tests that pinned goccy bugs now check the correct result |
+| Corpus, 21 cases compared byte for byte | All equal | All equal, expectations unchanged |
+| Statement coverage | 91.8 % | 91.2 % |
+| Fuzzing, 10 minutes | 57.1 M executions (16 workers), no failures | 84.1 M executions (32 workers), no failures; 14.0 M more on the final code, none |
+| Replay of the 4,660 inputs the fuzzer kept (both runs) | 3,370 edits, 75.7 % succeed, 4.0 % stopped by verification | 2,851 edits, 79.3 % succeed, 2.2 % stopped by verification |
+| Sweep without the Go toolchain's trees | 797 files, 791 editable; 97,681 edits, 97,073 succeed (99.38 %) | 797 files, 796 editable; 98,993 edits, **98,414 succeed (99.42 %)** |
+| Sweep refusals caused by the library | 29 (positions 21, verification 7, tree and decoder 1) | **None**; all 579 refusals are policy (merge keys, anchors, aliases, comments in the way) |
+| Sweep, all files | 867 files, 861 editable; 97,094 of 113,383 edits (85.6 %) | 867 files, 866 editable; 98,435 of 114,745 edits (85.8 %) |
+| Speed | 133 µs per corpus edit; sweep 596 s | 85 µs per corpus edit; sweep 164 s |
+| Memory per corpus run (21 edits) | 3.0 MB in 60,000 allocations | 1.6 MB in 21,000 allocations |
+
+`yaml/v3` rejects more of the fuzzer's generated inputs as invalid YAML (control characters, for
+example), so its replay has fewer edits to try. The two sweeps ran at the same time. The one file
+both refuse whole has several documents. The sweep's one "tree and decoder disagree" refusal under goccy was an editor gap
+shared by both versions (setting a value in a file that holds only comments); it is fixed on the
+branch.
+
+What goccy got wrong, read by `yaml/v3`:
+
+| goccy finding (details below) | `yaml/v3` |
+| --- | --- |
+| `{ approvers: [group:admins] }` read as a mapping | Read as the string `"group:admins"`. Adding or removing an approver in the blueprints' form touches only that approver (unit tests); the sweep no longer fails on the example blueprints. |
+| Lines miscounted after comments in CRLF files | Correct; the editor works on the original bytes. |
+| A double-quoted string folded over CRLF lines decodes as `"one\ntwo"` | `"one two"`, as the spec says; the edit succeeds. |
+| Column shifted by trailing whitespace | Correct. |
+| A multi-line plain scalar starting on the next line placed at its last line | Correct; the sweep has no position refusals. |
+| `{}` followed by a comment line does not parse | Parses; the 2 removals that failed in the sweep succeed. |
+| Comments before `---` counted as a document | One document; 2 files of the sweep become editable. |
+| A tab inside a quoted string (`prefix: "<tab>// "`) does not parse | Parses; 3 files of the sweep become editable. |
+| `1e3` decodes as a string | The float 1000 (YAML 1.2). `0755` is still the integer 493 (YAML 1.1); the quoting rules cover both. |
+
+What `yaml/v3` does that the editor must handle, besides the missing ends and indicators above:
+
+- A lone `!` on an empty value disappears from the tree; such values are refused before editing.
+- It is stricter where the spec is strict: control characters such as `\v` make a file invalid,
+  and implicit keys are limited to 1,024 characters, so adding a longer key fails verification
+  (seen only in fuzzing).
+- It attaches comments to nodes, not always to the right one. The editor does not use that: it
+  finds comments in the file's text, as it did with goccy.
+
+Fuzzing also found editor edge cases shared by both versions, all stopped by verification:
+replacing a document whose value does not start its line (`--- 0`), trailing spaces after a value
+that becomes multi-line, and literal blocks with lines that start with a tab. They are not fixed
+in the spike.
+
+If the owner accepts, `main` moves to the branch; the documents that named goccy (this report's
+conditions below, [file editing](../design/03-file-editing.md), [backend](backend.md),
+[resource types](../design/02-resource-types-and-generators.md),
+[migration](migration-from-prototype.md), [ADR 0006](../adr/0006-go-backend-react-frontend.md))
+are updated on the branch. If the owner keeps goccy, only this report and open question 5 go to
+`main`, and condition 1 below applies.
 
 ## What was built
 
-`backend/internal/engine/edit/yamledit`, about 1,850 lines with comments, one entry point:
+`backend/internal/engine/edit/yamledit`, about 1,850 lines with comments (2,150 in the `yaml/v3`
+port), one entry point:
 
 ```go
 func Edit(src []byte, want any) ([]byte, error)
@@ -184,16 +277,15 @@ Recorded in [file editing](../design/03-file-editing.md):
 
 If the owner accepts, these follow:
 
-1. **A second decoder.** Decode the original and the result with both goccy and
-   `go.yaml.in/yaml/v3` (the maintained fork of `gopkg.in/yaml.v3`, which reads the cases above
-   correctly) and refuse when they disagree; use the same pair, or `yaml/v3` alone, for reading
-   definitions in P0-08. goccy keeps the job it does well: the syntax tree with comments and
-   positions. One more dependency, about a day of work, done before P0-08.
+1. **The library.** With `yaml/v3`: nothing more; read definitions in P0-08 with the same
+   conversion. With goccy instead: decode the original and the result with both goccy and
+   `go.yaml.in/yaml/v3` and refuse when they disagree, and read definitions in P0-08 with
+   `yaml/v3`; one more dependency, about a day of work, before P0-08.
 2. **Verification on every write stays mandatory**, including for formats added later. It is
    what turns library quirks into refusals instead of bad pull requests.
 3. **Bound input size and time.** Each edit re-parses the file, and some inputs parse slowly.
    Quai should cap the size of files it edits (1 MB is far above any resource file seen) and run
-   edits under a deadline. Performance was not measured beyond the fuzzer's throughput.
+   edits under a deadline. A corpus edit takes 85 µs with `yaml/v3` (133 µs with goccy).
 4. **Corpus from the pilot.** The corpus has four source files and the sweep has no Kubernetes
    manifests or Helm values. Anonymized files from the pilot's repositories (P1) are the real
    test; `TestSweep` can run on a checkout as is.
@@ -201,14 +293,11 @@ If the owner accepts, these follow:
    addressing for `dir` regions (P0-09), the `# managed by quai` full-rewrite fallback, region
    fingerprints, and check 4 of the design (changed lines are only those of changed paths), which
    for now holds because every edit's span comes from the node it changes.
-6. **Upstream.** The decoding bugs (nested flow, CRLF quoted strings), the root-flow-collection
-   parse bug and the position bugs (offsets, trailing whitespace, CRLF after comments,
-   multi-line plain scalars) are worth reporting to `goccy/go-yaml`; with the workarounds and
-   the condition above, none blocks Quai.
+6. **Upstream.** With `yaml/v3`, the dropped non-specific tag on empty values is worth
+   reporting. With goccy, the decoding bugs (nested flow, CRLF quoted strings), the parse bugs
+   (root flow collection before a comment, tabs in quoted strings, comments before `---`) and the
+   position bugs (offsets, trailing whitespace, CRLF after comments, multi-line plain scalars).
 
-If the owner declines, the alternatives are `go.yaml.in/yaml/v3`'s node API (positions and
-comments, but line and column only and less precise comment placement) with the same
-splice-and-verify design, or a Go port of the TypeScript `yaml` package's approach (a concrete
-syntax tree that round-trips). Either would reuse the tests, corpus, fuzz target and sweep
-unchanged; the editor's logic (diff, rendering, verification) does not depend on goccy beyond the
-syntax tree and positions.
+If the owner declines both, the remaining alternative is a Go port of the TypeScript `yaml`
+package's approach (a concrete syntax tree that round-trips), which would reuse the tests,
+corpus, fuzz target and sweep unchanged.

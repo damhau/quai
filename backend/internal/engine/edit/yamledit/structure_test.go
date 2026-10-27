@@ -138,6 +138,7 @@ func TestEditStructure(t *testing.T) {
 		{"empty file", "", func(any) any { return m("a", 1, "b", l("x")) }, "a: 1\nb:\n  - x\n"},
 		{"comments only", "# header\n", func(any) any { return m("a", 1) }, "# header\na: 1\n"},
 		{"comment without a final line break", "# header", func(any) any { return m("a", 1) }, "# header\na: 1\n"},
+		{"scalar in a document with only comments", "# header\n", func(any) any { return "x" }, "# header\nx\n"},
 		{"scalar document to mapping", "hello\n", func(any) any { return m("a", 1) }, "a: 1\n"},
 		{"mapping document to list", "# keep\na: 1\n", func(any) any { return l(1, m("b", 2)) }, "# keep\n- 1\n- b: 2\n"},
 		{"mapping document with no key kept", "a: 1\n", func(any) any { return m("b", 2) }, "b: 2\n"},

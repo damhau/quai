@@ -486,6 +486,9 @@ func (f *file) slot(loc location, p path) (slot, error) {
 			return slot{}, refuse(p, "cannot fill an empty value in a flow collection")
 		}
 		at := loc.owner
+		if !f.emptyAfter(at) {
+			return slot{}, refuse(p, "the syntax tree's positions do not match the file")
+		}
 		s.start, s.end, s.insert, s.block, s.nl = at, at, true, false, f.newline(at)
 		return s, nil
 	}
@@ -498,6 +501,16 @@ func (f *file) slot(loc location, p path) (slot, error) {
 	}
 	s.start, s.end, s.blockIndent, s.nl = start, end, blockIndent, f.newline(start)
 	return s, nil
+}
+
+// emptyAfter reports whether only blanks or a comment follow offset at on its line, as they must
+// after the ':' or '-' of an empty value. yaml/v3 reports a value that is only a non-specific tag
+// (`key: !`) as an untagged empty value.
+func (f *file) emptyAfter(at int) bool {
+	for at < len(f.src) && (f.src[at] == ' ' || f.src[at] == '\t') {
+		at++
+	}
+	return at == len(f.src) || f.src[at] == '\r' || f.src[at] == '\n' || f.src[at] == '#'
 }
 
 // isEmpty reports whether n is an empty value (`key:` or `-`), which has no bytes of its own.
@@ -925,6 +938,10 @@ func (f *file) setScalar(c change) (textEdit, error) {
 	loc, err := f.locate(c.path)
 	if err != nil {
 		return textEdit{}, err
+	}
+	if loc.node == nil && len(c.path) == 0 && c.from == nil {
+		// An empty document, which may hold comments.
+		return f.replace(c)
 	}
 	// The node must hold the value the document decoded to, or the tree and the decoder disagree
 	// about what is where.
