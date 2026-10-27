@@ -24,6 +24,9 @@ export default defineConfig({
             { name: "react", test: /node_modules[\\/](react|react-dom|scheduler)[\\/]/, priority: 3 },
             { name: "tanstack", test: /node_modules[\\/]@tanstack[\\/]/, priority: 2 },
             { name: "ui", test: /node_modules[\\/](radix-ui|@radix-ui|lucide-react|sonner)[\\/]/, priority: 1 },
+            // Loaded with the pages that use them: the designer's canvas, and the forms' CEL.
+            { name: "flow", test: /node_modules[\\/](@xyflow|d3-[a-z-]+|classcat)[\\/]/, priority: 1 },
+            { name: "cel", test: /node_modules[\\/]@marcbachmann[\\/]/, priority: 1 },
             { name: "vendor", test: /node_modules/ },
           ],
         },

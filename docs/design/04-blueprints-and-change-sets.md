@@ -69,7 +69,12 @@ repositories** instead of hard-coded components. Dragging "VM (infra-live)"
 onto the canvas adds a resource with that type reference; the inspector shows
 the type's input schema; edges become `dependsOn`. The designer saves the
 blueprint as a pull request to the catalog repository, reviewed like any other
-definition change.
+definition change. Until pull-request delivery exists, publishing checks that the
+blueprint loads against the repository's types and commits it to the branch
+(`PUT /repositories/{repository}/blueprints/{name}`, for repository admins); the
+file is written from its decoded form, so comments in a hand-written blueprint
+do not survive a publish from the designer. The definition holds no layout: the
+canvas places each resource after those it depends on.
 
 Edges express ordering and naming, not runtime data. Quai can wire values known
 at plan time (names, sizes, zones). Values only known after apply (an IP

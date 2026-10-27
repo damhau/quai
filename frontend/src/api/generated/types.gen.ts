@@ -55,6 +55,12 @@ export type BlueprintView = {
     readonly $schema?: string;
     actions: Array<ActionView> | null;
     category?: string;
+    /**
+     * The blueprint's file as written, decoded: what the designer edits and publishes
+     */
+    definition?: {
+        [key: string]: unknown;
+    };
     description?: string;
     icon?: string;
     kind: 'type' | 'blueprint';
@@ -686,6 +692,12 @@ export type BlueprintRequestInputBodyWritable = {
 export type BlueprintViewWritable = {
     actions: Array<ActionView> | null;
     category?: string;
+    /**
+     * The blueprint's file as written, decoded: what the designer edits and publishes
+     */
+    definition?: {
+        [key: string]: unknown;
+    };
     description?: string;
     icon?: string;
     kind: 'type' | 'blueprint';

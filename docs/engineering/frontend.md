@@ -81,8 +81,14 @@ npm run routes:gen                  # after adding a route file, if the dev serv
   the browser once a field has been left; the live preview plans the form 300 ms after the last
   change, and the plan's field errors (`body.values.*`, `body.inputs.*`, `body.params.*`) show
   on their fields.
-- **Bundles:** routes are split per page; libraries go to four chunks (`react`, `tanstack`,
-  `ui`, `vendor`) that stay cached across releases.
+- **Bundles:** routes are split per page; libraries go to chunks that stay cached across
+  releases: `react`, `tanstack`, `ui` and `vendor` load with every page, `flow` (React Flow)
+  with the designer and `cel` with the request forms.
+- **Designer:** one Zustand store per designer holds the draft (the blueprint file as written,
+  from the API's `definition`), the selection and whether it is published. Editors change one
+  part of the draft each, so actions, `ui` hints and schema keywords the designer does not show
+  are published unchanged. The canvas is laid out from `dependsOn`; a list of the resources
+  beside it reaches the same inspector from the keyboard.
 
 ## Expressions in the browser
 
@@ -144,7 +150,7 @@ regenerates the cases after a cel-go upgrade, and the frontend CI checks they ar
 | Approval panel | Rules with progress, reviews, step-up prompt, delegate indicator. |
 | Request timeline | Submitted → PR → plan → approvals → merge → apply, live. |
 | Inventory table | Server-side filtering, sorting and pagination (TanStack Table); saved views. |
-| Designer | React Flow canvas whose palette lists types from connected repositories; saves as a pull request to the catalog repository. |
+| Designer | React Flow canvas whose palette lists types from connected repositories; saves as a pull request to the catalog repository (for now, a direct commit: design 04). |
 | Command palette | `⌘K` for catalog items, resources and requests. |
 | Admin | Repository registration wizard with live access checks and health pages; executors; roles; audit log viewer. |
 

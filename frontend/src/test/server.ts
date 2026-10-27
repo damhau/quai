@@ -1,6 +1,7 @@
 import { http, HttpResponse } from "msw"
 import { setupServer } from "msw/node"
 import { catalogHandlers } from "./catalog"
+import { gitHandlers, published } from "./git"
 import { inventoryHandlers } from "./inventory"
 import { pendingVM, requestHandlers, requests } from "./requests"
 
@@ -13,7 +14,10 @@ export const state: { user: string | null; auth: "dev" | "oidc" | "none"; logout
 
 const users: Record<string, string[]> = { bob: ["developers"], alice: ["platform-admins"] }
 
-export const resetRequests = () => (requests.current = pendingVM())
+export function resetRequests() {
+  requests.current = pendingVM()
+  published.blueprints = []
+}
 
 export const server = setupServer(
   http.get("*/api/v1/meta", () => HttpResponse.json({ version: "test", env: "development", auth: state.auth })),
@@ -30,6 +34,7 @@ export const server = setupServer(
   ...catalogHandlers,
   ...requestHandlers(() => state.user),
   ...inventoryHandlers(() => state.user),
+  ...gitHandlers,
   http.get("*/auth/dev/users", () => HttpResponse.json(Object.entries(users).map(([Name, Groups]) => ({ Name, Groups })))),
   http.post("*/auth/dev/login", async ({ request }) => {
     const { name } = (await request.json()) as { name: string }

@@ -163,7 +163,7 @@ export const catalogHandlers = [
     ]),
   ),
   http.get("*/api/v1/repositories/infra-live/types/vm", () => HttpResponse.json(vm)),
-  http.get("*/api/v1/repositories/infra-live/blueprints/app-servers", () => HttpResponse.json(appServers)),
+  http.get("*/api/v1/repositories/infra-live/blueprints/app-servers", async () => HttpResponse.json({ ...appServers, definition: (await import("./git")).appServersDefinition })),
   http.post("*/api/v1/plans/type", async ({ request }) => {
     const b = (await request.json()) as Body
     sent.plans.push(b)

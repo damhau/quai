@@ -15,6 +15,7 @@ import (
 	"github.com/damhau/quai/backend/internal/auth"
 	"github.com/damhau/quai/backend/internal/authz"
 	"github.com/damhau/quai/backend/internal/engine/definitions"
+	"github.com/damhau/quai/backend/internal/engine/edit/yamledit"
 	"github.com/damhau/quai/backend/internal/engine/expr"
 	"github.com/damhau/quai/backend/internal/engine/locate"
 	"github.com/damhau/quai/backend/internal/inventory"
@@ -121,6 +122,7 @@ type BlueprintView struct {
 	UI            UIView                  `json:"ui"`
 	Resources     []BlueprintResourceView `json:"resources"`
 	Actions       []ActionView            `json:"actions"`
+	Definition    map[string]any          `json:"definition,omitempty" doc:"The blueprint's file as written, decoded: what the designer edits and publishes"`
 }
 
 // ResourceView is a resource in the inventory.
@@ -308,7 +310,13 @@ func registerCatalog(a huma.API, reg *repositories.Registry, s *store.Store) {
 		if b == nil {
 			return nil, huma.Error404NotFound("no blueprint " + in.Name + " in " + in.Repository)
 		}
-		return &out[BlueprintView]{Body: blueprintView(in.Repository, b)}, nil
+		v := blueprintView(in.Repository, b)
+		if src, err := fs.ReadFile(snap.FS, b.Path); err == nil {
+			if doc, err := yamledit.Decode(src); err == nil {
+				v.Definition, _ = doc.(map[string]any)
+			}
+		}
+		return &out[BlueprintView]{Body: v}, nil
 	})
 
 	huma.Register(a, huma.Operation{

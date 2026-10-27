@@ -34,6 +34,9 @@ func TestCatalogAndInventory(t *testing.T) {
 		len(bp.Resources) != 2 || bp.Resources[0].Repository != "infra-live" || bp.Resources[1].When != "inputs.withDatabase" || len(bp.Actions) != 1 {
 		t.Errorf("blueprint = %d %+v", status, bp)
 	}
+	if spec, _ := bp.Definition["spec"].(map[string]any); bp.Definition["kind"] != "Blueprint" || len(spec["resources"].([]any)) != 2 {
+		t.Errorf("definition = %+v", bp.Definition)
+	}
 	for _, path := range []string{"/repositories/infra-live/types/nope", "/repositories/nope/types/vm", "/repositories/infra-live/blueprints/nope"} {
 		if status, _ := bob.do(http.MethodGet, Prefix+path, nil, nil); status != http.StatusNotFound {
 			t.Errorf("%s = %d", path, status)

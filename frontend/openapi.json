@@ -163,6 +163,11 @@
           "category": {
             "type": "string"
           },
+          "definition": {
+            "additionalProperties": {},
+            "description": "The blueprint's file as written, decoded: what the designer edits and publishes",
+            "type": "object"
+          },
           "description": {
             "type": "string"
           },
