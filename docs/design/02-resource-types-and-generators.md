@@ -374,3 +374,7 @@ has reported it.
 - **round trip**: for every existing resource, `write(read(file))` produces zero diff. A type that cannot reproduce existing files would rewrite them on the first edit, so it is rejected;
 - golden examples under `.quai/tests/<type>/` (input values → expected files) still produce the same bytes;
 - with `--plan plan.json`, every changed Terraform address maps to exactly one resource.
+
+It prints one line per problem (`file: field: message`) and exits with status 1 when there
+is any. Types whose locator or generator the running version does not implement are listed as
+not checked rather than failing. The backend CI runs it on `examples/gitops-repo`.

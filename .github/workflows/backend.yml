@@ -23,3 +23,5 @@ jobs:
           go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
       - run: make check
+      - name: quai lint on the example repository
+        run: go run ./cmd/quai lint ../examples/gitops-repo
