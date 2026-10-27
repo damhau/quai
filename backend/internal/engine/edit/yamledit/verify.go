@@ -25,11 +25,11 @@ func apply(src []byte, edits []textEdit) ([]byte, error) {
 // verify checks an edited file before it is written: it parses as one document, it decodes to
 // exactly want, and every byte outside the edited spans is unchanged.
 func verify(src, out []byte, edits []textEdit, want any) error {
-	tree, err := parseTree(out)
+	docs, err := parseTree(out)
 	if err != nil {
 		return refuse(nil, "verification failed: the edited file does not parse: %v", err)
 	}
-	if len(tree.Docs) > 1 {
+	if len(docs) > 1 {
 		return refuse(nil, "verification failed: the edited file has more than one document")
 	}
 	got, err := decode(out)

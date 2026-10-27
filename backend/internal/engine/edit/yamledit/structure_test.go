@@ -142,6 +142,25 @@ func TestEditStructure(t *testing.T) {
 		{"mapping document to list", "# keep\na: 1\n", func(any) any { return l(1, m("b", 2)) }, "# keep\n- 1\n- b: 2\n"},
 		{"mapping document with no key kept", "a: 1\n", func(any) any { return m("b", 2) }, "b: 2\n"},
 		{"document to scalar", "a: 1\n", func(any) any { return "x" }, "x\n"},
+		// Blueprints write approval steps as flow mappings holding flow lists of "group:name"
+		// strings, which goccy read as mappings.
+		{"add an approver in a nested flow list", "steps:\n  - { name: dba, approvers: [group:dba], min: 1 }\n", set(path{"steps", 0, "approvers", 1}, "group:sre"), "steps:\n  - { name: dba, approvers: [group:dba, \"group:sre\"], min: 1 }\n"},
+		{"remove an approver from a nested flow list", "s: { approvers: [group:a, group:b] }\n", del(path{"s", "approvers", 0}), "s: { approvers: [group:b] }\n"},
+		// Items that start on the line after their '-'.
+		{"edit an item on the line after its dash", "l:\n-\n  a\n- # note\n  b\n", set(path{"l", 1}, "c"), "l:\n-\n  a\n- # note\n  c\n"},
+		{"remove an item on the line after its dash", "l:\n-\n  a\n-\n  b\n", del(path{"l", 0}), "l:\n-\n  b\n"},
+		{"append after an item on the line after its dash", "l:\n-\n  a\n", set(path{"l", 1}, "b"), "l:\n-\n  a\n- b\n"},
+		// Neighbours with anchors, tags and aliases keep their bytes.
+		{"remove beside an anchored block list", "a: &x\n  - 1\nb: 2\nc: *x\n", del(path{"b"}), "a: &x\n  - 1\nc: *x\n"},
+		{"remove beside an anchored flow mapping and an alias", "l: [&a {q: 1}, 2, *a]\n", del(path{"l", 1}), "l: [&a {q: 1}, *a]\n"},
+		{"add after a tagged value", "a: !!str 1\n", set(path{"b"}, 2), "a: !!str 1\nb: 2\n"},
+		{"add after an anchored empty value", "a: &e\n", set(path{"b"}, 2), "a: &e\nb: 2\n"},
+		{"add after a tagged anchored flow list", "a: !t &z [1]\n", set(path{"b"}, 2), "a: !t &z [1]\nb: 2\n"},
+		// Flow mapping entries without ':' have an empty value.
+		{"add to a flow mapping with an entry without colon", "m: {a: 1, b}\n", set(path{"m", "c"}, 3), "m: {a: 1, b, c: 3}\n"},
+		{"remove before a flow mapping entry without colon", "m: {a: 1, b}\n", del(path{"m", "a"}), "m: {b}\n"},
+		// Found by fuzzing: goccy's tree had one item here, its decoder two.
+		{"append after an anchored empty item and a comment", "- &0\n#\n-", func(d any) any { return append(append([]any{}, d.([]any)...), "x") }, "- &0\n#\n-\n- x"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -172,10 +191,6 @@ func TestEditStructureRefuses(t *testing.T) {
 		{"add to an aliased mapping", "base: &b {x: 1}\nm: *b\n", set(path{"m", "z"}, 3), "$.m", "alias"},
 		{"remove beside a comment in a flow mapping", "m: {a: 1, # c\n  b: 2}\n", del(path{"m", "b"}), "$.m", "remove a comment"},
 		{"comment between a key and its value", "a: # note\n  x: 1\nb: 1\n", set(path{"a"}, 5), "$.a", "comment sits between"},
-		// Found by fuzzing: goccy's tree has one item here, the decoder two.
-		{"tree with fewer items than the document", "- &0\n#\n-", func(d any) any { return append(append([]any{}, d.([]any)...), "x") }, "$", "disagree"},
-		// Found by fuzzing: the item's value starts before the end of its '-'.
-		{"value before its indicator", "-\t\v-", func(any) any { return []any{[]any{"0"}} }, "$[0]", "positions do not match"},
 		{"nested sequence item", "l:\n  - - a\n    - b\n", func(d any) any { return set(path{"l", 0}, []any{"b"})(d) }, "$.l[0]", "shares its line"},
 	}
 	for _, tt := range tests {

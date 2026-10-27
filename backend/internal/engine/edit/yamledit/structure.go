@@ -5,8 +5,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/goccy/go-yaml/ast"
-	"github.com/goccy/go-yaml/token"
+	"go.yaml.in/yaml/v3"
 )
 
 // edits turns changes into text edits. Additions and removals in the same collection are
@@ -49,11 +48,11 @@ func (f *file) edits(changes []change) ([]textEdit, error) {
 
 // element is an entry of a mapping or an item of a sequence, with its bytes.
 type element struct {
-	key    string   // the mapping key; empty for sequence items
-	start  int      // first byte: the key, the '-' of a block item, or a flow item's value
-	end    int      // end of the value, or of the ':' or '-' when the value is empty
-	indent int      // column of the key or the '-', counted from zero
-	node   ast.Node // the mapping entry or the item's value
+	key    string       // the mapping key; empty for sequence items
+	start  int          // first byte: the key, the '-' of a block item, or a flow item's value
+	end    int          // end of the value, or of the ':' or '-' when the value is empty
+	indent int          // column of the key or the '-', counted from zero
+	nodes  []*yaml.Node // the entry's key and value, or the item
 }
 
 // collection is a mapping or a sequence in the original, with its elements.
@@ -70,88 +69,81 @@ func (f *file) collectionAt(p path) (*collection, error) {
 	if err != nil {
 		return nil, err
 	}
-	c := &collection{path: p}
-	var open *token.Token
-	switch n := loc.node.(type) {
-	case *ast.MappingNode:
-		c.flow, c.mapping, open = n.IsFlowStyle, true, n.Start
-		for _, mv := range n.Values {
-			el, err := f.entryElement(mv, p)
-			if err != nil {
-				return nil, err
-			}
-			c.elements = append(c.elements, el)
-		}
-	case *ast.SequenceNode:
-		c.flow, open = n.IsFlowStyle, n.Start
-		for i, v := range n.Values {
-			el, err := f.itemElement(n, i, v, p.index(i))
-			if err != nil {
-				return nil, err
-			}
-			c.elements = append(c.elements, el)
-		}
-	default:
+	n := loc.node
+	if n == nil || (n.Kind != yaml.MappingNode && n.Kind != yaml.SequenceNode) {
 		return nil, refuse(p, "the value is not a mapping or a list in the syntax tree")
 	}
+	c := &collection{path: p, flow: n.Style&yaml.FlowStyle != 0, mapping: n.Kind == yaml.MappingNode}
+	if c.mapping {
+		for i := 0; i+1 < len(n.Content); i += 2 {
+			el, err := f.entryElement(n.Content[i], n.Content[i+1], c.flow, p)
+			if err != nil {
+				return nil, err
+			}
+			c.elements = append(c.elements, el)
+		}
+	} else {
+		for i := range n.Content {
+			el, err := f.itemElement(n, i, c.flow, p.index(i))
+			if err != nil {
+				return nil, err
+			}
+			c.elements = append(c.elements, el)
+		}
+	}
 	if c.flow {
-		if _, c.open, err = f.tokenSpan(open, p); err != nil {
+		if c.open, err = f.flowOpen(n, p); err != nil {
 			return nil, err
 		}
 	} else if len(c.elements) == 0 {
 		return nil, refuse(p, "the syntax tree's positions do not match the file")
 	}
-	// Elements must come in order and not overlap, or the spans computed from them would.
+	// Elements must come in order and not overlap, or the spans computed from them would, and
+	// the elements of a block collection share their indentation.
 	for i, el := range c.elements {
-		if el.end < el.start || (i > 0 && el.start < c.elements[i-1].end) || (c.flow && el.start < c.open) {
+		if el.end < el.start || (i > 0 && el.start < c.elements[i-1].end) || (c.flow && el.start < c.open) ||
+			(!c.flow && el.indent != c.elements[0].indent) {
 			return nil, refuse(p, "the syntax tree's positions do not match the file")
 		}
 	}
 	return c, nil
 }
 
-func (f *file) entryElement(mv *ast.MappingValueNode, p path) (element, error) {
-	if mv.Key.IsMergeKey() {
+func (f *file) entryElement(k, v *yaml.Node, flow bool, p path) (element, error) {
+	if isMerge(k) {
 		return element{}, refuse(p, "the mapping uses a merge key (<<)")
 	}
-	k, ok := mv.Key.(ast.ScalarNode)
-	if !ok {
+	if k.Kind != yaml.ScalarNode {
 		return element{}, refuse(p, "the mapping has a key that is not a scalar")
 	}
-	key := k.GetToken().Value
-	if s, ok := k.(*ast.StringNode); ok {
-		key = s.Value
-	}
-	start, _, err := f.tokenSpan(k.GetToken(), p.key(key))
+	key := k.Value
+	start, _, err := f.keySpan(k, p.key(key))
 	if err != nil {
 		return element{}, err
 	}
-	end, err := f.entryEnd(mv, p.key(key))
+	end, err := f.entryEnd(k, v, flow, p.key(key))
 	if err != nil {
 		return element{}, err
 	}
-	return element{key: key, start: start, end: end, indent: k.GetToken().Position.Column - 1, node: mv}, nil
+	return element{key: key, start: start, end: end, indent: column(k), nodes: []*yaml.Node{k, v}}, nil
 }
 
-func (f *file) itemElement(seq *ast.SequenceNode, i int, v ast.Node, p path) (element, error) {
-	if seq.IsFlowStyle {
+func (f *file) itemElement(seq *yaml.Node, i int, flow bool, p path) (element, error) {
+	v := seq.Content[i]
+	if flow {
 		start, err := f.nodeStart(v, p)
 		if err != nil {
 			return element{}, err
 		}
 		end, err := f.nodeEnd(v, 0, p)
-		return element{start: start, end: end, node: v}, err
+		return element{start: start, end: end, nodes: []*yaml.Node{v}}, err
 	}
-	if i >= len(seq.Entries) {
-		return element{}, refuse(p, "the syntax tree's positions do not match the file")
-	}
-	dash := seq.Entries[i].Start
-	start, _, err := f.tokenSpan(dash, p)
+	dash, err := f.dash(seq, i, p)
 	if err != nil {
 		return element{}, err
 	}
 	end, err := f.itemEnd(dash, v, p)
-	return element{start: start, end: end, indent: dash.Position.Column - 1, node: v}, err
+	return element{start: dash, end: end, indent: f.indentAt(dash), nodes: []*yaml.Node{v}}, err
 }
 
 // matches reports whether the collection has the decoded value's keys, or as many items.
@@ -213,7 +205,7 @@ func (f *file) collectionEdits(p path, changes []change) ([]textEdit, error) {
 			if i < 0 {
 				return nil, refuse(ch.path, "the value is not in the syntax tree")
 			}
-			if hasAnchor(c.elements[i].node) {
+			if hasAnchor(c.elements[i].nodes...) {
 				return nil, refuse(ch.path, "the value has an anchor (&); removing it would break its aliases")
 			}
 			removed[i] = true
@@ -399,13 +391,9 @@ func (f *file) replace(c change) (textEdit, error) {
 	if hasAnchor(loc.node) {
 		return textEdit{}, refuse(c.path, "the value has an anchor (&); replacing it would break its aliases")
 	}
-	if isEmpty(loc.node) && !loc.flow && loc.owner != nil {
-		_, ownerEnd, err := f.tokenSpan(loc.owner, c.path)
-		if err != nil {
-			return textEdit{}, err
-		}
-		dash := loc.owner.Type == token.SequenceEntryType
-		return f.keepLineComment(textEdit{start: ownerEnd, end: ownerEnd, text: f.valueText(c.to, loc.indent, dash, f.newline(ownerEnd)), depth: depth}), nil
+	if isEmpty(loc.node) && !loc.flow && loc.owner >= 0 {
+		at := loc.owner
+		return f.keepLineComment(textEdit{start: at, end: at, text: f.valueText(c.to, loc.indent, loc.dash, f.newline(at)), depth: depth}), nil
 	}
 	start, err := f.nodeStart(loc.node, c.path)
 	if err != nil {
@@ -416,15 +404,12 @@ func (f *file) replace(c change) (textEdit, error) {
 		end, err := f.nodeEnd(loc.node, loc.indent, c.path)
 		return textEdit{start: start, end: end, text: f.flowText(c.to), depth: depth}, err
 	}
-	if loc.owner == nil {
+	if loc.owner < 0 {
 		// The document root.
 		end, err := f.nodeEnd(loc.node, 0, c.path)
 		return textEdit{start: start, end: end, text: f.valueText(c.to, -1, false, nl), depth: depth}, err
 	}
-	_, ownerEnd, err := f.tokenSpan(loc.owner, c.path)
-	if err != nil {
-		return textEdit{}, err
-	}
+	ownerEnd := loc.owner
 	if start < ownerEnd {
 		return textEdit{}, refuse(c.path, "the syntax tree's positions do not match the file")
 	}
@@ -435,8 +420,7 @@ func (f *file) replace(c change) (textEdit, error) {
 	if err != nil {
 		return textEdit{}, err
 	}
-	dash := loc.owner.Type == token.SequenceEntryType
-	return f.keepLineComment(textEdit{start: ownerEnd, end: end, text: f.valueText(c.to, loc.indent, dash, nl), depth: depth}), nil
+	return f.keepLineComment(textEdit{start: ownerEnd, end: end, text: f.valueText(c.to, loc.indent, loc.dash, nl), depth: depth}), nil
 }
 
 // keepLineComment keeps a comment that follows the edited span on its line on the first line of

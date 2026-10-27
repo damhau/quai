@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/goccy/go-yaml"
+	"go.yaml.in/yaml/v3"
 )
 
 var update = flag.Bool("update", false, "rewrite the corpus want.yaml files from the current output")
@@ -86,8 +86,8 @@ func corpusPath(t *testing.T, steps []any) path {
 		switch s := s.(type) {
 		case string:
 			p[i] = s
-		case uint64:
-			p[i] = int(s)
+		case int:
+			p[i] = s
 		default:
 			t.Fatalf("edit.yaml: path element %v (%T) is neither a key nor an index", s, s)
 		}

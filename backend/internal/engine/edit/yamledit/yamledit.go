@@ -54,9 +54,6 @@ func Edit(src []byte, want any) (out []byte, err error) {
 	if err != nil {
 		return nil, err
 	}
-	for i := range edits {
-		edits[i].start, edits[i].end = f.original(edits[i].start), f.original(edits[i].end)
-	}
 	out, err = apply(src, edits)
 	if err != nil {
 		return nil, err

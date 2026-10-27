@@ -3,6 +3,7 @@ package yamledit
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math"
 	"os"
 	"path/filepath"
@@ -196,6 +197,10 @@ func TestEditScalars(t *testing.T) {
 		{"literal block to a single line", "d: |\n  one\n", path{"d"}, "two", "d: |-\n  two\n"},
 		{"empty literal block", "d: |\nn: 1\n", path{"d"}, "x\n", "d: |\n  x\nn: 1\n"},
 		{"literal block in a sequence item mapping", "l:\n  - d: |\n      one\n    n: 1\n", path{"l", 0, "d"}, "two\n", "l:\n  - d: |\n      two\n    n: 1\n"},
+		// goccy decoded a quoted string folded over CRLF lines as "one\ntwo" instead of "one two".
+		{"key that is not a string", "200: ok\n201: created\n", path{"200"}, "fine", "200: fine\n201: created\n"},
+		{"date stays text", "d: 2001-12-14\nn: 1\n", path{"n"}, 2, "d: 2001-12-14\nn: 2\n"},
+		{"quoted string folded over crlf lines", "a: \"one\r\n  two\"\r\nb: 2\r\n", path{"a"}, "three", "a: \"three\"\r\nb: 2\r\n"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -228,9 +233,10 @@ func TestEditRefuses(t *testing.T) {
 		{"tagged value", "a: !!str 12\n", func(d any) any { return with(d, path{"a"}, "13") }, "$.a", "explicit tag"},
 		{"indentation indicator", "d: |2\n   x\n", func(d any) any { return with(d, path{"d"}, "y\n") }, "$.d", "indentation indicator"},
 		{"comment after a block header", "d: | # note\n  x\n", func(d any) any { return with(d, path{"d"}, "y\n") }, "$.d", "comment follows"},
-		// goccy decodes a quoted string folded over CRLF lines as "one\ntwo", and over LF lines as
-		// "one two" (the spec's reading); the tree and the decoder disagree.
-		{"crlf multi-line quoted string", "a: \"one\r\n  two\"\r\nb: 2\r\n", func(d any) any { return with(d, path{"a"}, "three") }, "$.a", "disagree"},
+		{"carriage returns alone", "a: 1\rb: 2\r", func(any) any { return map[string]any{"a": 2} }, "", "line breaks other than"},
+		{"next-line character", "a: x\u0085y\n", func(any) any { return map[string]any{"a": 2} }, "", "line breaks other than"},
+		// Found by fuzzing: \v is not a printable character, which YAML does not allow.
+		{"control character", "-\t\v-", func(any) any { return []any{[]any{"0"}} }, "", "not valid YAML"},
 		{"empty value in a flow mapping", "m: {a: }\n", func(d any) any { return with(d, path{"m", "a"}, 1) }, "$.m.a", "flow collection"},
 	}
 	for _, tt := range tests {
@@ -248,6 +254,67 @@ func TestEditRefuses(t *testing.T) {
 				t.Errorf("Edit() refused at %q because %q, want %q and a reason containing %q", refusal.Path, refusal.Reason, tt.path, tt.reason)
 			}
 		})
+	}
+}
+
+// TestDecode covers what the JSON data model makes of YAML: keys are text, timestamps stay
+// strings, merge keys merge as in yaml/v3, and documents that do not fit are rejected.
+func TestDecode(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		want any
+		err  string
+	}{
+		{"empty", "", nil, ""},
+		{"comments only", "# only\n", nil, ""},
+		{"empty document", "---\n", nil, ""},
+		{"timestamp", "t: 2001-12-14 21:59:43.10 -5\n", map[string]any{"t": "2001-12-14 21:59:43.10 -5"}, ""},
+		{"keys are text", "200: a\ntrue: b\n1.50: c\nnull: d\n", map[string]any{"200": "a", "true": "b", "1.50": "c", "null": "d"}, ""},
+		{"alias as a key", "a: &k key\n*k : v\n", map[string]any{"a": "key", "key": "v"}, ""},
+		{"yaml 1.2 float", "f: 1e3\n", map[string]any{"f": 1000.0}, ""},
+		{"merge keeps explicit entries", "b: &b {x: 1, y: 1}\nm:\n  y: 2\n  <<: *b\n", map[string]any{"b": map[string]any{"x": 1, "y": 1}, "m": map[string]any{"x": 1, "y": 2}}, ""},
+		{"merge list, earlier first", "a: &a {x: 1}\nb: &b {x: 2, z: 2}\nm:\n  <<: [*a, *b]\n", map[string]any{"a": map[string]any{"x": 1}, "b": map[string]any{"x": 2, "z": 2}, "m": map[string]any{"x": 1, "z": 2}}, ""},
+		{"merge of a list", "a: &a [1]\nm:\n  <<: *a\n", nil, "not a mapping"},
+		{"duplicate key", "a: 1\na: 2\n", nil, "defined twice"},
+		{"duplicate key text", "1: a\n\"1\": b\n", nil, "defined twice"},
+		{"key that is not a scalar", "? [a, b]\n: v\n", nil, "not a scalar"},
+		{"anchor that contains itself", "a: &x [*x]\n", nil, "contains itself"},
+		{"not a number", "n: .nan\n", nil, "outside the JSON data model"},
+		{"invalid", "a: [1\n", nil, "not valid YAML"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := decode([]byte(tt.src))
+			if tt.err != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.err) {
+					t.Fatalf("decode() error = %v, want one containing %q", err, tt.err)
+				}
+				return
+			}
+			want, _ := normalize(tt.want, nil)
+			if err != nil || !equal(got, want) {
+				t.Errorf("decode() = %#v, %v, want %#v", got, err, want)
+			}
+		})
+	}
+}
+
+func TestDecodeBoundsAliasExpansion(t *testing.T) {
+	var b strings.Builder
+	b.WriteString("a0: &a0 [x, x, x, x, x, x, x, x, x, x]\n")
+	for i := 1; i < 8; i++ {
+		fmt.Fprintf(&b, "a%d: &a%d [", i, i)
+		for j := range 10 {
+			if j > 0 {
+				b.WriteString(", ")
+			}
+			fmt.Fprintf(&b, "*a%d", i-1)
+		}
+		b.WriteString("]\n")
+	}
+	if _, err := decode([]byte(b.String())); err == nil || !strings.Contains(err.Error(), "too many values") {
+		t.Fatalf("decode() error = %v, want too many values", err)
 	}
 }
 

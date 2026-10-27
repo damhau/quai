@@ -8,8 +8,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/goccy/go-yaml"
-	"github.com/goccy/go-yaml/token"
+	"go.yaml.in/yaml/v3"
 )
 
 // render writes a normalized scalar as YAML text that fits s.
@@ -49,21 +48,21 @@ func formatFloat(v float64) string {
 // literal block scalars where the context allows, and quotes strings that would not read back
 // as the same string.
 func (f *file) renderString(v string, s slot) string {
-	blockOriginal := s.kind == token.LiteralType || s.kind == token.FoldedType
-	quoted := s.kind == token.SingleQuoteType || s.kind == token.DoubleQuoteType
+	blockOriginal := s.kind == styleLiteral || s.kind == styleFolded
+	quoted := s.kind == styleSingle || s.kind == styleDouble
 	if s.block && !quoted && (blockOriginal || strings.Contains(v, "\n")) {
 		indent := s.blockIndent
 		if indent == 0 {
 			indent = s.indent + f.width
 		}
-		if lit, ok := literal(v, indent, s.nl, s.kind == token.FoldedType); ok {
+		if lit, ok := literal(v, indent, s.nl, s.kind == styleFolded); ok {
 			return lit
 		}
 	}
 	switch {
-	case s.kind == token.DoubleQuoteType:
+	case s.kind == styleDouble:
 		return strconv.Quote(v)
-	case s.kind == token.SingleQuoteType:
+	case s.kind == styleSingle:
 		if q, ok := singleQuoted(v); ok {
 			return q
 		}
@@ -189,7 +188,7 @@ func (f *file) scalarText(v any, indent int, nl string) string {
 			return "[]"
 		}
 	}
-	return f.render(v, slot{kind: token.StringType, block: true, indent: indent, nl: nl})
+	return f.render(v, slot{kind: stylePlain, block: true, indent: indent, nl: nl})
 }
 
 // flowText writes v in flow style. New keys are written in sorted order.
@@ -208,7 +207,7 @@ func (f *file) flowText(v any) string {
 		}
 		return "[" + strings.Join(parts, ", ") + "]"
 	}
-	return f.render(v, slot{kind: token.StringType, flow: true})
+	return f.render(v, slot{kind: stylePlain, flow: true})
 }
 
 // isCollection reports whether v is a mapping or a list with something in it.
