@@ -3,7 +3,7 @@
 #   docker compose up --build        then open http://localhost:8080
 #
 # Out of the box Quai creates its own Git repository in the `quai-data` volume,
-# seeds it with examples/gitops-repo (blueprints plus a small Terraform repo
+# seeds it with examples/prototype-gitops-repo (blueprints plus a small Terraform repo
 # with existing VMs), lets you switch identities in the sidebar (dev auth) and
 # simulates a successful apply a few seconds after each commit.
 #

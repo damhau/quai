@@ -1,74 +1,57 @@
-apiVersion: quai.dev/v1alpha1
+apiVersion: quai.dev/v1beta1
 kind: Blueprint
 metadata:
   name: linux-vm
   title: Linux virtual machine
-  description: A KubeVirt VM on OpenShift Virtualization, sized from t-shirt sizes. The vRA classic, now a Git commit.
+  description: A VM in the Terraform repository, sized from t-shirt sizes. The vRA classic, now a pull request.
   icon: server
   category: Compute
-  owner: platform-team
-  version: 1.2.0
-  tags: [kubevirt, vm]
+  version: 2.0.0
+  owners: [team:platform]
+  tags: [terraform, vm]
 spec:
   inputs:
-    - name: environment
-      title: Environment
-      type: enum
-      options: [dev, test, prod]
-      default: dev
-      required: true
-    - name: os
-      title: Operating system
-      type: enum
-      options:
-        - { value: fedora-40, label: Fedora 40 }
-        - { value: ubuntu-24.04, label: Ubuntu 24.04 LTS }
-        - { value: centos-stream-9, label: CentOS Stream 9 }
-        - { value: rhel-9, label: Red Hat Enterprise Linux 9 }
-      default: ubuntu-24.04
-      required: true
-      immutable: true
-    - name: size
-      title: Size
-      description: small = 2 vCPU / 4 GiB, medium = 4 / 8, large = 8 / 32
-      type: enum
-      options: [small, medium, large]
-      default: small
-      required: true
-    - name: diskGi
-      title: Disk (GiB)
-      type: integer
-      min: 20
-      max: 2048
-      default: 40
-    - name: sshKey
-      title: SSH public key
-      type: string
-      placeholder: ssh-ed25519 AAAA...
-      pattern: "ssh-(ed25519|rsa) [A-Za-z0-9+/=]+( .*)?"
-    - name: running
-      title: Power on
-      type: boolean
-      default: true
+    type: object
+    required: [environment, name, os, size]
+    additionalProperties: false
+    properties:
+      environment: { type: string, title: Environment, enum: [dev, test, prod], default: dev }
+      name: { type: string, title: VM name, pattern: "^[a-z][a-z0-9-]{1,30}$" }
+      os:
+        type: string
+        title: Operating system
+        enum: [ubuntu-24.04, rhel-9]
+        default: ubuntu-24.04
+      size:
+        type: string
+        title: Size
+        description: small = 2 vCPU / 4 GB, medium = 4 / 16, large = 16 / 64
+        enum: [small, medium, large]
+        default: small
+      diskGb: { type: integer, title: System disk (GB), minimum: 20, maximum: 2048, default: 50 }
+      vlan: { type: integer, title: VLAN, enum: [110, 120, 130], default: 110 }
+  ui:
+    order: [environment, name, os, size, diskGb, vlan]
+    fields:
+      os: { immutable: true }
+  resources:
+    - id: vm
+      type: { name: vm }      # a type in this repository
+      params:
+        env: ${{ inputs.environment }}
+        name: ${{ inputs.name }}
+      values:
+        template: ${{ inputs.os }}
+        cpu: "${{ inputs.size == 'small' ? 2 : inputs.size == 'medium' ? 4 : 16 }}"
+        memory_gb: "${{ inputs.size == 'small' ? 4 : inputs.size == 'medium' ? 16 : 64 }}"
+        disks: [{ size_gb: "${{ inputs.diskGb }}", tier: standard }]
+        network: { vlan: "${{ inputs.vlan }}" }
+        backup: ${{ inputs.environment == 'prod' }}
   approval:
     rules:
-      - name: production
-        when: inputs.environment == 'prod'
-        approvers: [group:platform-admins]
       - name: large-vm-cost
         when: inputs.size == 'large'
         approvers: [group:finops]
-  resources:
-    - id: vm
-      type: kubevirt.vm
-      position: { x: 240, y: 120 }
-      properties:
-        os: ${{ inputs.os }}
-        cpu: "${{ inputs.size == 'small' ? 2 : inputs.size == 'medium' ? 4 : 8 }}"
-        memoryGi: "${{ inputs.size == 'small' ? 4 : inputs.size == 'medium' ? 8 : 32 }}"
-        diskGi: ${{ inputs.diskGi }}
-        sshKey: ${{ inputs.sshKey }}
-        running: ${{ inputs.running }}
   actions:
     - name: resize
       title: Resize
@@ -76,21 +59,8 @@ spec:
       description: Change the VM size. The VM restarts to apply it.
       inputs:
         - { name: size, title: New size, type: enum, options: [small, medium, large], required: true }
-      set:
-        size: ${{ action.size }}
-    - name: power
-      title: Power on / off
-      icon: power
-      inputs:
-        - { name: running, title: Running, type: boolean }
-      set:
-        running: ${{ action.running }}
-      approval:
-        rules: []
-    - name: extend-disk
-      title: Extend disk
-      icon: hard-drive
-      inputs:
-        - { name: diskGi, title: New disk size (GiB), type: integer, min: 20, max: 2048, required: true }
-      set:
-        diskGi: ${{ action.diskGi }}
+      apply:
+        vm:
+          values:
+            cpu: "${{ action.size == 'small' ? 2 : action.size == 'medium' ? 4 : 16 }}"
+            memory_gb: "${{ action.size == 'small' ? 4 : action.size == 'medium' ? 16 : 64 }}"

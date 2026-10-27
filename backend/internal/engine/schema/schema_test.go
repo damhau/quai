@@ -3,6 +3,7 @@ package schema
 import (
 	"encoding/json"
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -338,5 +339,42 @@ func TestCompilerErrors(t *testing.T) {
 	}
 	if _, err := c.Compile("bad.json"); err == nil {
 		t.Error("an invalid schema compiled")
+	}
+}
+
+func TestSource(t *testing.T) {
+	files := map[string]any{
+		"schemas/vm.json":   map[string]any{"type": "object", "properties": map[string]any{"disk": map[string]any{"$ref": "disk.json"}}},
+		"schemas/disk.json": map[string]any{"type": "integer", "minimum": 10},
+		"schemas/bad.json":  "not decodable",
+	}
+	c := NewCompiler()
+	c.UseSource(func(path string) (any, error) {
+		doc, ok := files[path]
+		if !ok {
+			return nil, fs.ErrNotExist
+		}
+		if doc == "not decodable" {
+			return nil, errors.New("invalid YAML")
+		}
+		return doc, nil
+	})
+	s, err := c.Compile("schemas/vm.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if errs := fields(t, s.Validate(map[string]any{"disk": 5})); errs["disk"] != "must be at least 10" {
+		t.Errorf("errors = %v", errs)
+	}
+	for path, want := range map[string]string{
+		"schemas/none.json": "schemas/none.json is not in the repository",
+		"schemas/bad.json":  "schemas/bad.json: invalid YAML",
+	} {
+		if _, err := c.Compile(path); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("Compile(%s) error = %v, want %q", path, err, want)
+		}
+	}
+	if _, err := NewCompiler().Compile("schemas/vm.json"); err == nil || !strings.Contains(err.Error(), "not in the repository") {
+		t.Errorf("Compile without a source: error = %v", err)
 	}
 }

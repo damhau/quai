@@ -45,7 +45,7 @@ const defaults = (): QuaiConfig => ({
     remote: "",
     branch: "main",
     committer: { name: "Quai", email: "quai@localhost" },
-    seed: resolve(root, "examples/gitops-repo"),
+    seed: resolve(root, "examples/prototype-gitops-repo"),
     pullIntervalSeconds: 60,
   },
   auth: {

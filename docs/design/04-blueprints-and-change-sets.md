@@ -57,6 +57,7 @@ spec:
 
 Rules:
 
+- `inputs` is a JSON Schema, written inline or as a `$ref`; like any `$ref`, it resolves relative to the blueprint's file.
 - `values` are validated against each type's input schema at catalog load (`quai lint`) and again at plan time.
 - A blueprint's approval rules add to each type's rules and each repository's floor rules; they never replace them. The approval shown to users is the union, de-duplicated by approver group.
 - `when` includes or excludes a resource. Changing an input that flips `when` on day-2 adds or removes that resource.

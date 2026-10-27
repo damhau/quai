@@ -1,0 +1,58 @@
+apiVersion: quai.dev/v1alpha1
+kind: ResourceType
+metadata:
+  name: vm
+  title: Virtual machine (Terraform)
+  description: One YAML file per VM under envs/<env>/vms/. Each environment is a Terraform stack that turns those files into module instances.
+  icon: server
+  category: Compute
+  version: 1.0.0
+  tags: [terraform, brownfield]
+spec:
+  locate:
+    strategy: file
+    path: envs/{env}/vms/{name}.yaml
+  params:
+    - name: env
+      title: Environment
+      type: enum
+      discover: true          # offer the environments that exist in the repo
+    - name: name
+      title: VM name
+      description: Becomes the file name and the Terraform for_each key.
+      pattern: "[a-z][a-z0-9-]{1,30}"
+  schema: catalog/schemas/vm.schema.json
+  ownerField: owner
+  stack: envs/{env}
+  ui:
+    order: [description, template, cpu, memory_gb, disks, network, backup, backup_policy, tags]
+    fields:
+      template: { immutable: true }
+      network.vlan: { immutable: true }
+      backup_policy: { visibleIf: "inputs.backup == true" }
+  approval:
+    rules:
+      - name: production
+        when: params.env == 'prod'
+        approvers: [group:platform-admins]
+      - name: large-vm
+        # Only when a VM becomes large, not on every change to an already large one.
+        when: inputs.cpu > 8 && !(previous.cpu > 8)
+        approvers: [group:finops]
+  actions:
+    - name: resize
+      title: Resize
+      icon: maximize
+      inputs:
+        - { name: cpu, title: vCPUs, type: integer, min: 1, max: 32, required: true }
+        - { name: memory_gb, title: Memory (GB), type: integer, min: 1, max: 256, required: true }
+      set:
+        cpu: ${{ action.cpu }}
+        memory_gb: ${{ action.memory_gb }}
+    - name: extend-disk
+      title: Extend system disk
+      icon: hard-drive
+      inputs:
+        - { name: size_gb, title: Size (GB), type: integer, min: 10, max: 4096, required: true }
+      set:
+        disks.0.size_gb: ${{ action.size_gb }}

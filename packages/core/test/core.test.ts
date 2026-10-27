@@ -15,7 +15,7 @@ import {
   validateBlueprint,
 } from "../src/index.ts";
 
-const examples = new URL("../../../examples/gitops-repo/blueprints/", import.meta.url);
+const examples = new URL("../../../examples/prototype-gitops-repo/blueprints/", import.meta.url);
 const load = (name: string) => parseBlueprint(readFileSync(new URL(`${name}.yaml`, examples), "utf8"));
 
 test("expressions: precedence, ternaries, membership", () => {

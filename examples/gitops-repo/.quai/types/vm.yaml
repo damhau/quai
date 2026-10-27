@@ -1,4 +1,4 @@
-apiVersion: quai.dev/v1alpha1
+apiVersion: quai.dev/v1beta1
 kind: ResourceType
 metadata:
   name: vm
@@ -16,20 +16,24 @@ spec:
     - name: env
       title: Environment
       type: enum
-      discover: true          # offer the environments that exist in the repo
+      discover: true          # offer the environments that exist in the repository
     - name: name
       title: VM name
       description: Becomes the file name and the Terraform for_each key.
       pattern: "[a-z][a-z0-9-]{1,30}"
+  # The contract CI validates every VM file against; the form is generated from it.
   schema: catalog/schemas/vm.schema.json
-  ownerField: owner
+  generate: { kind: identity }
+  ownership: { field: owner }
   stack: envs/{env}
+  address: module.vm["{name}"]
+  deletion: approval
   ui:
     order: [description, template, cpu, memory_gb, disks, network, backup, backup_policy, tags]
     fields:
       template: { immutable: true }
       network.vlan: { immutable: true }
-      backup_policy: { visibleIf: "inputs.backup == true" }
+      backup_policy: { visibleIf: "has(inputs.backup) && inputs.backup" }
   approval:
     rules:
       - name: production
@@ -37,7 +41,7 @@ spec:
         approvers: [group:platform-admins]
       - name: large-vm
         # Only when a VM becomes large, not on every change to an already large one.
-        when: inputs.cpu > 8 && !(previous.cpu > 8)
+        when: inputs.cpu > 8 && !(has(previous.cpu) && previous.cpu > 8)
         approvers: [group:finops]
   actions:
     - name: resize

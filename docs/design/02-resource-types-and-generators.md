@@ -108,6 +108,10 @@ spec:
       target: { namespace: "${{ params.env }}", name: "${{ params.name }}" }
 ```
 
+Definitions are read strictly: an unknown field is an error, and an `apiVersion` other than
+`quai.dev/v1beta1` is refused. `generate` may be omitted for the `identity` generator. The action
+names `create`, `update`, `delete` and `transfer-ownership` are built in and cannot be redefined.
+
 Expressions inside `${{ }}`, `when`, `visibleIf` and `availableIf` are CEL
 ([ADR 0009](../adr/0009-cel-expressions.md)). Variables available:
 

@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"math/big"
 	"net/url"
 	"slices"
@@ -32,9 +33,10 @@ const base = "file:///repo/"
 // Compiler holds the schema documents of a repository and compiles them. It is not safe for
 // concurrent use; the schemas it returns are.
 type Compiler struct {
-	docs  map[string]any // by URL: the repository URL of each document, and its absolute $id
-	paths map[string]string
-	c     *jsonschema.Compiler
+	docs   map[string]any // by URL: the repository URL of each document, and its absolute $id
+	paths  map[string]string
+	source func(path string) (any, error)
+	c      *jsonschema.Compiler
 }
 
 // NewCompiler returns an empty compiler.
@@ -69,7 +71,14 @@ func (c *Compiler) Add(path string, doc any) error {
 	return nil
 }
 
-// Compile compiles the schema added at path.
+// UseSource sets where schemas that were not added are read from, by repository path: typically
+// a file of the repository snapshot being loaded. It returns the decoded document, or an error
+// wrapping fs.ErrNotExist when there is no such file.
+func (c *Compiler) UseSource(fn func(path string) (any, error)) {
+	c.source = fn
+}
+
+// Compile compiles the schema at path: one added with Add, or else one read from the source.
 func (c *Compiler) Compile(path string) (*Schema, error) {
 	u, err := repoURL(path)
 	if err != nil {
@@ -77,7 +86,9 @@ func (c *Compiler) Compile(path string) (*Schema, error) {
 	}
 	doc, ok := c.docs[u]
 	if !ok {
-		return nil, fmt.Errorf("schema %s was not added", path)
+		if doc, err = c.fromSource(u); err != nil {
+			return nil, err
+		}
 	}
 	sch, err := c.c.Compile(u)
 	if err != nil {
@@ -123,10 +134,32 @@ func (l loader) Load(u string) (any, error) {
 	if doc, ok := l.c.docs[u]; ok {
 		return doc, nil
 	}
-	if p, ok := strings.CutPrefix(u, base); ok {
+	return l.c.fromSource(u)
+}
+
+// fromSource reads the schema at a repository URL from the source and adds it.
+func (c *Compiler) fromSource(u string) (any, error) {
+	p, inRepo := strings.CutPrefix(u, base)
+	if !inRepo {
+		return nil, fmt.Errorf("schema %s is not in the repository; Quai does not fetch schemas", u)
+	}
+	if path, err := url.PathUnescape(p); err == nil {
+		p = path
+	}
+	if c.source == nil {
 		return nil, fmt.Errorf("schema %s is not in the repository", p)
 	}
-	return nil, fmt.Errorf("schema %s is not in the repository; Quai does not fetch schemas", u)
+	doc, err := c.source(p)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, fmt.Errorf("schema %s is not in the repository", p)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("schema %s: %w", p, err)
+	}
+	if err := c.Add(p, doc); err != nil {
+		return nil, err
+	}
+	return doc, nil
 }
 
 // Schema is a compiled schema. It is safe for concurrent use.

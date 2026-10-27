@@ -18,6 +18,7 @@ Decisions still needed, with the default the plan assumes until they are answere
 
 | Question | Decision | Date | Consequences |
 | --- | --- | --- | --- |
+| The prototype's Kubernetes blueprints | **Not carried over; the examples are VM-first** | 2026-10-27 | The examples keep the `vm` type and add blueprints built from it; the `component` generator leaves Phase 0 (#10); the walkthroughs of #27 use VM blueprints |
 | YAML editing library | **`go.yaml.in/yaml/v3` alone**, no second decoder; goccy dropped | 2026-10-27 | [Spike report](../engineering/spike-yaml-editing.md); definitions (P0-08) are read with the same conversion |
 | Product name | **Keep "Quai"** | 2026-10-27 | Revisit only if a domain or trademark check (Swissreg, EUIPO, class 42) shows a conflict |
 | Git platform and edition | **Azure DevOps Server first, Services alongside or right after** | 2026-10-26 | [ADR 0010](../adr/0010-git-connectors-azure-devops-first.md), [Git connectors](../design/12-git-connectors.md) |

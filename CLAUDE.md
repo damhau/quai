@@ -45,7 +45,8 @@ Frontend (from `frontend/`, Node 20+):
 npm run typecheck && npm run lint && npm run test && npm run build
 ```
 
-Prototype (reference, from the repository root): `npm test` runs its unit and API tests.
+Prototype (reference, from the repository root): `npm test` runs its unit and API tests (Node 22+,
+for `node:sqlite`). It reads its own frozen examples in `examples/prototype-gitops-repo`.
 
 ## Conventions
 

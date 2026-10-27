@@ -1,0 +1,68 @@
+apiVersion: quai.dev/v1beta1
+kind: Blueprint
+metadata:
+  name: app-servers
+  title: Application servers
+  description: A web server and its database server in one environment, requested and approved together. Built on the designer canvas.
+  icon: layers
+  category: Applications
+  version: 1.0.0
+  owners: [team:platform]
+  tags: [terraform, vm]
+spec:
+  inputs:
+    type: object
+    required: [environment, app]
+    additionalProperties: false
+    properties:
+      environment: { type: string, title: Environment, enum: [dev, test, prod], default: dev }
+      app: { type: string, title: Application, pattern: "^[a-z][a-z0-9]{1,20}$" }
+      webCpu: { type: integer, title: Web server vCPUs, minimum: 1, maximum: 16, default: 2 }
+      withDatabase: { type: boolean, title: Add a database server, default: true }
+      dbDiskGb: { type: integer, title: Database data disk (GB), minimum: 50, maximum: 4096, default: 200 }
+  ui:
+    order: [environment, app, webCpu, withDatabase, dbDiskGb]
+    fields:
+      dbDiskGb: { visibleIf: "inputs.withDatabase" }
+  resources:
+    - id: web
+      type: { name: vm }
+      params:
+        env: ${{ inputs.environment }}
+        name: ${{ inputs.app + '-web01' }}
+      values:
+        template: ubuntu-24.04
+        cpu: ${{ inputs.webCpu }}
+        memory_gb: ${{ inputs.webCpu * 2 }}
+        disks: [{ size_gb: 50 }]
+        network: { vlan: 110 }
+      dependsOn: [db]
+    - id: db
+      when: inputs.withDatabase
+      type: { name: vm }
+      params:
+        env: ${{ inputs.environment }}
+        name: ${{ inputs.app + '-db01' }}
+      values:
+        template: rhel-9
+        cpu: 4
+        memory_gb: 16
+        disks:
+          - { size_gb: 100, tier: ssd }
+          - { size_gb: "${{ inputs.dbDiskGb }}", tier: ssd }
+        network: { vlan: 130 }
+        backup: true
+        backup_policy: "${{ inputs.environment == 'prod' ? 'hourly' : 'daily' }}"
+  approval:
+    rules:
+      - name: production
+        when: inputs.environment == 'prod'
+        approvers: [group:platform-admins]
+  actions:
+    - name: scale-web
+      title: Scale the web server
+      icon: maximize
+      inputs:
+        - { name: cpu, title: vCPUs, type: integer, min: 1, max: 16, required: true }
+      apply:
+        web: { action: resize, inputs: { cpu: "${{ action.cpu }}", memory_gb: "${{ action.cpu * 2 }}" } }

@@ -210,6 +210,7 @@ spec:
       dependsOn: [ns]
 ```
 
+- `repository` may be omitted for a type defined in the blueprint's own repository.
 - `version` constrains the type's `metadata.version`. When a type changes incompatibly, the catalog flags affected blueprints instead of breaking at request time.
 - `quai lint` in the catalog repository's CI resolves every reference against the connected repositories and validates `values` against each type's input schema.
 - One request on this blueprint produces one change set with one pull request per repository. See [blueprints and change sets](04-blueprints-and-change-sets.md).

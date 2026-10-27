@@ -19,7 +19,7 @@ import {
   validateResourceType,
 } from "../src/index.ts";
 
-const repo = new URL("../../../examples/gitops-repo/", import.meta.url);
+const repo = new URL("../../../examples/prototype-gitops-repo/", import.meta.url);
 const read = (p: string) => readFileSync(new URL(p, repo), "utf8");
 const vmType = parseResourceType(read(".quai/types/vm.yaml"));
 const vmSchema = JSON.parse(read("catalog/schemas/vm.schema.json"));
