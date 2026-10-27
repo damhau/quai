@@ -574,6 +574,10 @@ export type TypeView = {
     icon?: string;
     kind: 'type' | 'blueprint';
     locate: string;
+    /**
+     * Fields Quai sets itself (from the locator params, the labels and the owner), left out of forms
+     */
+    managedFields: Array<string> | null;
     name: string;
     ownerField?: string;
     params: Array<ParamView> | null;
@@ -937,6 +941,10 @@ export type TypeViewWritable = {
     icon?: string;
     kind: 'type' | 'blueprint';
     locate: string;
+    /**
+     * Fields Quai sets itself (from the locator params, the labels and the owner), left out of forms
+     */
+    managedFields: Array<string> | null;
     name: string;
     ownerField?: string;
     params: Array<ParamView> | null;

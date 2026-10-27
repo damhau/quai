@@ -16,6 +16,9 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as DesignerIndexRouteImport } from './routes/designer/index'
 import { Route as InventoryIndexRouteImport } from './routes/inventory/index'
 import { Route as RequestsIndexRouteImport } from './routes/requests/index'
+import { Route as RequestsIdRouteImport } from './routes/requests/$id'
+import { Route as RequestRepositoryBlueprintsNameRouteImport } from './routes/request/$repository/blueprints/$name'
+import { Route as RequestRepositoryTypesNameRouteImport } from './routes/request/$repository/types/$name'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -52,24 +55,47 @@ const RequestsIndexRoute = RequestsIndexRouteImport.update({
   path: '/requests/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const RequestsIdRoute = RequestsIdRouteImport.update({
+  id: '/requests/$id',
+  path: '/requests/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RequestRepositoryBlueprintsNameRoute =
+  RequestRepositoryBlueprintsNameRouteImport.update({
+    id: '/request/$repository/blueprints/$name',
+    path: '/request/$repository/blueprints/$name',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const RequestRepositoryTypesNameRoute =
+  RequestRepositoryTypesNameRouteImport.update({
+    id: '/request/$repository/types/$name',
+    path: '/request/$repository/types/$name',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/approvals': typeof ApprovalsRoute
   '/git': typeof GitRoute
   '/login': typeof LoginRoute
+  '/requests/$id': typeof RequestsIdRoute
   '/designer/': typeof DesignerIndexRoute
   '/inventory/': typeof InventoryIndexRoute
   '/requests/': typeof RequestsIndexRoute
+  '/request/$repository/blueprints/$name': typeof RequestRepositoryBlueprintsNameRoute
+  '/request/$repository/types/$name': typeof RequestRepositoryTypesNameRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/approvals': typeof ApprovalsRoute
   '/git': typeof GitRoute
   '/login': typeof LoginRoute
+  '/requests/$id': typeof RequestsIdRoute
   '/designer': typeof DesignerIndexRoute
   '/inventory': typeof InventoryIndexRoute
   '/requests': typeof RequestsIndexRoute
+  '/request/$repository/blueprints/$name': typeof RequestRepositoryBlueprintsNameRoute
+  '/request/$repository/types/$name': typeof RequestRepositoryTypesNameRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -77,9 +103,12 @@ export interface FileRoutesById {
   '/approvals': typeof ApprovalsRoute
   '/git': typeof GitRoute
   '/login': typeof LoginRoute
+  '/requests/$id': typeof RequestsIdRoute
   '/designer/': typeof DesignerIndexRoute
   '/inventory/': typeof InventoryIndexRoute
   '/requests/': typeof RequestsIndexRoute
+  '/request/$repository/blueprints/$name': typeof RequestRepositoryBlueprintsNameRoute
+  '/request/$repository/types/$name': typeof RequestRepositoryTypesNameRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -88,27 +117,36 @@ export interface FileRouteTypes {
     | '/approvals'
     | '/git'
     | '/login'
+    | '/requests/$id'
     | '/designer/'
     | '/inventory/'
     | '/requests/'
+    | '/request/$repository/blueprints/$name'
+    | '/request/$repository/types/$name'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/approvals'
     | '/git'
     | '/login'
+    | '/requests/$id'
     | '/designer'
     | '/inventory'
     | '/requests'
+    | '/request/$repository/blueprints/$name'
+    | '/request/$repository/types/$name'
   id:
     | '__root__'
     | '/'
     | '/approvals'
     | '/git'
     | '/login'
+    | '/requests/$id'
     | '/designer/'
     | '/inventory/'
     | '/requests/'
+    | '/request/$repository/blueprints/$name'
+    | '/request/$repository/types/$name'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -116,9 +154,12 @@ export interface RootRouteChildren {
   ApprovalsRoute: typeof ApprovalsRoute
   GitRoute: typeof GitRoute
   LoginRoute: typeof LoginRoute
+  RequestsIdRoute: typeof RequestsIdRoute
   DesignerIndexRoute: typeof DesignerIndexRoute
   InventoryIndexRoute: typeof InventoryIndexRoute
   RequestsIndexRoute: typeof RequestsIndexRoute
+  RequestRepositoryBlueprintsNameRoute: typeof RequestRepositoryBlueprintsNameRoute
+  RequestRepositoryTypesNameRoute: typeof RequestRepositoryTypesNameRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -172,6 +213,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RequestsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/requests/$id': {
+      id: '/requests/$id'
+      path: '/requests/$id'
+      fullPath: '/requests/$id'
+      preLoaderRoute: typeof RequestsIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/request/$repository/blueprints/$name': {
+      id: '/request/$repository/blueprints/$name'
+      path: '/request/$repository/blueprints/$name'
+      fullPath: '/request/$repository/blueprints/$name'
+      preLoaderRoute: typeof RequestRepositoryBlueprintsNameRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/request/$repository/types/$name': {
+      id: '/request/$repository/types/$name'
+      path: '/request/$repository/types/$name'
+      fullPath: '/request/$repository/types/$name'
+      preLoaderRoute: typeof RequestRepositoryTypesNameRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -180,9 +242,12 @@ const rootRouteChildren: RootRouteChildren = {
   ApprovalsRoute: ApprovalsRoute,
   GitRoute: GitRoute,
   LoginRoute: LoginRoute,
+  RequestsIdRoute: RequestsIdRoute,
   DesignerIndexRoute: DesignerIndexRoute,
   InventoryIndexRoute: InventoryIndexRoute,
   RequestsIndexRoute: RequestsIndexRoute,
+  RequestRepositoryBlueprintsNameRoute: RequestRepositoryBlueprintsNameRoute,
+  RequestRepositoryTypesNameRoute: RequestRepositoryTypesNameRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

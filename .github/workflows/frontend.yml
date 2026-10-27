@@ -28,14 +28,15 @@ jobs:
           go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
       - run: npm ci
-      # The committed OpenAPI document, generated client and route tree must match the backend
-      # and the routes.
+      # The committed OpenAPI document, generated client, route tree and CEL conformance cases
+      # must match the backend and the routes.
       - name: Generated code is up to date
         run: |
           npm run api:openapi
           npm run api:gen
           npm run routes:gen
-          git diff --exit-code -- openapi.json src/api/generated src/routeTree.gen.ts
+          npm run cel:cases
+          git diff --exit-code -- openapi.json src/api/generated src/routeTree.gen.ts src/lib/cel/conformance.json
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run test

@@ -24,6 +24,7 @@ import (
 	"github.com/damhau/quai/backend/internal/engine/expr"
 	"github.com/damhau/quai/backend/internal/engine/generate"
 	"github.com/damhau/quai/backend/internal/engine/locate"
+	"github.com/damhau/quai/backend/internal/engine/schema"
 )
 
 // File operations.
@@ -41,6 +42,17 @@ var (
 	// ErrNoChange is returned when a request would not change any file.
 	ErrNoChange = errors.New("this change would not modify anything")
 )
+
+// ResourceError is a failure to plan one resource of a blueprint: its condition, its params or
+// values, or the document its type makes of them.
+type ResourceError struct {
+	ID  string // the resource's id in the blueprint
+	Err error
+}
+
+func (e *ResourceError) Error() string { return "resource " + e.ID + ": " + e.Err.Error() }
+
+func (e *ResourceError) Unwrap() error { return e.Err }
 
 // Change is one file the change set creates, updates or deletes.
 type Change struct {
@@ -185,7 +197,7 @@ func Blueprint(fsys fs.FS, repo *definitions.Repository, b *definitions.Blueprin
 	}
 	maps.Copy(inputs, r.Inputs)
 	if err := b.InputSchema.Validate(inputs); err != nil {
-		return nil, err
+		return nil, schema.Under("inputs", err)
 	}
 	vars := expr.Vars{Inputs: inputs, Request: expr.Request{Kind: generate.Create}, User: expr.User{Name: r.Owner}}
 
@@ -195,34 +207,34 @@ func Blueprint(fsys fs.FS, repo *definitions.Repository, b *definitions.Blueprin
 		if res.Condition != nil {
 			ok, err := res.Condition.Test(vars)
 			if err != nil {
-				return nil, fmt.Errorf("resource %s: %w", res.ID, err)
+				return nil, &ResourceError{ID: res.ID, Err: err}
 			}
 			if !ok {
 				continue
 			}
 		}
 		if res.Type.Repository != "" {
-			return nil, fmt.Errorf("resource %s: types in other repositories come with multi-repository change sets", res.ID)
+			return nil, &ResourceError{ID: res.ID, Err: errors.New("types in other repositories come with multi-repository change sets")}
 		}
 		t := repo.Types[res.Type.Name]
 		if t == nil {
-			return nil, fmt.Errorf("resource %s: type %s is not defined", res.ID, res.Type.Name)
+			return nil, &ResourceError{ID: res.ID, Err: fmt.Errorf("type %s is not defined", res.Type.Name)}
 		}
 		params, err := evalMap(res.ParamsValue, vars)
 		if err != nil {
-			return nil, fmt.Errorf("resource %s: params: %w", res.ID, err)
+			return nil, &ResourceError{ID: res.ID, Err: fmt.Errorf("params: %w", err)}
 		}
 		values, err := evalMap(res.ValuesValue, vars)
 		if err != nil {
-			return nil, fmt.Errorf("resource %s: values: %w", res.ID, err)
+			return nil, &ResourceError{ID: res.ID, Err: fmt.Errorf("values: %w", err)}
 		}
 		strParams, err := paramStrings(params)
 		if err != nil {
-			return nil, fmt.Errorf("resource %s: params: %w", res.ID, err)
+			return nil, &ResourceError{ID: res.ID, Err: fmt.Errorf("params: %w", err)}
 		}
 		region, err := addType(cs, fsys, t, generate.Request{Kind: generate.Create, Params: strParams, Values: values, Owner: r.Owner})
 		if err != nil {
-			return nil, fmt.Errorf("resource %s: %w", res.ID, err)
+			return nil, &ResourceError{ID: res.ID, Err: err}
 		}
 		created[res.ID] = locate.ID(r.Repository, t.Metadata.Name, region.Key)
 		cs.Resources = append(cs.Resources, Planned{ID: res.ID, Type: t.Metadata.Name, Key: region.Key, Params: strParams, Values: values})

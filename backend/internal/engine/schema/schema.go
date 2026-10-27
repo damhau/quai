@@ -196,6 +196,25 @@ type ValidationError struct {
 	Fields map[string]string
 }
 
+// Under returns err with its field errors located under prefix, for a caller that receives the
+// document inside a larger request: "cpu" becomes "values.cpu", and the document itself ("$")
+// becomes "values". An error that is not a *ValidationError is returned as it is.
+func Under(prefix string, err error) error {
+	var ve *ValidationError
+	if !errors.As(err, &ve) {
+		return err
+	}
+	fields := make(map[string]string, len(ve.Fields))
+	for f, msg := range ve.Fields {
+		if f == rootPath {
+			fields[prefix] = msg
+		} else {
+			fields[prefix+"."+f] = msg
+		}
+	}
+	return &ValidationError{Fields: fields}
+}
+
 func (e *ValidationError) Error() string {
 	keys := make([]string, 0, len(e.Fields))
 	for k := range e.Fields {

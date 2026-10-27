@@ -3,6 +3,7 @@ package schema
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -405,5 +406,18 @@ func TestPropertyOrder(t *testing.T) {
 	c.UseSource(func(string) ([]byte, error) { return []byte("a: [1\n"), nil })
 	if _, err := c.Compile("other.yaml"); err == nil || !strings.Contains(err.Error(), "not valid YAML") {
 		t.Errorf("Compile of invalid YAML: error = %v", err)
+	}
+}
+
+func TestUnder(t *testing.T) {
+	ve := &ValidationError{Fields: map[string]string{"$": "must be an object", "disks.0.size_gb": "must be at least 10"}}
+	var got *ValidationError
+	if err := Under("values", fmt.Errorf("plan: %w", ve)); !errors.As(err, &got) ||
+		!reflect.DeepEqual(got.Fields, map[string]string{"values": "must be an object", "values.disks.0.size_gb": "must be at least 10"}) {
+		t.Errorf("Under = %v", err)
+	}
+	other := errors.New("disk is full")
+	if err := Under("values", other); err != other {
+		t.Errorf("Under(other) = %v", err)
 	}
 }

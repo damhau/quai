@@ -171,7 +171,7 @@ func (s *Service) PlanType(ctx context.Context, who auth.Identity, in TypeInput)
 			}
 			inputs, err := generate.ValidateInputs(a.Inputs, in.ActionInputs, vars)
 			if err != nil {
-				return p, err
+				return p, schema.Under("actionInputs", err)
 			}
 			req.ActionName, req.ActionInputs = a.Name, inputs
 			vars.Action = inputs
@@ -190,7 +190,7 @@ func (s *Service) PlanType(ctx context.Context, who auth.Identity, in TypeInput)
 
 	cs, err := plan.Type(snap.FS, t, req)
 	if err != nil {
-		return p, err
+		return p, schema.Under("values", err)
 	}
 	p.ChangeSet = cs
 	loc, _ := locate.New(t.Spec.Locate.Strategy, t.Spec.Locate.Path)

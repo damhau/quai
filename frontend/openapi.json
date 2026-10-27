@@ -1784,6 +1784,16 @@
           "locate": {
             "type": "string"
           },
+          "managedFields": {
+            "description": "Fields Quai sets itself (from the locator params, the labels and the owner), left out of forms",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "name": {
             "type": "string"
           },
@@ -1848,6 +1858,7 @@
           "ui",
           "actions",
           "deletion",
+          "managedFields",
           "kind",
           "repository",
           "name",

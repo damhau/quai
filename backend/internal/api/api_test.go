@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/damhau/quai/backend/internal/engine/expr"
 	"github.com/damhau/quai/backend/internal/engine/plan"
 	"github.com/damhau/quai/backend/internal/engine/schema"
 )
@@ -135,10 +136,14 @@ func TestProblemMapping(t *testing.T) {
 		fmt.Errorf("vm/prod/x: %w", plan.ErrExists):   409,
 		plan.ErrNoChange:               422,
 		errors.New("database is down"): 500,
+		&plan.ResourceError{ID: "db", Err: &expr.Error{Expr: "inputs.disk", Err: errors.New("no such key: disk")}}: 422,
+		&plan.ResourceError{ID: "db", Err: ve}:                                                                422,
+		&plan.ResourceError{ID: "db", Err: errors.New("disk is full")}:                                        500,
+		fmt.Errorf("visibleIf of size: %w", &expr.Error{Expr: "inputs.x", Err: errors.New("no such key: x")}): 422,
 	} {
 		p := Problem(err, "body")
 		b, _ := json.Marshal(p)
-		if p.GetStatus() != status || status == 500 && strings.Contains(string(b), "database") {
+		if p.GetStatus() != status || status == 500 && strings.Contains(string(b), "database") || status == 422 && strings.Contains(string(b), `"errors"`) && err != plan.ErrNoChange {
 			t.Errorf("Problem(%v) = %d %s", err, p.GetStatus(), b)
 		}
 	}

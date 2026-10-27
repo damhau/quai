@@ -247,9 +247,31 @@ func TestBlueprintRequests(t *testing.T) {
 	}
 	req.Inputs = map[string]any{"environment": "moon", "name": "x1"}
 	var ve *schema.ValidationError
-	if _, err := Blueprint(fsys, repo, b, req); !errors.As(err, &ve) || ve.Fields["environment"] == "" {
+	if _, err := Blueprint(fsys, repo, b, req); !errors.As(err, &ve) || ve.Fields["inputs.environment"] == "" {
 		t.Errorf("invalid inputs: %v", err)
 	}
+	// A resource its type rejects is the resource's error, not a field of the form.
+	fsys["blueprints/loose.yaml"] = &fstest.MapFile{Data: []byte(`apiVersion: quai.dev/v1beta1
+kind: Blueprint
+metadata: { name: loose, title: Loose }
+spec:
+  inputs: { type: object, properties: { cpu: { type: integer } } }
+  resources:
+    - id: vm
+      type: { name: vm }
+      params: { env: dev, name: loose01 }
+      values: { template: rhel-9, cpu: "${{ inputs.cpu }}", memory_gb: 4, disks: [{ size_gb: 50 }], network: { vlan: 110 } }
+`)}
+	loose, problems := definitions.LoadBlueprint(fsys, "blueprints/loose.yaml", repo.Types)
+	if len(problems) > 0 {
+		t.Fatal(problems)
+	}
+	var re *ResourceError
+	_, err := Blueprint(fsys, repo, loose, BlueprintRequest{Name: "loose01", Owner: "alice", Inputs: map[string]any{"cpu": 64}})
+	if !errors.As(err, &re) || re.ID != "vm" || !errors.As(err, &ve) || ve.Fields["cpu"] == "" {
+		t.Errorf("a resource its type rejects: %v", err)
+	}
+	req.Inputs = map[string]any{"environment": "moon", "name": "x1"}
 	req.Name = "../x"
 	if _, err := Blueprint(fsys, repo, b, req); err == nil {
 		t.Error("an unsafe instance name was accepted")

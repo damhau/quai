@@ -17,8 +17,17 @@ export default defineConfig({
   resolve: { alias: { "@": path.resolve(import.meta.dirname, "./src") } },
   build: {
     rolldownOptions: {
-      // Libraries change less often than the app: a separate chunk stays cached across releases.
-      output: { codeSplitting: { groups: [{ name: "vendor", test: /node_modules/ }] } },
+      // Libraries change less often than the app: their chunks stay cached across releases.
+      output: {
+        codeSplitting: {
+          groups: [
+            { name: "react", test: /node_modules[\\/](react|react-dom|scheduler)[\\/]/, priority: 3 },
+            { name: "tanstack", test: /node_modules[\\/]@tanstack[\\/]/, priority: 2 },
+            { name: "ui", test: /node_modules[\\/](radix-ui|@radix-ui|lucide-react|sonner)[\\/]/, priority: 1 },
+            { name: "vendor", test: /node_modules/ },
+          ],
+        },
+      },
     },
   },
   server: {

@@ -58,7 +58,7 @@ func TestCreateValidation(t *testing.T) {
 	}
 	req = newVM("dev", "ok-name", 99)
 	status, body = bob.do(http.MethodPost, Prefix+"/plans/type", req, nil)
-	if status != http.StatusUnprocessableEntity || !strings.Contains(body, `"location":"body.cpu"`) || !strings.Contains(body, "must be at most 32") {
+	if status != http.StatusUnprocessableEntity || !strings.Contains(body, `"location":"body.values.cpu"`) || !strings.Contains(body, "must be at most 32") {
 		t.Errorf("schema violation = %d %s", status, body)
 	}
 }
@@ -183,7 +183,7 @@ func TestDayTwo(t *testing.T) {
 	}
 	immutable := map[string]any{"repository": "infra-live", "type": "vm", "kind": "update", "key": "prod/web01",
 		"values": map[string]any{"template": "rhel-9", "cpu": 8, "memory_gb": 32, "disks": []any{map[string]any{"size_gb": 80, "tier": "ssd"}}, "network": map[string]any{"vlan": 120, "ip": "10.0.12.11"}}}
-	if status, body := bob.do(http.MethodPost, Prefix+"/plans/type", immutable, nil); status != http.StatusUnprocessableEntity || !strings.Contains(body, "body.template") {
+	if status, body := bob.do(http.MethodPost, Prefix+"/plans/type", immutable, nil); status != http.StatusUnprocessableEntity || !strings.Contains(body, `"location":"body.values.template"`) {
 		t.Errorf("changing an immutable field = %d %s", status, body)
 	}
 	noop := map[string]any{"repository": "infra-live", "type": "vm", "kind": "action", "key": "prod/web01", "action": "resize", "actionInputs": map[string]any{"cpu": 8, "memory_gb": 32}}

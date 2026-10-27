@@ -1,0 +1,9799 @@
+[
+ {
+  "file": "basic",
+  "section": "self_eval_zeroish",
+  "name": "self_eval_int_zero",
+  "expr": "0",
+  "expect": {
+   "t": "int",
+   "v": "0"
+  }
+ },
+ {
+  "file": "basic",
+  "section": "self_eval_zeroish",
+  "name": "self_eval_uint_zero",
+  "expr": "0u",
+  "expect": {
+   "t": "uint",
+   "v": "0"
+  }
+ },
+ {
+  "file": "basic",
+  "section": "self_eval_zeroish",
+  "name": "self_eval_uint_alias_zero",
+  "expr": "0U",
+  "expect": {
+   "t": "uint",
+   "v": "0"
+  }
+ },
+ {
+  "file": "basic",
+  "section": "self_eval_zeroish",
+  "name": "self_eval_float_zero",
+  "expr": "0.0",
+  "expect": {
+   "t": "double",
+   "v": 0
+  }
+ },
+ {
+  "file": "basic",
+  "section": "self_eval_zeroish",
+  "name": "self_eval_float_zerowithexp",
+  "expr": "0e+0",
+  "expect": {
+   "t": "double",
+   "v": 0
+  }
+ },
+ {
+  "file": "basic",
+  "section": "self_eval_zeroish",
+  "name": "self_eval_string_empty",
+  "expr": "''",
+  "expect": {
+   "t": "string",
+   "v": ""
+  }
+ },
+ {
+  "file": "basic",
+  "section": "self_eval_zeroish",
+  "name": "self_eval_string_empty_quotes",
+  "expr": "\"\"",
+  "expect": {
+   "t": "string",
+   "v": ""
+  }
+ },
+ {
+  "file": "basic",
+  "section": "self_eval_zeroish",
+  "name": "self_eval_string_raw_prefix",
+  "expr": "r\"\"",
+  "expect": {
+   "t": "string",
+   "v": ""
+  }
+ },
+ {
+  "file": "basic",
+  "section": "self_eval_zeroish",
+  "name": "self_eval_bytes_empty",
+  "expr": "b\"\"",
+  "expect": {
+   "t": "bytes",
+   "v": ""
+  }
+ },
+ {
+  "file": "basic",
+  "section": "self_eval_zeroish",
+  "name": "self_eval_bool_false",
+  "expr": "false",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "basic",
+  "section": "self_eval_zeroish",
+  "name": "self_eval_null",
+  "expr": "null",
+  "expect": {
+   "t": "null",
+   "v": null
+  }
+ },
+ {
+  "file": "basic",
+  "section": "self_eval_zeroish",
+  "name": "self_eval_empty_list",
+  "expr": "[]",
+  "expect": {
+   "t": "list",
+   "v": []
+  }
+ },
+ {
+  "file": "basic",
+  "section": "self_eval_zeroish",
+  "name": "self_eval_empty_map",
+  "expr": "{}",
+  "expect": {
+   "t": "map",
+   "v": []
+  }
+ },
+ {
+  "file": "basic",
+  "section": "self_eval_zeroish",
+  "name": "self_eval_string_raw_prefix_triple_double",
+  "expr": "r\"\"\"\"\"\"",
+  "expect": {
+   "t": "string",
+   "v": ""
+  }
+ },
+ {
+  "file": "basic",
+  "section": "self_eval_zeroish",
+  "name": "self_eval_string_raw_prefix_triple_single",
+  "expr": "r''''''",
+  "expect": {
+   "t": "string",
+   "v": ""
+  }
+ },
+ {
+  "file": "basic",
+  "section": "self_eval_nonzeroish",
+  "name": "self_eval_int_nonzero",
+  "expr": "42",
+  "expect": {
+   "t": "int",
+   "v": "42"
+  }
+ },
+ {
+  "file": "basic",
+  "section": "self_eval_nonzeroish",
+  "name": "self_eval_uint_nonzero",
+  "expr": "123456789u",
+  "expect": {
+   "t": "uint",
+   "v": "123456789"
+  }
+ },
+ {
+  "file": "basic",
+  "section": "self_eval_nonzeroish",
+  "name": "self_eval_uint_alias_nonzero",
+  "expr": "123456789U",
+  "expect": {
+   "t": "uint",
+   "v": "123456789"
+  }
+ },
+ {
+  "file": "basic",
+  "section": "self_eval_nonzeroish",
+  "name": "self_eval_int_negative_min",
+  "expr": "-9223372036854775808",
+  "expect": {
+   "t": "int",
+   "v": "-9223372036854775808"
+  }
+ },
+ {
+  "file": "basic",
+  "section": "self_eval_nonzeroish",
+  "name": "self_eval_float_negative_exp",
+  "expr": "-2.3e+1",
+  "expect": {
+   "t": "double",
+   "v": -23
+  }
+ },
+ {
+  "file": "basic",
+  "section": "self_eval_nonzeroish",
+  "name": "self_eval_string_excl",
+  "expr": "\"!\"",
+  "expect": {
+   "t": "string",
+   "v": "!"
+  }
+ },
+ {
+  "file": "basic",
+  "section": "self_eval_nonzeroish",
+  "name": "self_eval_string_escape",
+  "expr": "'\\''",
+  "expect": {
+   "t": "string",
+   "v": "'"
+  }
+ },
+ {
+  "file": "basic",
+  "section": "self_eval_nonzeroish",
+  "name": "self_eval_bytes_escape",
+  "expr": "b'ÿ'",
+  "expect": {
+   "t": "bytes",
+   "v": "w78="
+  }
+ },
+ {
+  "file": "basic",
+  "section": "self_eval_nonzeroish",
+  "name": "self_eval_bytes_invalid_utf8",
+  "expr": "b'\\000\\xff'",
+  "expect": {
+   "t": "bytes",
+   "v": "AP8="
+  }
+ },
+ {
+  "file": "basic",
+  "section": "self_eval_nonzeroish",
+  "name": "self_eval_list_singleitem",
+  "expr": "[-1]",
+  "expect": {
+   "t": "list",
+   "v": [
+    {
+     "t": "int",
+     "v": "-1"
+    }
+   ]
+  }
+ },
+ {
+  "file": "basic",
+  "section": "self_eval_nonzeroish",
+  "name": "self_eval_map_singleitem",
+  "expr": "{\"k\":\"v\"}",
+  "expect": {
+   "t": "map",
+   "v": [
+    [
+     {
+      "t": "string",
+      "v": "k"
+     },
+     {
+      "t": "string",
+      "v": "v"
+     }
+    ]
+   ]
+  }
+ },
+ {
+  "file": "basic",
+  "section": "self_eval_nonzeroish",
+  "name": "self_eval_bool_true",
+  "expr": "true",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "basic",
+  "section": "self_eval_nonzeroish",
+  "name": "self_eval_int_hex",
+  "expr": "0x55555555",
+  "expect": {
+   "t": "int",
+   "v": "1431655765"
+  }
+ },
+ {
+  "file": "basic",
+  "section": "self_eval_nonzeroish",
+  "name": "self_eval_int_hex_negative",
+  "expr": "-0x55555555",
+  "expect": {
+   "t": "int",
+   "v": "-1431655765"
+  }
+ },
+ {
+  "file": "basic",
+  "section": "self_eval_nonzeroish",
+  "name": "self_eval_uint_hex",
+  "expr": "0x55555555u",
+  "expect": {
+   "t": "uint",
+   "v": "1431655765"
+  }
+ },
+ {
+  "file": "basic",
+  "section": "self_eval_nonzeroish",
+  "name": "self_eval_uint_alias_hex",
+  "expr": "0x55555555U",
+  "expect": {
+   "t": "uint",
+   "v": "1431655765"
+  }
+ },
+ {
+  "file": "basic",
+  "section": "self_eval_nonzeroish",
+  "name": "self_eval_unicode_escape_four",
+  "expr": "\"\\u270c\"",
+  "expect": {
+   "t": "string",
+   "v": "✌"
+  }
+ },
+ {
+  "file": "basic",
+  "section": "self_eval_nonzeroish",
+  "name": "self_eval_unicode_escape_eight",
+  "expr": "\"\\U0001f431\"",
+  "expect": {
+   "t": "string",
+   "v": "🐱"
+  }
+ },
+ {
+  "file": "basic",
+  "section": "self_eval_nonzeroish",
+  "name": "self_eval_ascii_escape_seq",
+  "expr": "\"\\a\\b\\f\\n\\r\\t\\v\\\"\\'\\\\\"",
+  "expect": {
+   "t": "string",
+   "v": "\u0007\b\f\n\r\t\u000b\"'\\"
+  }
+ },
+ {
+  "file": "basic",
+  "section": "variables",
+  "name": "self_eval_bound_lookup",
+  "expr": "x",
+  "bindings": {
+   "x": {
+    "t": "int",
+    "v": "123"
+   }
+  },
+  "expect": {
+   "t": "int",
+   "v": "123"
+  }
+ },
+ {
+  "file": "basic",
+  "section": "functions",
+  "name": "binop",
+  "expr": "1 + 1",
+  "expect": {
+   "t": "int",
+   "v": "2"
+  }
+ },
+ {
+  "file": "basic",
+  "section": "reserved_const",
+  "name": "false",
+  "expr": "false",
+  "bindings": {
+   "false": {
+    "t": "bool",
+    "v": true
+   }
+  },
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "basic",
+  "section": "reserved_const",
+  "name": "true",
+  "expr": "true",
+  "bindings": {
+   "true": {
+    "t": "bool",
+    "v": false
+   }
+  },
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "basic",
+  "section": "reserved_const",
+  "name": "null",
+  "expr": "null",
+  "bindings": {
+   "null": {
+    "t": "bool",
+    "v": true
+   }
+  },
+  "expect": {
+   "t": "null",
+   "v": null
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "eq_int",
+  "expr": "1 == 1",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "not_eq_int",
+  "expr": "-1 == 1",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "eq_int_uint",
+  "expr": "dyn(1) == 1u",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "not_eq_int_uint",
+  "expr": "dyn(2) == 1u",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "eq_int_double",
+  "expr": "dyn(1) == 1.0",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "not_eq_int_double",
+  "expr": "dyn(2) == 1.0",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "eq_uint",
+  "expr": "2u == 2u",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "not_eq_uint",
+  "expr": "1u == 2u",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "eq_uint_int",
+  "expr": "dyn(1u) == 1",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "not_eq_uint_int",
+  "expr": "dyn(2u) == 1",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "eq_uint_double",
+  "expr": "dyn(1u) == 1.0",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "not_eq_uint_double",
+  "expr": "dyn(2u) == 1.0",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "eq_double",
+  "expr": "1.0 == 1.0e+0",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "not_eq_double",
+  "expr": "-1.0 == 1.0",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "not_eq_double_nan",
+  "expr": "0.0/0.0 == 0.0/0.0",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "not_eq_int_double_nan",
+  "expr": "dyn(1) == 0.0/0.0",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "not_eq_uint_double_nan",
+  "expr": "dyn(1u) == 0.0/0.0",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "eq_double_int",
+  "expr": "dyn(1.0) == 1",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "not_eq_double_int",
+  "expr": "dyn(2.0) == 1",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "eq_double_uint",
+  "expr": "dyn(1.0) == 1u",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "not_eq_double_uint",
+  "expr": "dyn(2.0) == 1u",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "eq_string",
+  "expr": "'' == \"\"",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "not_eq_string",
+  "expr": "'a' == 'b'",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "eq_raw_string",
+  "expr": "'abc' == r'abc'",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "not_eq_string_case",
+  "expr": "'abc' == 'ABC'",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "eq_string_unicode",
+  "expr": "'ίσος' == 'ίσος'",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "not_eq_string_unicode_ascii",
+  "expr": "'a' == 'à'",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "no_string_normalization",
+  "expr": "'Am\\u00E9lie' == 'Ame\\u0301lie'",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "eq_null",
+  "expr": "null == null",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "eq_bool",
+  "expr": "true == true",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "not_eq_bool",
+  "expr": "false == true",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "eq_bytes",
+  "expr": "b'ÿ' == b'\\303\\277'",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "not_eq_bytes",
+  "expr": "b'abc' == b'abcd'",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "eq_list_empty",
+  "expr": "[] == []",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "eq_list_null",
+  "expr": "[null] == [null]",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "not_eq_list_null",
+  "expr": "['1', '2', null] == ['1', '2', '3']",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "eq_list_numbers",
+  "expr": "[1, 2, 3] == [1, 2, 3]",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "eq_list_mixed_type_numbers",
+  "expr": "[1.0, 2.0, 3] == [1u, 2, 3u]",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "not_eq_list_mixed_type_numbers",
+  "expr": "[1.0, 2.1] == [1u, 2]",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "not_eq_list_order",
+  "expr": "[1, 2, 3] == [1, 3, 2]",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "not_eq_list_string_case",
+  "expr": "['case'] == ['cAse']",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "not_eq_list_false_vs_types",
+  "expr": "[1, 'dos', 3] == [1, 2, 4]",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "eq_map_empty",
+  "expr": "{} == {}",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "eq_map_null",
+  "expr": "{'k': null} == {'k': null}",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "not_eq_map_null",
+  "expr": "{'k': 1, 'j': 2} == {'k': 1, 'j': null}",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "eq_map_onekey",
+  "expr": "{'k':'v'} == {\"k\":\"v\"}",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "eq_map_double_value",
+  "expr": "{'k':1.0} == {'k':1e+0}",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "eq_map_mixed_type_numbers",
+  "expr": "{1: 1.0, 2u: 3u} == {1u: 1, 2: 3.0}",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "not_eq_map_value",
+  "expr": "{'k':'v'} == {'k':'v1'}",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "not_eq_map_extra_key",
+  "expr": "{'k':'v','k1':'v1'} == {'k':'v'}",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "eq_map_key_order",
+  "expr": "{'k1':'v1','k2':'v2'} == {'k2':'v2','k1':'v1'}",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "not_eq_map_key_casing",
+  "expr": "{'key':'value'} == {'Key':'value'}",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "not_eq_map_false_vs_types",
+  "expr": "{'k1': 1, 'k2': 'dos', 'k3': 3} == {'k1': 1, 'k2': 2, 'k3': 4}",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "eq_map_value_mixed_types",
+  "expr": "{'k':'v', 1:1} == {'k':'v', 1:'v1'}",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "not_eq_dyn_bool_null",
+  "expr": "dyn(false) == null",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "not_eq_dyn_bytes_null",
+  "expr": "dyn(b'') == null",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "not_eq_dyn_double_null",
+  "expr": "dyn(2.1) == null",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "not_eq_dyn_duration_null",
+  "expr": "dyn(duration('0s')) == null",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "not_eq_dyn_int_null",
+  "expr": "dyn(1) == null",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "not_eq_dyn_list_null",
+  "expr": "dyn([]) == null",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "not_eq_dyn_map_null",
+  "expr": "dyn({}) == null",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "not_eq_dyn_string_null",
+  "expr": "dyn('') == null",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "not_eq_dyn_timestamp_null",
+  "expr": "dyn(timestamp(0)) == null",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "not_eq_list_elem_null",
+  "expr": "[1, 2, null] == [1, null, 3]",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "not_eq_map_value_null",
+  "expr": "{1:'hello', 2:'world'} == {1:'goodbye', 2:null}",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "eq_dyn_int_uint",
+  "expr": "dyn(1) == 1u",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "eq_dyn_int_double",
+  "expr": "dyn(1) == 1.0",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "eq_dyn_uint_int",
+  "expr": "dyn(1u) == 1",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "eq_dyn_uint_double",
+  "expr": "dyn(1u) == 1.0",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "eq_dyn_double_int",
+  "expr": "dyn(1.0) == 1",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "eq_dyn_double_uint",
+  "expr": "dyn(1.0) == 1u",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "not_eq_dyn_int_uint",
+  "expr": "dyn(1) == 2u",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "not_eq_dyn_int_double",
+  "expr": "dyn(1) == 2.0",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "not_eq_dyn_uint_int",
+  "expr": "dyn(1u) == 2",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "not_eq_dyn_uint_double",
+  "expr": "dyn(1u) == 120",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "not_eq_dyn_double_int",
+  "expr": "dyn(1.0) == 2",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "eq_literal",
+  "name": "not_eq_dyn_double_uint",
+  "expr": "dyn(1.0) == 2u",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "ne_literal",
+  "name": "ne_int",
+  "expr": "24 != 42",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "ne_literal",
+  "name": "not_ne_int",
+  "expr": "1 != 1",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "ne_literal",
+  "name": "ne_int_double",
+  "expr": "dyn(24) != 24.1",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "ne_literal",
+  "name": "not_ne_int_double",
+  "expr": "dyn(1) != 1.0",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "ne_literal",
+  "name": "ne_int_uint",
+  "expr": "dyn(24) != 42u",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "ne_literal",
+  "name": "not_ne_int_uint",
+  "expr": "dyn(1) != 1u",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "ne_literal",
+  "name": "ne_uint",
+  "expr": "1u != 2u",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "ne_literal",
+  "name": "not_ne_uint",
+  "expr": "99u != 99u",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "ne_literal",
+  "name": "ne_uint_double",
+  "expr": "dyn(1u) != 2.0",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "ne_literal",
+  "name": "not_ne_uint_double",
+  "expr": "dyn(99u) != 99.0",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "ne_literal",
+  "name": "ne_double",
+  "expr": "9.0e+3 != 9001.0",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "ne_literal",
+  "name": "not_ne_double_nan",
+  "expr": "0.0/0.0 != 0.0/0.0",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "ne_literal",
+  "name": "not_ne_int_double_nan",
+  "expr": "dyn(1) != 0.0/0.0",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "ne_literal",
+  "name": "not_ne_uint_double_nan",
+  "expr": "dyn(1u) != 0.0/0.0",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "ne_literal",
+  "name": "not_ne_double",
+  "expr": "1.0 != 1e+0",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "ne_literal",
+  "name": "ne_double_int",
+  "expr": "dyn(9000) != 9001.0",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "ne_literal",
+  "name": "not_ne_double_int",
+  "expr": "dyn(1) != 1e+0",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "ne_literal",
+  "name": "ne_double_uint",
+  "expr": "dyn(9000u) != 9001.0",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "ne_literal",
+  "name": "not_ne_double_uint",
+  "expr": "dyn(1u) != 1e+0",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "ne_literal",
+  "name": "ne_double_nan",
+  "expr": "0.0/0.0 != 0.0/0.0",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "ne_literal",
+  "name": "ne_string",
+  "expr": "'abc' != ''",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "ne_literal",
+  "name": "not_ne_string",
+  "expr": "'abc' != 'abc'",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "ne_literal",
+  "name": "ne_string_unicode",
+  "expr": "'résumé' != 'resume'",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "ne_literal",
+  "name": "not_ne_string_unicode",
+  "expr": "'ίδιο' != 'ίδιο'",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "ne_literal",
+  "name": "ne_bytes",
+  "expr": "b'\\x00\\xFF' != b'ÿ'",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "ne_literal",
+  "name": "not_ne_bytes",
+  "expr": "b'\\303\\277' != b'ÿ'",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "ne_literal",
+  "name": "ne_bool",
+  "expr": "false != true",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "ne_literal",
+  "name": "not_ne_bool",
+  "expr": "true != true",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "ne_literal",
+  "name": "not_ne_null",
+  "expr": "null != null",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "ne_literal",
+  "name": "ne_list_empty",
+  "expr": "[] != [1]",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "ne_literal",
+  "name": "not_ne_list_empty",
+  "expr": "[] != []",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "ne_literal",
+  "name": "ne_list_bool",
+  "expr": "[true, false, true] != [true, true, false]",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "ne_literal",
+  "name": "not_ne_list_bool",
+  "expr": "[false, true] != [false, true]",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "ne_literal",
+  "name": "not_ne_list_of_list",
+  "expr": "[[]] != [[]]",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "ne_literal",
+  "name": "ne_map_by_value",
+  "expr": "{'k':'v'} != {'k':'v1'}",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "ne_literal",
+  "name": "ne_map_by_key",
+  "expr": "{'k':true} != {'k1':true}",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "ne_literal",
+  "name": "not_ne_map_int_to_float",
+  "expr": "{1:1.0} != {1:1.0}",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "ne_literal",
+  "name": "not_ne_map_key_order",
+  "expr": "{'a':'b','c':'d'} != {'c':'d','a':'b'}",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lt_literal",
+  "name": "lt_int",
+  "expr": "-1 \u003c 0",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lt_literal",
+  "name": "not_lt_int",
+  "expr": "0 \u003c 0",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lt_literal",
+  "name": "lt_uint",
+  "expr": "0u \u003c 1u",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lt_literal",
+  "name": "not_lt_uint",
+  "expr": "2u \u003c 2u",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lt_literal",
+  "name": "lt_double",
+  "expr": "1.0 \u003c 1.0000001",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lt_literal",
+  "name": "not_lt_double",
+  "expr": "-0.0 \u003c 0.0",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lt_literal",
+  "name": "lt_string",
+  "expr": "'a' \u003c 'b'",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lt_literal",
+  "name": "lt_string_empty_to_nonempty",
+  "expr": "'' \u003c 'a'",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lt_literal",
+  "name": "lt_string_case",
+  "expr": "'Abc' \u003c 'aBC'",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lt_literal",
+  "name": "lt_string_length",
+  "expr": "'abc' \u003c 'abcd'",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lt_literal",
+  "name": "lt_string_diacritical_mark_sensitive",
+  "expr": "'a' \u003c '\\u00E1'",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lt_literal",
+  "name": "not_lt_string_empty",
+  "expr": "'' \u003c ''",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lt_literal",
+  "name": "not_lt_string_same",
+  "expr": "'abc' \u003c 'abc'",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lt_literal",
+  "name": "not_lt_string_case_length",
+  "expr": "'a' \u003c 'AB'",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lt_literal",
+  "name": "unicode_order_lexical",
+  "expr": "'f' \u003c '\\u1EBF'",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lt_literal",
+  "name": "lt_bytes",
+  "expr": "b'a' \u003c b'b'",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lt_literal",
+  "name": "not_lt_bytes_same",
+  "expr": "b'abc' \u003c b'abc'",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lt_literal",
+  "name": "not_lt_bytes_width",
+  "expr": "b'á' \u003c b'b'",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lt_literal",
+  "name": "lt_bool_false_first",
+  "expr": "false \u003c true",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lt_literal",
+  "name": "not_lt_bool_same",
+  "expr": "true \u003c true",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lt_literal",
+  "name": "not_lt_bool_true_first",
+  "expr": "true \u003c false",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lt_literal",
+  "name": "lt_dyn_int_uint",
+  "expr": "dyn(1) \u003c 2u",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lt_literal",
+  "name": "lt_dyn_int_double",
+  "expr": "dyn(1) \u003c 2.0",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lt_literal",
+  "name": "lt_dyn_uint_int",
+  "expr": "dyn(1u) \u003c 2",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lt_literal",
+  "name": "lt_dyn_uint_double",
+  "expr": "dyn(1u) \u003c 2.0",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lt_literal",
+  "name": "lt_dyn_double_int",
+  "expr": "dyn(1.0) \u003c 2",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lt_literal",
+  "name": "lt_dyn_double_uint",
+  "expr": "dyn(1.0) \u003c 2u",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lt_literal",
+  "name": "not_lt_dyn_int_uint",
+  "expr": "dyn(1) \u003c 1u",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lt_literal",
+  "name": "not_lt_dyn_int_double",
+  "expr": "dyn(1) \u003c 1.0",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lt_literal",
+  "name": "not_lt_dyn_uint_int",
+  "expr": "dyn(1u) \u003c 1",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lt_literal",
+  "name": "not_lt_dyn_uint_double",
+  "expr": "dyn(1u) \u003c 1.0",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lt_literal",
+  "name": "not_lt_dyn_double_int",
+  "expr": "dyn(1.0) \u003c 1",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lt_literal",
+  "name": "not_lt_dyn_double_uint",
+  "expr": "dyn(1.0) \u003c 1u",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lt_literal",
+  "name": "lt_dyn_int_big_uint",
+  "expr": "dyn(1) \u003c 9223372036854775808u",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lt_literal",
+  "name": "lt_dyn_small_int_uint",
+  "expr": "dyn(-1) \u003c 0u",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lt_literal",
+  "name": "not_lt_dyn_int_big_lossy_double",
+  "expr": "dyn(9223372036854775807) \u003c 9223372036854775808.0",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lt_literal",
+  "name": "lt_dyn_int_big_lossy_double",
+  "expr": "dyn(9223372036854775807) \u003c 9223372036854777857.0",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lt_literal",
+  "name": "not_lt_dyn_int_small_double",
+  "expr": "dyn(9223372036854775807) \u003c -9223372036854777857.0",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lt_literal",
+  "name": "not_lt_dyn_int_small_lossy_double",
+  "expr": "dyn(-9223372036854775808) \u003c -9223372036854775809.0",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lt_literal",
+  "name": "not_lt_dyn_uint_small_int",
+  "expr": "dyn(1u) \u003c -9223372036854775808",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lt_literal",
+  "name": "not_lt_dyn_big_uint_int",
+  "expr": "dyn(9223372036854775808u) \u003c 1",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lt_literal",
+  "name": "not_lt_dyn_uint_small_double",
+  "expr": "dyn(18446744073709551615u) \u003c -1.0",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lt_literal",
+  "name": "lt_dyn_uint_big_double",
+  "expr": "dyn(18446744073709551615u) \u003c 18446744073709590000.0",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lt_literal",
+  "name": "not_lt_dyn_big_double_uint",
+  "expr": "dyn(18446744073709553665.0) \u003c 18446744073709551615u",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lt_literal",
+  "name": "not_lt_dyn_big_double_int",
+  "expr": "dyn(9223372036854775808.0) \u003c 9223372036854775807",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lt_literal",
+  "name": "not_lt_dyn_small_double_int",
+  "expr": "dyn(-9223372036854775809.0) \u003c -9223372036854775808",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gt_literal",
+  "name": "gt_int",
+  "expr": "42 \u003e -42",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gt_literal",
+  "name": "not_gt_int",
+  "expr": "0 \u003e 0",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gt_literal",
+  "name": "gt_uint",
+  "expr": "48u \u003e 46u",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gt_literal",
+  "name": "not_gt_uint",
+  "expr": "0u \u003e 999u",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gt_literal",
+  "name": "gt_double",
+  "expr": "1e+1 \u003e 1e+0",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gt_literal",
+  "name": "not_gt_double",
+  "expr": ".99 \u003e 9.9e-1",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gt_literal",
+  "name": "gt_string_case",
+  "expr": "'abc' \u003e 'aBc'",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gt_literal",
+  "name": "gt_string_to_empty",
+  "expr": "'A' \u003e ''",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gt_literal",
+  "name": "not_gt_string_empty_to_empty",
+  "expr": "'' \u003e ''",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gt_literal",
+  "name": "gt_string_unicode",
+  "expr": "'α' \u003e 'omega'",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gt_literal",
+  "name": "gt_bytes_one",
+  "expr": "b'\u0001' \u003e b'\u0000'",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gt_literal",
+  "name": "gt_bytes_one_to_empty",
+  "expr": "b'\u0000' \u003e b''",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gt_literal",
+  "name": "not_gt_bytes_sorting",
+  "expr": "b'\u0000\u0001' \u003e b'\u0001'",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gt_literal",
+  "name": "gt_bool_true_false",
+  "expr": "true \u003e false",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gt_literal",
+  "name": "not_gt_bool_false_true",
+  "expr": "false \u003e true",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gt_literal",
+  "name": "not_gt_bool_same",
+  "expr": "true \u003e true",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gt_literal",
+  "name": "gt_dyn_int_uint",
+  "expr": "dyn(2) \u003e 1u",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gt_literal",
+  "name": "gt_dyn_int_double",
+  "expr": "dyn(2) \u003e 1.0",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gt_literal",
+  "name": "gt_dyn_uint_int",
+  "expr": "dyn(2u) \u003e 1",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gt_literal",
+  "name": "gt_dyn_uint_double",
+  "expr": "dyn(2u) \u003e 1.0",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gt_literal",
+  "name": "gt_dyn_double_int",
+  "expr": "dyn(2.0) \u003e 1",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gt_literal",
+  "name": "gt_dyn_double_uint",
+  "expr": "dyn(2.0) \u003e 1u",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gt_literal",
+  "name": "not_gt_dyn_int_uint",
+  "expr": "dyn(1) \u003e 1u",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gt_literal",
+  "name": "not_gt_dyn_int_double",
+  "expr": "dyn(1) \u003e 1.0",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gt_literal",
+  "name": "not_gt_dyn_uint_int",
+  "expr": "dyn(1u) \u003e 1",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gt_literal",
+  "name": "not_gt_dyn_uint_double",
+  "expr": "dyn(1u) \u003e 1.0",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gt_literal",
+  "name": "not_gt_dyn_double_int",
+  "expr": "dyn(1.0) \u003e 1",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gt_literal",
+  "name": "not_gt_dyn_double_uint",
+  "expr": "dyn(1.0) \u003e 1u",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gt_literal",
+  "name": "not_gt_dyn_int_big_uint",
+  "expr": "dyn(1) \u003e 9223372036854775808u",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gt_literal",
+  "name": "not_gt_dyn_small_int_uint",
+  "expr": "dyn(-1) \u003e 0u",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gt_literal",
+  "name": "not_gt_dyn_int_big_double",
+  "expr": "dyn(9223372036854775807) \u003e 9223372036854775808.0",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gt_literal",
+  "name": "not_gt_dyn_int_small_lossy_double",
+  "expr": "dyn(-9223372036854775808) \u003e -9223372036854775809.0",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gt_literal",
+  "name": "gt_dyn_int_small_lossy_double_greater",
+  "expr": "dyn(-9223372036854775808) \u003e -9223372036854777857.0",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gt_literal",
+  "name": "gt_dyn_uint_small_int",
+  "expr": "dyn(1u) \u003e -1",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gt_literal",
+  "name": "gt_dyn_big_uint_int",
+  "expr": "dyn(9223372036854775808u) \u003e 1",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gt_literal",
+  "name": "gt_dyn_uint_small_double",
+  "expr": "dyn(9223372036854775807u) \u003e -1.0",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gt_literal",
+  "name": "not_gt_dyn_uint_big_double",
+  "expr": "dyn(18446744073709551615u) \u003e 18446744073709590000.0",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gt_literal",
+  "name": "gt_dyn_big_double_uint",
+  "expr": "dyn(18446744073709553665.0) \u003e 18446744073709551615u",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gt_literal",
+  "name": "not_gt_dyn_big_double_int",
+  "expr": "dyn(9223372036854775808.0) \u003e 9223372036854775807",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gt_literal",
+  "name": "not_gt_dyn_small_double_int",
+  "expr": "dyn(-9223372036854775809.0) \u003e -9223372036854775808",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lte_literal",
+  "name": "lte_int_lt",
+  "expr": "0 \u003c= 1",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lte_literal",
+  "name": "lte_int_eq",
+  "expr": "1 \u003c= 1",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lte_literal",
+  "name": "not_lte_int_gt",
+  "expr": "1 \u003c= -1",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lte_literal",
+  "name": "lte_uint_lt",
+  "expr": "0u \u003c= 1u",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lte_literal",
+  "name": "lte_uint_eq",
+  "expr": "1u \u003c= 1u",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lte_literal",
+  "name": "not_lte_uint_gt",
+  "expr": "1u \u003c= 0u",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lte_literal",
+  "name": "lte_double_lt",
+  "expr": "0.0 \u003c= 0.1e-31",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lte_literal",
+  "name": "lte_double_eq",
+  "expr": "0.0 \u003c= 0e-1",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lte_literal",
+  "name": "not_lte_double_gt",
+  "expr": "1.0 \u003c= 0.99",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lte_literal",
+  "name": "lte_string_empty",
+  "expr": "'' \u003c= ''",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lte_literal",
+  "name": "lte_string_from_empty",
+  "expr": "'' \u003c= 'a'",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lte_literal",
+  "name": "not_lte_string_to_empty",
+  "expr": "'a' \u003c= ''",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lte_literal",
+  "name": "lte_string_lexicographical",
+  "expr": "'aBc' \u003c= 'abc'",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lte_literal",
+  "name": "lte_string_unicode_eq",
+  "expr": "'α' \u003c= 'α'",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lte_literal",
+  "name": "lte_string_unicode_lt",
+  "expr": "'a' \u003c= 'α'",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lte_literal",
+  "name": "not_lte_string_unicode",
+  "expr": "'α' \u003c= 'a'",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lte_literal",
+  "name": "lte_bytes_empty",
+  "expr": "b'' \u003c= b'\u0000'",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lte_literal",
+  "name": "not_lte_bytes_length",
+  "expr": "b'\u0001\u0000' \u003c= b'\u0001'",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lte_literal",
+  "name": "lte_bool_false_true",
+  "expr": "false \u003c= true",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lte_literal",
+  "name": "lte_bool_false_false",
+  "expr": "false \u003c= false",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lte_literal",
+  "name": "lte_bool_true_false",
+  "expr": "true \u003c= false",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lte_literal",
+  "name": "lte_dyn_int_uint",
+  "expr": "dyn(1) \u003c= 2u",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lte_literal",
+  "name": "lte_dyn_int_double",
+  "expr": "dyn(1) \u003c= 2.0",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lte_literal",
+  "name": "lte_dyn_uint_int",
+  "expr": "dyn(1u) \u003c= 2",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lte_literal",
+  "name": "lte_dyn_uint_double",
+  "expr": "dyn(1u) \u003c= 2.0",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lte_literal",
+  "name": "lte_dyn_double_int",
+  "expr": "dyn(1.0) \u003c= 2",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lte_literal",
+  "name": "lte_dyn_double_uint",
+  "expr": "dyn(1.0) \u003c= 2u",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lte_literal",
+  "name": "not_lte_dyn_int_uint",
+  "expr": "dyn(2) \u003c= 1u",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lte_literal",
+  "name": "not_lte_dyn_int_double",
+  "expr": "dyn(2) \u003c= 1.0",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lte_literal",
+  "name": "not_lte_dyn_uint_int",
+  "expr": "dyn(2u) \u003c= 1",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lte_literal",
+  "name": "not_lte_dyn_uint_double",
+  "expr": "dyn(2u) \u003c= 1.0",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lte_literal",
+  "name": "not_lte_dyn_double_int",
+  "expr": "dyn(2.0) \u003c= 1",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lte_literal",
+  "name": "not_lte_dyn_double_uint",
+  "expr": "dyn(2.0) \u003c= 1u",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lte_literal",
+  "name": "lte_dyn_int_big_uint",
+  "expr": "dyn(1) \u003c= 9223372036854775808u",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lte_literal",
+  "name": "lte_dyn_small_int_uint",
+  "expr": "dyn(-1) \u003c= 0u",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lte_literal",
+  "name": "lte_dyn_int_big_double",
+  "expr": "dyn(9223372036854775807) \u003c= 9223372036854775808.0",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lte_literal",
+  "name": "lte_dyn_int_small_lossy_double",
+  "expr": "dyn(-9223372036854775808) \u003c= -9223372036854775809.0",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lte_literal",
+  "name": "not_lte_dyn_int_small_lossy_double_less",
+  "expr": "dyn(-9223372036854775808) \u003c= -9223372036854777857.0",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lte_literal",
+  "name": "not_lte_dyn_uint_small_int",
+  "expr": "dyn(1u) \u003c= -9223372036854775808",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lte_literal",
+  "name": "not_lte_dyn_big_uint_int",
+  "expr": "dyn(9223372036854775808u) \u003c= 1",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lte_literal",
+  "name": "not_lte_dyn_uint_small_double",
+  "expr": "dyn(18446744073709551615u) \u003c= -1.0",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lte_literal",
+  "name": "lte_dyn_uint_big_double",
+  "expr": "dyn(18446744073709551615u) \u003c= 18446744073709590000.0",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lte_literal",
+  "name": "not_lte_dyn_big_double_uint",
+  "expr": "dyn(18446744073709553665.0) \u003c= 18446744073709551615u",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lte_literal",
+  "name": "lte_dyn_big_double_int",
+  "expr": "dyn(9223372036854775808.0) \u003c= 9223372036854775807",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "lte_literal",
+  "name": "lte_dyn_small_double_int",
+  "expr": "dyn(-9223372036854775809.0) \u003c= -9223372036854775808",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gte_literal",
+  "name": "gte_int_gt",
+  "expr": "0 \u003e= -1",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gte_literal",
+  "name": "gte_int_eq",
+  "expr": "999 \u003e= 999",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gte_literal",
+  "name": "not_gte_int_lt",
+  "expr": "999 \u003e= 1000",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gte_literal",
+  "name": "gte_uint_gt",
+  "expr": "1u \u003e= 0u",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gte_literal",
+  "name": "gte_uint_eq",
+  "expr": "0u \u003e= 0u",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gte_literal",
+  "name": "not_gte_uint_lt",
+  "expr": "1u \u003e= 10u",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gte_literal",
+  "name": "gte_double_gt",
+  "expr": "1e+1 \u003e= 1e+0",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gte_literal",
+  "name": "gte_double_eq",
+  "expr": "9.80665 \u003e= 9.80665e+0",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gte_literal",
+  "name": "not_gte_double_lt",
+  "expr": "0.9999 \u003e= 1.0",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gte_literal",
+  "name": "gte_string_empty",
+  "expr": "'' \u003e= ''",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gte_literal",
+  "name": "gte_string_to_empty",
+  "expr": "'a' \u003e= ''",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gte_literal",
+  "name": "gte_string_empty_to_nonempty",
+  "expr": "'' \u003e= 'a'",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gte_literal",
+  "name": "gte_string_length",
+  "expr": "'abcd' \u003e= 'abc'",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gte_literal",
+  "name": "not_gte_string_lexicographical",
+  "expr": "'abc' \u003e= 'abd'",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gte_literal",
+  "name": "gte_string_unicode_eq",
+  "expr": "'τ' \u003e= 'τ'",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gte_literal",
+  "name": "gte_string_unicode_gt",
+  "expr": "'τ' \u003e= 't'",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gte_literal",
+  "name": "not_get_string_unicode",
+  "expr": "'t' \u003e= 'τ'",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gte_literal",
+  "name": "gte_bytes_to_empty",
+  "expr": "b'\u0000' \u003e= b''",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gte_literal",
+  "name": "not_gte_bytes_empty_to_nonempty",
+  "expr": "b'' \u003e= b'\u0000'",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gte_literal",
+  "name": "gte_bytes_samelength",
+  "expr": "b'\u0000\u0001' \u003e= b'\u0001\u0000'",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gte_literal",
+  "name": "gte_bool_gt",
+  "expr": "true \u003e= false",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gte_literal",
+  "name": "gte_bool_eq",
+  "expr": "true \u003e= true",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gte_literal",
+  "name": "not_gte_bool_lt",
+  "expr": "false \u003e= true",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gte_literal",
+  "name": "gte_dyn_int_uint",
+  "expr": "dyn(2) \u003e= 1u",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gte_literal",
+  "name": "gte_dyn_int_double",
+  "expr": "dyn(2) \u003e= 1.0",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gte_literal",
+  "name": "gte_dyn_uint_int",
+  "expr": "dyn(2u) \u003e= 1",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gte_literal",
+  "name": "gte_dyn_uint_double",
+  "expr": "dyn(2u) \u003e= 1.0",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gte_literal",
+  "name": "gte_dyn_double_int",
+  "expr": "dyn(2.0) \u003e= 1",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gte_literal",
+  "name": "gte_dyn_double_uint",
+  "expr": "dyn(2.0) \u003e= 1u",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gte_literal",
+  "name": "not_gte_dyn_int_uint",
+  "expr": "dyn(0) \u003e= 1u",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gte_literal",
+  "name": "not_gte_dyn_int_double",
+  "expr": "dyn(0) \u003e= 1.0",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gte_literal",
+  "name": "not_gte_dyn_uint_int",
+  "expr": "dyn(0u) \u003e= 1",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gte_literal",
+  "name": "not_gte_dyn_uint_double",
+  "expr": "dyn(0u) \u003e= 1.0",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gte_literal",
+  "name": "not_gte_dyn_double_int",
+  "expr": "dyn(0.0) \u003e= 1",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gte_literal",
+  "name": "not_gte_dyn_double_uint",
+  "expr": "dyn(0.0) \u003e= 1u",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gte_literal",
+  "name": "not_gte_dyn_int_big_uint",
+  "expr": "dyn(1) \u003e= 9223372036854775808u",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gte_literal",
+  "name": "not_gte_dyn_small_int_uint",
+  "expr": "dyn(-1) \u003e= 0u",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gte_literal",
+  "name": "gte_dyn_int_big_lossy_double",
+  "expr": "dyn(9223372036854775807) \u003e= 9223372036854775808.0",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gte_literal",
+  "name": "not_gte_dyn_int_big_double",
+  "expr": "dyn(9223372036854775807) \u003e= 9223372036854777857.0",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gte_literal",
+  "name": "gte_dyn_int_small_lossy_double_equal",
+  "expr": "dyn(-9223372036854775808) \u003e= -9223372036854775809.0",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gte_literal",
+  "name": "gte_dyn_int_small_lossy_double_greater",
+  "expr": "dyn(-9223372036854775808) \u003e= -9223372036854777857.0",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gte_literal",
+  "name": "gte_dyn_uint_small_int",
+  "expr": "dyn(1u) \u003e= -1",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gte_literal",
+  "name": "gte_dyn_big_uint_int",
+  "expr": "dyn(9223372036854775808u) \u003e= 1",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gte_literal",
+  "name": "gte_dyn_uint_small_double",
+  "expr": "dyn(9223372036854775807u) \u003e= -1.0",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gte_literal",
+  "name": "not_gte_dyn_uint_big_double",
+  "expr": "dyn(18446744073709551615u) \u003e= 18446744073709553665.0",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gte_literal",
+  "name": "gte_dyn_big_double_uint",
+  "expr": "dyn(18446744073709553665.0) \u003e= 18446744073709551615u",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gte_literal",
+  "name": "gte_dyn_big_double_int",
+  "expr": "dyn(9223372036854775808.0) \u003e= 9223372036854775807",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "gte_literal",
+  "name": "gte_dyn_small_double_int",
+  "expr": "dyn(-9223372036854775809.0) \u003e= -9223372036854775808",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "in_list_literal",
+  "name": "elem_not_in_empty_list",
+  "expr": "'empty' in []",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "in_list_literal",
+  "name": "elem_in_list",
+  "expr": "'elem' in ['elem', 'elemA', 'elemB']",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "in_list_literal",
+  "name": "elem_not_in_list",
+  "expr": "'not' in ['elem1', 'elem2', 'elem3']",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "in_list_literal",
+  "name": "elem_in_mixed_type_list",
+  "expr": "'elem' in [1, 'elem', 2]",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "in_list_literal",
+  "name": "elem_in_mixed_type_list_cross_type",
+  "expr": "'elem' in [1u, 'str', 2, b'bytes']",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "in_map_literal",
+  "name": "key_not_in_empty_map",
+  "expr": "'empty' in {}",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "in_map_literal",
+  "name": "key_in_map",
+  "expr": "'key' in {'key':'1', 'other':'2'}",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "in_map_literal",
+  "name": "key_not_in_map",
+  "expr": "'key' in {'lock':1, 'gate':2}",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "in_map_literal",
+  "name": "key_in_mixed_key_type_map",
+  "expr": "'key' in {3:3.0, 'key':2u}",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "in_map_literal",
+  "name": "key_in_mixed_key_type_map_cross_type",
+  "expr": "'key' in {1u:'str', 2:b'bytes'}",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "bound",
+  "name": "bytes_gt_left_false",
+  "expr": "x \u003e b'\u0000'",
+  "bindings": {
+   "x": {
+    "t": "bytes",
+    "v": "AA=="
+   }
+  },
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "bound",
+  "name": "int_lte_right_true",
+  "expr": "123 \u003c= x",
+  "bindings": {
+   "x": {
+    "t": "int",
+    "v": "124"
+   }
+  },
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "bound",
+  "name": "bool_lt_right_true",
+  "expr": "false \u003c x",
+  "bindings": {
+   "x": {
+    "t": "bool",
+    "v": true
+   }
+  },
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "bound",
+  "name": "double_ne_left_false",
+  "expr": "x != 9.8",
+  "bindings": {
+   "x": {
+    "t": "double",
+    "v": 9.8
+   }
+  },
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "bound",
+  "name": "map_ne_right_false",
+  "expr": "{'a':'b','c':'d'} != x",
+  "bindings": {
+   "x": {
+    "t": "map",
+    "v": [
+     [
+      {
+       "t": "string",
+       "v": "c"
+      },
+      {
+       "t": "string",
+       "v": "d"
+      }
+     ],
+     [
+      {
+       "t": "string",
+       "v": "a"
+      },
+      {
+       "t": "string",
+       "v": "b"
+      }
+     ]
+    ]
+   }
+  },
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "bound",
+  "name": "null_eq_left_true",
+  "expr": "x == null",
+  "bindings": {
+   "x": {
+    "t": "null",
+    "v": null
+   }
+  },
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "bound",
+  "name": "list_eq_right_false",
+  "expr": "[1, 2] == x",
+  "bindings": {
+   "x": {
+    "t": "list",
+    "v": [
+     {
+      "t": "int",
+      "v": "2"
+     },
+     {
+      "t": "int",
+      "v": "1"
+     }
+    ]
+   }
+  },
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "bound",
+  "name": "string_gte_right_true",
+  "expr": "'abcd' \u003e= x",
+  "bindings": {
+   "x": {
+    "t": "string",
+    "v": "abc"
+   }
+  },
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "comparisons",
+  "section": "bound",
+  "name": "uint_eq_right_false",
+  "expr": "999u == x",
+  "bindings": {
+   "x": {
+    "t": "uint",
+    "v": "1000"
+   }
+  },
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "logic",
+  "section": "conditional",
+  "name": "true_case",
+  "expr": "true ? 1 : 2",
+  "expect": {
+   "t": "int",
+   "v": "1"
+  }
+ },
+ {
+  "file": "logic",
+  "section": "conditional",
+  "name": "false_case",
+  "expr": "false ? 'foo' : 'bar'",
+  "expect": {
+   "t": "string",
+   "v": "bar"
+  }
+ },
+ {
+  "file": "logic",
+  "section": "conditional",
+  "name": "error_case",
+  "expr": "2 / 0 \u003e 4 ? 'baz' : 'quux'",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "logic",
+  "section": "AND",
+  "name": "all_true",
+  "expr": "true \u0026\u0026 true",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "logic",
+  "section": "AND",
+  "name": "all_false",
+  "expr": "false \u0026\u0026 false",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "logic",
+  "section": "AND",
+  "name": "false_left",
+  "expr": "false \u0026\u0026 true",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "logic",
+  "section": "AND",
+  "name": "false_right",
+  "expr": "true \u0026\u0026 false",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "logic",
+  "section": "AND",
+  "name": "short_circuit_error_left",
+  "expr": "false \u0026\u0026 (2 / 0 \u003e 3 ? false : true)",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "logic",
+  "section": "AND",
+  "name": "short_circuit_error_right",
+  "expr": "(2 / 0 \u003e 3 ? false : true) \u0026\u0026 false",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "logic",
+  "section": "AND",
+  "name": "error_right",
+  "expr": "true \u0026\u0026 1/0 != 0",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "logic",
+  "section": "AND",
+  "name": "error_left",
+  "expr": "1/0 != 0 \u0026\u0026 true",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "logic",
+  "section": "OR",
+  "name": "all_true",
+  "expr": "true || true",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "logic",
+  "section": "OR",
+  "name": "all_false",
+  "expr": "false || false",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "logic",
+  "section": "OR",
+  "name": "false_left",
+  "expr": "false || true",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "logic",
+  "section": "OR",
+  "name": "false_right",
+  "expr": "true || false",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "logic",
+  "section": "OR",
+  "name": "short_circuit_error_left",
+  "expr": "true || (2 / 0 \u003e 3 ? false : true)",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "logic",
+  "section": "OR",
+  "name": "short_circuit_error_right",
+  "expr": "(2 / 0 \u003e 3 ? false : true) || true",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "logic",
+  "section": "OR",
+  "name": "error_right",
+  "expr": "false || 1/0 != 0",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "logic",
+  "section": "OR",
+  "name": "error_left",
+  "expr": "1/0 != 0 || false",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "logic",
+  "section": "NOT",
+  "name": "not_true",
+  "expr": "!true",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "logic",
+  "section": "NOT",
+  "name": "not_false",
+  "expr": "!false",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "lists",
+  "section": "concatenation",
+  "name": "list_append",
+  "expr": "[0, 1, 2] + [3, 4, 5] == [0, 1, 2, 3, 4, 5]",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "lists",
+  "section": "concatenation",
+  "name": "list_not_commutative",
+  "expr": "[0, 1, 2] + [3, 4, 5] == [3, 4, 5, 0, 1, 2]",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "lists",
+  "section": "concatenation",
+  "name": "list_repeat",
+  "expr": "[2] + [2]",
+  "expect": {
+   "t": "list",
+   "v": [
+    {
+     "t": "int",
+     "v": "2"
+    },
+    {
+     "t": "int",
+     "v": "2"
+    }
+   ]
+  }
+ },
+ {
+  "file": "lists",
+  "section": "concatenation",
+  "name": "empty_empty",
+  "expr": "[] + []",
+  "expect": {
+   "t": "list",
+   "v": []
+  }
+ },
+ {
+  "file": "lists",
+  "section": "concatenation",
+  "name": "left_unit",
+  "expr": "[] + [3, 4]",
+  "expect": {
+   "t": "list",
+   "v": [
+    {
+     "t": "int",
+     "v": "3"
+    },
+    {
+     "t": "int",
+     "v": "4"
+    }
+   ]
+  }
+ },
+ {
+  "file": "lists",
+  "section": "concatenation",
+  "name": "right_unit",
+  "expr": "[1, 2] + []",
+  "expect": {
+   "t": "list",
+   "v": [
+    {
+     "t": "int",
+     "v": "1"
+    },
+    {
+     "t": "int",
+     "v": "2"
+    }
+   ]
+  }
+ },
+ {
+  "file": "lists",
+  "section": "index",
+  "name": "zero_based",
+  "expr": "[7, 8, 9][0]",
+  "expect": {
+   "t": "int",
+   "v": "7"
+  }
+ },
+ {
+  "file": "lists",
+  "section": "index",
+  "name": "zero_based_double",
+  "expr": "[7, 8, 9][dyn(0.0)]",
+  "expect": {
+   "t": "int",
+   "v": "7"
+  }
+ },
+ {
+  "file": "lists",
+  "section": "index",
+  "name": "zero_based_double_error",
+  "expr": "[7, 8, 9][dyn(0.1)]",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "lists",
+  "section": "index",
+  "name": "zero_based_uint",
+  "expr": "[7, 8, 9][dyn(0u)]",
+  "expect": {
+   "t": "int",
+   "v": "7"
+  }
+ },
+ {
+  "file": "lists",
+  "section": "index",
+  "name": "singleton",
+  "expr": "['foo'][0]",
+  "expect": {
+   "t": "string",
+   "v": "foo"
+  }
+ },
+ {
+  "file": "lists",
+  "section": "index",
+  "name": "middle",
+  "expr": "[0, 1, 1, 2, 3, 5, 8, 13][4]",
+  "expect": {
+   "t": "int",
+   "v": "3"
+  }
+ },
+ {
+  "file": "lists",
+  "section": "index",
+  "name": "last",
+  "expr": "['George', 'John', 'Paul', 'Ringo'][3]",
+  "expect": {
+   "t": "string",
+   "v": "Ringo"
+  }
+ },
+ {
+  "file": "lists",
+  "section": "index",
+  "name": "index_out_of_bounds",
+  "expr": "[1, 2, 3][3]",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "lists",
+  "section": "index",
+  "name": "index_out_of_bounds_or_false",
+  "expr": "dyn([1, 2, 3][3]) || false",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "lists",
+  "section": "index",
+  "name": "index_out_of_bounds_or_true",
+  "expr": "dyn([1, 2, 3][3]) || true",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "lists",
+  "section": "index",
+  "name": "index_out_of_bounds_and_false",
+  "expr": "dyn([1, 2, 3][3]) \u0026\u0026 false",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "lists",
+  "section": "index",
+  "name": "index_out_of_bounds_and_true",
+  "expr": "dyn([1, 2, 3][3]) \u0026\u0026 true",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "lists",
+  "section": "index",
+  "name": "bad_index_type",
+  "expr": "[1, 2, 3][dyn('')]",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "lists",
+  "section": "index",
+  "name": "bad_index_type_or_false",
+  "expr": "dyn([1, 2, 3][dyn('')]) || false",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "lists",
+  "section": "index",
+  "name": "bad_index_type_or_true",
+  "expr": "dyn([1, 2, 3][dyn('')]) || true",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "lists",
+  "section": "index",
+  "name": "bad_index_type_and_false",
+  "expr": "dyn([1, 2, 3][dyn('')]) \u0026\u0026 false",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "lists",
+  "section": "index",
+  "name": "bad_index_type_and_true",
+  "expr": "dyn([1, 2, 3][dyn('')]) \u0026\u0026 true",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "lists",
+  "section": "in",
+  "name": "empty",
+  "expr": "7 in []",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "lists",
+  "section": "in",
+  "name": "singleton",
+  "expr": "4u in [4u]",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "lists",
+  "section": "in",
+  "name": "first",
+  "expr": "'alpha' in ['alpha', 'beta', 'gamma']",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "lists",
+  "section": "in",
+  "name": "middle",
+  "expr": "3 in [5, 4, 3, 2, 1]",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "lists",
+  "section": "in",
+  "name": "last",
+  "expr": "20u in [4u, 6u, 8u, 12u, 20u]",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "lists",
+  "section": "in",
+  "name": "double_in_ints",
+  "expr": "dyn(3.0) in [5, 4, 3, 2, 1]",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "lists",
+  "section": "in",
+  "name": "uint_in_ints",
+  "expr": "dyn(3u) in [5, 4, 3, 2, 1]",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "lists",
+  "section": "in",
+  "name": "int_in_doubles",
+  "expr": "dyn(3) in [5.0, 4.0, 3.0, 2.0, 1.0]",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "lists",
+  "section": "in",
+  "name": "uint_in_doubles",
+  "expr": "dyn(3u) in [5.0, 4.0, 3.0, 2.0, 1.0]",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "lists",
+  "section": "in",
+  "name": "int_in_uints",
+  "expr": "dyn(3) in [5u, 4u, 3u, 2u, 1u]",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "lists",
+  "section": "in",
+  "name": "double_in_uints",
+  "expr": "dyn(3.0) in [5u, 4u, 3u, 2u, 1u]",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "lists",
+  "section": "in",
+  "name": "missing",
+  "expr": "'hawaiian' in ['meat', 'veggie', 'margarita', 'cheese']",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "lists",
+  "section": "size",
+  "name": "list_empty",
+  "expr": "size([])",
+  "expect": {
+   "t": "int",
+   "v": "0"
+  }
+ },
+ {
+  "file": "lists",
+  "section": "size",
+  "name": "list",
+  "expr": "size([1, 2, 3])",
+  "expect": {
+   "t": "int",
+   "v": "3"
+  }
+ },
+ {
+  "file": "lists",
+  "section": "size",
+  "name": "map_empty",
+  "expr": "size({})",
+  "expect": {
+   "t": "int",
+   "v": "0"
+  }
+ },
+ {
+  "file": "lists",
+  "section": "size",
+  "name": "map",
+  "expr": "size({1: 'one', 2: 'two', 3: 'three'})",
+  "expect": {
+   "t": "int",
+   "v": "3"
+  }
+ },
+ {
+  "file": "fields",
+  "section": "map_fields",
+  "name": "map_key_int64",
+  "expr": "{0:1,2:2,5:true}[5]",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "fields",
+  "section": "map_fields",
+  "name": "map_key_uint64",
+  "expr": "{0u:1u,2u:'happy',5u:3u}[2u]",
+  "expect": {
+   "t": "string",
+   "v": "happy"
+  }
+ },
+ {
+  "file": "fields",
+  "section": "map_fields",
+  "name": "map_key_string",
+  "expr": "{'name':100u}['name']",
+  "expect": {
+   "t": "uint",
+   "v": "100"
+  }
+ },
+ {
+  "file": "fields",
+  "section": "map_fields",
+  "name": "map_key_bool",
+  "expr": "{true:5}[true]",
+  "expect": {
+   "t": "int",
+   "v": "5"
+  }
+ },
+ {
+  "file": "fields",
+  "section": "map_fields",
+  "name": "map_key_mixed_type",
+  "expr": "{true:1,2:2,5u:3}[true]",
+  "expect": {
+   "t": "int",
+   "v": "1"
+  }
+ },
+ {
+  "file": "fields",
+  "section": "map_fields",
+  "name": "map_key_mixed_numbers_double_key",
+  "expr": "{1u: 1.0, 2: 2.0, 3u: 3.0}[3.0]",
+  "expect": {
+   "t": "double",
+   "v": 3
+  }
+ },
+ {
+  "file": "fields",
+  "section": "map_fields",
+  "name": "map_key_mixed_numbers_lossy_double_key",
+  "expr": "{1u: 1.0, 2: 2.0, 3u: 3.0}[3.1]",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "fields",
+  "section": "map_fields",
+  "name": "map_key_mixed_numbers_uint_key",
+  "expr": "{1u: 1.0, 2: 2.0, 3u: 3.0}[2u]",
+  "expect": {
+   "t": "double",
+   "v": 2
+  }
+ },
+ {
+  "file": "fields",
+  "section": "map_fields",
+  "name": "map_key_mixed_numbers_int_key",
+  "expr": "{1u: 1.0, 2: 2.0, 3u: 3.0}[1]",
+  "expect": {
+   "t": "double",
+   "v": 1
+  }
+ },
+ {
+  "file": "fields",
+  "section": "map_fields",
+  "name": "map_field_access",
+  "expr": "x.name",
+  "bindings": {
+   "x": {
+    "t": "map",
+    "v": [
+     [
+      {
+       "t": "string",
+       "v": "name"
+      },
+      {
+       "t": "int",
+       "v": "1024"
+      }
+     ]
+    ]
+   }
+  },
+  "expect": {
+   "t": "int",
+   "v": "1024"
+  }
+ },
+ {
+  "file": "fields",
+  "section": "map_fields",
+  "name": "map_no_such_key",
+  "expr": "{0:1,2:2,5:3}[1]",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "fields",
+  "section": "map_fields",
+  "name": "map_no_such_key_or_false",
+  "expr": "dyn({0:1,2:2,5:3}[1]) || false",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "fields",
+  "section": "map_fields",
+  "name": "map_no_such_key_or_true",
+  "expr": "dyn({0:1,2:2,5:3}[1]) || true",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "fields",
+  "section": "map_fields",
+  "name": "map_no_such_key_and_false",
+  "expr": "dyn({0:1,2:2,5:3}[1]) \u0026\u0026 false",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "fields",
+  "section": "map_fields",
+  "name": "map_no_such_key_and_true",
+  "expr": "dyn({0:1,2:2,5:3}[1]) \u0026\u0026 true",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "fields",
+  "section": "map_fields",
+  "name": "map_bad_key_type",
+  "expr": "{0:1,2:2,5:3}[dyn(b'')]",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "fields",
+  "section": "map_fields",
+  "name": "map_bad_key_type_or_false",
+  "expr": "dyn({0:1,2:2,5:3}[dyn(b'')]) || false",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "fields",
+  "section": "map_fields",
+  "name": "map_bad_key_type_or_true",
+  "expr": "dyn({0:1,2:2,5:3}[dyn(b'')]) || true",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "fields",
+  "section": "map_fields",
+  "name": "map_bad_key_type_and_false",
+  "expr": "dyn({0:1,2:2,5:3}[dyn(b'')]) \u0026\u0026 false",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "fields",
+  "section": "map_fields",
+  "name": "map_bad_key_type_and_true",
+  "expr": "dyn({0:1,2:2,5:3}[dyn(b'')]) \u0026\u0026 true",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "fields",
+  "section": "map_fields",
+  "name": "map_field_select_no_such_key",
+  "expr": "x.name",
+  "bindings": {
+   "x": {
+    "t": "map",
+    "v": [
+     [
+      {
+       "t": "string",
+       "v": "holiday"
+      },
+      {
+       "t": "string",
+       "v": "field"
+      }
+     ]
+    ]
+   }
+  },
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "fields",
+  "section": "map_fields",
+  "name": "map_field_select_no_such_key_or_false",
+  "expr": "dyn(x.name) || false",
+  "bindings": {
+   "x": {
+    "t": "map",
+    "v": [
+     [
+      {
+       "t": "string",
+       "v": "holiday"
+      },
+      {
+       "t": "string",
+       "v": "field"
+      }
+     ]
+    ]
+   }
+  },
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "fields",
+  "section": "map_fields",
+  "name": "map_field_select_no_such_key_or_true",
+  "expr": "dyn(x.name) || true",
+  "bindings": {
+   "x": {
+    "t": "map",
+    "v": [
+     [
+      {
+       "t": "string",
+       "v": "holiday"
+      },
+      {
+       "t": "string",
+       "v": "field"
+      }
+     ]
+    ]
+   }
+  },
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "fields",
+  "section": "map_fields",
+  "name": "map_field_select_no_such_key_and_false",
+  "expr": "dyn(x.name) \u0026\u0026 false",
+  "bindings": {
+   "x": {
+    "t": "map",
+    "v": [
+     [
+      {
+       "t": "string",
+       "v": "holiday"
+      },
+      {
+       "t": "string",
+       "v": "field"
+      }
+     ]
+    ]
+   }
+  },
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "fields",
+  "section": "map_fields",
+  "name": "map_field_select_no_such_key_and_true",
+  "expr": "dyn(x.name) \u0026\u0026 true",
+  "bindings": {
+   "x": {
+    "t": "map",
+    "v": [
+     [
+      {
+       "t": "string",
+       "v": "holiday"
+      },
+      {
+       "t": "string",
+       "v": "field"
+      }
+     ]
+    ]
+   }
+  },
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "fields",
+  "section": "map_fields",
+  "name": "map_value_null",
+  "expr": "{true:null}[true]",
+  "expect": {
+   "t": "null",
+   "v": null
+  }
+ },
+ {
+  "file": "fields",
+  "section": "map_fields",
+  "name": "map_value_bool",
+  "expr": "{27:false}[27]",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "fields",
+  "section": "map_fields",
+  "name": "map_value_string",
+  "expr": "{'n':'x'}['n']",
+  "expect": {
+   "t": "string",
+   "v": "x"
+  }
+ },
+ {
+  "file": "fields",
+  "section": "map_fields",
+  "name": "map_value_float",
+  "expr": "{3:15.15}[3]",
+  "expect": {
+   "t": "double",
+   "v": 15.15
+  }
+ },
+ {
+  "file": "fields",
+  "section": "map_fields",
+  "name": "map_value_uint64",
+  "expr": "{0u:1u,2u:2u,5u:3u}[0u]",
+  "expect": {
+   "t": "uint",
+   "v": "1"
+  }
+ },
+ {
+  "file": "fields",
+  "section": "map_fields",
+  "name": "map_value_int64",
+  "expr": "{true:1,false:2}[true]",
+  "expect": {
+   "t": "int",
+   "v": "1"
+  }
+ },
+ {
+  "file": "fields",
+  "section": "map_fields",
+  "name": "map_value_bytes",
+  "expr": "{0:b''}[0]",
+  "expect": {
+   "t": "bytes",
+   "v": ""
+  }
+ },
+ {
+  "file": "fields",
+  "section": "map_fields",
+  "name": "map_value_list",
+  "expr": "{0u:[1]}[0u]",
+  "expect": {
+   "t": "list",
+   "v": [
+    {
+     "t": "int",
+     "v": "1"
+    }
+   ]
+  }
+ },
+ {
+  "file": "fields",
+  "section": "map_fields",
+  "name": "map_value_map",
+  "expr": "{'map': {'k': 'v'}}['map']",
+  "expect": {
+   "t": "map",
+   "v": [
+    [
+     {
+      "t": "string",
+      "v": "k"
+     },
+     {
+      "t": "string",
+      "v": "v"
+     }
+    ]
+   ]
+  }
+ },
+ {
+  "file": "fields",
+  "section": "map_fields",
+  "name": "map_value_mix_type",
+  "expr": "{'map': {'k': 'v'}, 'list': [1]}['map']",
+  "expect": {
+   "t": "map",
+   "v": [
+    [
+     {
+      "t": "string",
+      "v": "k"
+     },
+     {
+      "t": "string",
+      "v": "v"
+     }
+    ]
+   ]
+  }
+ },
+ {
+  "file": "fields",
+  "section": "map_has",
+  "name": "has",
+  "expr": "has({'a': 1, 'b': 2}.a)",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "fields",
+  "section": "map_has",
+  "name": "has_not",
+  "expr": "has({'a': 1, 'b': 2}.c)",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "fields",
+  "section": "map_has",
+  "name": "has_empty",
+  "expr": "has({}.a)",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "fields",
+  "section": "quoted_map_fields",
+  "name": "field_access_slash",
+  "expr": "{'/api/v1': true, '/api/v2': false}.`/api/v1`",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "fields",
+  "section": "quoted_map_fields",
+  "name": "field_access_dash",
+  "expr": "{'content-type': 'application/json', 'content-length': 145}.`content-type` == 'application/json'",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "fields",
+  "section": "quoted_map_fields",
+  "name": "field_access_dot",
+  "expr": "{'foo.txt': 32, 'bar.csv': 1024}.`foo.txt`",
+  "expect": {
+   "t": "int",
+   "v": "32"
+  }
+ },
+ {
+  "file": "fields",
+  "section": "quoted_map_fields",
+  "name": "has_field_slash",
+  "expr": "has({'/api/v1': true, '/api/v2': false}.`/api/v3`)",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "fields",
+  "section": "quoted_map_fields",
+  "name": "has_field_dash",
+  "expr": "has({'content-type': 'application/json', 'content-length': 145}.`content-type`)",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "fields",
+  "section": "quoted_map_fields",
+  "name": "has_field_dot",
+  "expr": "has({'foo.txt': 32, 'bar.csv': 1024}.`foo.txt`)",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "fields",
+  "section": "qualified_identifier_resolution",
+  "name": "qualified_ident",
+  "expr": "a.b.c",
+  "bindings": {
+   "a.b.c": {
+    "t": "string",
+    "v": "yeah"
+   }
+  },
+  "expect": {
+   "t": "string",
+   "v": "yeah"
+  }
+ },
+ {
+  "file": "fields",
+  "section": "qualified_identifier_resolution",
+  "name": "map_field_select",
+  "expr": "a.b.c",
+  "bindings": {
+   "a.b": {
+    "t": "map",
+    "v": [
+     [
+      {
+       "t": "string",
+       "v": "c"
+      },
+      {
+       "t": "string",
+       "v": "yeah"
+      }
+     ]
+    ]
+   }
+  },
+  "expect": {
+   "t": "string",
+   "v": "yeah"
+  }
+ },
+ {
+  "file": "fields",
+  "section": "qualified_identifier_resolution",
+  "name": "ident_with_longest_prefix_check",
+  "expr": "a.b.c",
+  "bindings": {
+   "a.b": {
+    "t": "map",
+    "v": [
+     [
+      {
+       "t": "string",
+       "v": "c"
+      },
+      {
+       "t": "string",
+       "v": "oops"
+      }
+     ]
+    ]
+   },
+   "a.b.c": {
+    "t": "string",
+    "v": "yeah"
+   }
+  },
+  "expect": {
+   "t": "string",
+   "v": "yeah"
+  }
+ },
+ {
+  "file": "fields",
+  "section": "qualified_identifier_resolution",
+  "name": "map_value_repeat_key",
+  "expr": "{true:1,false:2,true:3}[true]",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "fields",
+  "section": "qualified_identifier_resolution",
+  "name": "map_value_repeat_key_heterogeneous",
+  "expr": "{0: 1, 0u: 2}[0.0]",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "fields",
+  "section": "in",
+  "name": "empty",
+  "expr": "7 in {}",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "fields",
+  "section": "in",
+  "name": "singleton",
+  "expr": "true in {true: 1}",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "fields",
+  "section": "in",
+  "name": "present",
+  "expr": "'George' in {'John': 'smart', 'Paul': 'cute', 'George': 'quiet', 'Ringo': 'funny'}",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "fields",
+  "section": "in",
+  "name": "absent",
+  "expr": "'spider' in {'ant': 6, 'fly': 6, 'centipede': 100}",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "fields",
+  "section": "in",
+  "name": "mixed_numbers_and_keys_present",
+  "expr": "3.0 in {1: 1, 2: 2, 3u: 3} \u0026\u0026 2u in {1u: 1, 2: 2} \u0026\u0026 1 in {1u: 1, 2: 2}",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "fields",
+  "section": "in",
+  "name": "mixed_numbers_and_keys_absent",
+  "expr": "3.1 in {1: 1, 2: 2, 3u: 3}",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "macros",
+  "section": "exists",
+  "name": "list_elem_all_true",
+  "expr": "[1, 2, 3].exists(e, e \u003e 0)",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "macros",
+  "section": "exists",
+  "name": "list_elem_some_true",
+  "expr": "[1, 2, 3].exists(e, e == 2)",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "macros",
+  "section": "exists",
+  "name": "list_elem_none_true",
+  "expr": "[1, 2, 3].exists(e, e \u003e 3)",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "macros",
+  "section": "exists",
+  "name": "list_elem_type_shortcircuit",
+  "expr": "[1, 'foo', 3].exists(e, e != '1')",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "macros",
+  "section": "exists",
+  "name": "list_elem_type_exhaustive",
+  "expr": "[1, 'foo', 3].exists(e, e == '10')",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "macros",
+  "section": "exists",
+  "name": "list_elem_exists_error",
+  "expr": "[1, 2, 3].exists(e, e / 0 == 17)",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "macros",
+  "section": "exists",
+  "name": "list_empty",
+  "expr": "[].exists(e, e == 2)",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "macros",
+  "section": "exists",
+  "name": "map_key",
+  "expr": "{'key1':1, 'key2':2}.exists(k, k == 'key2')",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "macros",
+  "section": "exists",
+  "name": "not_map_key",
+  "expr": "!{'key1':1, 'key2':2}.exists(k, k == 'key3')",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "macros",
+  "section": "exists",
+  "name": "map_key_type_shortcircuit",
+  "expr": "{'key':1, 1:21}.exists(k, k != 2)",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "macros",
+  "section": "exists",
+  "name": "map_key_type_exhaustive",
+  "expr": "!{'key':1, 1:42}.exists(k, k == 2)",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "macros",
+  "section": "all",
+  "name": "list_elem_all_true",
+  "expr": "[1, 2, 3].all(e, e \u003e 0)",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "macros",
+  "section": "all",
+  "name": "list_elem_some_true",
+  "expr": "[1, 2, 3].all(e, e == 2)",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "macros",
+  "section": "all",
+  "name": "list_elem_none_true",
+  "expr": "[1, 2, 3].all(e, e == 17)",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "macros",
+  "section": "all",
+  "name": "list_elem_type_shortcircuit",
+  "expr": "[1, 'foo', 3].all(e, e == 1)",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "macros",
+  "section": "all",
+  "name": "list_elem_type_exhaustive",
+  "expr": "[1, 'foo', 3].all(e, e % 2 == 1)",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "macros",
+  "section": "all",
+  "name": "list_elem_error_shortcircuit",
+  "expr": "[1, 2, 3].all(e, 6 / (2 - e) == 6)",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "macros",
+  "section": "all",
+  "name": "list_elem_error_exhaustive",
+  "expr": "[1, 2, 3].all(e, e / 0 != 17)",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "macros",
+  "section": "all",
+  "name": "list_empty",
+  "expr": "[].all(e, e \u003e 0)",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "macros",
+  "section": "all",
+  "name": "map_key",
+  "expr": "{'key1':1, 'key2':2}.all(k, k == 'key2')",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "macros",
+  "section": "exists_one",
+  "name": "list_empty",
+  "expr": "[].exists_one(a, a == 7)",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "macros",
+  "section": "exists_one",
+  "name": "list_one_true",
+  "expr": "[7].exists_one(a, a == 7)",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "macros",
+  "section": "exists_one",
+  "name": "list_one_false",
+  "expr": "[8].exists_one(a, a == 7)",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "macros",
+  "section": "exists_one",
+  "name": "list_none",
+  "expr": "[1, 2, 3].exists_one(x, x \u003e 20)",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "macros",
+  "section": "exists_one",
+  "name": "list_one",
+  "expr": "[6, 7, 8].exists_one(foo, foo % 5 == 2)",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "macros",
+  "section": "exists_one",
+  "name": "list_many",
+  "expr": "[0, 1, 2, 3, 4].exists_one(n, n % 2 == 1)",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "macros",
+  "section": "exists_one",
+  "name": "list_all",
+  "expr": "['foal', 'foo', 'four'].exists_one(n, n.startsWith('fo'))",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "macros",
+  "section": "exists_one",
+  "name": "list_no_shortcircuit",
+  "expr": "[3, 2, 1, 0].exists_one(n, 12 / n \u003e 1)",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "macros",
+  "section": "exists_one",
+  "name": "map_one",
+  "expr": "{6: 'six', 7: 'seven', 8: 'eight'}.exists_one(foo, foo % 5 == 2)",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "macros",
+  "section": "map",
+  "name": "list_empty",
+  "expr": "[].map(n, n / 2)",
+  "expect": {
+   "t": "list",
+   "v": []
+  }
+ },
+ {
+  "file": "macros",
+  "section": "map",
+  "name": "list_one",
+  "expr": "[3].map(n, n * n)",
+  "expect": {
+   "t": "list",
+   "v": [
+    {
+     "t": "int",
+     "v": "9"
+    }
+   ]
+  }
+ },
+ {
+  "file": "macros",
+  "section": "map",
+  "name": "list_many",
+  "expr": "[2, 4, 6].map(n, n / 2)",
+  "expect": {
+   "t": "list",
+   "v": [
+    {
+     "t": "int",
+     "v": "1"
+    },
+    {
+     "t": "int",
+     "v": "2"
+    },
+    {
+     "t": "int",
+     "v": "3"
+    }
+   ]
+  }
+ },
+ {
+  "file": "macros",
+  "section": "map",
+  "name": "list_error",
+  "expr": "[2, 1, 0].map(n, 4 / n)",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "macros",
+  "section": "map",
+  "name": "map_extract_keys",
+  "expr": "{'John': 'smart'}.map(key, key) == ['John']",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "macros",
+  "section": "filter",
+  "name": "list_empty",
+  "expr": "[].filter(n, n % 2 == 0)",
+  "expect": {
+   "t": "list",
+   "v": []
+  }
+ },
+ {
+  "file": "macros",
+  "section": "filter",
+  "name": "list_one_true",
+  "expr": "[2].filter(n, n == 2)",
+  "expect": {
+   "t": "list",
+   "v": [
+    {
+     "t": "int",
+     "v": "2"
+    }
+   ]
+  }
+ },
+ {
+  "file": "macros",
+  "section": "filter",
+  "name": "list_one_false",
+  "expr": "[1].filter(n, n \u003e 3)",
+  "expect": {
+   "t": "list",
+   "v": []
+  }
+ },
+ {
+  "file": "macros",
+  "section": "filter",
+  "name": "list_none",
+  "expr": "[1, 2, 3].filter(e, e \u003e 3)",
+  "expect": {
+   "t": "list",
+   "v": []
+  }
+ },
+ {
+  "file": "macros",
+  "section": "filter",
+  "name": "list_some",
+  "expr": "[0, 1, 2, 3, 4].filter(x, x % 2 == 1)",
+  "expect": {
+   "t": "list",
+   "v": [
+    {
+     "t": "int",
+     "v": "1"
+    },
+    {
+     "t": "int",
+     "v": "3"
+    }
+   ]
+  }
+ },
+ {
+  "file": "macros",
+  "section": "filter",
+  "name": "list_all",
+  "expr": "[1, 2, 3].filter(n, n \u003e 0)",
+  "expect": {
+   "t": "list",
+   "v": [
+    {
+     "t": "int",
+     "v": "1"
+    },
+    {
+     "t": "int",
+     "v": "2"
+    },
+    {
+     "t": "int",
+     "v": "3"
+    }
+   ]
+  }
+ },
+ {
+  "file": "macros",
+  "section": "filter",
+  "name": "list_no_shortcircuit",
+  "expr": "[3, 2, 1, 0].filter(n, 12 / n \u003e 4)",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "macros",
+  "section": "filter",
+  "name": "map_filter_keys",
+  "expr": "{'John': 'smart', 'Paul': 'cute', 'George': 'quiet', 'Ringo': 'funny'}.filter(key, key == 'Ringo') == ['Ringo']",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "macros",
+  "section": "nested",
+  "name": "filter_all",
+  "expr": "['signer'].filter(signer, ['artifact'].all(artifact, true))",
+  "expect": {
+   "t": "list",
+   "v": [
+    {
+     "t": "string",
+     "v": "signer"
+    }
+   ]
+  }
+ },
+ {
+  "file": "macros",
+  "section": "nested",
+  "name": "all_all",
+  "expr": "['signer'].all(signer, ['artifact'].all(artifact, true))",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string",
+  "section": "size",
+  "name": "empty",
+  "expr": "size('')",
+  "expect": {
+   "t": "int",
+   "v": "0"
+  }
+ },
+ {
+  "file": "string",
+  "section": "size",
+  "name": "one_ascii",
+  "expr": "size('A')",
+  "expect": {
+   "t": "int",
+   "v": "1"
+  }
+ },
+ {
+  "file": "string",
+  "section": "size",
+  "name": "one_unicode",
+  "expr": "size('ÿ')",
+  "expect": {
+   "t": "int",
+   "v": "1"
+  }
+ },
+ {
+  "file": "string",
+  "section": "size",
+  "name": "ascii",
+  "expr": "size('four')",
+  "expect": {
+   "t": "int",
+   "v": "4"
+  }
+ },
+ {
+  "file": "string",
+  "section": "size",
+  "name": "unicode",
+  "expr": "size('πέντε')",
+  "expect": {
+   "t": "int",
+   "v": "5"
+  }
+ },
+ {
+  "file": "string",
+  "section": "size",
+  "name": "bytes_empty",
+  "expr": "size(b'')",
+  "expect": {
+   "t": "int",
+   "v": "0"
+  }
+ },
+ {
+  "file": "string",
+  "section": "size",
+  "name": "bytes",
+  "expr": "size(b'abc')",
+  "expect": {
+   "t": "int",
+   "v": "3"
+  }
+ },
+ {
+  "file": "string",
+  "section": "starts_with",
+  "name": "basic_true",
+  "expr": "'foobar'.startsWith('foo')",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string",
+  "section": "starts_with",
+  "name": "basic_false",
+  "expr": "'foobar'.startsWith('bar')",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "string",
+  "section": "starts_with",
+  "name": "empty_target",
+  "expr": "''.startsWith('foo')",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "string",
+  "section": "starts_with",
+  "name": "empty_arg",
+  "expr": "'foobar'.startsWith('')",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string",
+  "section": "starts_with",
+  "name": "empty_empty",
+  "expr": "''.startsWith('')",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string",
+  "section": "starts_with",
+  "name": "unicode",
+  "expr": "'завтра'.startsWith('за')",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string",
+  "section": "starts_with",
+  "name": "unicode_smp",
+  "expr": "'🐱😀😛'.startsWith('🐱')",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string",
+  "section": "ends_with",
+  "name": "basic_true",
+  "expr": "'foobar'.endsWith('bar')",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string",
+  "section": "ends_with",
+  "name": "basic_false",
+  "expr": "'foobar'.endsWith('foo')",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "string",
+  "section": "ends_with",
+  "name": "empty_target",
+  "expr": "''.endsWith('foo')",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "string",
+  "section": "ends_with",
+  "name": "empty_arg",
+  "expr": "'foobar'.endsWith('')",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string",
+  "section": "ends_with",
+  "name": "empty_empty",
+  "expr": "''.endsWith('')",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string",
+  "section": "ends_with",
+  "name": "unicode",
+  "expr": "'forté'.endsWith('té')",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string",
+  "section": "ends_with",
+  "name": "unicode_smp",
+  "expr": "'🐱😀😛'.endsWith('😛')",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string",
+  "section": "matches",
+  "name": "basic",
+  "expr": "'hubba'.matches('ubb')",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string",
+  "section": "matches",
+  "name": "empty_target",
+  "expr": "''.matches('foo|bar')",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "string",
+  "section": "matches",
+  "name": "empty_arg",
+  "expr": "'cows'.matches('')",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string",
+  "section": "matches",
+  "name": "empty_empty",
+  "expr": "''.matches('')",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string",
+  "section": "matches",
+  "name": "re_concat",
+  "expr": "'abcd'.matches('bc')",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string",
+  "section": "matches",
+  "name": "re_alt",
+  "expr": "'grey'.matches('gr(a|e)y')",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string",
+  "section": "matches",
+  "name": "re_rep",
+  "expr": "'banana'.matches('ba(na)*')",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string",
+  "section": "matches",
+  "name": "unicode",
+  "expr": "'mañana'.matches('a+ñ+a+')",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string",
+  "section": "matches",
+  "name": "unicode_smp",
+  "expr": "'🐱😀😀'.matches('(a|😀){2}')",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string",
+  "section": "concatenation",
+  "name": "concat_true",
+  "expr": "'he' + 'llo'",
+  "expect": {
+   "t": "string",
+   "v": "hello"
+  }
+ },
+ {
+  "file": "string",
+  "section": "concatenation",
+  "name": "concat_with_spaces",
+  "expr": "'hello' + ' ' == 'hello'",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "string",
+  "section": "concatenation",
+  "name": "concat_empty_string_beginning",
+  "expr": "'' + 'abc'",
+  "expect": {
+   "t": "string",
+   "v": "abc"
+  }
+ },
+ {
+  "file": "string",
+  "section": "concatenation",
+  "name": "concat_empty_string_end",
+  "expr": "'abc' + ''",
+  "expect": {
+   "t": "string",
+   "v": "abc"
+  }
+ },
+ {
+  "file": "string",
+  "section": "concatenation",
+  "name": "concat_empty_with_empty",
+  "expr": "'' + ''",
+  "expect": {
+   "t": "string",
+   "v": ""
+  }
+ },
+ {
+  "file": "string",
+  "section": "concatenation",
+  "name": "unicode_unicode",
+  "expr": "'¢' + 'ÿ' + 'Ȁ'",
+  "expect": {
+   "t": "string",
+   "v": "¢ÿȀ"
+  }
+ },
+ {
+  "file": "string",
+  "section": "concatenation",
+  "name": "ascii_unicode",
+  "expr": "'r' + 'ô' + 'le'",
+  "expect": {
+   "t": "string",
+   "v": "rôle"
+  }
+ },
+ {
+  "file": "string",
+  "section": "concatenation",
+  "name": "ascii_unicode_unicode_smp",
+  "expr": "'a' + 'ÿ' + '🐱'",
+  "expect": {
+   "t": "string",
+   "v": "aÿ🐱"
+  }
+ },
+ {
+  "file": "string",
+  "section": "concatenation",
+  "name": "empty_unicode",
+  "expr": "'' + 'Ω' + ''",
+  "expect": {
+   "t": "string",
+   "v": "Ω"
+  }
+ },
+ {
+  "file": "string",
+  "section": "contains",
+  "name": "contains_true",
+  "expr": "'hello'.contains('he')",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string",
+  "section": "contains",
+  "name": "contains_empty",
+  "expr": "'hello'.contains('')",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string",
+  "section": "contains",
+  "name": "contains_false",
+  "expr": "'hello'.contains('ol')",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "string",
+  "section": "contains",
+  "name": "contains_multiple",
+  "expr": "'abababc'.contains('ababc')",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string",
+  "section": "contains",
+  "name": "contains_unicode",
+  "expr": "'Straße'.contains('aß')",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string",
+  "section": "contains",
+  "name": "contains_unicode_smp",
+  "expr": "'🐱😀😁'.contains('😀')",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string",
+  "section": "contains",
+  "name": "empty_contains",
+  "expr": "''.contains('something')",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "string",
+  "section": "contains",
+  "name": "empty_empty",
+  "expr": "''.contains('')",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string",
+  "section": "bytes_concat",
+  "name": "concat",
+  "expr": "b'abc' + b'def'",
+  "expect": {
+   "t": "bytes",
+   "v": "YWJjZGVm"
+  }
+ },
+ {
+  "file": "string",
+  "section": "bytes_concat",
+  "name": "left_unit",
+  "expr": "b'' + b'\\xffoo'",
+  "expect": {
+   "t": "bytes",
+   "v": "/29v"
+  }
+ },
+ {
+  "file": "string",
+  "section": "bytes_concat",
+  "name": "right_unit",
+  "expr": "b'zxy' + b''",
+  "expect": {
+   "t": "bytes",
+   "v": "enh5"
+  }
+ },
+ {
+  "file": "string",
+  "section": "bytes_concat",
+  "name": "empty_empty",
+  "expr": "b'' + b''",
+  "expect": {
+   "t": "bytes",
+   "v": ""
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "char_at",
+  "name": "middle_index",
+  "expr": "'tacocat'.charAt(3)",
+  "expect": {
+   "t": "string",
+   "v": "o"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "char_at",
+  "name": "end_index",
+  "expr": "'tacocat'.charAt(7)",
+  "expect": {
+   "t": "string",
+   "v": ""
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "char_at",
+  "name": "multiple",
+  "expr": "'©αT'.charAt(0) == '©' \u0026\u0026 '©αT'.charAt(1) == 'α' \u0026\u0026 '©αT'.charAt(2) == 'T'",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "index_of",
+  "name": "empty_index",
+  "expr": "'tacocat'.indexOf('')",
+  "expect": {
+   "t": "int",
+   "v": "0"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "index_of",
+  "name": "string_index",
+  "expr": "'tacocat'.indexOf('ac')",
+  "expect": {
+   "t": "int",
+   "v": "1"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "index_of",
+  "name": "nomatch",
+  "expr": "'tacocat'.indexOf('none') == -1",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "index_of",
+  "name": "empty_index",
+  "expr": "'tacocat'.indexOf('', 3) == 3",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "index_of",
+  "name": "char_index",
+  "expr": "'tacocat'.indexOf('a', 3) == 5",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "index_of",
+  "name": "string_index",
+  "expr": "'tacocat'.indexOf('at', 3) == 5",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "index_of",
+  "name": "unicode_char",
+  "expr": "'ta©o©αT'.indexOf('©') == 2",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "index_of",
+  "name": "unicode_char_index",
+  "expr": "'ta©o©αT'.indexOf('©', 3) == 4",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "index_of",
+  "name": "unicode_string_index",
+  "expr": "'ta©o©αT'.indexOf('©αT', 3) == 4",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "index_of",
+  "name": "unicode_string_nomatch_index",
+  "expr": "'ta©o©αT'.indexOf('©α', 5) == -1",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "index_of",
+  "name": "char_index",
+  "expr": "'ijk'.indexOf('k') == 2",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "index_of",
+  "name": "string_with_space_fullmatch",
+  "expr": "'hello wello'.indexOf('hello wello') == 0",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "index_of",
+  "name": "string_with_space_index",
+  "expr": "'hello wello'.indexOf('ello', 6) == 7",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "index_of",
+  "name": "string_nomatch_index",
+  "expr": "'hello wello'.indexOf('elbo room!!') == -1",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "last_index_of",
+  "name": "empty_string",
+  "expr": "''.lastIndexOf('@@') == -1",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "last_index_of",
+  "name": "empty_argument",
+  "expr": "'tacocat'.lastIndexOf('') == 7",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "last_index_of",
+  "name": "string",
+  "expr": "'tacocat'.lastIndexOf('at') == 5",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "last_index_of",
+  "name": "string_nomatch",
+  "expr": "'tacocat'.lastIndexOf('none') == -1",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "last_index_of",
+  "name": "empty_index",
+  "expr": "'tacocat'.lastIndexOf('', 3) == 3",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "last_index_of",
+  "name": "char_index",
+  "expr": "'tacocat'.lastIndexOf('a', 3) == 1",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "last_index_of",
+  "name": "unicode_char",
+  "expr": "'ta©o©αT'.lastIndexOf('©') == 4",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "last_index_of",
+  "name": "unicode_char_index",
+  "expr": "'ta©o©αT'.lastIndexOf('©', 3) == 2",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "last_index_of",
+  "name": "unicode_string_index",
+  "expr": "'ta©o©αT'.lastIndexOf('©α', 4) == 4",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "last_index_of",
+  "name": "string_with_space_string_index",
+  "expr": "'hello wello'.lastIndexOf('ello', 6) == 1",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "last_index_of",
+  "name": "string_with_space_string_nomatch",
+  "expr": "'hello wello'.lastIndexOf('low') == -1",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "last_index_of",
+  "name": "string_with_space_string_with_space_nomatch",
+  "expr": "'hello wello'.lastIndexOf('elbo room!!') == -1",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "last_index_of",
+  "name": "string_with_space_fullmatch",
+  "expr": "'hello wello'.lastIndexOf('hello wello') == 0",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "last_index_of",
+  "name": "repeated_string",
+  "expr": "'bananananana'.lastIndexOf('nana', 7) == 6",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "ascii_casing",
+  "name": "lowerascii",
+  "expr": "'TacoCat'.lowerAscii() == 'tacocat'",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "ascii_casing",
+  "name": "lowerascii_unicode",
+  "expr": "'TacoCÆt'.lowerAscii() == 'tacocÆt'",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "ascii_casing",
+  "name": "lowerascii_unicode_with_space",
+  "expr": "'TacoCÆt Xii'.lowerAscii() == 'tacocÆt xii'",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "ascii_casing",
+  "name": "upperascii",
+  "expr": "'tacoCat'.upperAscii() == 'TACOCAT'",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "ascii_casing",
+  "name": "upperascii_unicode",
+  "expr": "'tacoCαt'.upperAscii() == 'TACOCαT'",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "ascii_casing",
+  "name": "upperascii_unicode_with_space",
+  "expr": "'TacoCÆt Xii'.upperAscii() == 'TACOCÆT XII'",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "replace",
+  "name": "no_placeholder",
+  "expr": "'12 days 12 hours'.replace('{0}', '2') == '12 days 12 hours'",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "replace",
+  "name": "basic",
+  "expr": "'{0} days {0} hours'.replace('{0}', '2') == '2 days 2 hours'",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "replace",
+  "name": "chained",
+  "expr": "'{0} days {0} hours'.replace('{0}', '2', 1).replace('{0}', '23') == '2 days 23 hours'",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "replace",
+  "name": "unicode",
+  "expr": "'1 ©αT taco'.replace('αT', 'o©α') == '1 ©o©α taco'",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "split",
+  "name": "empty",
+  "expr": "'hello world'.split(' ') == ['hello', 'world']",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "split",
+  "name": "zero_limit",
+  "expr": "'hello world events!'.split(' ', 0) == []",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "split",
+  "name": "one_limit",
+  "expr": "'hello world events!'.split(' ', 1) == ['hello world events!']",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "split",
+  "name": "unicode_negative_limit",
+  "expr": "'o©o©o©o'.split('©', -1) == ['o', 'o', 'o', 'o']",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "substring",
+  "name": "start",
+  "expr": "'tacocat'.substring(4) == 'cat'",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "substring",
+  "name": "start_with_max_length",
+  "expr": "'tacocat'.substring(7) == ''",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "substring",
+  "name": "start_and_end",
+  "expr": "'tacocat'.substring(0, 4) == 'taco'",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "substring",
+  "name": "start_and_end_equal_value",
+  "expr": "'tacocat'.substring(4, 4) == ''",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "substring",
+  "name": "unicode_start_and_end",
+  "expr": "'ta©o©αT'.substring(2, 6) == '©o©α'",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "substring",
+  "name": "unicode_start_and_end_equal_value",
+  "expr": "'ta©o©αT'.substring(7, 7) == ''",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "trim",
+  "name": "blank_spaces_escaped_chars",
+  "expr": "' \\f\\n\\r\\t\\vtext  '.trim() == 'text'",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "trim",
+  "name": "unicode_space_chars_1",
+  "expr": "'\\u0085\\u00a0\\u1680text'.trim() == 'text'",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "trim",
+  "name": "unicode_space_chars_2",
+  "expr": "'text\\u2000\\u2001\\u2002\\u2003\\u2004\\u2004\\u2006\\u2007\\u2008\\u2009'.trim() == 'text'",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "trim",
+  "name": "unicode_space_chars_3",
+  "expr": "'\\u200atext\\u2028\\u2029\\u202F\\u205F\\u3000'.trim() == 'text'",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "trim",
+  "name": "unicode_no_trim",
+  "expr": "'\\u180etext\\u200b\\u200c\\u200d\\u2060\\ufeff'.trim() == '\\u180etext\\u200b\\u200c\\u200d\\u2060\\ufeff'",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "join",
+  "name": "empty_separator",
+  "expr": "['x', 'y'].join() == 'xy'",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "join",
+  "name": "dash_separator",
+  "expr": "['x', 'y'].join('-') == 'x-y'",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "join",
+  "name": "empty_string_empty_separator",
+  "expr": "[].join() == ''",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "join",
+  "name": "empty_string_dash_separator",
+  "expr": "[].join('-') == ''",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "quote",
+  "name": "multiline",
+  "expr": "strings.quote(\"first\\nsecond\") == \"\\\"first\\\\nsecond\\\"\"",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "quote",
+  "name": "escaped",
+  "expr": "strings.quote(\"bell\\a\") == \"\\\"bell\\\\a\\\"\"",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "quote",
+  "name": "backspace",
+  "expr": "strings.quote(\"\\bbackspace\") == \"\\\"\\\\bbackspace\\\"\"",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "quote",
+  "name": "form_feed",
+  "expr": "strings.quote(\"\\fform feed\") == \"\\\"\\\\fform feed\\\"\"",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "quote",
+  "name": "carriage_return",
+  "expr": "strings.quote(\"carriage \\r return\") == \"\\\"carriage \\\\r return\\\"\"",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "quote",
+  "name": "horizontal_tab",
+  "expr": "strings.quote(\"horizontal tab\\t\") == \"\\\"horizontal tab\\\\t\\\"\"",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "quote",
+  "name": "vertical_tab",
+  "expr": "strings.quote(\"vertical \\v tab\") == \"\\\"vertical \\\\v tab\\\"\"",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "quote",
+  "name": "double_slash",
+  "expr": "strings.quote(\"double \\\\\\\\ slash\") == \"\\\"double \\\\\\\\\\\\\\\\ slash\\\"\"",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "quote",
+  "name": "two_escape_sequences",
+  "expr": "strings.quote(\"two escape sequences \\\\a\\\\n\") == \"\\\"two escape sequences \\\\\\\\a\\\\\\\\n\\\"\"",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "quote",
+  "name": "verbatim",
+  "expr": "strings.quote(\"verbatim\") == \"\\\"verbatim\\\"\"",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "quote",
+  "name": "ends_with",
+  "expr": "strings.quote(\"ends with \\\\\") == \"\\\"ends with \\\\\\\\\\\"\"",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "quote",
+  "name": "starts_with",
+  "expr": "strings.quote(\"\\\\ starts with\") == \"\\\"\\\\\\\\ starts with\\\"\"",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "quote",
+  "name": "printable_unicode",
+  "expr": "strings.quote(\"printable unicode😀\") == \"\\\"printable unicode😀\\\"\"",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "quote",
+  "name": "mid_string_quote",
+  "expr": "strings.quote(\"mid string \\\" quote\") == \"\\\"mid string \\\\\\\" quote\\\"\"",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "quote",
+  "name": "single_quote_with_double_quote",
+  "expr": "strings.quote('single-quote with \"double quote\"') == \"\\\"single-quote with \\\\\\\"double quote\\\\\\\"\\\"\"",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "quote",
+  "name": "size_unicode_char",
+  "expr": "strings.quote(\"size('ÿ')\") == \"\\\"size('ÿ')\\\"\"",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "quote",
+  "name": "size_unicode_string",
+  "expr": "strings.quote(\"size('πέντε')\") == \"\\\"size('πέντε')\\\"\"",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "quote",
+  "name": "unicode",
+  "expr": "strings.quote(\"завтра\") == \"\\\"завтра\\\"\"",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "quote",
+  "name": "unicode_code_points",
+  "expr": "strings.quote(\"\\U0001F431\\U0001F600\\U0001F61B\")",
+  "expect": {
+   "t": "string",
+   "v": "\"🐱😀😛\""
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "quote",
+  "name": "unicode_2",
+  "expr": "strings.quote(\"ta©o©αT\") == \"\\\"ta©o©αT\\\"\"",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "quote",
+  "name": "empty_quote",
+  "expr": "strings.quote(\"\")",
+  "expect": {
+   "t": "string",
+   "v": "\"\""
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "no-op",
+  "expr": "\"no substitution\".format([])",
+  "expect": {
+   "t": "string",
+   "v": "no substitution"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "mid-string substitution",
+  "expr": "\"str is %s and some more\".format([\"filler\"])",
+  "expect": {
+   "t": "string",
+   "v": "str is filler and some more"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "percent escaping",
+  "expr": "\"%% and also %%\".format([])",
+  "expect": {
+   "t": "string",
+   "v": "% and also %"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "substitution inside escaped percent signs",
+  "expr": "\"%%%s%%\".format([\"text\"])",
+  "expect": {
+   "t": "string",
+   "v": "%text%"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "substitution with one escaped percent sign on the right",
+  "expr": "\"%s%%\".format([\"percent on the right\"])",
+  "expect": {
+   "t": "string",
+   "v": "percent on the right%"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "substitution with one escaped percent sign on the left",
+  "expr": "\"%%%s\".format([\"percent on the left\"])",
+  "expect": {
+   "t": "string",
+   "v": "%percent on the left"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "multiple substitutions",
+  "expr": "\"%d %d %d, %s %s %s, %d %d %d, %s %s %s\".format([1, 2, 3, \"A\", \"B\", \"C\", 4, 5, 6, \"D\", \"E\", \"F\"])",
+  "expect": {
+   "t": "string",
+   "v": "1 2 3, A B C, 4 5 6, D E F"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "percent sign escape sequence support",
+  "expr": "\"%%escaped %s%%\".format([\"percent\"])",
+  "expect": {
+   "t": "string",
+   "v": "%escaped percent%"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "fixed point formatting clause",
+  "expr": "\"%.3f\".format([1.2345])",
+  "expect": {
+   "t": "string",
+   "v": "1.234"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "binary formatting clause",
+  "expr": "\"this is 5 in binary: %b\".format([5])",
+  "expect": {
+   "t": "string",
+   "v": "this is 5 in binary: 101"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "uint support for binary formatting",
+  "expr": "\"unsigned 64 in binary: %b\".format([uint(64)])",
+  "expect": {
+   "t": "string",
+   "v": "unsigned 64 in binary: 1000000"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "bool support for binary formatting",
+  "expr": "\"bit set from bool: %b\".format([true])",
+  "expect": {
+   "t": "string",
+   "v": "bit set from bool: 1"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "octal formatting clause",
+  "expr": "\"%o\".format([11])",
+  "expect": {
+   "t": "string",
+   "v": "13"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "uint support for octal formatting clause",
+  "expr": "\"this is an unsigned octal: %o\".format([uint(65535)])",
+  "expect": {
+   "t": "string",
+   "v": "this is an unsigned octal: 177777"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "lowercase hexadecimal formatting clause",
+  "expr": "\"%x is 20 in hexadecimal\".format([30])",
+  "expect": {
+   "t": "string",
+   "v": "1e is 20 in hexadecimal"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "uppercase hexadecimal formatting clause",
+  "expr": "\"%X is 20 in hexadecimal\".format([30])",
+  "expect": {
+   "t": "string",
+   "v": "1E is 20 in hexadecimal"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "unsigned support for hexadecimal formatting clause",
+  "expr": "\"%X is 6000 in hexadecimal\".format([uint(6000)])",
+  "expect": {
+   "t": "string",
+   "v": "1770 is 6000 in hexadecimal"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "string support with hexadecimal formatting clause",
+  "expr": "\"%x\".format([\"Hello world!\"])",
+  "expect": {
+   "t": "string",
+   "v": "48656c6c6f20776f726c6421"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "string support with uppercase hexadecimal formatting clause",
+  "expr": "\"%X\".format([\"Hello world!\"])",
+  "expect": {
+   "t": "string",
+   "v": "48656C6C6F20776F726C6421"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "byte support with hexadecimal formatting clause",
+  "expr": "\"%x\".format([b\"byte string\"])",
+  "expect": {
+   "t": "string",
+   "v": "6279746520737472696e67"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "byte support with uppercase hexadecimal formatting clause",
+  "expr": "\"%X\".format([b\"byte string\"])",
+  "expect": {
+   "t": "string",
+   "v": "6279746520737472696E67"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "scientific notation formatting clause",
+  "expr": "\"%.6e\".format([1052.032911275])",
+  "expect": {
+   "t": "string",
+   "v": "1.052033e+03"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "default precision for fixed-point clause",
+  "expr": "\"%f\".format([2.71828])",
+  "expect": {
+   "t": "string",
+   "v": "2.718280"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "default precision for fixed-point clause with int",
+  "expr": "\"%f\".format([2])",
+  "expect": {
+   "t": "string",
+   "v": "2.000000"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "default precision for fixed-point clause with uint",
+  "expr": "\"%f\".format([3u])",
+  "expect": {
+   "t": "string",
+   "v": "3.000000"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "default precision for scientific notation",
+  "expr": "\"%e\".format([2.71828])",
+  "expect": {
+   "t": "string",
+   "v": "2.718280e+00"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "default precision for scientific notation with int",
+  "expr": "\"%e\".format([2])",
+  "expect": {
+   "t": "string",
+   "v": "2.000000e+00"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "default precision for scientific notation with uint",
+  "expr": "\"%e\".format([3u])",
+  "expect": {
+   "t": "string",
+   "v": "3.000000e+00"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "NaN support for scientific notation",
+  "expr": "\"%e\".format([double(\"NaN\")])",
+  "expect": {
+   "t": "string",
+   "v": "NaN"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "positive infinity support for scientific notation",
+  "expr": "\"%e\".format([double(\"Infinity\")])",
+  "expect": {
+   "t": "string",
+   "v": "Infinity"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "negative infinity support for scientific notation",
+  "expr": "\"%e\".format([double(\"-Infinity\")])",
+  "expect": {
+   "t": "string",
+   "v": "-Infinity"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "NaN support for decimal",
+  "expr": "\"%d\".format([double(\"NaN\")])",
+  "expect": {
+   "t": "string",
+   "v": "NaN"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "positive infinity support for decimal",
+  "expr": "\"%d\".format([double(\"Infinity\")])",
+  "expect": {
+   "t": "string",
+   "v": "Infinity"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "negative infinity support for decimal",
+  "expr": "\"%d\".format([double(\"-Infinity\")])",
+  "expect": {
+   "t": "string",
+   "v": "-Infinity"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "NaN support for fixed-point",
+  "expr": "\"%f\".format([double(\"NaN\")])",
+  "expect": {
+   "t": "string",
+   "v": "NaN"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "positive infinity support for fixed-point",
+  "expr": "\"%f\".format([double(\"Infinity\")])",
+  "expect": {
+   "t": "string",
+   "v": "Infinity"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "negative infinity support for fixed-point",
+  "expr": "\"%f\".format([double(\"-Infinity\")])",
+  "expect": {
+   "t": "string",
+   "v": "-Infinity"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "uint support for decimal clause",
+  "expr": "\"%d\".format([uint(64)])",
+  "expect": {
+   "t": "string",
+   "v": "64"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "null support for string",
+  "expr": "\"%s\".format([null])",
+  "expect": {
+   "t": "string",
+   "v": "null"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "int support for string",
+  "expr": "\"%s\".format([999999999999])",
+  "expect": {
+   "t": "string",
+   "v": "999999999999"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "bytes support for string",
+  "expr": "\"%s\".format([b\"xyz\"])",
+  "expect": {
+   "t": "string",
+   "v": "xyz"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "type() support for string",
+  "expr": "\"%s\".format([type(\"test string\")])",
+  "expect": {
+   "t": "string",
+   "v": "string"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "timestamp support for string",
+  "expr": "\"%s\".format([timestamp(\"2023-02-03T23:31:20+00:00\")])",
+  "expect": {
+   "t": "string",
+   "v": "2023-02-03T23:31:20Z"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "duration support for string",
+  "expr": "\"%s\".format([duration(\"1h45m47s\")])",
+  "expect": {
+   "t": "string",
+   "v": "6347s"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "list support for string",
+  "expr": "\"%s\".format([[\"abc\", 3.14, null, [9, 8, 7, 6], timestamp(\"2023-02-03T23:31:20Z\")]])",
+  "expect": {
+   "t": "string",
+   "v": "[abc, 3.14, null, [9, 8, 7, 6], 2023-02-03T23:31:20Z]"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "map support for string",
+  "expr": "\"%s\".format([{\"key1\": b\"xyz\", \"key5\": null, \"key2\": duration(\"2h\"), \"key4\": true, \"key3\": 2.71828}])",
+  "expect": {
+   "t": "string",
+   "v": "{key1: xyz, key2: 7200s, key3: 2.71828, key4: true, key5: null}"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "map support (all key types)",
+  "expr": "\"%s\".format([{1: \"value1\", uint(2): \"value2\", true: double(\"NaN\")}])",
+  "expect": {
+   "t": "string",
+   "v": "{1: value1, 2: value2, true: NaN}"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "boolean support for %s",
+  "expr": "\"%s, %s\".format([true, false])",
+  "expect": {
+   "t": "string",
+   "v": "true, false"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "dyntype support for string formatting clause",
+  "expr": "\"%s\".format([dyn(\"a string\")])",
+  "expect": {
+   "t": "string",
+   "v": "a string"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "dyntype support for numbers with string formatting clause",
+  "expr": "\"%s, %s\".format([dyn(32), dyn(56.8)])",
+  "expect": {
+   "t": "string",
+   "v": "32, 56.8"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "dyntype support for integer formatting clause",
+  "expr": "\"%d\".format([dyn(128)])",
+  "expect": {
+   "t": "string",
+   "v": "128"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "dyntype support for integer formatting clause (unsigned)",
+  "expr": "\"%d\".format([dyn(256u)])",
+  "expect": {
+   "t": "string",
+   "v": "256"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "dyntype support for hex formatting clause",
+  "expr": "\"%x\".format([dyn(22)])",
+  "expect": {
+   "t": "string",
+   "v": "16"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "dyntype support for hex formatting clause (uppercase)",
+  "expr": "\"%X\".format([dyn(26)])",
+  "expect": {
+   "t": "string",
+   "v": "1A"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "dyntype support for unsigned hex formatting clause",
+  "expr": "\"%x\".format([dyn(500u)])",
+  "expect": {
+   "t": "string",
+   "v": "1f4"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "dyntype support for fixed-point formatting clause",
+  "expr": "\"%.3f\".format([dyn(4.5)])",
+  "expect": {
+   "t": "string",
+   "v": "4.500"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "dyntype support for scientific notation",
+  "expr": "\"%e\".format([dyn(2.71828)])",
+  "expect": {
+   "t": "string",
+   "v": "2.718280e+00"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "dyntype NaN/infinity support",
+  "expr": "\"%s\".format([[double(\"NaN\"), double(\"Infinity\"), double(\"-Infinity\")]])",
+  "expect": {
+   "t": "string",
+   "v": "[NaN, Infinity, -Infinity]"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "dyntype support for timestamp",
+  "expr": "\"%s\".format([dyn(timestamp(\"2009-11-10T23:00:00Z\"))])",
+  "expect": {
+   "t": "string",
+   "v": "2009-11-10T23:00:00Z"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "dyntype support for duration",
+  "expr": "\"%s\".format([dyn(duration(\"8747s\"))])",
+  "expect": {
+   "t": "string",
+   "v": "8747s"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "dyntype support for lists",
+  "expr": "\"%s\".format([dyn([6, 4.2, \"a string\"])])",
+  "expect": {
+   "t": "string",
+   "v": "[6, 4.2, a string]"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "dyntype support for maps",
+  "expr": "\"%s\".format([{\"strKey\":\"x\", 6:duration(\"422s\"), true:42}])",
+  "expect": {
+   "t": "string",
+   "v": "{6: 422s, strKey: x, true: 42}"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "string substitution in a string variable",
+  "expr": "str_var.format([\"filler\"])",
+  "bindings": {
+   "str_var": {
+    "t": "string",
+    "v": "%s"
+   }
+  },
+  "expect": {
+   "t": "string",
+   "v": "filler"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "multiple substitutions in a string variable",
+  "expr": "str_var.format([1, 2, 3, \"A\", \"B\", \"C\", 4, 5, 6, \"D\", \"E\", \"F\"])",
+  "bindings": {
+   "str_var": {
+    "t": "string",
+    "v": "%d %d %d, %s %s %s, %d %d %d, %s %s %s"
+   }
+  },
+  "expect": {
+   "t": "string",
+   "v": "1 2 3, A B C, 4 5 6, D E F"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "substitution inside escaped percent signs in a string variable",
+  "expr": "str_var.format([\"text\"])",
+  "bindings": {
+   "str_var": {
+    "t": "string",
+    "v": "%%%s%%"
+   }
+  },
+  "expect": {
+   "t": "string",
+   "v": "%text%"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "fixed point formatting clause in a string variable",
+  "expr": "str_var.format([1.2345])",
+  "bindings": {
+   "str_var": {
+    "t": "string",
+    "v": "%.3f"
+   }
+  },
+  "expect": {
+   "t": "string",
+   "v": "1.234"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "binary formatting clause in a string variable",
+  "expr": "str_var.format([5])",
+  "bindings": {
+   "str_var": {
+    "t": "string",
+    "v": "%b"
+   }
+  },
+  "expect": {
+   "t": "string",
+   "v": "101"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "scientific notation formatting clause in a string variable",
+  "expr": "str_var.format([1052.032911275])",
+  "bindings": {
+   "str_var": {
+    "t": "string",
+    "v": "%.6e"
+   }
+  },
+  "expect": {
+   "t": "string",
+   "v": "1.052033e+03"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "default precision for fixed-point clause in a string variable",
+  "expr": "str_var.format([2.71828])",
+  "bindings": {
+   "str_var": {
+    "t": "string",
+    "v": "%f"
+   }
+  },
+  "expect": {
+   "t": "string",
+   "v": "2.718280"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "format_%f_insignificant_zeroes_removed",
+  "expr": "\"%.0f\".format([123.000000])",
+  "expect": {
+   "t": "string",
+   "v": "123"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "format_%f_positive_round_to_whole_number",
+  "expr": "\"%.0f\".format([3.5001])",
+  "expect": {
+   "t": "string",
+   "v": "4"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "format_%f_negative_truncate_to_whole_number",
+  "expr": "\"%.0f\".format([3.4999])",
+  "expect": {
+   "t": "string",
+   "v": "3"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "format_%f_halfway_round_up_to_nearest_even",
+  "expr": "\"%.0f\".format([1.5])",
+  "expect": {
+   "t": "string",
+   "v": "2"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "format_%f_halfway_truncate_to_nearest_even",
+  "expr": "\"%.0f\".format([2.5])",
+  "expect": {
+   "t": "string",
+   "v": "2"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "format_%f_positive_round_up",
+  "expr": "\"%.3f\".format([123.4999])",
+  "expect": {
+   "t": "string",
+   "v": "123.500"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "format_%f_positive_round_down",
+  "expr": "\"%.3f\".format([123.4994])",
+  "expect": {
+   "t": "string",
+   "v": "123.499"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "format_%f_negative_round_up",
+  "expr": "\"%.3f\".format([-123.4999])",
+  "expect": {
+   "t": "string",
+   "v": "-123.500"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "format_%f_negative_round_down",
+  "expr": "\"%.3f\".format([-123.4994])",
+  "expect": {
+   "t": "string",
+   "v": "-123.499"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "format",
+  "name": "format_%f_zero_padding",
+  "expr": "\"%.5f\".format([-1.2])",
+  "expect": {
+   "t": "string",
+   "v": "-1.20000"
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "value_errors",
+  "name": "charat_out_of_range",
+  "expr": "'tacocat'.charAt(30) == ''",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "value_errors",
+  "name": "indexof_out_of_range",
+  "expr": "'tacocat'.indexOf('a', 30) == -1",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "value_errors",
+  "name": "lastindexof_negative_index",
+  "expr": "'tacocat'.lastIndexOf('a', -1) == -1",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "value_errors",
+  "name": "lastindexof_out_of_range",
+  "expr": "'tacocat'.lastIndexOf('a', 30) == -1",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "value_errors",
+  "name": "substring_out_of_range",
+  "expr": "'tacocat'.substring(40) == 'cat'",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "value_errors",
+  "name": "substring_negative_index",
+  "expr": "'tacocat'.substring(-1) == 'cat'",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "value_errors",
+  "name": "substring_end_index_out_of_range",
+  "expr": "'tacocat'.substring(1, 50) == 'cat'",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "value_errors",
+  "name": "substring_begin_index_out_of_range",
+  "expr": "'tacocat'.substring(49, 50) == 'cat'",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "value_errors",
+  "name": "substring_end_index_greater_than_begin_index",
+  "expr": "'tacocat'.substring(4, 3) == ''",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "reverse",
+  "name": "empty",
+  "expr": "''.reverse() == ''",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "reverse",
+  "name": "single_character",
+  "expr": "'☺'.reverse() == '☺'",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "string_ext",
+  "section": "reverse",
+  "name": "multiple",
+  "expr": "'Ta©oCαt'.reverse() == 'tαCo©aT'",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "null",
+  "expr": "optional.of(null).hasValue()",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "null_non_zero_value",
+  "expr": "optional.ofNonZeroValue(null).hasValue()",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "none_or_none_or_value",
+  "expr": "optional.none().or(optional.none()).orValue(42)",
+  "expect": {
+   "t": "int",
+   "v": "42"
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "none_optMap_hasValue",
+  "expr": "optional.none().optMap(y, y + 1).hasValue()",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "empty_map_optFlatMap_hasValue",
+  "expr": "{}.?key.optFlatMap(k, k.?subkey).hasValue()",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "map_empty_submap_optFlatMap_hasValue",
+  "expr": "{'key': {}}.?key.optFlatMap(k, k.?subkey).hasValue()",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "map_null_entry_hasValue",
+  "expr": "{'null_key': dyn(null)}.?null_key.hasValue()",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "map_null_entry_no_such_key",
+  "expr": "{'null_key': dyn(null)}.?null_key.invalid.hasValue()",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "map_absent_key_absent_field_none",
+  "expr": "{true: dyn(0)}[?false].absent.hasValue()",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "map_present_key_invalid_field",
+  "expr": "{true: dyn(0)}[?true].absent.hasValue()",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "map_undefined_entry_hasValue",
+  "expr": "{}.?null_key.invalid.hasValue()",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "map_submap_subkey_optFlatMap_value",
+  "expr": "{'key': {'subkey': 'subvalue'}}.?key.optFlatMap(k, k.?subkey).value()",
+  "expect": {
+   "t": "string",
+   "v": "subvalue"
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "map_submap_optFlatMap_value",
+  "expr": "{'key': {'subkey': ''}}.?key.optFlatMap(k, k.?subkey).value()",
+  "expect": {
+   "t": "string",
+   "v": ""
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "map_optindex_optFlatMap_optional_ofNonZeroValue_hasValue",
+  "expr": "{'key': {'subkey': ''}}.?key.optFlatMap(k, optional.ofNonZeroValue(k.subkey)).hasValue()",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "optional_of_optMap_value",
+  "expr": "optional.of(42).optMap(y, y + 1).value()",
+  "expect": {
+   "t": "int",
+   "v": "43"
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "optional_ofNonZeroValue_or_optional_value",
+  "expr": "optional.ofNonZeroValue(42).or(optional.of(20)).value() == 42",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "ternary_optional_hasValue",
+  "expr": "(has({}.x) ? optional.of({}.x) : optional.none()).hasValue()",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "map_optindex_hasValue",
+  "expr": "{}.?x.hasValue()",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "has_map_optindex",
+  "expr": "has({}.?x.y)",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "has_map_optindex_field",
+  "expr": "has({'x': {'y': 'z'}}.?x.y)",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "type",
+  "expr": "type(optional.none()) == optional_type",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "optional_chaining_1",
+  "expr": "optional.ofNonZeroValue('').or(optional.of({'c': {'dashed-index': 'goodbye'}}.c['dashed-index'])).orValue('default value')",
+  "expect": {
+   "t": "string",
+   "v": "goodbye"
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "optional_chaining_2",
+  "expr": "{'c': {'dashed-index': 'goodbye'}}.c[?'dashed-index'].orValue('default value')",
+  "expect": {
+   "t": "string",
+   "v": "goodbye"
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "optional_chaining_3",
+  "expr": "{'c': {}}.c[?'missing-index'].orValue('default value')",
+  "expect": {
+   "t": "string",
+   "v": "default value"
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "optional_chaining_4",
+  "expr": "optional.of({'c': {'index': 'goodbye'}}).c.index.orValue('default value')",
+  "expect": {
+   "t": "string",
+   "v": "goodbye"
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "optional_chaining_5",
+  "expr": "optional.of({'c': {}}).c.missing.or(optional.none()[0]).orValue('default value')",
+  "expect": {
+   "t": "string",
+   "v": "default value"
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "optional_chaining_6",
+  "expr": "optional.of({'c': {}}).c.missing.or(optional.of(['list-value'])[0]).orValue('default value')",
+  "expect": {
+   "t": "string",
+   "v": "list-value"
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "optional_chaining_7",
+  "expr": "optional.of({'c': {'index': 'goodbye'}}).c['index'].orValue('default value')",
+  "expect": {
+   "t": "string",
+   "v": "goodbye"
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "optional_chaining_8",
+  "expr": "optional.of({'c': {}}).c['missing'].orValue('default value')",
+  "expect": {
+   "t": "string",
+   "v": "default value"
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "optional_chaining_9",
+  "expr": "has(optional.of({'c': {'entry': 'hello world'}}).c) \u0026\u0026 !has(optional.of({'c': {'entry': 'hello world'}}).c.missing)",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "optional_chaining_10",
+  "expr": "optional.ofNonZeroValue({'c': {'dashed-index': 'goodbye'}}.a.z).orValue({'c': {'dashed-index': 'goodbye'}}.c['dashed-index'])",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "optional_chaining_11",
+  "expr": "{'c': {'dashed-index': 'goodbye'}}.?c.missing.or({'c': {'dashed-index': 'goodbye'}}.?c['dashed-index']).orValue('').size()",
+  "expect": {
+   "t": "int",
+   "v": "7"
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "optional_chaining_12",
+  "expr": "{?'nested_map': optional.ofNonZeroValue({?'map': {'c': {'dashed-index': 'goodbye'}}.?c})}",
+  "expect": {
+   "t": "map",
+   "v": [
+    [
+     {
+      "t": "string",
+      "v": "nested_map"
+     },
+     {
+      "t": "map",
+      "v": [
+       [
+        {
+         "t": "string",
+         "v": "map"
+        },
+        {
+         "t": "map",
+         "v": [
+          [
+           {
+            "t": "string",
+            "v": "dashed-index"
+           },
+           {
+            "t": "string",
+            "v": "goodbye"
+           }
+          ]
+         ]
+        }
+       ]
+      ]
+     }
+    ]
+   ]
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "optional_chaining_13",
+  "expr": "{?'nested_map': optional.ofNonZeroValue({?'map': {}.?c}), 'singleton': true}",
+  "expect": {
+   "t": "map",
+   "v": [
+    [
+     {
+      "t": "string",
+      "v": "singleton"
+     },
+     {
+      "t": "bool",
+      "v": true
+     }
+    ]
+   ]
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "optional_chaining_14",
+  "expr": "[?{}.?c, ?optional.of(42), ?optional.none()]",
+  "expect": {
+   "t": "list",
+   "v": [
+    {
+     "t": "int",
+     "v": "42"
+    }
+   ]
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "optional_chaining_15",
+  "expr": "[?optional.ofNonZeroValue({'c': []}.?c.orValue(dyn({})))]",
+  "expect": {
+   "t": "list",
+   "v": []
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "optional_chaining_16",
+  "expr": "optional.ofNonZeroValue({?'nested_map': optional.ofNonZeroValue({?'map': optional.of({}).?c})}).hasValue()",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "optional_empty_map_optindex_hasValue",
+  "expr": "optional.of({}).?c.hasValue()",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "optional_none_optselect_hasValue",
+  "expr": "optional.none().?repeated_string.hasValue()",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "empty_list_optindex_hasValue",
+  "expr": "[][?0].hasValue()",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "optional_empty_list_optindex_hasValue",
+  "expr": "optional.of([])[?0].hasValue()",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "optional_none_optindex_hasValue",
+  "expr": "optional.none()[?0].hasValue()",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "list_optindex_value",
+  "expr": "['foo'][?0].value()",
+  "expect": {
+   "t": "string",
+   "v": "foo"
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "optional_list_optindex_value",
+  "expr": "optional.of(['foo'])[?0].value()",
+  "expect": {
+   "t": "string",
+   "v": "foo"
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "map_key_mixed_type_optindex_value",
+  "expr": "{true: 1, 2: 2, 5u: 3}[?true].value()",
+  "expect": {
+   "t": "int",
+   "v": "1"
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "map_key_mixed_numbers_double_key_optindex_value",
+  "expr": "{1u: 1.0, 2: 2.0, 3u: 3.0}[?3.0].value()",
+  "expect": {
+   "t": "double",
+   "v": 3
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "map_key_mixed_numbers_uint_key_optindex_value",
+  "expr": "{1u: 1.0, 2: 2.0, 3u: 3.0}[?2u].value()",
+  "expect": {
+   "t": "double",
+   "v": 2
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "map_key_mixed_numbers_int_key_optindex_value",
+  "expr": "{1u: 1.0, 2: 2.0, 3u: 3.0}[?1].value()",
+  "expect": {
+   "t": "double",
+   "v": 1
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "optional_eq_none_none",
+  "expr": "optional.none() == optional.none()",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "optional_eq_none_int",
+  "expr": "optional.none() == optional.of(1)",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "optional_eq_int_none",
+  "expr": "optional.of(1) == optional.none()",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "optional_eq_int_int",
+  "expr": "optional.of(1) == optional.of(1)",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "optional_ne_none_none",
+  "expr": "optional.none() != optional.none()",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "optional_ne_none_int",
+  "expr": "optional.none() != optional.of(1)",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "optional_ne_int_none",
+  "expr": "optional.of(1) != optional.none()",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "optional_ne_int_int",
+  "expr": "optional.of(1) != optional.of(1)",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "map_optional_has",
+  "expr": "has({'foo': optional.none()}.foo)",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "map_optional_select_has",
+  "expr": "has({'foo': optional.none()}.foo.bar)",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "optionals",
+  "section": "optionals",
+  "name": "map_optional_entry_has",
+  "expr": "has({?'foo': optional.none()}.foo)",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "int64_math",
+  "name": "add_positive_positive",
+  "expr": "40 + 2",
+  "expect": {
+   "t": "int",
+   "v": "42"
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "int64_math",
+  "name": "add_positive_negative",
+  "expr": "42 + (-7)",
+  "expect": {
+   "t": "int",
+   "v": "35"
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "int64_math",
+  "name": "add_negative_negative",
+  "expr": "-4 + (-2)",
+  "expect": {
+   "t": "int",
+   "v": "-6"
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "int64_math",
+  "name": "sub_positive_positive",
+  "expr": "42 - 12",
+  "expect": {
+   "t": "int",
+   "v": "30"
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "int64_math",
+  "name": "sub_positive_negative",
+  "expr": "42 - (-22)",
+  "expect": {
+   "t": "int",
+   "v": "64"
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "int64_math",
+  "name": "sub_negative_negative",
+  "expr": "-42 - (-12)",
+  "expect": {
+   "t": "int",
+   "v": "-30"
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "int64_math",
+  "name": "multiply_positive_positive",
+  "expr": "42 * 2",
+  "expect": {
+   "t": "int",
+   "v": "84"
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "int64_math",
+  "name": "multiply_positive_negative",
+  "expr": "40 * (-2)",
+  "expect": {
+   "t": "int",
+   "v": "-80"
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "int64_math",
+  "name": "multiply_negative_negative",
+  "expr": "-30 * (-2)",
+  "expect": {
+   "t": "int",
+   "v": "60"
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "int64_math",
+  "name": "divide_positive_positive",
+  "expr": "42 / 2",
+  "expect": {
+   "t": "int",
+   "v": "21"
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "int64_math",
+  "name": "divide_positive_negative",
+  "expr": "-20 / 2",
+  "expect": {
+   "t": "int",
+   "v": "-10"
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "int64_math",
+  "name": "divide_negative_negative",
+  "expr": "-80 / (-2)",
+  "expect": {
+   "t": "int",
+   "v": "40"
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "int64_math",
+  "name": "mod_positive_positive",
+  "expr": "47 % 5",
+  "expect": {
+   "t": "int",
+   "v": "2"
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "int64_math",
+  "name": "mod_positive_negative",
+  "expr": "43 % (-5)",
+  "expect": {
+   "t": "int",
+   "v": "3"
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "int64_math",
+  "name": "mod_negative_negative",
+  "expr": "-42 % (-5)",
+  "expect": {
+   "t": "int",
+   "v": "-2"
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "int64_math",
+  "name": "mod_negative_positive",
+  "expr": "-3 % 5",
+  "expect": {
+   "t": "int",
+   "v": "-3"
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "int64_math",
+  "name": "unary_minus_pos",
+  "expr": "-(42)",
+  "expect": {
+   "t": "int",
+   "v": "-42"
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "int64_math",
+  "name": "unary_minus_neg",
+  "expr": "-(-42)",
+  "expect": {
+   "t": "int",
+   "v": "42"
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "int64_math",
+  "name": "mod_zero",
+  "expr": "34 % 0",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "int64_math",
+  "name": "negative_zero",
+  "expr": "-(0)",
+  "expect": {
+   "t": "int",
+   "v": "0"
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "int64_math",
+  "name": "double_negative",
+  "expr": "-(-42)",
+  "expect": {
+   "t": "int",
+   "v": "42"
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "int64_math",
+  "name": "divide_zero",
+  "expr": "15 / 0",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "int64_math",
+  "name": "multiply_zero",
+  "expr": "15 * 0",
+  "expect": {
+   "t": "int",
+   "v": "0"
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "int64_math",
+  "name": "add_left_identity",
+  "expr": "0 + 17",
+  "expect": {
+   "t": "int",
+   "v": "17"
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "int64_math",
+  "name": "add_right_identity",
+  "expr": " 29 + 0",
+  "expect": {
+   "t": "int",
+   "v": "29"
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "int64_math",
+  "name": "add_commutative",
+  "expr": "75 + 15 == 15 + 75",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "int64_math",
+  "name": "add_associative",
+  "expr": "5 + (15 + 20) == (5 + 15) + 20",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "int64_math",
+  "name": "mul_left_identity",
+  "expr": "1 * 45",
+  "expect": {
+   "t": "int",
+   "v": "45"
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "int64_math",
+  "name": "mul_right_identity",
+  "expr": "-25 * 1",
+  "expect": {
+   "t": "int",
+   "v": "-25"
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "int64_math",
+  "name": "mul_commutative",
+  "expr": "15 * 25 == 25 * 15",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "int64_math",
+  "name": "mul_associative",
+  "expr": "15 * (23 * 88) == (15 * 23) * 88",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "int64_math",
+  "name": "add_mul_distribute",
+  "expr": "5 * (15 + 25)  == 5 * 15 + 5 * 25",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "int64_math",
+  "name": "int64_overflow_positive",
+  "expr": "9223372036854775807 + 1",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "int64_math",
+  "name": "int64_overflow_negative",
+  "expr": "-9223372036854775808 - 1",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "int64_math",
+  "name": "int64_overflow_add_negative",
+  "expr": "-9223372036854775808 + (-1)",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "int64_math",
+  "name": "int64_overflow_sub_positive",
+  "expr": "1 - (-9223372036854775807)",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "int64_math",
+  "name": "int64_min_negate",
+  "expr": "-(-9223372036854775808)",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "int64_math",
+  "name": "int64_min_negate_mul",
+  "expr": "(-9223372036854775808) * -1",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "int64_math",
+  "name": "int64_min_negate_div",
+  "expr": "(-9223372036854775808)/-1",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "int64_math",
+  "name": "int64_overflow_mul_positive",
+  "expr": "5000000000 * 5000000000",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "int64_math",
+  "name": "int64_overflow_mul_negative",
+  "expr": "(-5000000000) * 5000000000",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "int64_math",
+  "name": "uint64_overflow_positive",
+  "expr": "18446744073709551615u + 1u",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "int64_math",
+  "name": "uint64_overflow_negative",
+  "expr": "0u - 1u",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "int64_math",
+  "name": "uint64_overflow_mul_positive",
+  "expr": "5000000000u * 5000000000u",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "uint64_math",
+  "name": "add",
+  "expr": "42u + 2u",
+  "expect": {
+   "t": "uint",
+   "v": "44"
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "uint64_math",
+  "name": "sub",
+  "expr": "42u - 12u",
+  "expect": {
+   "t": "uint",
+   "v": "30"
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "uint64_math",
+  "name": "multiply",
+  "expr": "40u * 2u",
+  "expect": {
+   "t": "uint",
+   "v": "80"
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "uint64_math",
+  "name": "divide",
+  "expr": "60u / 2u",
+  "expect": {
+   "t": "uint",
+   "v": "30"
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "uint64_math",
+  "name": "mod",
+  "expr": "42u % 5u",
+  "expect": {
+   "t": "uint",
+   "v": "2"
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "uint64_math",
+  "name": "mod_zero",
+  "expr": "34u % 0u",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "uint64_math",
+  "name": "divide_zero",
+  "expr": "15u / 0u",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "uint64_math",
+  "name": "multiply_zero",
+  "expr": "15u * 0u",
+  "expect": {
+   "t": "uint",
+   "v": "0"
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "uint64_math",
+  "name": "add_left_identity",
+  "expr": "0u + 17u",
+  "expect": {
+   "t": "uint",
+   "v": "17"
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "uint64_math",
+  "name": "add_right_identity",
+  "expr": " 29u + 0u",
+  "expect": {
+   "t": "uint",
+   "v": "29"
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "uint64_math",
+  "name": "add_commutative",
+  "expr": "75u + 15u == 15u + 75u",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "uint64_math",
+  "name": "add_associative",
+  "expr": "5u + (15u + 20u) == (5u + 15u) + 20u",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "uint64_math",
+  "name": "mul_left_identity",
+  "expr": "1u * 45u",
+  "expect": {
+   "t": "uint",
+   "v": "45"
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "uint64_math",
+  "name": "mul_right_identity",
+  "expr": "25u * 1u",
+  "expect": {
+   "t": "uint",
+   "v": "25"
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "uint64_math",
+  "name": "mul_commutative",
+  "expr": "15u * 25u == 25u * 15u",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "uint64_math",
+  "name": "mul_associative",
+  "expr": "15u * (23u * 88u) == (15u * 23u) * 88u",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "integer_math",
+  "section": "uint64_math",
+  "name": "add_mul_distribute",
+  "expr": "5u * (15u + 25u)  == 5u * 15u + 5u * 25u",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "bytes",
+  "name": "string_empty",
+  "expr": "bytes('')",
+  "expect": {
+   "t": "bytes",
+   "v": ""
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "bytes",
+  "name": "string",
+  "expr": "bytes('abc')",
+  "expect": {
+   "t": "bytes",
+   "v": "YWJj"
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "bytes",
+  "name": "string_unicode",
+  "expr": "bytes('ÿ')",
+  "expect": {
+   "t": "bytes",
+   "v": "w78="
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "bytes",
+  "name": "string_unicode_vs_literal",
+  "expr": "bytes('\\377') == b'\\377'",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "double",
+  "name": "int_zero",
+  "expr": "double(0)",
+  "expect": {
+   "t": "double",
+   "v": 0
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "double",
+  "name": "int_pos",
+  "expr": "double(1000000000000)",
+  "expect": {
+   "t": "double",
+   "v": 1000000000000
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "double",
+  "name": "int_neg",
+  "expr": "double(-1000000000000000)",
+  "expect": {
+   "t": "double",
+   "v": -1000000000000000
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "double",
+  "name": "int_min_exact",
+  "expr": "double(-9007199254740992)",
+  "expect": {
+   "t": "double",
+   "v": -9007199254740992
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "double",
+  "name": "int_max_exact",
+  "expr": "double(9007199254740992)",
+  "expect": {
+   "t": "double",
+   "v": 9007199254740992
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "double",
+  "name": "int_range",
+  "expr": "double(9223372036854775807)",
+  "expect": {
+   "t": "double",
+   "v": 9223372036854776000
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "double",
+  "name": "uint_zero",
+  "expr": "double(0u)",
+  "expect": {
+   "t": "double",
+   "v": 0
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "double",
+  "name": "uint_pos",
+  "expr": "double(123u)",
+  "expect": {
+   "t": "double",
+   "v": 123
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "double",
+  "name": "uint_max_exact",
+  "expr": "double(9007199254740992u)",
+  "expect": {
+   "t": "double",
+   "v": 9007199254740992
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "double",
+  "name": "uint_range",
+  "expr": "double(18446744073709551615u)",
+  "expect": {
+   "t": "double",
+   "v": 18446744073709552000
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "double",
+  "name": "string_zero",
+  "expr": "double('0')",
+  "expect": {
+   "t": "double",
+   "v": 0
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "double",
+  "name": "string_zero_dec",
+  "expr": "double('0.0')",
+  "expect": {
+   "t": "double",
+   "v": 0
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "double",
+  "name": "string_neg_zero",
+  "expr": "double('-0.0')",
+  "expect": {
+   "t": "double",
+   "v": -0
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "double",
+  "name": "string_no_dec",
+  "expr": "double('123')",
+  "expect": {
+   "t": "double",
+   "v": 123
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "double",
+  "name": "string_pos",
+  "expr": "double('123.456')",
+  "expect": {
+   "t": "double",
+   "v": 123.456
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "double",
+  "name": "string_neg",
+  "expr": "double('-987.654')",
+  "expect": {
+   "t": "double",
+   "v": -987.654
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "double",
+  "name": "string_exp_pos_pos",
+  "expr": "double('6.02214e23')",
+  "expect": {
+   "t": "double",
+   "v": 6.02214e+23
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "double",
+  "name": "string_exp_pos_neg",
+  "expr": "double('1.38e-23')",
+  "expect": {
+   "t": "double",
+   "v": 1.38e-23
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "double",
+  "name": "string_exp_neg_pos",
+  "expr": "double('-84.32e7')",
+  "expect": {
+   "t": "double",
+   "v": -843200000
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "double",
+  "name": "string_exp_neg_neg",
+  "expr": "double('-5.43e-21')",
+  "expect": {
+   "t": "double",
+   "v": -5.43e-21
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "int",
+  "name": "uint",
+  "expr": "int(42u)",
+  "expect": {
+   "t": "int",
+   "v": "42"
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "int",
+  "name": "uint_zero",
+  "expr": "int(0u)",
+  "expect": {
+   "t": "int",
+   "v": "0"
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "int",
+  "name": "uint_max_exact",
+  "expr": "int(9223372036854775807u)",
+  "expect": {
+   "t": "int",
+   "v": "9223372036854775807"
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "int",
+  "name": "uint_range",
+  "expr": "int(18446744073709551615u)",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "int",
+  "name": "double_round_neg",
+  "expr": "int(-123.456)",
+  "expect": {
+   "t": "int",
+   "v": "-123"
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "int",
+  "name": "double_truncate",
+  "expr": "int(1.9)",
+  "expect": {
+   "t": "int",
+   "v": "1"
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "int",
+  "name": "double_truncate_neg",
+  "expr": "int(-7.9)",
+  "expect": {
+   "t": "int",
+   "v": "-7"
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "int",
+  "name": "double_half_pos",
+  "expr": "int(11.5)",
+  "expect": {
+   "t": "int",
+   "v": "11"
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "int",
+  "name": "double_half_neg",
+  "expr": "int(-3.5)",
+  "expect": {
+   "t": "int",
+   "v": "-3"
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "int",
+  "name": "double_big_exact",
+  "expr": "int(double(36028797018963968))",
+  "expect": {
+   "t": "int",
+   "v": "36028797018963968"
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "int",
+  "name": "double_big_precision",
+  "expr": "int(double(36028797018963969))",
+  "expect": {
+   "t": "int",
+   "v": "36028797018963968"
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "int",
+  "name": "double_int_max_range",
+  "expr": "int(9223372036854775807.0)",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "int",
+  "name": "double_int_min_range",
+  "expr": "int(-9223372036854775808.0)",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "int",
+  "name": "double_range",
+  "expr": "int(1e99)",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "int",
+  "name": "string",
+  "expr": "int('987')",
+  "expect": {
+   "t": "int",
+   "v": "987"
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "int",
+  "name": "timestamp",
+  "expr": "int(timestamp('2004-09-16T23:59:59Z'))",
+  "expect": {
+   "t": "int",
+   "v": "1095379199"
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "string",
+  "name": "int",
+  "expr": "string(123)",
+  "expect": {
+   "t": "string",
+   "v": "123"
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "string",
+  "name": "int_neg",
+  "expr": "string(-456)",
+  "expect": {
+   "t": "string",
+   "v": "-456"
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "string",
+  "name": "uint",
+  "expr": "string(9876u)",
+  "expect": {
+   "t": "string",
+   "v": "9876"
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "string",
+  "name": "double",
+  "expr": "string(123.456)",
+  "expect": {
+   "t": "string",
+   "v": "123.456"
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "string",
+  "name": "double_hard",
+  "expr": "string(-4.5e-3)",
+  "expect": {
+   "t": "string",
+   "v": "-0.0045"
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "string",
+  "name": "bytes",
+  "expr": "string(b'abc')",
+  "expect": {
+   "t": "string",
+   "v": "abc"
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "string",
+  "name": "bytes_unicode",
+  "expr": "string(b'\\303\\277')",
+  "expect": {
+   "t": "string",
+   "v": "ÿ"
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "string",
+  "name": "bytes_invalid",
+  "expr": "string(b'\\000\\xff')",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "type",
+  "name": "eq_same",
+  "expr": "type(true) == type(false)",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "type",
+  "name": "lists_monomorphic",
+  "expr": "type([1, 2, 3]) == type(['one', 'two', 'three'])",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "type",
+  "name": "map_monomorphic",
+  "expr": "type({'one': 1}) == type({1: 'one'})",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "type",
+  "name": "eq_diff",
+  "expr": "type(7) == type(7u)",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "type",
+  "name": "neq_same",
+  "expr": "type(0.0) != type(-0.0)",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "type",
+  "name": "neq_diff",
+  "expr": "type(0.0) != type(0)",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "type",
+  "name": "meta",
+  "expr": "type(type(7)) == type(type(7u))",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "uint",
+  "name": "int",
+  "expr": "uint(1729)",
+  "expect": {
+   "t": "uint",
+   "v": "1729"
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "uint",
+  "name": "int_max",
+  "expr": "uint(9223372036854775807)",
+  "expect": {
+   "t": "uint",
+   "v": "9223372036854775807"
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "uint",
+  "name": "int_neg",
+  "expr": "uint(-1)",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "uint",
+  "name": "double",
+  "expr": "uint(3.14159265)",
+  "expect": {
+   "t": "uint",
+   "v": "3"
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "uint",
+  "name": "double_truncate",
+  "expr": "uint(1.9)",
+  "expect": {
+   "t": "uint",
+   "v": "1"
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "uint",
+  "name": "double_half",
+  "expr": "uint(25.5)",
+  "expect": {
+   "t": "uint",
+   "v": "25"
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "uint",
+  "name": "double_big_exact",
+  "expr": "uint(double(36028797018963968u))",
+  "expect": {
+   "t": "uint",
+   "v": "36028797018963968"
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "uint",
+  "name": "double_big_precision",
+  "expr": "uint(double(36028797018963969u))",
+  "expect": {
+   "t": "uint",
+   "v": "36028797018963968"
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "uint",
+  "name": "double_uint_max_range",
+  "expr": "int(18446744073709551615.0)",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "uint",
+  "name": "double_range_beyond_uint",
+  "expr": "uint(6.022e23)",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "uint",
+  "name": "string",
+  "expr": "uint('300')",
+  "expect": {
+   "t": "uint",
+   "v": "300"
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "bool",
+  "name": "string_1",
+  "expr": "bool('1')",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "bool",
+  "name": "string_t",
+  "expr": "bool('t')",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "bool",
+  "name": "string_true_lowercase",
+  "expr": "bool('true')",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "bool",
+  "name": "string_true_uppercase",
+  "expr": "bool('TRUE')",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "bool",
+  "name": "string_true_pascalcase",
+  "expr": "bool('True')",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "bool",
+  "name": "string_0",
+  "expr": "bool('0')",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "bool",
+  "name": "string_f",
+  "expr": "bool('f')",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "bool",
+  "name": "string_false_lowercase",
+  "expr": "bool('false')",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "bool",
+  "name": "string_false_uppercase",
+  "expr": "bool('FALSE')",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "bool",
+  "name": "string_false_pascalcase",
+  "expr": "bool('False')",
+  "expect": {
+   "t": "bool",
+   "v": false
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "bool",
+  "name": "string_true_badcase",
+  "expr": "bool('TrUe')",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "bool",
+  "name": "string_false_badcase",
+  "expr": "bool('FaLsE')",
+  "expect": {
+   "error": true
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "identity",
+  "name": "bool",
+  "expr": "bool(true)",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "identity",
+  "name": "int",
+  "expr": "int(1)",
+  "expect": {
+   "t": "int",
+   "v": "1"
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "identity",
+  "name": "uint",
+  "expr": "uint(1u)",
+  "expect": {
+   "t": "uint",
+   "v": "1"
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "identity",
+  "name": "double",
+  "expr": "double(5.5)",
+  "expect": {
+   "t": "double",
+   "v": 5.5
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "identity",
+  "name": "string",
+  "expr": "string('hello')",
+  "expect": {
+   "t": "string",
+   "v": "hello"
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "identity",
+  "name": "bytes",
+  "expr": "bytes(b'abc')",
+  "expect": {
+   "t": "bytes",
+   "v": "YWJj"
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "identity",
+  "name": "duration",
+  "expr": "duration(duration('100s')) == duration('100s')",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ },
+ {
+  "file": "conversions",
+  "section": "identity",
+  "name": "timestamp",
+  "expr": "timestamp(timestamp(1000000000)) == timestamp(1000000000)",
+  "expect": {
+   "t": "bool",
+   "v": true
+  }
+ }
+]

@@ -8,6 +8,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/damhau/quai/backend/internal/engine/expr"
 	"github.com/damhau/quai/backend/internal/engine/plan"
 	"github.com/damhau/quai/backend/internal/engine/schema"
 	"github.com/damhau/quai/backend/internal/repositories"
@@ -17,11 +18,21 @@ import (
 // Problem maps an error from the domain to the problem details a handler returns: the one place
 // where domain errors become HTTP statuses (docs/engineering/backend.md#conventions). Field
 // errors become 422 with one detail per field, located in the request body under prefix, such
-// as "body.document". Errors it does not know are 500s without their message, which may hold
-// internal details.
+// as "body.values.cpu". A definition that cannot plan the request (an expression that fails, a
+// blueprint resource its type rejects) is a 422 with its message. Errors it does not know are
+// 500s without their message, which may hold internal details.
 func Problem(err error, prefix string) huma.StatusError {
-	var ve *schema.ValidationError
+	var (
+		ve *schema.ValidationError
+		re *plan.ResourceError
+		xe *expr.Error
+	)
 	switch {
+	case errors.As(err, &re) && (errors.As(re.Err, &ve) || errors.As(re.Err, &xe)):
+		// The fields are those of the resource's document, not of the form.
+		return huma.Error422UnprocessableEntity(err.Error())
+	case errors.As(err, &xe):
+		return huma.Error422UnprocessableEntity(err.Error())
 	case errors.As(err, &ve):
 		details := make([]error, 0, len(ve.Fields))
 		for _, f := range slices.Sorted(maps.Keys(ve.Fields)) {

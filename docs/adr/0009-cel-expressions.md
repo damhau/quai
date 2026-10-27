@@ -17,7 +17,9 @@ used across the Kubernetes ecosystem (ValidatingAdmissionPolicy, CRD
 validation), so platform engineers may already know it.
 
 The frontend evaluates `visibleIf` with a JavaScript CEL implementation for
-instant feedback, chosen in Phase 0 by running cel-go's conformance tests; the
+instant feedback, chosen in Phase 0 by running cel-go's conformance tests
+(`@marcbachmann/cel-js`; the results are in
+[frontend.md](../engineering/frontend.md#expressions-in-the-browser)); the
 server's evaluation is authoritative.
 
 ## Consequences

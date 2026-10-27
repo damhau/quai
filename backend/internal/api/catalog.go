@@ -100,6 +100,7 @@ type TypeView struct {
 	Stack         string       `json:"stack,omitempty"`
 	Deletion      string       `json:"deletion"`
 	OwnerField    string       `json:"ownerField,omitempty"`
+	ManagedFields []string     `json:"managedFields" doc:"Fields Quai sets itself (from the locator params, the labels and the owner), left out of forms"`
 }
 
 // BlueprintResourceView is one resource of a blueprint.
@@ -448,6 +449,12 @@ func typeView(snap *repositories.Snapshot, t *definitions.ResourceType) TypeView
 	if o := t.Spec.Ownership; o != nil {
 		v.OwnerField = o.Field
 	}
+	v.ManagedFields = slices.Concat(slices.Collect(maps.Values(t.Spec.ParamFields)), slices.Collect(maps.Keys(t.Spec.Labels)))
+	if v.OwnerField != "" {
+		v.ManagedFields = append(v.ManagedFields, v.OwnerField)
+	}
+	slices.Sort(v.ManagedFields)
+	v.ManagedFields = slices.Compact(v.ManagedFields)
 	for _, p := range t.Spec.Params {
 		pv := ParamView{Name: p.Name, Title: p.Title, Description: p.Description, Type: p.Type, Options: p.Options, Pattern: p.Pattern}
 		if pv.Type == "" {

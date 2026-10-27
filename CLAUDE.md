@@ -45,6 +45,7 @@ Frontend (from `frontend/`, Node 22.12+):
 ```bash
 npm run typecheck && npm run lint && npm run test && npm run build
 npm run api:openapi && npm run api:gen   # after an API change (the client is generated, never edited)
+npm run cel:cases                        # after a cel-go upgrade: cel-go's conformance cases for src/lib/cel
 ```
 
 Prototype (reference, from the repository root): `npm test` runs its unit and API tests (Node 22+,
