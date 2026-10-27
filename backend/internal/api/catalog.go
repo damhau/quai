@@ -6,7 +6,6 @@ import (
 	"io/fs"
 	"maps"
 	"net/http"
-	"path"
 	"slices"
 	"strings"
 	"time"
@@ -92,7 +91,7 @@ type TypeView struct {
 	Path          string       `json:"path"`
 	Locate        string       `json:"locate"`
 	Params        []ParamView  `json:"params"`
-	Schema        any          `json:"schema" doc:"The input schema as written"`
+	FormSchema    any          `json:"schema" doc:"The input schema as written"`
 	PropertyOrder []string     `json:"propertyOrder"`
 	UI            UIView       `json:"ui"`
 	Actions       []ActionView `json:"actions"`
@@ -114,7 +113,7 @@ type BlueprintResourceView struct {
 type BlueprintView struct {
 	CatalogItem
 	Path          string                  `json:"path"`
-	Schema        any                     `json:"schema"`
+	FormSchema    any                     `json:"schema"`
 	PropertyOrder []string                `json:"propertyOrder"`
 	UI            UIView                  `json:"ui"`
 	Resources     []BlueprintResourceView `json:"resources"`
@@ -412,7 +411,7 @@ func actionViews(actions []definitions.Action) []ActionView {
 func typeView(snap *repositories.Snapshot, t *definitions.ResourceType) TypeView {
 	v := TypeView{
 		CatalogItem: item("type", snap.Repository, t.Metadata), Path: t.Path, Locate: t.Spec.Locate.Path,
-		Schema: t.InputSchema.Document(), PropertyOrder: t.InputSchema.PropertyOrder(), UI: uiView(t.Spec.UI),
+		FormSchema: t.InputSchema.Document(), PropertyOrder: t.InputSchema.PropertyOrder(), UI: uiView(t.Spec.UI),
 		Actions: actionViews(t.Spec.Actions), Stack: t.Spec.Stack, Deletion: t.Spec.Deletion, Params: []ParamView{},
 	}
 	if v.Deletion == "" {
@@ -427,42 +426,15 @@ func typeView(snap *repositories.Snapshot, t *definitions.ResourceType) TypeView
 			pv.Type = "string"
 		}
 		if p.Discover {
-			pv.Options = discover(snap, t.Spec.Locate.Path, p.Name)
+			pv.Options = inventory.Discover(snap, t, p.Name)
 		}
 		v.Params = append(v.Params, pv)
 	}
 	return v
 }
 
-// discover returns the values a param has in the repository: the directories at its place in
-// the locator's path, such as dev, prod and test for {env} in envs/{env}/vms/{name}.yaml.
-func discover(snap *repositories.Snapshot, pattern, param string) []string {
-	segs := strings.Split(pattern, "/")
-	for i, seg := range segs {
-		if seg != "{"+param+"}" {
-			continue
-		}
-		dir := path.Join(segs[:i]...)
-		if dir == "" {
-			dir = "."
-		}
-		entries, err := fs.ReadDir(snap.FS, dir)
-		if err != nil {
-			return []string{}
-		}
-		out := []string{}
-		for _, e := range entries {
-			if e.IsDir() && locate.SafeSegment(e.Name()) {
-				out = append(out, e.Name())
-			}
-		}
-		return out
-	}
-	return []string{}
-}
-
 func blueprintView(repo string, b *definitions.Blueprint) BlueprintView {
-	v := BlueprintView{CatalogItem: item("blueprint", repo, b.Metadata), Path: b.Path, Schema: b.InputSchema.Document(),
+	v := BlueprintView{CatalogItem: item("blueprint", repo, b.Metadata), Path: b.Path, FormSchema: b.InputSchema.Document(),
 		PropertyOrder: b.InputSchema.PropertyOrder(), UI: uiView(b.Spec.UI), Resources: []BlueprintResourceView{}, Actions: []ActionView{}}
 	for _, r := range b.Spec.Resources {
 		rv := BlueprintResourceView{ID: r.ID, Repository: r.Type.Repository, Type: r.Type.Name, When: r.When, DependsOn: r.DependsOn}

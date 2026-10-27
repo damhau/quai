@@ -23,6 +23,7 @@ import (
 
 	"github.com/damhau/quai/backend/internal/auth"
 	"github.com/damhau/quai/backend/internal/repositories"
+	"github.com/damhau/quai/backend/internal/requests"
 	"github.com/damhau/quai/backend/internal/store"
 )
 
@@ -40,6 +41,8 @@ type Options struct {
 	Store *store.Store
 	// Repositories are the connected repositories; nil when none are configured.
 	Repositories *repositories.Registry
+	// Requests runs requests; nil without repositories or a database.
+	Requests *requests.Service
 }
 
 // New returns the HTTP handler of the API.
@@ -73,6 +76,9 @@ func New(opts Options) http.Handler {
 	}
 	if opts.Repositories != nil {
 		registerCatalog(a, opts.Repositories)
+	}
+	if opts.Requests != nil {
+		registerRequests(a, opts.Requests, opts.Store, opts.Logger)
 	}
 
 	return otelhttp.NewHandler(r, "quai", otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {

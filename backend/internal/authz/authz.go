@@ -68,7 +68,7 @@ var TokenScopes = map[string][]Action{
 	"catalog:read":   {ReadCatalog},
 	"inventory:read": {ReadInventory},
 	"requests:read":  {ReadRequest},
-	"requests:write": {ReadRequest, CreateRequest, CancelRequest, ReviewRequest, OperateResource},
+	"requests:write": {ReadRequest, CreateRequest, CancelRequest, RetryRequest, ReviewRequest, OperateResource},
 }
 
 // Action is what the principal wants to do.
@@ -82,6 +82,7 @@ const (
 	CreateRequest      Action = "requests.create"
 	ReviewRequest      Action = "requests.review"
 	CancelRequest      Action = "requests.cancel"
+	RetryRequest       Action = "requests.retry"
 	OperateResource    Action = "resources.operate"
 	PreviewDefinitions Action = "definitions.preview"
 	ManageRepository   Action = "repositories.manage"
@@ -163,9 +164,9 @@ func Authorize(_ context.Context, p Principal, a Action, o Object) (Decision, er
 		if !p.has(Viewer, o) && !p.has(Requester, o) && !p.has(Operator, o) && !p.has(Auditor, o) {
 			return deny("reviewing needs access to the request"), nil
 		}
-	case CancelRequest:
+	case CancelRequest, RetryRequest:
 		if o.Requester != p.Name {
-			return deny("only the requester or a platform admin can cancel a request"), nil
+			return deny("only the requester or a platform admin can do this"), nil
 		}
 	case OperateResource:
 		if !p.has(Operator, o) {

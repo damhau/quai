@@ -58,6 +58,17 @@ type ChangeSet struct {
 	Fingerprints map[string]string
 	// Hash identifies the content: approvals are bound to it.
 	Hash string
+	// Resources are the resources a blueprint plan creates, for its approval rules.
+	Resources []Planned
+}
+
+// Planned is a resource a blueprint plan creates.
+type Planned struct {
+	ID     string // the resource's id in the blueprint
+	Type   string
+	Key    string
+	Params map[string]string
+	Values map[string]any
 }
 
 // Type plans a request on one resource of a type in the repository fsys.
@@ -214,6 +225,7 @@ func Blueprint(fsys fs.FS, repo *definitions.Repository, b *definitions.Blueprin
 			return nil, fmt.Errorf("resource %s: %w", res.ID, err)
 		}
 		created[res.ID] = locate.ID(r.Repository, t.Metadata.Name, region.Key)
+		cs.Resources = append(cs.Resources, Planned{ID: res.ID, Type: t.Metadata.Name, Key: region.Key, Params: strParams, Values: values})
 	}
 
 	record := path.Join(InstancesDir, b.Metadata.Name, r.Name+".yaml")

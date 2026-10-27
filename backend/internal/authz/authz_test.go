@@ -54,6 +54,7 @@ func TestAuthorize(t *testing.T) {
 		{"requester reads the catalog", who("dan", []string{"developers"}, at(Requester, ScopeGlobal, "")), ReadCatalog, item, true, ""},
 		{"a requester cancels their request", who("bob", nil), CancelRequest, request, true, ""},
 		{"another person cannot cancel it", who("eve", nil, at(Operator, ScopeGlobal, "")), CancelRequest, request, false, "only the requester"},
+		{"the requester retries", who("bob", nil), RetryRequest, request, true, ""},
 
 		// Reviewing: access only; eligibility is the policy's.
 		{"a viewer may review", who("vic", nil, at(Viewer, ScopeGlobal, "")), ReviewRequest, request, true, ""},

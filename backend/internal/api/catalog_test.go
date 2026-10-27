@@ -26,7 +26,7 @@ func TestCatalogAndInventory(t *testing.T) {
 		t.Fatalf("type = %d %s", status, body)
 	}
 	if !slices.Equal(vm.Params[0].Options, []string{"dev", "prod", "test"}) || vm.Params[1].Pattern == "" || vm.OwnerField != "owner" ||
-		vm.PropertyOrder[0] != "owner" || len(vm.Actions) != 2 || vm.Schema == nil || vm.Stack != "envs/{env}" || !vm.UI.Fields["template"].Immutable {
+		vm.PropertyOrder[0] != "owner" || len(vm.Actions) != 2 || vm.FormSchema == nil || vm.Stack != "envs/{env}" || !vm.UI.Fields["template"].Immutable {
 		t.Errorf("type = %+v", vm)
 	}
 	var bp BlueprintView

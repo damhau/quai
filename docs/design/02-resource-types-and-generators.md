@@ -359,7 +359,7 @@ Quai resource. With it, Quai can map `terraform show -json` output (parsed with
 | `deletion` | Behaviour |
 | --- | --- |
 | `allowed` | Delete is a normal day-2 action under the type's approval rules. |
-| `approval` (default) | Delete always needs at least one approval from the owners or the repository floor rules, even when other changes do not. |
+| `approval` (default) | Delete always needs at least one approval from the owners or the repository floor rules, even when other changes do not: when no rule applies, Quai adds one whose approvers are `owners` and every approver the repository's floor rules name. |
 | `forbidden` | No delete action. Removal is done by hand in Git. |
 
 The delete confirmation always shows what the plan will destroy when the runner

@@ -13,9 +13,10 @@ import (
 )
 
 const createRequest = `-- name: CreateRequest :one
-INSERT INTO requests (id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-RETURNING id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at
+INSERT INTO requests (id, kind, action, target, type_name, blueprint, requester, requester_email, reason, inputs, state,
+                      definitions_commit, base_commit, stack, rules, owners)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+RETURNING id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners
 `
 
 type CreateRequestParams struct {
@@ -26,11 +27,15 @@ type CreateRequestParams struct {
 	TypeName          string
 	Blueprint         string
 	Requester         string
+	RequesterEmail    string
 	Reason            string
 	Inputs            json.RawMessage
 	State             string
 	DefinitionsCommit string
 	BaseCommit        string
+	Stack             string
+	Rules             json.RawMessage
+	Owners            []string
 }
 
 func (q *Queries) CreateRequest(ctx context.Context, arg CreateRequestParams) (Request, error) {
@@ -42,11 +47,15 @@ func (q *Queries) CreateRequest(ctx context.Context, arg CreateRequestParams) (R
 		arg.TypeName,
 		arg.Blueprint,
 		arg.Requester,
+		arg.RequesterEmail,
 		arg.Reason,
 		arg.Inputs,
 		arg.State,
 		arg.DefinitionsCommit,
 		arg.BaseCommit,
+		arg.Stack,
+		arg.Rules,
+		arg.Owners,
 	)
 	var i Request
 	err := row.Scan(
@@ -65,12 +74,17 @@ func (q *Queries) CreateRequest(ctx context.Context, arg CreateRequestParams) (R
 		&i.BaseCommit,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Number,
+		&i.RequesterEmail,
+		&i.Stack,
+		&i.Rules,
+		&i.Owners,
 	)
 	return i, err
 }
 
 const getRequest = `-- name: GetRequest :one
-SELECT id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at FROM requests WHERE id = $1
+SELECT id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners FROM requests WHERE id = $1
 `
 
 func (q *Queries) GetRequest(ctx context.Context, id uuid.UUID) (Request, error) {
@@ -92,12 +106,17 @@ func (q *Queries) GetRequest(ctx context.Context, id uuid.UUID) (Request, error)
 		&i.BaseCommit,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Number,
+		&i.RequesterEmail,
+		&i.Stack,
+		&i.Rules,
+		&i.Owners,
 	)
 	return i, err
 }
 
 const listRequests = `-- name: ListRequests :many
-SELECT id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at FROM requests
+SELECT id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners FROM requests
 WHERE (cardinality($1::text[]) = 0 OR state = ANY ($1::text[]))
   AND ($2::text = '' OR requester = $2::text)
   AND ($3::text = '' OR target = $3::text)
@@ -143,6 +162,11 @@ func (q *Queries) ListRequests(ctx context.Context, arg ListRequestsParams) ([]R
 			&i.BaseCommit,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Number,
+			&i.RequesterEmail,
+			&i.Stack,
+			&i.Rules,
+			&i.Owners,
 		); err != nil {
 			return nil, err
 		}
@@ -157,7 +181,7 @@ func (q *Queries) ListRequests(ctx context.Context, arg ListRequestsParams) ([]R
 const transitionRequest = `-- name: TransitionRequest :one
 UPDATE requests SET state = $1, updated_at = now()
 WHERE id = $2 AND state = $3
-RETURNING id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at
+RETURNING id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners
 `
 
 type TransitionRequestParams struct {
@@ -187,6 +211,11 @@ func (q *Queries) TransitionRequest(ctx context.Context, arg TransitionRequestPa
 		&i.BaseCommit,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Number,
+		&i.RequesterEmail,
+		&i.Stack,
+		&i.Rules,
+		&i.Owners,
 	)
 	return i, err
 }

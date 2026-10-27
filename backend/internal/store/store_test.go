@@ -28,6 +28,7 @@ func newRequest(target string) db.CreateRequestParams {
 		ID: uuid.New(), Kind: "action", Action: "resize", Target: target, TypeName: "vm",
 		Requester: "bob", Reason: "load", Inputs: json.RawMessage(`{"cpu": 8}`),
 		State: "pending_approval", DefinitionsCommit: "c0ffee", BaseCommit: "c0ffee",
+		Rules: json.RawMessage(`[]`), Owners: []string{},
 	}
 }
 
@@ -52,7 +53,7 @@ func TestRequests(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r.ID != p.ID || r.State != "pending_approval" || !r.CreatedAt.Valid || string(r.Inputs) != `{"cpu": 8}` {
+	if r.ID != p.ID || r.State != "pending_approval" || !r.CreatedAt.Valid || string(r.Inputs) != `{"cpu": 8}` || r.Number < 1 {
 		t.Errorf("created = %+v", r)
 	}
 	// One open request per target.
@@ -73,7 +74,7 @@ func TestRequests(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.CreateRequest(ctx, db.CreateRequestParams{ID: uuid.New(), Kind: "rename", Target: "x", Requester: "bob", State: "planned", Inputs: json.RawMessage(`{}`)}); err == nil {
+	if _, err := s.CreateRequest(ctx, db.CreateRequestParams{ID: uuid.New(), Kind: "rename", Target: "x", Requester: "bob", State: "planned", Inputs: json.RawMessage(`{}`), Rules: json.RawMessage(`[]`), Owners: []string{}}); err == nil {
 		t.Error("an unknown kind was stored")
 	}
 

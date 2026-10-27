@@ -10,6 +10,8 @@ import (
 
 	"github.com/damhau/quai/backend/internal/engine/plan"
 	"github.com/damhau/quai/backend/internal/engine/schema"
+	"github.com/damhau/quai/backend/internal/repositories"
+	"github.com/damhau/quai/backend/internal/requests"
 )
 
 // Problem maps an error from the domain to the problem details a handler returns: the one place
@@ -30,8 +32,12 @@ func Problem(err error, prefix string) huma.StatusError {
 			details = append(details, &huma.ErrorDetail{Location: loc, Message: ve.Fields[f]})
 		}
 		return huma.Error422UnprocessableEntity("some fields need attention", details...)
-	case errors.Is(err, plan.ErrNotFound):
+	case errors.Is(err, plan.ErrNotFound), errors.Is(err, requests.ErrNotFound), errors.Is(err, repositories.ErrNotFound):
 		return huma.Error404NotFound(err.Error())
+	case errors.Is(err, requests.ErrConflict):
+		return huma.Error409Conflict(err.Error())
+	case errors.Is(err, requests.ErrNotApprover):
+		return huma.Error403Forbidden(err.Error())
 	case errors.Is(err, plan.ErrExists):
 		return huma.Error409Conflict(err.Error())
 	case errors.Is(err, plan.ErrNoChange):

@@ -69,6 +69,11 @@ type Request struct {
 	BaseCommit        string
 	CreatedAt         pgtype.Timestamptz
 	UpdatedAt         pgtype.Timestamptz
+	Number            int64
+	RequesterEmail    string
+	Stack             string
+	Rules             json.RawMessage
+	Owners            []string
 }
 
 type Review struct {

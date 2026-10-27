@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io/fs"
 	"maps"
+	"path"
 	"slices"
 	"strings"
 
@@ -156,4 +157,31 @@ func lookup(doc map[string]any, path string) any {
 		cur = m[seg]
 	}
 	return cur
+}
+
+// Discover returns the values a param has in the repository: the directories at its place in
+// the type's path, such as dev, prod and test for {env} in envs/{env}/vms/{name}.yaml.
+func Discover(snap *repositories.Snapshot, t *definitions.ResourceType, param string) []string {
+	segs := strings.Split(t.Spec.Locate.Path, "/")
+	out := []string{}
+	for i, seg := range segs {
+		if seg != "{"+param+"}" {
+			continue
+		}
+		dir := path.Join(segs[:i]...)
+		if dir == "" {
+			dir = "."
+		}
+		entries, err := fs.ReadDir(snap.FS, dir)
+		if err != nil {
+			return out
+		}
+		for _, e := range entries {
+			if e.IsDir() && locate.SafeSegment(e.Name()) {
+				out = append(out, e.Name())
+			}
+		}
+		return out
+	}
+	return out
 }

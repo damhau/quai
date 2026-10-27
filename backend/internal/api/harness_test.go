@@ -16,10 +16,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/riverqueue/river"
+
 	"github.com/damhau/quai/backend/internal/auth"
 	"github.com/damhau/quai/backend/internal/config"
+	"github.com/damhau/quai/backend/internal/jobs"
 	"github.com/damhau/quai/backend/internal/pgtest"
 	"github.com/damhau/quai/backend/internal/repositories"
+	"github.com/damhau/quai/backend/internal/requests"
 	"github.com/damhau/quai/backend/internal/store"
 )
 
@@ -70,7 +74,8 @@ func newHarness(t *testing.T) *harness {
 	}
 	cfg.Git.CacheDir = filepath.Join(dir, "mirrors")
 	cfg.Repositories = []config.Repository{{Name: "infra-live", Title: "Infrastructure", URL: bare, DefaultBranch: "main",
-		Delivery: config.Delivery{Mode: "direct"}, Sync: config.SyncSettings{MinInterval: time.Nanosecond}}}
+		Delivery: config.Delivery{Mode: "direct"}, Sync: config.SyncSettings{MinInterval: time.Nanosecond},
+		FloorRules: []config.FloorRule{{Name: "production-floor", When: "params.env == 'prod'", Approvers: []string{"group:platform-admins"}}}}}
 	var logs bytes.Buffer
 	log := slog.New(slog.NewTextHandler(&logs, nil))
 	reg, err := repositories.Open(context.Background(), cfg, log)
@@ -79,7 +84,21 @@ func newHarness(t *testing.T) *harness {
 	}
 	t.Cleanup(reg.Close)
 	s := pgtest.Store(t)
-	srv := httptest.NewServer(New(Options{Version: "test", Env: cfg.Env, Logger: log, Store: s, Auth: auth.New(cfg, s, log), Repositories: reg}))
+	svc := requests.New(s, reg, nil, log)
+	worker, err := jobs.NewWorker(s.Pool, jobs.Options{Logger: log, Workers: func(w *river.Workers) { river.AddWorker(w, requests.NewWorker(svc)) }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc.UseJobs(worker)
+	if err := worker.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		_ = worker.StopAndCancel(ctx)
+	})
+	srv := httptest.NewServer(New(Options{Version: "test", Env: cfg.Env, Logger: log, Store: s, Auth: auth.New(cfg, s, log), Repositories: reg, Requests: svc}))
 	t.Cleanup(srv.Close)
 	return &harness{t: t, srv: srv, bare: bare, work: work, store: s, reg: reg, log: &logs}
 }
@@ -148,4 +167,29 @@ func (u *user) do(method, path string, body, out any) (int, string) {
 		}
 	}
 	return resp.StatusCode, string(raw)
+}
+
+// file returns a file of the repository's main branch, as Git has it.
+func (h *harness) file(p string) (string, bool) {
+	h.t.Helper()
+	cmd := exec.Command("git", "--git-dir", h.bare, "show", "main:"+p) // #nosec G204 -- test helper
+	b, err := cmd.Output()
+	return string(b), err == nil
+}
+
+// await waits until a request reaches state.
+func (u *user) await(id, state string) RequestView {
+	u.h.t.Helper()
+	var r RequestView
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		u.do(http.MethodGet, Prefix+"/requests/"+id, nil, &r)
+		if r.State == state {
+			return r
+		}
+		if time.Now().After(deadline) {
+			u.h.t.Fatalf("request %s is %s, not %s; events %+v\nlog:\n%s", id, r.State, state, r.Events, u.h.log.String())
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 }
