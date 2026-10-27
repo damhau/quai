@@ -54,11 +54,21 @@ type Grant struct {
 	Scope Scope
 }
 
-// Principal is who asks: a person, or a service acting for one.
+// Principal is who asks: a person, or a token acting for one.
 type Principal struct {
 	Name   string
 	Groups []string // IdP groups; a team is the group of the same name
 	Grants []Grant
+	// Scopes narrow what an API token may do (TokenScopes); nil for a browser session.
+	Scopes []string
+}
+
+// TokenScopes are the scopes an API token can have, and the actions each allows.
+var TokenScopes = map[string][]Action{
+	"catalog:read":   {ReadCatalog},
+	"inventory:read": {ReadInventory},
+	"requests:read":  {ReadRequest},
+	"requests:write": {ReadRequest, CreateRequest, CancelRequest, ReviewRequest, OperateResource},
 }
 
 // Action is what the principal wants to do.
@@ -78,6 +88,7 @@ const (
 	ManageSettings     Action = "settings.manage"
 	ReadAudit          Action = "audit.read"
 	UseBreakGlass      Action = "requests.break-glass"
+	ManageOwnTokens    Action = "tokens.manage"
 )
 
 // Object is what the action is on. Fields that do not apply are empty.
@@ -117,6 +128,9 @@ func deny(format string, args ...any) Decision {
 func Authorize(_ context.Context, p Principal, a Action, o Object) (Decision, error) {
 	if p.Name == "" {
 		return deny("not signed in"), nil
+	}
+	if p.Scopes != nil && !slices.ContainsFunc(p.Scopes, func(s string) bool { return slices.Contains(TokenScopes[s], a) }) {
+		return deny("the token's scopes do not allow %s", a), nil
 	}
 	if p.has(PlatformAdmin, o) && a != UseBreakGlass {
 		return allow(), nil
@@ -174,6 +188,8 @@ func Authorize(_ context.Context, p Principal, a Action, o Object) (Decision, er
 		if !p.has(Auditor, o) {
 			return deny("reading the audit log needs the auditor role"), nil
 		}
+	case ManageOwnTokens:
+		// Anyone signed in manages their own tokens; tokens cannot make tokens (scopes above).
 	case UseBreakGlass:
 		if !p.has(BreakGlass, o) {
 			return deny("break-glass needs the break-glass role"), nil

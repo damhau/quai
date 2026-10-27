@@ -17,6 +17,23 @@ Status: Draft · 2026-10-26
 The dev user switcher remains for local development only and is refused when
 `QUAI_ENV=production`.
 
+How it works in the server:
+
+- `/auth/login` starts the OIDC login (state, nonce and a PKCE verifier kept in the
+  session) and `/auth/callback` finishes it: state compared, code exchanged with the
+  verifier, ID token verified (issuer, audience, expiry, signature, nonce), session
+  token renewed against fixation. `next` only redirects to a path on Quai.
+- The person's name comes from `nameClaim` (`preferred_username` by default) and their
+  groups from `groupsClaim` (`groups`, or `roles` for Entra app roles); `auth.roles` maps
+  groups to roles at a scope. Roles are recomputed from the groups on every request, so
+  a mapping change applies at once.
+- The session cookie is `quai_session`. `GET /api/v1/me` returns the session's CSRF token;
+  every `POST`, `PUT`, `PATCH` or `DELETE` with a session must send it as `X-CSRF-Token`.
+- API tokens look like `quai_…`, are sent as `Authorization: Bearer`, act with the groups
+  their owner had when creating them, and are narrowed by their scopes (`catalog:read`,
+  `inventory:read`, `requests:read`, `requests:write`). A token cannot create tokens.
+- `POST /auth/logout` ends the session.
+
 ### Step-up
 
 Some actions (approving prod changes, break-glass, admin changes) can require a

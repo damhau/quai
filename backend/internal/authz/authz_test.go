@@ -89,6 +89,15 @@ func TestAuthorize(t *testing.T) {
 		{"break-glass on one's own request", who("bob", nil, at(BreakGlass, ScopeGlobal, "")), UseBreakGlass, request, false, "your own request"},
 		{"platform admin is not break-glass", who("ada", nil, at(PlatformAdmin, ScopeGlobal, "")), UseBreakGlass, request, false, "break-glass role"},
 		{"unknown scope kind", who("x", nil, at(Viewer, "planet", "earth")), ReadInventory, resource, false, "viewer role"},
+
+		// API tokens: the owner's roles, narrowed by the token's scopes.
+		{"token reads with catalog:read", Principal{Name: "dan", Groups: []string{"developers"}, Grants: []Grant{at(Requester, ScopeGlobal, "")}, Scopes: []string{"catalog:read"}}, ReadCatalog, item, true, ""},
+		{"token cannot request without requests:write", Principal{Name: "dan", Groups: []string{"developers"}, Grants: []Grant{at(Requester, ScopeGlobal, "")}, Scopes: []string{"catalog:read"}}, CreateRequest, item, false, "scopes do not allow requests.create"},
+		{"token with requests:write requests", Principal{Name: "dan", Groups: []string{"developers"}, Grants: []Grant{at(Requester, ScopeGlobal, "")}, Scopes: []string{"requests:write"}}, CreateRequest, item, true, ""},
+		{"a scope does not add a role", Principal{Name: "dan", Groups: []string{"developers"}, Scopes: []string{"requests:write"}}, CreateRequest, item, false, "requester role"},
+		{"an admin's token is still scoped", Principal{Name: "ada", Grants: []Grant{at(PlatformAdmin, ScopeGlobal, "")}, Scopes: []string{"catalog:read"}}, ManageSettings, Object{}, false, "scopes"},
+		{"tokens cannot make tokens", Principal{Name: "dan", Scopes: []string{"requests:write"}}, ManageOwnTokens, Object{}, false, "scopes"},
+		{"a session manages its tokens", who("dan", nil), ManageOwnTokens, Object{}, true, ""},
 	}
 	for _, tt := range tests {
 		d, err := Authorize(context.Background(), tt.p, tt.action, tt.obj)

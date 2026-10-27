@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -31,6 +32,7 @@ type Config struct {
 	Env       string    `yaml:"env"`
 	Server    Server    `yaml:"server"`
 	Database  Database  `yaml:"database"`
+	Auth      Auth      `yaml:"auth"`
 	Log       Log       `yaml:"log"`
 	Telemetry Telemetry `yaml:"telemetry"`
 }
@@ -44,6 +46,58 @@ type Server struct {
 // Database configures PostgreSQL.
 type Database struct {
 	URL string `yaml:"url"` // such as postgres://quai@db:5432/quai; secrets belong in QUAI_DATABASE_URL
+}
+
+// Authentication modes.
+const (
+	AuthOIDC = "oidc"
+	AuthDev  = "dev"
+)
+
+// Auth configures who can sign in and the roles their groups give them.
+type Auth struct {
+	// Mode is oidc, or dev for the development user switcher, which production refuses.
+	Mode    string        `yaml:"mode"`
+	OIDC    OIDC          `yaml:"oidc"`
+	Roles   []RoleMapping `yaml:"roles"`
+	Session Session       `yaml:"session"`
+	Dev     Dev           `yaml:"dev"`
+}
+
+// OIDC configures login with an OpenID Connect provider (authorization code with PKCE).
+type OIDC struct {
+	Issuer       string   `yaml:"issuer"`
+	ClientID     string   `yaml:"clientID"`
+	ClientSecret string   `yaml:"clientSecret"` // better in QUAI_AUTH_OIDC_CLIENT_SECRET
+	RedirectURL  string   `yaml:"redirectURL"`  // https://quai.example.com/auth/callback
+	Scopes       []string `yaml:"scopes"`       // openid, profile, email by default
+	NameClaim    string   `yaml:"nameClaim"`    // preferred_username by default
+	GroupsClaim  string   `yaml:"groupsClaim"`  // groups by default; roles for Entra app roles
+}
+
+// RoleMapping grants a role to the members of an IdP group at a scope: global (the default),
+// team:<name>, repository:<name> or catalog-item:<name>.
+type RoleMapping struct {
+	Group string `yaml:"group"`
+	Role  string `yaml:"role"`
+	Scope string `yaml:"scope"`
+}
+
+// Session configures browser sessions.
+type Session struct {
+	Lifetime    time.Duration `yaml:"lifetime"`    // 8h by default
+	IdleTimeout time.Duration `yaml:"idleTimeout"` // 30m by default
+}
+
+// Dev lists the users of the development switcher.
+type Dev struct {
+	Users []DevUser `yaml:"users"`
+}
+
+// DevUser is a user of the development switcher.
+type DevUser struct {
+	Name   string   `yaml:"name"`
+	Groups []string `yaml:"groups"`
 }
 
 // Log configures logging.
@@ -70,6 +124,11 @@ var variables = []struct {
 		return err
 	}},
 	{"QUAI_DATABASE_URL", func(c *Config, v string) error { c.Database.URL = v; return nil }},
+	{"QUAI_AUTH_MODE", func(c *Config, v string) error { c.Auth.Mode = v; return nil }},
+	{"QUAI_AUTH_OIDC_ISSUER", func(c *Config, v string) error { c.Auth.OIDC.Issuer = v; return nil }},
+	{"QUAI_AUTH_OIDC_CLIENT_ID", func(c *Config, v string) error { c.Auth.OIDC.ClientID = v; return nil }},
+	{"QUAI_AUTH_OIDC_CLIENT_SECRET", func(c *Config, v string) error { c.Auth.OIDC.ClientSecret = v; return nil }},
+	{"QUAI_AUTH_OIDC_REDIRECT_URL", func(c *Config, v string) error { c.Auth.OIDC.RedirectURL = v; return nil }},
 	{"QUAI_LOG_LEVEL", func(c *Config, v string) error { c.Log.Level = v; return nil }},
 	{"QUAI_LOG_FORMAT", func(c *Config, v string) error { c.Log.Format = v; return nil }},
 	{"QUAI_TELEMETRY_OTLP_ENDPOINT", func(c *Config, v string) error { c.Telemetry.OTLPEndpoint = v; return nil }},
@@ -132,6 +191,44 @@ func (c *Config) defaults() {
 	if c.Telemetry.ServiceName == "" {
 		c.Telemetry.ServiceName = "quai"
 	}
+	a := &c.Auth
+	if a.Mode == "" {
+		a.Mode = AuthOIDC
+		if c.Env == Development {
+			a.Mode = AuthDev
+		}
+	}
+	if len(a.OIDC.Scopes) == 0 {
+		a.OIDC.Scopes = []string{"openid", "profile", "email"}
+	}
+	if a.OIDC.NameClaim == "" {
+		a.OIDC.NameClaim = "preferred_username"
+	}
+	if a.OIDC.GroupsClaim == "" {
+		a.OIDC.GroupsClaim = "groups"
+	}
+	if a.Session.Lifetime == 0 {
+		a.Session.Lifetime = 8 * time.Hour
+	}
+	if a.Session.IdleTimeout == 0 {
+		a.Session.IdleTimeout = 30 * time.Minute
+	}
+	if a.Mode == AuthDev && len(a.Dev.Users) == 0 && len(a.Roles) == 0 {
+		// The prototype's demo users, with roles to try every screen.
+		a.Dev.Users = []DevUser{
+			{Name: "alice", Groups: []string{"platform-admins"}},
+			{Name: "bob", Groups: []string{"developers", "shop"}},
+			{Name: "fiona", Groups: []string{"finops", "developers"}},
+			{Name: "carol", Groups: []string{"shop", "developers"}},
+		}
+		a.Roles = []RoleMapping{
+			{Group: "platform-admins", Role: "platform-admin"},
+			{Group: "developers", Role: "viewer"},
+			{Group: "developers", Role: "requester"},
+			{Group: "developers", Role: "operator"},
+			{Group: "finops", Role: "viewer"},
+		}
+	}
 }
 
 func (c *Config) validate() error {
@@ -150,6 +247,7 @@ func (c *Config) validate() error {
 	if c.Server.ShutdownTimeout < 0 {
 		errs = append(errs, errors.New("server.shutdownTimeout must not be negative"))
 	}
+	errs = append(errs, c.Auth.validate(c.Env))
 	if _, err := c.Log.SlogLevel(); err != nil {
 		errs = append(errs, err)
 	}
@@ -161,6 +259,52 @@ func (c *Config) validate() error {
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 			errs = append(errs, fmt.Errorf("telemetry.otlpEndpoint must be an http or https URL, not %q", e))
 		}
+	}
+	return errors.Join(errs...)
+}
+
+// roles are the role names of docs/design/08; internal/authz defines them.
+var roles = []string{"viewer", "requester", "operator", "catalog-author", "repository-admin", "platform-admin", "auditor", "break-glass"}
+
+func (a *Auth) validate(env string) error {
+	var errs []error
+	switch a.Mode {
+	case AuthDev:
+		if env == Production {
+			errs = append(errs, errors.New("auth.mode dev (the user switcher) is refused in production"))
+		}
+		for _, u := range a.Dev.Users {
+			if u.Name == "" {
+				errs = append(errs, errors.New("auth.dev.users: every user needs a name"))
+			}
+		}
+	case AuthOIDC:
+		o := a.OIDC
+		if u, err := url.Parse(o.Issuer); err != nil || u.Host == "" || (u.Scheme != "https" && (env == Production || u.Scheme != "http")) {
+			errs = append(errs, errors.New("auth.oidc.issuer must be an https URL (http only in development)"))
+		}
+		if o.ClientID == "" {
+			errs = append(errs, errors.New("auth.oidc.clientID is required"))
+		}
+		if u, err := url.Parse(o.RedirectURL); err != nil || u.Host == "" || (u.Scheme != "https" && (env == Production || u.Scheme != "http")) {
+			errs = append(errs, errors.New("auth.oidc.redirectURL must be an https URL (http only in development)"))
+		}
+	default:
+		errs = append(errs, fmt.Errorf("auth.mode must be oidc or dev, not %q", a.Mode))
+	}
+	for i, m := range a.Roles {
+		if m.Group == "" {
+			errs = append(errs, fmt.Errorf("auth.roles[%d].group is required", i))
+		}
+		if !slices.Contains(roles, m.Role) {
+			errs = append(errs, fmt.Errorf("auth.roles[%d].role must be one of %s, not %q", i, strings.Join(roles, ", "), m.Role))
+		}
+		if kind, name, ok := strings.Cut(m.Scope, ":"); m.Scope != "" && m.Scope != "global" && (!ok || name == "" || !slices.Contains([]string{"team", "repository", "catalog-item"}, kind)) {
+			errs = append(errs, fmt.Errorf("auth.roles[%d].scope must be global, team:<name>, repository:<name> or catalog-item:<name>, not %q", i, m.Scope))
+		}
+	}
+	if a.Session.Lifetime < 0 || a.Session.IdleTimeout < 0 {
+		errs = append(errs, errors.New("auth.session durations must not be negative"))
 	}
 	return errors.Join(errs...)
 }

@@ -20,6 +20,9 @@ import (
 	"github.com/danielgtaylor/huma/v2/adapters/humachi"
 	"github.com/go-chi/chi/v5"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+
+	"github.com/damhau/quai/backend/internal/auth"
+	"github.com/damhau/quai/backend/internal/store"
 )
 
 // Prefix is where the REST API lives.
@@ -30,12 +33,20 @@ type Options struct {
 	Version string
 	Env     string
 	Logger  *slog.Logger
+	// Auth and Store are nil when the server runs without a database: nobody can sign in, and
+	// only /healthz and /api/v1/meta answer.
+	Auth  *auth.Authenticator
+	Store *store.Store
 }
 
 // New returns the HTTP handler of the API.
 func New(opts Options) http.Handler {
 	r := chi.NewRouter()
 	r.Use(requestID, accessLog(opts.Logger), recoverer(opts.Logger))
+	if opts.Auth != nil {
+		r.Use(opts.Auth.Middleware)
+		r.Mount("/auth", opts.Auth.Routes())
+	}
 	r.NotFound(func(w http.ResponseWriter, _ *http.Request) {
 		writeProblem(w, http.StatusNotFound, "no such resource")
 	})
@@ -54,6 +65,9 @@ func New(opts Options) http.Handler {
 	cfg.DocsPath = "" // the docs page loads scripts from a CDN; the OpenAPI document is enough
 	a := humachi.New(r, cfg)
 	registerMeta(a, opts)
+	if opts.Store != nil {
+		registerIdentity(a, opts.Store)
+	}
 
 	return otelhttp.NewHandler(r, "quai", otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {
 		return r.Method + " " + r.URL.Path

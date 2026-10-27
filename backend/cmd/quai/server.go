@@ -15,7 +15,9 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/damhau/quai/backend/internal/api"
+	"github.com/damhau/quai/backend/internal/auth"
 	"github.com/damhau/quai/backend/internal/config"
+	"github.com/damhau/quai/backend/internal/store"
 	"github.com/damhau/quai/backend/internal/telemetry"
 )
 
@@ -44,11 +46,20 @@ func newServerCmd() *cobra.Command {
 					log.Error("telemetry shutdown", slog.Any("error", err))
 				}
 			}()
+			var s *store.Store
+			if cfg.Database.URL != "" {
+				if s, err = store.Open(ctx, cfg.Database.URL); err != nil {
+					return err
+				}
+				defer s.Close()
+			} else {
+				log.Warn("no database configured: nobody can sign in")
+			}
 			ln, err := net.Listen("tcp", cfg.Server.Addr)
 			if err != nil {
 				return err
 			}
-			return serve(ctx, cfg, log, ln)
+			return serve(ctx, cfg, log, ln, s)
 		},
 	}
 	cmd.Flags().StringVar(&configPath, "config", "", "configuration file (YAML)")
@@ -56,10 +67,14 @@ func newServerCmd() *cobra.Command {
 }
 
 // serve runs the HTTP server on ln until ctx ends, then lets requests in flight finish within
-// the shutdown timeout.
-func serve(ctx context.Context, cfg *config.Config, log *slog.Logger, ln net.Listener) error {
+// the shutdown timeout. Without a store, nobody can sign in.
+func serve(ctx context.Context, cfg *config.Config, log *slog.Logger, ln net.Listener, s *store.Store) error {
+	opts := api.Options{Version: version, Env: cfg.Env, Logger: log}
+	if s != nil {
+		opts.Store, opts.Auth = s, auth.New(cfg, s, log)
+	}
 	srv := &http.Server{
-		Handler:           api.New(api.Options{Version: version, Env: cfg.Env, Logger: log}),
+		Handler:           api.New(opts),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       60 * time.Second,
 		WriteTimeout:      60 * time.Second,
