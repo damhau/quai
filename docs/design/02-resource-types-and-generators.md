@@ -148,7 +148,11 @@ Bindings work on values, never on text:
 ## Locators
 
 A locator maps a resource key to a **region**: the part of the repository the
-resource owns. Regions decide what a change may touch and what is fingerprinted
+resource owns. The key is the param values in path order, joined by `/`
+(`prod/web01`); each value is one path segment of 1 to 63 letters, digits, `.`,
+`_` or `-`, starting with a letter or a digit and never containing `..`, so no
+value can leave the pattern's directories. Inventory scans skip symbolic links
+and `.git`. Regions decide what a change may touch and what is fingerprinted
 to detect concurrent edits.
 
 ### `file`: one file per resource

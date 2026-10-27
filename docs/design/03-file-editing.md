@@ -94,7 +94,11 @@ After applying the edits, the engine checks all of these. Any failure refuses th
 ## Concurrency and fingerprints
 
 Each region has a fingerprint: a SHA-256 over its bytes (for `entry`, the
-item's bytes; for `field`, the listed fields' bytes). A request stores the
+item's bytes; for `field`, the listed fields' bytes; for `dir`, each file's path
+relative to the directory and the SHA-256 of its content, in path order, so that
+renaming, adding or removing a file counts). A region that does not exist yet,
+such as the file of a resource being created, has the fingerprint `absent`.
+Symbolic links are never followed: a link where a region should be is refused. A request stores the
 fingerprints at plan time. When the worker builds the branch, it recomputes them
 on the current base:
 
