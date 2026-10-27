@@ -11,9 +11,11 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -25,6 +27,7 @@ import (
 	"github.com/damhau/quai/backend/internal/repositories"
 	"github.com/damhau/quai/backend/internal/requests"
 	"github.com/damhau/quai/backend/internal/store"
+	"github.com/damhau/quai/backend/internal/web"
 )
 
 // Prefix is where the REST API lives.
@@ -43,6 +46,9 @@ type Options struct {
 	Repositories *repositories.Registry
 	// Requests runs requests; nil without repositories or a database.
 	Requests *requests.Service
+	// UI is the frontend's build, served at every path the API and /auth do not answer; nil when
+	// the binary was built without it.
+	UI fs.FS
 }
 
 // New returns the HTTP handler of the API.
@@ -68,7 +74,16 @@ func build(opts Options, all bool) (*chi.Mux, huma.API) {
 		r.Use(opts.Auth.Middleware)
 		r.Mount("/auth", opts.Auth.Routes())
 	}
-	r.NotFound(func(w http.ResponseWriter, _ *http.Request) {
+	var ui http.Handler
+	if opts.UI != nil {
+		ui = web.Handler(opts.UI)
+	}
+	r.NotFound(func(w http.ResponseWriter, req *http.Request) {
+		page := req.Method == http.MethodGet || req.Method == http.MethodHead
+		if ui != nil && page && !strings.HasPrefix(req.URL.Path, Prefix+"/") && !strings.HasPrefix(req.URL.Path, "/auth/") {
+			ui.ServeHTTP(w, req)
+			return
+		}
 		writeProblem(w, http.StatusNotFound, "no such resource")
 	})
 	r.MethodNotAllowed(func(w http.ResponseWriter, _ *http.Request) {

@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	"github.com/damhau/quai/backend/internal/engine/expr"
 	"github.com/damhau/quai/backend/internal/engine/plan"
@@ -145,6 +146,27 @@ func TestProblemMapping(t *testing.T) {
 		b, _ := json.Marshal(p)
 		if p.GetStatus() != status || status == 500 && strings.Contains(string(b), "database") || status == 422 && strings.Contains(string(b), `"errors"`) && err != plan.ErrNoChange {
 			t.Errorf("Problem(%v) = %d %s", err, p.GetStatus(), b)
+		}
+	}
+}
+
+func TestServesTheUI(t *testing.T) {
+	h := New(Options{Version: "test", Logger: slog.New(slog.DiscardHandler), UI: fstest.MapFS{"index.html": {Data: []byte("<!doctype html><title>Quai</title>")}}})
+	for _, tc := range []struct {
+		method, path, want string
+		status             int
+	}{
+		{http.MethodGet, "/", "<title>Quai</title>", http.StatusOK},
+		{http.MethodGet, "/inventory", "<title>Quai</title>", http.StatusOK},
+		{http.MethodGet, "/healthz", "ok", http.StatusOK},
+		{http.MethodGet, Prefix + "/meta", `"version":"test"`, http.StatusOK},
+		{http.MethodGet, Prefix + "/nope", "no such resource", http.StatusNotFound}, // the API's paths stay the API's
+		{http.MethodPost, "/inventory", "no such resource", http.StatusNotFound},
+	} {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(tc.method, tc.path, nil))
+		if rec.Code != tc.status || !strings.Contains(rec.Body.String(), tc.want) {
+			t.Errorf("%s %s = %d %s", tc.method, tc.path, rec.Code, rec.Body)
 		}
 	}
 }

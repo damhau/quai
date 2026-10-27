@@ -1,0 +1,9 @@
+Quai {{ .Chart.AppVersion }} is installed as {{ include "quai.fullname" . }}.
+
+It reads its database URL from the Secret {{ .Values.database.secretName }} ({{ .Values.database.secretKey }})
+{{- if eq (dig "auth" "mode" "" .Values.config) "oidc" }} and its OIDC client secret from {{ .Values.oidc.secretName }} ({{ .Values.oidc.secretKey }}){{ end }}.
+{{- if .Values.ingress.enabled }}
+Open https://{{ .Values.ingress.host }}.
+{{- else }}
+Try it with: kubectl port-forward svc/{{ include "quai.fullname" . }} 8080:{{ .Values.service.port }}
+{{- end }}

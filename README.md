@@ -43,14 +43,12 @@ With no configuration, Quai creates a local bare repository at `data/gitops.git`
 
 For development with hot reload: `npm run dev` (API on :8080, UI on :5173).
 
-Or with Docker, no Node needed:
+Or with Docker, the new Go server and React frontend (`backend/`, `frontend/`): the stack runs Quai, PostgreSQL and a Gitea seeded with the VM-first examples.
 
 ```bash
-docker compose up --build   # http://localhost:8080
-docker compose down -v      # stop and start over with a fresh repository
+docker compose up --build   # Quai on http://localhost:8080, Gitea on http://localhost:3000
+docker compose down -v      # stop and start over
 ```
-
-The compose file has commented settings for pointing Quai at your own repository, either a bare clone on your PC or a remote over SSH with a deploy key. Set `QUAI_GIT_SEED: ""` whenever the repository is yours, so the demo content is never copied into it.
 
 Try it like this:
 

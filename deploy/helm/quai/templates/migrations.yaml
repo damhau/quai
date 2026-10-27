@@ -1,0 +1,27 @@
+{{- if .Values.migrations.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "quai.fullname" . }}-migrate-{{ .Release.Revision }}
+  labels: {{- include "quai.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrate
+  annotations:
+    # Before the new server and worker start; migrations stay compatible with the previous
+    # release, so a rolling upgrade can run old and new pods side by side.
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "0"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 2
+  template:
+    metadata:
+      labels: {{- include "quai.selector" (dict "root" . "component" "migrate") | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      {{- include "quai.pod" (dict "root" .) | nindent 6 }}
+      containers:
+        - name: migrate
+          {{- include "quai.container" (dict "root" . "command" "migrate") | nindent 10 }}
+      volumes:
+        {{- include "quai.volumes" (dict "root" . "sizeLimit" "") | nindent 8 }}
+{{- end }}

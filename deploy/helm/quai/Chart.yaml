@@ -1,0 +1,8 @@
+apiVersion: v2
+name: quai
+description: Governed self-service in front of infrastructure as code. A skeleton for Phase 0.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/damhau/quai
+sources: [https://github.com/damhau/quai]

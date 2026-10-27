@@ -1,47 +1,99 @@
-# Local demo of Quai.
+# A local Quai: the server and a worker, PostgreSQL, and Gitea holding the example repository.
 #
-#   docker compose up --build        then open http://localhost:8080
+#   docker compose up --build
 #
-# Out of the box Quai creates its own Git repository in the `quai-data` volume,
-# seeds it with examples/prototype-gitops-repo (blueprints plus a small Terraform repo
-# with existing VMs), lets you switch identities in the sidebar (dev auth) and
-# simulates a successful apply a few seconds after each commit.
-#
-# Start over with a fresh repository:  docker compose down -v
+# Then open http://localhost:8080 and sign in as one of the demo users; Gitea is at
+# http://localhost:3000 (quai/infra-live). QUAI_PORT and GITEA_PORT choose other ports. For
+# local use only: PostgreSQL trusts the compose network and is not published, and Gitea's
+# account gets a random password at first start. `docker compose down -v` starts over.
+name: quai
+
+x-quai: &quai
+  image: quai:local
+  build: { context: ., args: { VERSION: local } }
+  entrypoint: ["/bin/sh", "/etc/quai/run-quai.sh"]
+  read_only: true
+  tmpfs: [/tmp]
+  volumes:
+    - ./deploy/compose/quai.yaml:/etc/quai/quai.yaml:ro
+    - ./deploy/compose/run-quai.sh:/etc/quai/run-quai.sh:ro
+    - seed:/run/quai:ro
 
 services:
-  quai:
-    build: .
-    image: quai:local
-    ports:
-      - "8080:8080"
+  postgres:
+    image: postgres:17-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b
     environment:
-      QUAI_AUTH_MODE: dev
-      QUAI_SIMULATE_SYNC: "true"
-
-      # --- Use your own repository instead of the seeded demo one ---------
-      # A bare clone on your PC (create it with: git clone --bare <url> repos/infra.git),
-      # mounted below. The container runs as uid 1000, which must be able to write to it.
-      # QUAI_GIT_REMOTE: /repos/infra.git
-      #
-      # Or a remote over SSH with a deploy key that may push:
-      # QUAI_GIT_REMOTE: git@github.com:acme/platform-gitops.git
-      # GIT_SSH_COMMAND: ssh -i /run/secrets/deploy_key -o StrictHostKeyChecking=accept-new
-      #
-      # Never copy the demo content into your repository:
-      # QUAI_GIT_SEED: ""
-      # QUAI_GIT_BRANCH: main
-    volumes:
-      - quai-data:/data
-      # - ./repos:/repos
-      # - ./deploy_key:/run/secrets/deploy_key:ro
+      POSTGRES_USER: quai
+      POSTGRES_DB: quai
+      POSTGRES_HOST_AUTH_METHOD: trust # reachable from this compose network only
+    volumes: [postgres:/var/lib/postgresql/data]
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://localhost:8080/healthz').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
-      interval: 10s
-      timeout: 3s
-      retries: 5
-      start_period: 20s
-    restart: unless-stopped
+      test: ["CMD", "pg_isready", "-U", "quai", "-d", "quai"]
+      interval: 2s
+      retries: 30
+
+  gitea:
+    image: gitea/gitea:1.27.3@sha256:87a67ee09d3ae0d1df5fda5dcda3e2a1f9236a45b0a59025d6e00e46adc43bef
+    environment:
+      GITEA__security__INSTALL_LOCK: "true"
+      GITEA__database__DB_TYPE: sqlite3
+      GITEA__server__ROOT_URL: http://localhost:3000/
+      GITEA__server__HTTP_PORT: "3000"
+      GITEA__service__DISABLE_REGISTRATION: "true"
+    ports: ["${GITEA_PORT:-3000}:3000"]
+    volumes: [gitea:/data]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/api/healthz"]
+      interval: 2s
+      retries: 60
+
+  seed:
+    image: gitea/gitea:1.27.3@sha256:87a67ee09d3ae0d1df5fda5dcda3e2a1f9236a45b0a59025d6e00e46adc43bef
+    entrypoint: ["/bin/sh", "/seed-gitea.sh"]
+    depends_on: { gitea: { condition: service_healthy } }
+    volumes:
+      - gitea:/data
+      - seed:/run/quai
+      - ./deploy/compose/seed-gitea.sh:/seed-gitea.sh:ro
+      - ./examples/gitops-repo:/seed/gitops-repo:ro
+    restart: "no"
+
+  migrate:
+    <<: *quai
+    command: ["migrate"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      seed: { condition: service_completed_successfully }
+    restart: "no"
+
+  server:
+    <<: *quai
+    command: ["server"]
+    ports: ["${QUAI_PORT:-8080}:8080"]
+    volumes:
+      - ./deploy/compose/quai.yaml:/etc/quai/quai.yaml:ro
+      - ./deploy/compose/run-quai.sh:/etc/quai/run-quai.sh:ro
+      - seed:/run/quai:ro
+      - server-cache:/var/cache/quai
+    depends_on: { migrate: { condition: service_completed_successfully } }
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/healthz"]
+      interval: 2s
+      retries: 30
+
+  worker:
+    <<: *quai
+    command: ["worker"]
+    volumes:
+      - ./deploy/compose/quai.yaml:/etc/quai/quai.yaml:ro
+      - ./deploy/compose/run-quai.sh:/etc/quai/run-quai.sh:ro
+      - seed:/run/quai:ro
+      - worker-cache:/var/cache/quai
+    depends_on: { migrate: { condition: service_completed_successfully } }
 
 volumes:
-  quai-data:
+  postgres:
+  gitea:
+  seed:
+  server-cache:
+  worker-cache:

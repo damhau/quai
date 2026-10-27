@@ -1,5 +1,9 @@
-node_modules
-**/node_modules
-data
-web/dist
-.git
+# The image is built from these two directories only.
+*
+!backend/
+!frontend/
+frontend/node_modules/
+frontend/dist/
+**/*.tsbuildinfo
+backend/internal/web/dist/*
+!backend/internal/web/dist/.gitkeep

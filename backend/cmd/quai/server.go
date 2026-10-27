@@ -22,6 +22,7 @@ import (
 	"github.com/damhau/quai/backend/internal/requests"
 	"github.com/damhau/quai/backend/internal/store"
 	"github.com/damhau/quai/backend/internal/telemetry"
+	"github.com/damhau/quai/backend/internal/web"
 )
 
 func newServerCmd() *cobra.Command {
@@ -72,7 +73,7 @@ func newServerCmd() *cobra.Command {
 // serve runs the HTTP server on ln until ctx ends, then lets requests in flight finish within
 // the shutdown timeout. Without a store, nobody can sign in.
 func serve(ctx context.Context, cfg *config.Config, log *slog.Logger, ln net.Listener, s *store.Store) error {
-	opts := api.Options{Version: version, Env: cfg.Env, Logger: log}
+	opts := api.Options{Version: version, Env: cfg.Env, Logger: log, UI: web.Files()}
 	if s != nil {
 		opts.Store, opts.Auth = s, auth.New(cfg, s, log)
 	}

@@ -1,0 +1,10 @@
+{{- if not .Values.configSecret }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "quai.fullname" . }}
+  labels: {{- include "quai.labels" . | nindent 4 }}
+data:
+  quai.yaml: |
+    {{- toYaml .Values.config | nindent 4 }}
+{{- end }}

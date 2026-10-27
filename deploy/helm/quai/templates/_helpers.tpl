@@ -1,0 +1,85 @@
+{{/* The release's name for its objects, at most 63 characters. */}}
+{{- define "quai.fullname" -}}
+{{- if contains .Chart.Name .Release.Name -}}
+{{- .Release.Name | trunc 63 | trimSuffix "-" -}}
+{{- else -}}
+{{- printf "%s-%s" .Release.Name .Chart.Name | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "quai.labels" -}}
+app.kubernetes.io/name: {{ .Chart.Name }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version }}
+{{- end -}}
+
+{{- define "quai.selector" -}}
+app.kubernetes.io/name: {{ .root.Chart.Name }}
+app.kubernetes.io/instance: {{ .root.Release.Name }}
+app.kubernetes.io/component: {{ .component }}
+{{- end -}}
+
+{{- define "quai.serviceAccountName" -}}
+{{- if .Values.serviceAccount.create -}}
+{{- default (include "quai.fullname" .) .Values.serviceAccount.name -}}
+{{- else -}}
+{{- default "default" .Values.serviceAccount.name -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "quai.image" -}}
+{{ .Values.image.repository }}:{{ default .Chart.AppVersion .Values.image.tag }}
+{{- end -}}
+
+{{/* The container shared by the server, the worker and the migrations: image, configuration, secrets. */}}
+{{- define "quai.container" -}}
+image: {{ include "quai.image" .root }}
+imagePullPolicy: {{ .root.Values.image.pullPolicy }}
+args: [{{ .command | quote }}]
+env:
+  - name: QUAI_CONFIG
+    value: /etc/quai/quai.yaml
+  - name: QUAI_DATABASE_URL
+    valueFrom: { secretKeyRef: { name: {{ .root.Values.database.secretName }}, key: {{ .root.Values.database.secretKey }} } }
+  {{- if eq (dig "auth" "mode" "" .root.Values.config) "oidc" }}
+  - name: QUAI_AUTH_OIDC_CLIENT_SECRET
+    valueFrom: { secretKeyRef: { name: {{ .root.Values.oidc.secretName }}, key: {{ .root.Values.oidc.secretKey }} } }
+  {{- end }}
+securityContext: {{- toYaml .root.Values.securityContext | nindent 2 }}
+volumeMounts:
+  - { name: config, mountPath: /etc/quai, readOnly: true }
+  - { name: tmp, mountPath: /tmp }
+  - { name: cache, mountPath: /var/cache/quai }
+{{- end -}}
+
+{{- define "quai.volumes" -}}
+- name: config
+  {{- if .root.Values.configSecret }}
+  secret: { secretName: {{ .root.Values.configSecret }} }
+  {{- else }}
+  configMap: { name: {{ include "quai.fullname" .root }} }
+  {{- end }}
+- name: tmp
+  emptyDir: {}
+- name: cache
+  emptyDir: {{ if .sizeLimit }}{ sizeLimit: {{ .sizeLimit }} }{{ else }}{}{{ end }}
+{{- end -}}
+
+{{- define "quai.pod" -}}
+serviceAccountName: {{ include "quai.serviceAccountName" .root }}
+securityContext: {{- toYaml .root.Values.podSecurityContext | nindent 2 }}
+{{- with .root.Values.imagePullSecrets }}
+imagePullSecrets: {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- with .root.Values.nodeSelector }}
+nodeSelector: {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- with .root.Values.tolerations }}
+tolerations: {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- with .root.Values.affinity }}
+affinity: {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end -}}

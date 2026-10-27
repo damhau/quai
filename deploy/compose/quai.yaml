@@ -1,0 +1,15 @@
+# The configuration of the local stack (docker-compose.yml). run-quai.sh replaces @GIT_TOKEN@
+# with the token the seed step created in Gitea.
+env: development
+database:
+  url: postgres://quai@postgres:5432/quai?sslmode=disable
+auth:
+  mode: dev # the user switcher, with its demo users: alice (platform admin), bob, carol, fiona
+git:
+  cacheDir: /var/cache/quai
+repositories:
+  - name: infra-live
+    title: Infrastructure (Terraform)
+    url: http://quai:@GIT_TOKEN@@gitea:3000/quai/infra-live.git
+    defaultBranch: main
+    delivery: { mode: direct }
