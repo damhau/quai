@@ -268,7 +268,7 @@ func registerRequests(a huma.API, svc *requests.Service, s *store.Store, log *sl
 		}
 		views := []RequestView{}
 		for _, r := range rs {
-			if in.View == "inbox" && !requests.CanReview(r, me.Principal) {
+			if in.View == "inbox" && (!requests.CanReview(r, me.Principal) || svc.Reviewed(ctx, r, me.Principal.Name)) {
 				continue
 			}
 			if _, err := authorize(ctx, authz.ReadRequest, requestObject(ctx, svc, r)); err != nil && !requests.CanReview(r, me.Principal) {
@@ -287,6 +287,7 @@ func registerRequests(a huma.API, svc *requests.Service, s *store.Store, log *sl
 		if err != nil {
 			return nil, err
 		}
+		svc.Refresh(ctx, r)
 		return &out[RequestView]{Body: requestView(ctx, svc, s, r, me, true)}, nil
 	})
 	huma.Register(a, huma.Operation{

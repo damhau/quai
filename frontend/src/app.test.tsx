@@ -49,3 +49,11 @@ test("redirects stay on this site", () => {
   }
   expect(oidcLoginURL("/inventory?type=vm")).toBe("/auth/login?next=%2Finventory%3Ftype%3Dvm")
 })
+
+test("signed in already, the login page switches to another user", async () => {
+  const { router } = renderApp("/login?next=%2Fapprovals")
+  await userEvent.click(await screen.findByRole("button", { name: /alice/ }))
+  expect(await screen.findByRole("heading", { name: "Approvals" })).toBeInTheDocument()
+  expect(router.state.location.pathname).toBe("/approvals")
+  expect(screen.getByRole("button", { name: "Account" })).toHaveTextContent("alice")
+})

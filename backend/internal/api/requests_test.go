@@ -96,6 +96,14 @@ func TestApprovals(t *testing.T) {
 	if r.State != "pending_approval" || !r.Rules[0].Satisfied || r.Rules[1].Satisfied {
 		t.Errorf("after alice = %+v", r)
 	}
+	// The inbox holds what waits for you: no longer what you approved, though your latest decision
+	// can still change while the request waits for others.
+	if alice.do(http.MethodGet, Prefix+"/requests?view=inbox", nil, &inbox); len(inbox) != 0 || !r.CanReview {
+		t.Errorf("alice's inbox after approving = %+v, can review %v", inbox, r.CanReview)
+	}
+	if fiona.do(http.MethodGet, Prefix+"/requests?view=inbox", nil, &inbox); len(inbox) != 1 {
+		t.Errorf("fiona's inbox = %+v", inbox)
+	}
 	fiona.do(http.MethodPost, Prefix+"/requests/"+r.ID+"/review", map[string]string{"decision": "approve"}, &r)
 	if r.State != "approved" {
 		t.Errorf("after fiona = %s", r.State)

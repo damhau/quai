@@ -1,9 +1,10 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { createFileRoute, Link } from "@tanstack/react-router"
-import { useMutation, useQueryClient, useSuspenseQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query"
 import { AlertCircle, Check, RotateCcw, X } from "lucide-react"
 import {
   cancelRequestMutation,
+  getMeOptions,
   getRequestOptions,
   getRequestQueryKey,
   listRequestsQueryKey,
@@ -30,10 +31,17 @@ export const Route = createFileRoute("/requests/$id")({
 
 function RequestPage() {
   const { id } = Route.useParams()
+  const queryClient = useQueryClient()
   const { data: r } = useSuspenseQuery({
     ...getRequestOptions({ path: { id } }),
     refetchInterval: (q) => (q.state.data && inProgress(q.state.data.state) ? 4000 : false),
   })
+  // Once applied, the inventory, the resources and the log have changed: what is cached of them
+  // is stale.
+  const applied = r.state === "applied"
+  useEffect(() => {
+    if (applied) void queryClient.invalidateQueries({ predicate: (q) => (q.queryKey[0] as { _id?: string } | undefined)?._id !== "getRequest" })
+  }, [applied, queryClient])
   return (
     <div className="grid gap-6">
       <header className="grid gap-1">
@@ -134,15 +142,22 @@ function useRequestUpdate() {
   }
 }
 
+/**
+ * ReviewBox lets an approver decide. Each reviewer's latest decision counts (design 05), so once
+ * you have approved, the request waiting for others, you can still deny it.
+ */
 function ReviewBox({ request }: { request: RequestView }) {
   const [comment, setComment] = useState("")
+  const { data: me } = useQuery(getMeOptions())
   const update = useRequestUpdate()
   const review = useMutation({ ...reviewRequestMutation(), onSuccess: update })
   const send = (decision: "approve" | "deny") => review.mutate({ path: { id: request.id }, body: { decision, comment: comment || undefined } })
   const error = fieldErrors(review.error, "body").comment
+  const approved = (request.reviews ?? []).filter((v) => v.reviewer === me?.name).at(-1)?.decision === "approve"
   return (
     <div className="grid gap-3 border-t pt-4">
-      <Label htmlFor="review-comment">Your review</Label>
+      {approved && <p className="text-sm">You approved this request; it waits for the other approvals. You can still deny it.</p>}
+      <Label htmlFor="review-comment">{approved ? "Change your decision" : "Your review"}</Label>
       <Textarea
         id="review-comment"
         rows={3}
@@ -160,9 +175,11 @@ function ReviewBox({ request }: { request: RequestView }) {
         </Alert>
       )}
       <div className="flex gap-2">
-        <Button type="button" disabled={review.isPending} onClick={() => send("approve")}>
-          <Check /> Approve
-        </Button>
+        {!approved && (
+          <Button type="button" disabled={review.isPending} onClick={() => send("approve")}>
+            <Check /> Approve
+          </Button>
+        )}
         <Button type="button" variant="destructive" disabled={review.isPending} onClick={() => send("deny")}>
           <X /> Deny
         </Button>

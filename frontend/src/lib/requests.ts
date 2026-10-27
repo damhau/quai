@@ -46,6 +46,10 @@ export function eventText(e: EventView): string {
       return "submitted the request"
     case "approved":
       return str(d, "reason") ? `approved: ${str(d, "reason")}` : "all approvals are in"
+    case "approve":
+      return "approved"
+    case "deny":
+      return `denied${str(d, "comment") ? `: ${str(d, "comment")}` : ""}`
     case "rejected":
       return "denied the request"
     case "stale":

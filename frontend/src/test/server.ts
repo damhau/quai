@@ -37,6 +37,9 @@ export const server = setupServer(
   ...gitHandlers,
   http.get("*/auth/dev/users", () => HttpResponse.json(Object.entries(users).map(([Name, Groups]) => ({ Name, Groups })))),
   http.post("*/auth/dev/login", async ({ request }) => {
+    // As the server's middleware: with a session, a state-changing request needs its CSRF token.
+    if (state.user && request.headers.get("X-CSRF-Token") !== `csrf-${state.user}`)
+      return HttpResponse.json({ status: 403, detail: "missing or wrong X-CSRF-Token header" }, { status: 403 })
     const { name } = (await request.json()) as { name: string }
     state.user = name
     return new HttpResponse(null, { status: 204 })

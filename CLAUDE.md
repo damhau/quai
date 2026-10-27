@@ -48,6 +48,14 @@ npm run api:openapi && npm run api:gen   # after an API change (the client is ge
 npm run cel:cases                        # after a cel-go upgrade: cel-go's conformance cases for src/lib/cel
 ```
 
+Local stack and end-to-end tests (from the repository root, Docker):
+
+```bash
+docker compose up --build --wait            # Quai on :8080 (QUAI_PORT), Gitea on :3000 (GITEA_PORT)
+docker compose --profile e2e run --rm e2e   # the Playwright scenarios in e2e/, against that stack
+docker compose down -v
+```
+
 Prototype (reference, from the repository root): `npm test` runs its unit and API tests (Node 22+,
 for `node:sqlite`). It reads its own frozen examples in `examples/prototype-gitops-repo`.
 

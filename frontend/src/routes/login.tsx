@@ -44,7 +44,7 @@ function DevUsers({ next }: { next: string }) {
   const navigate = useNavigate()
   const { data: users = [] } = useQuery({ queryKey: ["dev-users"], queryFn: listDevUsers })
   const signIn = useMutation({
-    mutationFn: devLogin,
+    mutationFn: (name: string) => devLogin(queryClient, name),
     onSuccess: async () => {
       queryClient.clear()
       await navigate({ to: next })

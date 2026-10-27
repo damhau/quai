@@ -13,7 +13,7 @@ Status: Draft · 2026-10-26
 | API | Handlers end to end with a real database and real Git repositories | `httptest`, embedded PostgreSQL, local bare repositories (Gitea once its connector exists) | Every PR |
 | Jobs | Delivery, staleness, merge, run ingestion, retries after crashes | River test helpers, fault injection (kill a worker mid-job) | Every PR |
 | Frontend unit | Components, schema form, hooks | Vitest, Testing Library, MSW | Every PR |
-| End to end | Catalog → request → PR → approve → merge → run report → status, in a browser | Playwright against a compose stack (Quai, PostgreSQL, Gitea, a fake runner) | Every PR to `main` |
+| End to end | Catalog → request → PR → approve → merge → run report → status, in a browser | Playwright against a compose stack (Quai, PostgreSQL, Gitea, a fake runner). Today (`e2e/`, run by `docker compose --profile e2e run --rm e2e` on a running stack): the prototype's walkthroughs on the VM-first examples, with direct delivery: a blueprint request approved by two groups, then committed; a VM created and resized through the `vm` type with a minimal diff; ownership; the designer publishing a blueprint that is then requested. Pull requests and the fake runner come with their tasks | Every PR to `main` |
 | Accessibility | Main journeys | Playwright + axe | Every PR to `main` |
 | Load | 2,000 requests/day profile, 500 users, 500 repositories | k6 | Before each release |
 | Security | ZAP baseline, dependency and image scans | ZAP, govulncheck, `npm audit`, Trivy | Dependency and image scans on every PR; ZAP every release |

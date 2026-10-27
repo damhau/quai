@@ -1,5 +1,5 @@
 import type { QueryClient } from "@tanstack/react-query"
-import { getMeQueryKey } from "@/api/generated/@tanstack/react-query.gen"
+import { getMeOptions, getMeQueryKey } from "@/api/generated/@tanstack/react-query.gen"
 import type { MeOutputBody } from "@/api/generated/types.gen"
 
 // The /auth endpoints are browser flows (redirects and the development switcher), outside the
@@ -27,10 +27,15 @@ export async function listDevUsers(): Promise<DevUser[]> {
   return (await res.json()) as DevUser[]
 }
 
-export async function devLogin(name: string): Promise<void> {
+/**
+ * devLogin switches to a user of the development switcher. With a session already, the server
+ * wants that session's CSRF token, as for any request that changes something.
+ */
+export async function devLogin(queryClient: QueryClient, name: string): Promise<void> {
+  const me = await queryClient.fetchQuery(getMeOptions()).catch(() => undefined)
   const res = await fetch(url("/auth/dev/login"), {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...(me?.csrfToken && { "X-CSRF-Token": me.csrfToken }) },
     body: JSON.stringify({ name }),
   })
   if (!res.ok) throw new Error(`sign in as ${name}: ${res.status}`)

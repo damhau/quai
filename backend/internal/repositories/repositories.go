@@ -124,6 +124,19 @@ func (r *Registry) Close() {
 	}
 }
 
+// Refresh fetches the mirror unless it was fetched at t or later: what another process committed
+// at t, such as a worker delivering a request, is then in the snapshots that follow.
+func (repo *Repo) Refresh(ctx context.Context, t time.Time) error {
+	repo.mu.Lock()
+	fresh := !repo.lastFetch.Before(t)
+	repo.mu.Unlock()
+	if fresh {
+		return nil
+	}
+	_, err := repo.Snapshot(ctx, true)
+	return err
+}
+
 // Snapshot returns the repository at the head of its branch, fetching first when the last fetch
 // is older than the sync interval, or always when sync is set.
 func (repo *Repo) Snapshot(ctx context.Context, sync bool) (*Snapshot, error) {

@@ -492,6 +492,28 @@ func (s *Service) Review(ctx context.Context, who auth.Identity, id uuid.UUID, d
 	return next, err
 }
 
+// Refresh makes this process see what an applied request committed: a worker in another process
+// may have delivered it since this process last fetched the repository, and the requester's next
+// look at the resource or the log should show it.
+func (s *Service) Refresh(ctx context.Context, r db.Request) {
+	if r.State != Applied {
+		return
+	}
+	repo, err := s.reg.Get(s.Repository(ctx, r))
+	if err != nil {
+		return
+	}
+	if err := repo.Refresh(ctx, r.UpdatedAt.Time); err != nil {
+		s.log.WarnContext(ctx, "refreshing the repository after a delivery", slog.String("repository", repo.Name), slog.Any("error", err))
+	}
+}
+
+// Reviewed reports whether someone has reviewed a request already. An error counts as not.
+func (s *Service) Reviewed(ctx context.Context, r db.Request, name string) bool {
+	reviews, err := s.store.ListReviews(ctx, r.ID)
+	return err == nil && slices.ContainsFunc(reviews, func(v db.Review) bool { return v.Reviewer == name })
+}
+
 // Cancellable reports whether a request in state can be cancelled: it is not delivered yet.
 func Cancellable(state string) bool {
 	switch state {

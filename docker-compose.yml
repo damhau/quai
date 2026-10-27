@@ -91,6 +91,22 @@ services:
       - worker-cache:/var/cache/quai
     depends_on: { migrate: { condition: service_completed_successfully } }
 
+  # The end-to-end scenarios (e2e/), in a browser on this network, once the stack is up:
+  #   docker compose --profile e2e run --rm e2e
+  e2e:
+    profiles: [e2e]
+    image: mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea
+    environment:
+      E2E_BASE_URL: http://server:8080
+      E2E_OUTPUT: /tmp/e2e # copy it out with docker cp to read the report
+      CI: ${CI:-}
+    volumes: [./e2e:/src:ro]
+    shm_size: 1gb # Chromium's shared memory
+    command: ["sh", "-c", "mkdir -p /e2e && cp -R /src/. /e2e && cd /e2e && npm ci --no-audit --no-fund && npx playwright test"]
+    depends_on:
+      server: { condition: service_healthy }
+      worker: { condition: service_started }
+
 volumes:
   postgres:
   gitea:
