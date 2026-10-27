@@ -1,6 +1,6 @@
 # Spike: YAML editing in Go
 
-Status: For decision · 2026-10-27 · Tasks: P0-02 ([#2](https://github.com/damhau/quai/issues/2)),
+Status: Decided (`yaml/v3`) · 2026-10-27 · Tasks: P0-02 ([#2](https://github.com/damhau/quai/issues/2)),
 P0-03 ([#3](https://github.com/damhau/quai/issues/3)), report P0-04
 ([#4](https://github.com/damhau/quai/issues/4))
 
@@ -16,8 +16,8 @@ form Quai's own blueprints use; the first version of this report therefore recom
 goccy with `yaml/v3` as a second decoder. At the owner's request the editor was then ported to
 `yaml/v3` and put through the same tests. It passes all of them, reads correctly everything goccy
 got wrong, needs none of goccy's workarounds, and is faster; with it, no second decoder is needed
-(see [the comparison](#second-candidate-goyamlinyamlv3)). The decision is recorded as open
-question 5 in [open questions](../plan/open-questions.md).
+(see [the comparison](#second-candidate-goyamlinyamlv3)). The owner chose `yaml/v3`; the
+decision is recorded in [open questions](../plan/open-questions.md).
 
 The sections after the comparison describe the editor as first built and tested on goccy; except
 where the comparison says otherwise, they hold for both.
@@ -101,12 +101,11 @@ replacing a document whose value does not start its line (`--- 0`), trailing spa
 that becomes multi-line, and literal blocks with lines that start with a tab. They are not fixed
 in the spike.
 
-If the owner accepts, `main` moves to the branch; the documents that named goccy (this report's
-conditions below, [file editing](../design/03-file-editing.md), [backend](backend.md),
+The owner chose `yaml/v3` on 2026-10-27 and `main` moved to the branch; the documents that named
+goccy ([file editing](../design/03-file-editing.md), [backend](backend.md),
 [resource types](../design/02-resource-types-and-generators.md),
 [migration](migration-from-prototype.md), [ADR 0006](../adr/0006-go-backend-react-frontend.md))
-are updated on the branch. If the owner keeps goccy, only this report and open question 5 go to
-`main`, and condition 1 below applies.
+were updated with it.
 
 ## What was built
 
@@ -275,12 +274,10 @@ Recorded in [file editing](../design/03-file-editing.md):
 
 ## Conditions and open points
 
-If the owner accepts, these follow:
+These follow from the decision:
 
-1. **The library.** With `yaml/v3`: nothing more; read definitions in P0-08 with the same
-   conversion. With goccy instead: decode the original and the result with both goccy and
-   `go.yaml.in/yaml/v3` and refuse when they disagree, and read definitions in P0-08 with
-   `yaml/v3`; one more dependency, about a day of work, before P0-08.
+1. **The library.** `yaml/v3` alone, no second decoder; read definitions in P0-08 with the same
+   conversion.
 2. **Verification on every write stays mandatory**, including for formats added later. It is
    what turns library quirks into refusals instead of bad pull requests.
 3. **Bound input size and time.** Each edit re-parses the file, and some inputs parse slowly.

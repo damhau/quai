@@ -12,12 +12,12 @@ Decisions still needed, with the default the plan assumes until they are answere
 | 2 | Pilot Server details: which collection(s) hold the IaC repositories, is the `/tfs` virtual directory in use, who can grant the service account its branch-folder permissions (`tf git permission`) and create the service hook subscription, and what maximum PAT lifetime does the Server allow? | URL parsing, registration wizard, rotation reminders | One collection, `/tfs` in use; a project collection administrator does the setup once; PAT lifetime 1 year | Phase 1 start |
 | 3 | Is Quai's approval the only authority, or must Azure DevOps required-reviewer policies also pass? | Auto-complete vs waiting for both; approver kinds | Quai is the sole authority ([ADR 0002](../adr/0002-quai-is-the-approval-authority.md)); Azure DevOps path-based reviewers feed Quai's rules through the `codeowners` approver kind | Phase 1 |
 | 4 | Is there an ITSM tool (ServiceNow, Jira Service Management) that must hold change records? | Phase 4 scope | ServiceNow in Phase 4 | Phase 4 |
-| 5 | Which library should YAML editing be built on: `goccy/go-yaml` with `go.yaml.in/yaml/v3` as a cross-checking decoder, or `go.yaml.in/yaml/v3` alone? See the [spike report](../engineering/spike-yaml-editing.md). | goccy misreads some valid YAML, including the blueprints' approver lists, and needs workarounds for its positions; the `yaml/v3` port (branch `spike/yaml-v3`) passes the same tests with no library refusals in the sweep. Definitions parsing (P0-08) has the same exposure. | Go, on `yaml/v3` alone (move `main` to the branch) | P0-04 (STOP) |
 
 ## Decided
 
 | Question | Decision | Date | Consequences |
 | --- | --- | --- | --- |
+| YAML editing library | **`go.yaml.in/yaml/v3` alone**, no second decoder; goccy dropped | 2026-10-27 | [Spike report](../engineering/spike-yaml-editing.md); definitions (P0-08) are read with the same conversion |
 | Product name | **Keep "Quai"** | 2026-10-27 | Revisit only if a domain or trademark check (Swissreg, EUIPO, class 42) shows a conflict |
 | Git platform and edition | **Azure DevOps Server first, Services alongside or right after** | 2026-10-26 | [ADR 0010](../adr/0010-git-connectors-azure-devops-first.md), [Git connectors](../design/12-git-connectors.md) |
 | Pilot's Azure DevOps Server version | **Server 2022, latest update** (REST API 7.0) | 2026-10-27 | API 7.0 is the connector's baseline |
