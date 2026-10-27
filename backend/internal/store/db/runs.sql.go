@@ -15,7 +15,7 @@ import (
 const finishRun = `-- name: FinishRun :one
 UPDATE runs SET status = $2, summary = $3, finished_at = now()
 WHERE id = $1 AND status = 'running'
-RETURNING id, repository, stack, commit, kind, status, url, summary, started_at, finished_at
+RETURNING id, org_id, repository, stack, commit, kind, status, url, summary, started_at, finished_at
 `
 
 type FinishRunParams struct {
@@ -29,6 +29,7 @@ func (q *Queries) FinishRun(ctx context.Context, arg FinishRunParams) (Run, erro
 	var i Run
 	err := row.Scan(
 		&i.ID,
+		&i.OrgID,
 		&i.Repository,
 		&i.Stack,
 		&i.Commit,
@@ -43,7 +44,7 @@ func (q *Queries) FinishRun(ctx context.Context, arg FinishRunParams) (Run, erro
 }
 
 const latestRun = `-- name: LatestRun :one
-SELECT id, repository, stack, commit, kind, status, url, summary, started_at, finished_at FROM runs
+SELECT id, org_id, repository, stack, commit, kind, status, url, summary, started_at, finished_at FROM runs
 WHERE repository = $1 AND stack = $2 AND kind = $3
 ORDER BY started_at DESC, id
 LIMIT 1
@@ -60,6 +61,7 @@ func (q *Queries) LatestRun(ctx context.Context, arg LatestRunParams) (Run, erro
 	var i Run
 	err := row.Scan(
 		&i.ID,
+		&i.OrgID,
 		&i.Repository,
 		&i.Stack,
 		&i.Commit,
@@ -76,7 +78,7 @@ func (q *Queries) LatestRun(ctx context.Context, arg LatestRunParams) (Run, erro
 const startRun = `-- name: StartRun :one
 INSERT INTO runs (id, repository, stack, commit, kind, status, url)
 VALUES ($1, $2, $3, $4, $5, 'running', $6)
-RETURNING id, repository, stack, commit, kind, status, url, summary, started_at, finished_at
+RETURNING id, org_id, repository, stack, commit, kind, status, url, summary, started_at, finished_at
 `
 
 type StartRunParams struct {
@@ -100,6 +102,7 @@ func (q *Queries) StartRun(ctx context.Context, arg StartRunParams) (Run, error)
 	var i Run
 	err := row.Scan(
 		&i.ID,
+		&i.OrgID,
 		&i.Repository,
 		&i.Stack,
 		&i.Commit,

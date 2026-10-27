@@ -13,14 +13,15 @@ import (
 )
 
 const createAPIToken = `-- name: CreateAPIToken :one
-INSERT INTO api_tokens (id, owner, name, hash, scopes, expires_at)
-VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, owner, name, hash, scopes, expires_at, created_at, last_used_at, revoked_at
+INSERT INTO api_tokens (id, owner, groups, name, hash, scopes, expires_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING id, org_id, owner, groups, name, hash, scopes, expires_at, created_at, last_used_at, revoked_at
 `
 
 type CreateAPITokenParams struct {
 	ID        uuid.UUID
 	Owner     string
+	Groups    []string
 	Name      string
 	Hash      []byte
 	Scopes    []string
@@ -31,6 +32,7 @@ func (q *Queries) CreateAPIToken(ctx context.Context, arg CreateAPITokenParams) 
 	row := q.db.QueryRow(ctx, createAPIToken,
 		arg.ID,
 		arg.Owner,
+		arg.Groups,
 		arg.Name,
 		arg.Hash,
 		arg.Scopes,
@@ -39,7 +41,9 @@ func (q *Queries) CreateAPIToken(ctx context.Context, arg CreateAPITokenParams) 
 	var i ApiToken
 	err := row.Scan(
 		&i.ID,
+		&i.OrgID,
 		&i.Owner,
+		&i.Groups,
 		&i.Name,
 		&i.Hash,
 		&i.Scopes,
@@ -52,7 +56,7 @@ func (q *Queries) CreateAPIToken(ctx context.Context, arg CreateAPITokenParams) 
 }
 
 const getActiveAPIToken = `-- name: GetActiveAPIToken :one
-SELECT id, owner, name, hash, scopes, expires_at, created_at, last_used_at, revoked_at FROM api_tokens
+SELECT id, org_id, owner, groups, name, hash, scopes, expires_at, created_at, last_used_at, revoked_at FROM api_tokens
 WHERE hash = $1 AND revoked_at IS NULL AND expires_at > now()
 `
 
@@ -62,7 +66,9 @@ func (q *Queries) GetActiveAPIToken(ctx context.Context, hash []byte) (ApiToken,
 	var i ApiToken
 	err := row.Scan(
 		&i.ID,
+		&i.OrgID,
 		&i.Owner,
+		&i.Groups,
 		&i.Name,
 		&i.Hash,
 		&i.Scopes,
@@ -75,7 +81,7 @@ func (q *Queries) GetActiveAPIToken(ctx context.Context, hash []byte) (ApiToken,
 }
 
 const listAPITokens = `-- name: ListAPITokens :many
-SELECT id, owner, name, hash, scopes, expires_at, created_at, last_used_at, revoked_at FROM api_tokens WHERE owner = $1 ORDER BY created_at, id
+SELECT id, org_id, owner, groups, name, hash, scopes, expires_at, created_at, last_used_at, revoked_at FROM api_tokens WHERE owner = $1 ORDER BY created_at, id
 `
 
 func (q *Queries) ListAPITokens(ctx context.Context, owner string) ([]ApiToken, error) {
@@ -89,7 +95,9 @@ func (q *Queries) ListAPITokens(ctx context.Context, owner string) ([]ApiToken, 
 		var i ApiToken
 		if err := rows.Scan(
 			&i.ID,
+			&i.OrgID,
 			&i.Owner,
+			&i.Groups,
 			&i.Name,
 			&i.Hash,
 			&i.Scopes,

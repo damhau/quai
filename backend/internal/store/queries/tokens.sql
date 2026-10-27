@@ -1,6 +1,6 @@
 -- name: CreateAPIToken :one
-INSERT INTO api_tokens (id, owner, name, hash, scopes, expires_at)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO api_tokens (id, owner, groups, name, hash, scopes, expires_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
 RETURNING *;
 
 -- name: GetActiveAPIToken :one

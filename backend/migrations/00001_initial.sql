@@ -1,10 +1,12 @@
 -- The first schema: requests and what they propose, reviews, events, runs, sessions and API
 -- tokens (docs/architecture/domain-model.md). Times are written by PostgreSQL, never by the
--- engine.
+-- engine. Top-level rows carry an org_id, one organization per installation for now, so that
+-- several organizations need no migration later (docs/design/08-identity-access-tenancy.md).
 
 -- +goose Up
 CREATE TABLE requests (
     id                 uuid PRIMARY KEY,
+    org_id             text NOT NULL DEFAULT 'default',
     kind               text NOT NULL CHECK (kind IN ('create', 'update', 'delete', 'action')),
     action             text NOT NULL DEFAULT '',
     -- What the request changes: a resource ID (<repository>/<type>/<key>) or a blueprint
@@ -24,10 +26,10 @@ CREATE TABLE requests (
     created_at         timestamptz NOT NULL DEFAULT now(),
     updated_at         timestamptz NOT NULL DEFAULT now()
 );
-CREATE INDEX requests_state ON requests (state, created_at);
-CREATE INDEX requests_requester ON requests (requester, created_at);
+CREATE INDEX requests_state ON requests (org_id, state, created_at);
+CREATE INDEX requests_requester ON requests (org_id, requester, created_at);
 -- At most one open request per target: further requests wait until it completes.
-CREATE UNIQUE INDEX requests_one_open_per_target ON requests (target)
+CREATE UNIQUE INDEX requests_one_open_per_target ON requests (org_id, target)
     WHERE state IN ('planned', 'pending_approval', 'approved', 'stale', 'merging', 'applying');
 
 -- One change set per repository a request writes to.
@@ -67,6 +69,7 @@ CREATE INDEX reviews_request ON reviews (request_id, created_at);
 -- separate (Phase 4).
 CREATE TABLE events (
     id         bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    org_id     text NOT NULL DEFAULT 'default',
     request_id uuid REFERENCES requests (id) ON DELETE CASCADE,
     target     text NOT NULL DEFAULT '',
     kind       text NOT NULL,
@@ -75,11 +78,12 @@ CREATE TABLE events (
     created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX events_request ON events (request_id, id);
-CREATE INDEX events_target ON events (target, id);
+CREATE INDEX events_target ON events (org_id, target, id);
 
 -- Plans, applies, syncs and drift checks reported by runners.
 CREATE TABLE runs (
     id          uuid PRIMARY KEY,
+    org_id      text NOT NULL DEFAULT 'default',
     repository  text NOT NULL,
     stack       text NOT NULL,
     commit      text NOT NULL,
@@ -90,7 +94,7 @@ CREATE TABLE runs (
     started_at  timestamptz NOT NULL DEFAULT now(),
     finished_at timestamptz
 );
-CREATE INDEX runs_stack ON runs (repository, stack, started_at DESC);
+CREATE INDEX runs_stack ON runs (org_id, repository, stack, started_at DESC);
 
 -- Server-side sessions, in the layout alexedwards/scs's PostgreSQL store expects.
 CREATE TABLE sessions (
@@ -100,10 +104,13 @@ CREATE TABLE sessions (
 );
 CREATE INDEX sessions_expiry ON sessions (expiry);
 
--- API tokens are stored as SHA-256 hashes; the token itself is shown once.
+-- API tokens are stored as SHA-256 hashes; the token itself is shown once. A token acts with
+-- the groups its owner had when creating it, narrowed by its scopes.
 CREATE TABLE api_tokens (
     id           uuid PRIMARY KEY,
+    org_id       text NOT NULL DEFAULT 'default',
     owner        text NOT NULL,
+    groups       text[] NOT NULL DEFAULT '{}',
     name         text NOT NULL,
     hash         bytea NOT NULL UNIQUE,
     scopes       text[] NOT NULL,
@@ -111,7 +118,7 @@ CREATE TABLE api_tokens (
     created_at   timestamptz NOT NULL DEFAULT now(),
     last_used_at timestamptz,
     revoked_at   timestamptz,
-    UNIQUE (owner, name)
+    UNIQUE (org_id, owner, name)
 );
 
 -- +goose Down

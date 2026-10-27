@@ -165,7 +165,7 @@ func TestAPITokens(t *testing.T) {
 	s := pgtest.Store(t)
 	hash := sha256.Sum256([]byte("quai_secret"))
 	tok, err := s.CreateAPIToken(ctx, db.CreateAPITokenParams{
-		ID: uuid.New(), Owner: "bob", Name: "ci", Hash: hash[:], Scopes: []string{"requests:write"},
+		ID: uuid.New(), Owner: "bob", Groups: []string{"developers"}, Name: "ci", Hash: hash[:], Scopes: []string{"requests:write"},
 		ExpiresAt: pgtype.Timestamptz{Time: time.Now().Add(time.Hour), Valid: true},
 	})
 	if err != nil {
@@ -188,7 +188,7 @@ func TestAPITokens(t *testing.T) {
 		t.Errorf("a revoked token is active: %v", err)
 	}
 	expired := sha256.Sum256([]byte("old"))
-	if _, err := s.CreateAPIToken(ctx, db.CreateAPITokenParams{ID: uuid.New(), Owner: "bob", Name: "old", Hash: expired[:], Scopes: []string{}, ExpiresAt: pgtype.Timestamptz{Time: time.Now().Add(-time.Minute), Valid: true}}); err != nil {
+	if _, err := s.CreateAPIToken(ctx, db.CreateAPITokenParams{ID: uuid.New(), Owner: "bob", Groups: []string{}, Name: "old", Hash: expired[:], Scopes: []string{}, ExpiresAt: pgtype.Timestamptz{Time: time.Now().Add(-time.Minute), Valid: true}}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.GetActiveAPIToken(ctx, expired[:]); !errors.Is(err, pgx.ErrNoRows) {

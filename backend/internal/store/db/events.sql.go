@@ -15,7 +15,7 @@ import (
 const addEvent = `-- name: AddEvent :one
 INSERT INTO events (request_id, target, kind, actor, data)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, request_id, target, kind, actor, data, created_at
+RETURNING id, org_id, request_id, target, kind, actor, data, created_at
 `
 
 type AddEventParams struct {
@@ -37,6 +37,7 @@ func (q *Queries) AddEvent(ctx context.Context, arg AddEventParams) (Event, erro
 	var i Event
 	err := row.Scan(
 		&i.ID,
+		&i.OrgID,
 		&i.RequestID,
 		&i.Target,
 		&i.Kind,
@@ -48,7 +49,7 @@ func (q *Queries) AddEvent(ctx context.Context, arg AddEventParams) (Event, erro
 }
 
 const listRequestEvents = `-- name: ListRequestEvents :many
-SELECT id, request_id, target, kind, actor, data, created_at FROM events WHERE request_id = $1 ORDER BY id
+SELECT id, org_id, request_id, target, kind, actor, data, created_at FROM events WHERE request_id = $1 ORDER BY id
 `
 
 func (q *Queries) ListRequestEvents(ctx context.Context, requestID pgtype.UUID) ([]Event, error) {
@@ -62,6 +63,7 @@ func (q *Queries) ListRequestEvents(ctx context.Context, requestID pgtype.UUID) 
 		var i Event
 		if err := rows.Scan(
 			&i.ID,
+			&i.OrgID,
 			&i.RequestID,
 			&i.Target,
 			&i.Kind,
@@ -80,7 +82,7 @@ func (q *Queries) ListRequestEvents(ctx context.Context, requestID pgtype.UUID) 
 }
 
 const listTargetEvents = `-- name: ListTargetEvents :many
-SELECT id, request_id, target, kind, actor, data, created_at FROM events WHERE target = $1 ORDER BY id DESC LIMIT $2
+SELECT id, org_id, request_id, target, kind, actor, data, created_at FROM events WHERE target = $1 ORDER BY id DESC LIMIT $2
 `
 
 type ListTargetEventsParams struct {
@@ -99,6 +101,7 @@ func (q *Queries) ListTargetEvents(ctx context.Context, arg ListTargetEventsPara
 		var i Event
 		if err := rows.Scan(
 			&i.ID,
+			&i.OrgID,
 			&i.RequestID,
 			&i.Target,
 			&i.Kind,

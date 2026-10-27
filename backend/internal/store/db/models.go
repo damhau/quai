@@ -13,7 +13,9 @@ import (
 
 type ApiToken struct {
 	ID         uuid.UUID
+	OrgID      string
 	Owner      string
+	Groups     []string
 	Name       string
 	Hash       []byte
 	Scopes     []string
@@ -42,6 +44,7 @@ type ChangeSet struct {
 
 type Event struct {
 	ID        int64
+	OrgID     string
 	RequestID pgtype.UUID
 	Target    string
 	Kind      string
@@ -52,6 +55,7 @@ type Event struct {
 
 type Request struct {
 	ID                uuid.UUID
+	OrgID             string
 	Kind              string
 	Action            string
 	Target            string
@@ -80,6 +84,7 @@ type Review struct {
 
 type Run struct {
 	ID         uuid.UUID
+	OrgID      string
 	Repository string
 	Stack      string
 	Commit     string
