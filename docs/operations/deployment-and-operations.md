@@ -34,6 +34,20 @@ single pod with both roles.
 - **Air-gapped:** an offline bundle (images, chart, `quai` CLI binaries for Linux, macOS and Windows) with checksums and signatures. Nothing is fetched at runtime: no CDNs, no fonts, no telemetry.
 - **Configuration:** a YAML file, overridable by environment variables; secrets only as references (Vault, Kubernetes Secrets). Repository connections can be managed in the UI or declared in the configuration (GitOps for Quai itself).
 
+  | Key | Environment variable | Default |
+  | --- | --- | --- |
+  | (file) | `QUAI_CONFIG`, or `quai server --config` | none: environment and defaults only |
+  | `env` | `QUAI_ENV` | `development`; `production` refuses development-only features |
+  | `server.addr` | `QUAI_SERVER_ADDR` | `:8080` |
+  | `server.shutdownTimeout` | `QUAI_SERVER_SHUTDOWN_TIMEOUT` | `20s` for requests in flight to finish |
+  | `log.level` | `QUAI_LOG_LEVEL` | `info` (`debug`, `info`, `warn`, `error`) |
+  | `log.format` | `QUAI_LOG_FORMAT` | `json` in production, `text` otherwise |
+  | `telemetry.otlpEndpoint` | `QUAI_TELEMETRY_OTLP_ENDPOINT` | none: no traces are exported; traces go to `<url>/v1/traces` |
+  | `telemetry.serviceName` | `QUAI_TELEMETRY_SERVICE_NAME` | `quai` |
+
+  Unknown keys in the file are errors, and the configuration is validated before the server
+  starts. Later tasks add their own keys (database, authentication, repositories).
+
 ## Network
 
 Egress needed, all configurable through an HTTP proxy:

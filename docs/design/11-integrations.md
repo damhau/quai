@@ -4,7 +4,8 @@ Status: Draft · 2026-10-26
 
 ## API
 
-- REST under `/api/v1`, described by an OpenAPI 3.1 document generated from the Go handlers (Huma). The frontend client and the CLI are generated from it.
+- REST under `/api/v1`, described by an OpenAPI 3.1 document generated from the Go handlers (Huma) and served at `/api/v1/openapi.json` (and `.yaml`). The frontend client and the CLI are generated from it. `/healthz` answers liveness probes outside the API.
+- Every response carries an `X-Request-ID`: the caller's when it is 1 to 64 letters, digits, `.`, `_` or `-`, a new one otherwise. It is in the request's log line and its trace.
 - Cursor pagination, `Idempotency-Key` on every POST that creates something, ETags for optimistic concurrency on admin objects.
 - Errors use RFC 9457 problem details, with field-level errors for validation (`errors: [{location: "body.document.cpu", message: "…"}]`).
 - Deprecation: an endpoint stays at least two minor releases after it is marked deprecated, announced in the `Deprecation` and `Sunset` headers.
