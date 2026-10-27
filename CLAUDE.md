@@ -40,10 +40,11 @@ go test ./internal/engine/...            # fast loop on the engine
 go test -fuzz=FuzzYAMLEdit -fuzztime=60s ./internal/engine/edit/yamledit
 ```
 
-Frontend (from `frontend/`, Node 20+):
+Frontend (from `frontend/`, Node 22.12+):
 
 ```bash
 npm run typecheck && npm run lint && npm run test && npm run build
+npm run api:openapi && npm run api:gen   # after an API change (the client is generated, never edited)
 ```
 
 Prototype (reference, from the repository root): `npm test` runs its unit and API tests (Node 22+,

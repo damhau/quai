@@ -111,6 +111,9 @@ func New(cfg *config.Config, s *store.Store, log *slog.Logger) *Authenticator {
 	return &Authenticator{cfg: cfg.Auth, sessions: sm, store: s, log: log}
 }
 
+// Mode returns how people sign in: oidc or dev.
+func (a *Authenticator) Mode() string { return a.cfg.Mode }
+
 // Middleware loads the session and identifies the request: an API token in the Authorization
 // header, or else the session's user. It refuses a state-changing request made with a session
 // but without its CSRF token.

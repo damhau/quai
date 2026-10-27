@@ -54,6 +54,29 @@ frontend/
 └── vite.config.ts
 ```
 
+## Setup
+
+Node 22.12 or later (Vitest, MSW and the client generator need it). From `frontend/`:
+
+```bash
+npm ci
+npm run dev                         # Vite on :5173, proxying /api and /auth to quai server on :8080
+npm run api:openapi && npm run api:gen   # after an API change: OpenAPI document, then the client
+npm run routes:gen                  # after adding a route file, if the dev server is not running
+```
+
+- **API client:** `@hey-api/openapi-ts` with its TanStack Query plugin generates `src/api/generated`
+  (typed SDK functions, `…Options` query options and `…Mutation` options) from `openapi.json`,
+  which `quai openapi` writes from the backend's handlers. Both are committed; the frontend CI
+  regenerates them, and the route tree, and fails on any difference. OpenAPI 3.1 is supported by
+  this generator, which is why it was chosen over orval.
+- **Signing in:** the root route sends anyone without a session to `/login`, which follows the
+  server's mode from `/api/v1/meta`: the development switcher, a redirect to the OIDC login, or a
+  notice when the server has no database. Requests that change something carry the session's
+  CSRF token from `/api/v1/me` (an interceptor in `src/api/client.ts`).
+- **Bundles:** routes are split per page; libraries go to one `vendor` chunk that stays cached
+  across releases.
+
 ## Conventions
 
 - **Server state lives in TanStack Query.** No fetched data in Zustand. Polling for live status uses query `refetchInterval` while a request is in progress, and stops when it settles.

@@ -53,6 +53,12 @@ type InstanceView struct {
 	Resources        []InstanceResource `json:"resources"`
 }
 
+// CommitText is a commit as git shows it: header, message and patch.
+type CommitText struct {
+	SHA  string `json:"sha"`
+	Text string `json:"text"`
+}
+
 // RunView is a run reported by a runner.
 type RunView struct {
 	ID         string          `json:"id"`
@@ -137,10 +143,7 @@ func registerHistory(a huma.API, reg *repositories.Registry, s *store.Store) {
 	huma.Register(a, huma.Operation{
 		OperationID: "repository-commit", Method: http.MethodGet, Path: Prefix + "/repositories/{repository}/commits/{sha}",
 		Summary: "Show a commit", Tags: []string{"Repositories"},
-	}, func(ctx context.Context, in *commitInput) (*out[struct {
-		SHA  string `json:"sha"`
-		Text string `json:"text"`
-	}], error) {
+	}, func(ctx context.Context, in *commitInput) (*out[CommitText], error) {
 		repo, err := reg.Get(in.Repository)
 		if err != nil {
 			return nil, huma.Error404NotFound(err.Error())
@@ -152,12 +155,7 @@ func registerHistory(a huma.API, reg *repositories.Registry, s *store.Store) {
 		if err != nil {
 			return nil, huma.Error404NotFound("no commit " + in.SHA)
 		}
-		res := &out[struct {
-			SHA  string `json:"sha"`
-			Text string `json:"text"`
-		}]{}
-		res.Body.SHA, res.Body.Text = in.SHA, text
-		return res, nil
+		return &out[CommitText]{Body: CommitText{SHA: in.SHA, Text: text}}, nil
 	})
 
 	huma.Register(a, huma.Operation{

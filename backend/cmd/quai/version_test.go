@@ -89,3 +89,18 @@ func TestUnknownCommand(t *testing.T) {
 		t.Fatal("Execute() error = nil, want an error for an unknown command")
 	}
 }
+
+func TestOpenAPICommand(t *testing.T) {
+	cmd := newRootCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{"openapi"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"openapi": "3.1`, `"/api/v1/requests/type"`, `"/api/v1/catalog"`, `"/api/v1/me"`} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("the document lacks %s", want)
+		}
+	}
+}

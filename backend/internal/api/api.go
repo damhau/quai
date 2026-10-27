@@ -47,6 +47,21 @@ type Options struct {
 
 // New returns the HTTP handler of the API.
 func New(opts Options) http.Handler {
+	r, _ := build(opts, false)
+	return otelhttp.NewHandler(r, "quai", otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {
+		return r.Method + " " + r.URL.Path
+	}))
+}
+
+// Document returns the OpenAPI 3.1 document of every operation, whatever the server's
+// configuration: the frontend generates its client from it.
+func Document(version string) ([]byte, error) {
+	_, a := build(Options{Version: version, Logger: slog.New(slog.DiscardHandler)}, true)
+	return json.MarshalIndent(a.OpenAPI(), "", "  ")
+}
+
+// build makes the router and registers the operations whose dependencies opts has, or all of them.
+func build(opts Options, all bool) (*chi.Mux, huma.API) {
 	r := chi.NewRouter()
 	r.Use(requestID, accessLog(opts.Logger), recoverer(opts.Logger))
 	if opts.Auth != nil {
@@ -71,20 +86,17 @@ func New(opts Options) http.Handler {
 	cfg.DocsPath = "" // the docs page loads scripts from a CDN; the OpenAPI document is enough
 	a := humachi.New(r, cfg)
 	registerMeta(a, opts)
-	if opts.Store != nil {
+	if all || opts.Store != nil {
 		registerIdentity(a, opts.Store)
 	}
-	if opts.Repositories != nil {
+	if all || opts.Repositories != nil {
 		registerCatalog(a, opts.Repositories, opts.Store)
 	}
-	if opts.Requests != nil {
+	if all || opts.Requests != nil {
 		registerRequests(a, opts.Requests, opts.Store, opts.Logger)
 		registerHistory(a, opts.Repositories, opts.Store)
 	}
-
-	return otelhttp.NewHandler(r, "quai", otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {
-		return r.Method + " " + r.URL.Path
-	}))
+	return r, a
 }
 
 // MetaOutput describes the running server.
@@ -92,6 +104,7 @@ type MetaOutput struct {
 	Body struct {
 		Version string `json:"version" doc:"The server's version"`
 		Env     string `json:"env" enum:"development,production" doc:"The server's environment"`
+		Auth    string `json:"auth" enum:"oidc,dev,none" doc:"How people sign in: OIDC login, the development switcher, or not at all (no database)"`
 	}
 }
 
@@ -107,6 +120,10 @@ func registerMeta(a huma.API, opts Options) {
 		out := &MetaOutput{}
 		out.Body.Version = opts.Version
 		out.Body.Env = opts.Env
+		out.Body.Auth = "none"
+		if opts.Auth != nil {
+			out.Body.Auth = opts.Auth.Mode()
+		}
 		return out, nil
 	})
 }
