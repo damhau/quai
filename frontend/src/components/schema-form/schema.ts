@@ -93,16 +93,17 @@ export function setPath(doc: Values, path: string, v: unknown): Values {
 
 /**
  * hiddenFields returns the fields whose `visibleIf` is false, evaluated as the server does: in
- * path order, each with the values as pruned so far. A condition the browser cannot evaluate
- * keeps its field: the server decides when it plans.
+ * path order, each with the values as pruned so far, as the variable `as` (`inputs` for a
+ * document, `action` for an action's form). A condition the browser cannot evaluate keeps its
+ * field: the server decides when it plans.
  */
-export function hiddenFields(fields: Record<string, { visibleIf?: string }> | undefined, values: Values, vars: Vars): Set<string> {
+export function hiddenFields(fields: Record<string, { visibleIf?: string }> | undefined, values: Values, vars: Vars, as: "inputs" | "action" = "inputs"): Set<string> {
   const hidden = new Set<string>()
   let pruned = values
   for (const path of Object.keys(fields ?? {}).sort()) {
     const cond = fields?.[path]?.visibleIf
     if (!cond) continue
-    if (test(cond, { ...vars, inputs: pruned }) === false) {
+    if (test(cond, { ...vars, [as]: pruned }) === false) {
       hidden.add(path)
       pruned = setPath(pruned, path, undefined)
     }

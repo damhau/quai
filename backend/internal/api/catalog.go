@@ -152,11 +152,24 @@ type CommitView struct {
 // ResourceDetail is a resource with its content, history and actions.
 type ResourceDetail struct {
 	ResourceView
-	Commit   string         `json:"commit"`
-	Document map[string]any `json:"document,omitempty"`
-	Raw      string         `json:"raw"`
-	Actions  []ActionView   `json:"actions"`
-	History  []CommitView   `json:"history"`
+	Commit     string           `json:"commit"`
+	Document   map[string]any   `json:"document,omitempty"`
+	Raw        string           `json:"raw"`
+	Actions    []ActionView     `json:"actions"`
+	History    []CommitView     `json:"history"`
+	CanOperate bool             `json:"canOperate" doc:"Whether the caller may change the resource through requests"`
+	Requests   []RequestSummary `json:"requests" doc:"The latest requests on the resource that the caller may read, newest first"`
+}
+
+// RequestSummary is a request on a resource's page.
+type RequestSummary struct {
+	ID        string    `json:"id"`
+	Number    int64     `json:"number"`
+	Kind      string    `json:"kind"`
+	Action    string    `json:"action,omitempty"`
+	State     string    `json:"state"`
+	Requester string    `json:"requester"`
+	CreatedAt time.Time `json:"createdAt"`
 }
 
 type repositoryInput struct {
@@ -365,6 +378,20 @@ func registerCatalog(a huma.API, reg *repositories.Registry, s *store.Store) {
 		repo, _ := reg.Get(repoName)
 		d := resourceDetail(ctx, repo, snap, r)
 		d.LastApply = runs.get(ctx, r.Repository, r.Stack)
+		d.CanOperate = allowed(ctx, authz.OperateResource, resourceObject(r))
+		d.Requests = []RequestSummary{}
+		if s != nil {
+			rs, err := s.ListRequests(ctx, db.ListRequestsParams{States: []string{}, Target: r.ID, MaxRows: 20})
+			if err != nil {
+				return nil, err
+			}
+			for _, q := range rs {
+				if allowed(ctx, authz.ReadRequest, authz.Object{Repository: r.Repository, Requester: q.Requester}) {
+					d.Requests = append(d.Requests, RequestSummary{ID: q.ID.String(), Number: q.Number, Kind: q.Kind, Action: q.Action,
+						State: q.State, Requester: q.Requester, CreatedAt: q.CreatedAt.Time})
+				}
+			}
+		}
 		return &out[ResourceDetail]{Body: d}, nil
 	})
 }

@@ -1,6 +1,7 @@
 import { http, HttpResponse } from "msw"
 import { setupServer } from "msw/node"
 import { catalogHandlers } from "./catalog"
+import { inventoryHandlers } from "./inventory"
 import { pendingVM, requestHandlers, requests } from "./requests"
 
 // A fake backend for the shell: who is signed in, and how this server signs people in.
@@ -28,6 +29,7 @@ export const server = setupServer(
   ),
   ...catalogHandlers,
   ...requestHandlers(() => state.user),
+  ...inventoryHandlers(() => state.user),
   http.get("*/auth/dev/users", () => HttpResponse.json(Object.entries(users).map(([Name, Groups]) => ({ Name, Groups })))),
   http.post("*/auth/dev/login", async ({ request }) => {
     const { name } = (await request.json()) as { name: string }

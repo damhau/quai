@@ -336,6 +336,16 @@ export type RepositoryView = {
     types: number;
 };
 
+export type RequestSummary = {
+    action?: string;
+    createdAt: string;
+    id: string;
+    kind: string;
+    number: number;
+    requester: string;
+    state: string;
+};
+
 export type RequestView = {
     /**
      * A URL to the JSON Schema for this object.
@@ -373,6 +383,10 @@ export type ResourceDetail = {
      */
     readonly $schema?: string;
     actions: Array<ActionView> | null;
+    /**
+     * Whether the caller may change the resource through requests
+     */
+    canOperate: boolean;
     commit: string;
     document?: {
         [key: string]: unknown;
@@ -395,6 +409,10 @@ export type ResourceDetail = {
     };
     raw: string;
     repository: string;
+    /**
+     * The latest requests on the resource that the caller may read, newest first
+     */
+    requests: Array<RequestSummary> | null;
     stack?: string;
     status: 'conforming' | 'non-conforming' | 'unparseable';
     type: string;
@@ -804,6 +822,10 @@ export type RequestViewWritable = {
 
 export type ResourceDetailWritable = {
     actions: Array<ActionView> | null;
+    /**
+     * Whether the caller may change the resource through requests
+     */
+    canOperate: boolean;
     commit: string;
     document?: {
         [key: string]: unknown;
@@ -826,6 +848,10 @@ export type ResourceDetailWritable = {
     };
     raw: string;
     repository: string;
+    /**
+     * The latest requests on the resource that the caller may read, newest first
+     */
+    requests: Array<RequestSummary> | null;
     stack?: string;
     status: 'conforming' | 'non-conforming' | 'unparseable';
     type: string;

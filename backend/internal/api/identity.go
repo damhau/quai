@@ -200,3 +200,11 @@ func tokenView(t db.ApiToken) TokenView {
 	}
 	return v
 }
+
+// allowed reports whether the caller may do action on obj, for a view to offer it; the handler
+// that does it still checks.
+func allowed(ctx context.Context, action authz.Action, obj authz.Object) bool {
+	id, _ := auth.FromContext(ctx)
+	d, err := authz.Authorize(ctx, id.Principal, action, obj)
+	return err == nil && d.Allowed
+}

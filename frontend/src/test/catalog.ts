@@ -71,7 +71,34 @@ export const sent: { plans: Body[]; requests: Body[] } = { plans: [], requests: 
 
 const yaml = (doc: Record<string, unknown>) => Object.entries(doc).map(([k, v]) => ({ op: "+" as const, text: `${k}: ${JSON.stringify(v)}` }))
 
+function day2Plan(b: Body): PlanView | Response {
+  const key = String(b.key)
+  const values = b.kind === "update" ? (b.values ?? {}) : (b.actionInputs as Record<string, unknown> | undefined) ?? {}
+  const prefix = b.kind === "update" ? "body.values" : "body.actionInputs"
+  if (typeof values.cpu === "number" && values.cpu > 32)
+    return HttpResponse.json({ status: 422, detail: "some fields need attention", errors: [{ location: `${prefix}.cpu`, message: "must be at most 32" }] }, { status: 422 })
+  const diff =
+    b.kind === "delete"
+      ? [{ op: "-" as const, text: "cpu: 4" }]
+      : [
+          { op: "-" as const, text: "cpu: 4          # bumped in INC-4411" },
+          { op: "+" as const, text: `cpu: ${String(values.cpu)}          # bumped in INC-4411` },
+        ]
+  return {
+    kind: String(b.kind),
+    action: b.action as string | undefined,
+    target: `infra-live/vm/${key}`,
+    repository: "infra-live",
+    type: "vm",
+    commit: "abc123",
+    hash: "h3",
+    changes: [{ path: `envs/${key.split("/")[0]}/vms/${key.split("/")[1]}.yaml`, op: b.kind === "delete" ? "delete" : "update", diff }],
+    rules: key.startsWith("prod/") ? [{ names: ["type/production"], approvers: ["group:platform-admins"], min: 1, approvals: [], satisfied: false }] : [],
+  }
+}
+
 function planOf(b: Body): PlanView | Response {
+  if (b.type === "vm" && b.kind !== "create") return day2Plan(b)
   if (b.type === "vm") {
     const cpu = b.values?.cpu
     if (typeof cpu === "number" && cpu > 32)

@@ -19,6 +19,7 @@ import { Route as RequestsIndexRouteImport } from './routes/requests/index'
 import { Route as RequestsIdRouteImport } from './routes/requests/$id'
 import { Route as RequestRepositoryBlueprintsNameRouteImport } from './routes/request/$repository/blueprints/$name'
 import { Route as RequestRepositoryTypesNameRouteImport } from './routes/request/$repository/types/$name'
+import { Route as ResourcesRepositoryTypeSplatRouteImport } from './routes/resources/$repository/$type/$'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -72,6 +73,12 @@ const RequestRepositoryTypesNameRoute =
     path: '/request/$repository/types/$name',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ResourcesRepositoryTypeSplatRoute =
+  ResourcesRepositoryTypeSplatRouteImport.update({
+    id: '/resources/$repository/$type/$',
+    path: '/resources/$repository/$type/$',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -84,6 +91,7 @@ export interface FileRoutesByFullPath {
   '/requests/': typeof RequestsIndexRoute
   '/request/$repository/blueprints/$name': typeof RequestRepositoryBlueprintsNameRoute
   '/request/$repository/types/$name': typeof RequestRepositoryTypesNameRoute
+  '/resources/$repository/$type/$': typeof ResourcesRepositoryTypeSplatRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -96,6 +104,7 @@ export interface FileRoutesByTo {
   '/requests': typeof RequestsIndexRoute
   '/request/$repository/blueprints/$name': typeof RequestRepositoryBlueprintsNameRoute
   '/request/$repository/types/$name': typeof RequestRepositoryTypesNameRoute
+  '/resources/$repository/$type/$': typeof ResourcesRepositoryTypeSplatRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -109,6 +118,7 @@ export interface FileRoutesById {
   '/requests/': typeof RequestsIndexRoute
   '/request/$repository/blueprints/$name': typeof RequestRepositoryBlueprintsNameRoute
   '/request/$repository/types/$name': typeof RequestRepositoryTypesNameRoute
+  '/resources/$repository/$type/$': typeof ResourcesRepositoryTypeSplatRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -123,6 +133,7 @@ export interface FileRouteTypes {
     | '/requests/'
     | '/request/$repository/blueprints/$name'
     | '/request/$repository/types/$name'
+    | '/resources/$repository/$type/$'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -135,6 +146,7 @@ export interface FileRouteTypes {
     | '/requests'
     | '/request/$repository/blueprints/$name'
     | '/request/$repository/types/$name'
+    | '/resources/$repository/$type/$'
   id:
     | '__root__'
     | '/'
@@ -147,6 +159,7 @@ export interface FileRouteTypes {
     | '/requests/'
     | '/request/$repository/blueprints/$name'
     | '/request/$repository/types/$name'
+    | '/resources/$repository/$type/$'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -160,6 +173,7 @@ export interface RootRouteChildren {
   RequestsIndexRoute: typeof RequestsIndexRoute
   RequestRepositoryBlueprintsNameRoute: typeof RequestRepositoryBlueprintsNameRoute
   RequestRepositoryTypesNameRoute: typeof RequestRepositoryTypesNameRoute
+  ResourcesRepositoryTypeSplatRoute: typeof ResourcesRepositoryTypeSplatRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -234,6 +248,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RequestRepositoryTypesNameRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/resources/$repository/$type/$': {
+      id: '/resources/$repository/$type/$'
+      path: '/resources/$repository/$type/$'
+      fullPath: '/resources/$repository/$type/$'
+      preLoaderRoute: typeof ResourcesRepositoryTypeSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -248,6 +269,7 @@ const rootRouteChildren: RootRouteChildren = {
   RequestsIndexRoute: RequestsIndexRoute,
   RequestRepositoryBlueprintsNameRoute: RequestRepositoryBlueprintsNameRoute,
   RequestRepositoryTypesNameRoute: RequestRepositoryTypesNameRoute,
+  ResourcesRepositoryTypeSplatRoute: ResourcesRepositoryTypeSplatRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

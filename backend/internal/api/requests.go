@@ -310,12 +310,6 @@ func loadRequest(ctx context.Context, svc *requests.Service, id string, action a
 	return r, me, err
 }
 
-// may reports whether me may do action on r, for the view to offer it; the handler still checks.
-func may(ctx context.Context, svc *requests.Service, r db.Request, me auth.Identity, action authz.Action) bool {
-	d, err := authz.Authorize(ctx, me.Principal, action, requestObject(ctx, svc, r))
-	return err == nil && d.Allowed
-}
-
 func requestObject(ctx context.Context, svc *requests.Service, r db.Request) authz.Object {
 	return authz.Object{Repository: svc.Repository(ctx, r), Requester: r.Requester}
 }
@@ -356,8 +350,8 @@ func requestView(ctx context.Context, svc *requests.Service, s *store.Store, r d
 	v := RequestView{ID: r.ID.String(), Number: r.Number, Kind: r.Kind, Action: r.Action, Target: r.Target, Repository: svc.Repository(ctx, r),
 		Type: r.TypeName, Blueprint: r.Blueprint, Requester: r.Requester, Reason: r.Reason, State: r.State, Stack: r.Stack,
 		CreatedAt: r.CreatedAt.Time, UpdatedAt: r.UpdatedAt.Time, CanReview: requests.CanReview(r, me.Principal)}
-	v.CanCancel = requests.Cancellable(r.State) && may(ctx, svc, r, me, authz.CancelRequest)
-	v.CanRetry = r.State == requests.Failed && may(ctx, svc, r, me, authz.RetryRequest)
+	v.CanCancel = requests.Cancellable(r.State) && allowed(ctx, authz.CancelRequest, requestObject(ctx, svc, r))
+	v.CanRetry = r.State == requests.Failed && allowed(ctx, authz.RetryRequest, requestObject(ctx, svc, r))
 	_ = json.Unmarshal(r.Inputs, &v.Inputs)
 	var rules []policy.Rule
 	_ = json.Unmarshal(r.Rules, &rules)

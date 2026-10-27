@@ -177,6 +177,11 @@ func TestDayTwo(t *testing.T) {
 	if content, _ := h.file("envs/prod/vms/web01.yaml"); !strings.Contains(content, "cpu: 8          # bumped in INC-4411\nmemory_gb: 32\n") {
 		t.Errorf("web01 = %q", content)
 	}
+	var d ResourceDetail
+	bob.do(http.MethodGet, Prefix+"/resource?id=infra-live/vm/prod/web01", nil, &d)
+	if !d.CanOperate || len(d.Requests) != 1 || d.Requests[0].ID != r.ID || d.Requests[0].State != "applied" || d.Requests[0].Action != "resize" {
+		t.Errorf("the resource's requests = %v, can operate = %v", d.Requests, d.CanOperate)
+	}
 
 	// Indexed set paths: extend-disk sets disks.0.size_gb on bob's dev VM, which needs no approval.
 	extend := map[string]any{"repository": "infra-live", "type": "vm", "kind": "action", "key": "dev/build-agent-01", "action": "extend-disk", "actionInputs": map[string]any{"size_gb": 120}}
