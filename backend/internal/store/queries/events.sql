@@ -8,3 +8,6 @@ SELECT * FROM events WHERE request_id = $1 ORDER BY id;
 
 -- name: ListTargetEvents :many
 SELECT * FROM events WHERE target = $1 ORDER BY id DESC LIMIT sqlc.arg(max_rows);
+
+-- name: ListRecentEvents :many
+SELECT * FROM events ORDER BY id DESC LIMIT sqlc.arg(max_rows);

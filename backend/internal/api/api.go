@@ -75,10 +75,11 @@ func New(opts Options) http.Handler {
 		registerIdentity(a, opts.Store)
 	}
 	if opts.Repositories != nil {
-		registerCatalog(a, opts.Repositories)
+		registerCatalog(a, opts.Repositories, opts.Store)
 	}
 	if opts.Requests != nil {
 		registerRequests(a, opts.Requests, opts.Store, opts.Logger)
+		registerHistory(a, opts.Repositories, opts.Store)
 	}
 
 	return otelhttp.NewHandler(r, "quai", otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {

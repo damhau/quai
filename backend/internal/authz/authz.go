@@ -90,6 +90,7 @@ const (
 	ReadAudit          Action = "audit.read"
 	UseBreakGlass      Action = "requests.break-glass"
 	ManageOwnTokens    Action = "tokens.manage"
+	PublishBlueprint   Action = "blueprints.publish"
 )
 
 // Object is what the action is on. Fields that do not apply are empty.
@@ -179,7 +180,9 @@ func Authorize(_ context.Context, p Principal, a Action, o Object) (Decision, er
 		if !p.has(CatalogAuthor, o) && !p.has(RepositoryAdmin, o) {
 			return deny("previewing definitions needs the catalog author role"), nil
 		}
-	case ManageRepository:
+	case ManageRepository, PublishBlueprint:
+		// Publishing commits a definition straight to the branch, so it takes a repository admin
+		// until definitions go through pull requests.
 		if !p.has(RepositoryAdmin, o) {
 			return deny("managing the repository needs the repository admin role"), nil
 		}

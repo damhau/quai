@@ -46,6 +46,8 @@ single pod with both roles.
   | `auth.oidc.scopes`, `.nameClaim`, `.groupsClaim` | | `openid profile email`, `preferred_username`, `groups` |
   | `auth.roles` | | `- { group: sg-quai-admins, role: platform-admin, scope: global }`; scope can be `team:`, `repository:` or `catalog-item:` and a name |
   | `auth.session.lifetime`, `.idleTimeout` | | `8h`, `30m` |
+  | `git.cacheDir`, `git.committer` | `QUAI_GIT_CACHE_DIR` | the user cache directory; `Quai <quai@localhost>` |
+  | `repositories[]` | | `name`, `url`, `defaultBranch` (`main`), `delivery.mode` (`direct` in Phase 0), `floorRules`, `sync.minInterval` (`10s`), `runner.tokenSHA256` |
   | `log.level` | `QUAI_LOG_LEVEL` | `info` (`debug`, `info`, `warn`, `error`) |
   | `log.format` | `QUAI_LOG_FORMAT` | `json` in production, `text` otherwise |
   | `telemetry.otlpEndpoint` | `QUAI_TELEMETRY_OTLP_ENDPOINT` | none: no traces are exported; traces go to `<url>/v1/traces` |

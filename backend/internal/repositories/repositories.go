@@ -32,6 +32,8 @@ type Repo struct {
 	Delivery   string
 	FloorRules []definitions.Rule
 	Mirror     *gitx.Mirror
+	// RunTokenSHA256 is the SHA-256 of the token runners report with; empty when none may.
+	RunTokenSHA256 string
 
 	minInterval time.Duration
 	log         *slog.Logger
@@ -82,7 +84,7 @@ func Open(ctx context.Context, cfg *config.Config, log *slog.Logger) (*Registry,
 			return nil, fmt.Errorf("repository %s: %w", rc.Name, err)
 		}
 		r := &Repo{Name: rc.Name, Title: rc.Title, Branch: rc.DefaultBranch, Delivery: rc.Delivery.Mode, Mirror: m,
-			minInterval: rc.Sync.MinInterval, log: log, lastFetch: time.Now()}
+			RunTokenSHA256: rc.Runner.TokenSHA256, minInterval: rc.Sync.MinInterval, log: log, lastFetch: time.Now()}
 		for _, f := range rc.FloorRules {
 			rule := definitions.Rule{Name: f.Name, When: f.When, Approvers: f.Approvers, Min: f.Min}
 			if f.When != "" {

@@ -71,6 +71,10 @@ type sessionUser struct {
 	AuthTime time.Time `json:"authTime"`
 }
 
+// RunsPath is where runners report runs; its Authorization header carries a run token, not an
+// API token (docs/design/06-runs-status-and-drift.md#run-report-protocol).
+const RunsPath = "/api/v1/runs"
+
 // Session keys.
 const (
 	keyUser     = "user"
@@ -113,7 +117,8 @@ func New(cfg *config.Config, s *store.Store, log *slog.Logger) *Authenticator {
 func (a *Authenticator) Middleware(next http.Handler) http.Handler {
 	identify := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
-		if h := r.Header.Get("Authorization"); h != "" {
+		// Runners report with their repository's run token, which the run endpoint checks.
+		if h := r.Header.Get("Authorization"); h != "" && r.URL.Path != RunsPath {
 			id, err := a.tokenIdentity(ctx, h)
 			if err != nil {
 				writeProblem(w, http.StatusUnauthorized, err.Error())

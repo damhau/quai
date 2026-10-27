@@ -48,6 +48,39 @@ func (q *Queries) AddEvent(ctx context.Context, arg AddEventParams) (Event, erro
 	return i, err
 }
 
+const listRecentEvents = `-- name: ListRecentEvents :many
+SELECT id, org_id, request_id, target, kind, actor, data, created_at FROM events ORDER BY id DESC LIMIT $1
+`
+
+func (q *Queries) ListRecentEvents(ctx context.Context, maxRows int32) ([]Event, error) {
+	rows, err := q.db.Query(ctx, listRecentEvents, maxRows)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Event{}
+	for rows.Next() {
+		var i Event
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.RequestID,
+			&i.Target,
+			&i.Kind,
+			&i.Actor,
+			&i.Data,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listRequestEvents = `-- name: ListRequestEvents :many
 SELECT id, org_id, request_id, target, kind, actor, data, created_at FROM events WHERE request_id = $1 ORDER BY id
 `

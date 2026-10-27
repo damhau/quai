@@ -173,11 +173,12 @@ git: { cacheDir: /var/cache/quai }
 		t.Errorf("repository = %+v, git = %+v", r, c.Git)
 	}
 	for name, tt := range map[string]struct{ file, want string }{
-		"name":     {"repositories: [{ name: Infra, url: x }]\n", "repositories[0].name must be a lowercase DNS label"},
-		"twice":    {"repositories: [{ name: a, url: x }, { name: a, url: y }]\n", "a is declared twice"},
-		"url":      {"repositories: [{ name: a }]\n", "repositories[0].url is required"},
-		"delivery": {"repositories: [{ name: a, url: x, delivery: { mode: pull-request } }]\n", "must be direct for now"},
-		"floor":    {"repositories: [{ name: a, url: x, floorRules: [{ name: f }] }]\n", "needs a name and approvers"},
+		"name":      {"repositories: [{ name: Infra, url: x }]\n", "repositories[0].name must be a lowercase DNS label"},
+		"twice":     {"repositories: [{ name: a, url: x }, { name: a, url: y }]\n", "a is declared twice"},
+		"url":       {"repositories: [{ name: a }]\n", "repositories[0].url is required"},
+		"delivery":  {"repositories: [{ name: a, url: x, delivery: { mode: pull-request } }]\n", "must be direct for now"},
+		"floor":     {"repositories: [{ name: a, url: x, floorRules: [{ name: f }] }]\n", "needs a name and approvers"},
+		"run token": {"repositories: [{ name: a, url: x, runner: { tokenSHA256: secret } }]\n", "must be 64 hexadecimal digits"},
 	} {
 		if _, err := Load(write(t, tt.file), env(nil)); err == nil || !strings.Contains(err.Error(), tt.want) {
 			t.Errorf("%s: error = %v, want %q", name, err, tt.want)

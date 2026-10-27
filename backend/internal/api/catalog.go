@@ -19,6 +19,8 @@ import (
 	"github.com/damhau/quai/backend/internal/engine/locate"
 	"github.com/damhau/quai/backend/internal/inventory"
 	"github.com/damhau/quai/backend/internal/repositories"
+	"github.com/damhau/quai/backend/internal/store"
+	"github.com/damhau/quai/backend/internal/store/db"
 )
 
 // ProblemView is a problem with a definition.
@@ -133,6 +135,7 @@ type ResourceView struct {
 	Status     string            `json:"status" enum:"conforming,non-conforming,unparseable"`
 	Problems   map[string]string `json:"problems,omitempty"`
 	Error      string            `json:"error,omitempty"`
+	LastApply  *RunView          `json:"lastApply,omitempty" doc:"The latest apply reported for the resource's stack"`
 }
 
 // CommitView is a commit in a history.
@@ -177,7 +180,8 @@ type out[T any] struct {
 	Body T
 }
 
-func registerCatalog(a huma.API, reg *repositories.Registry) {
+func registerCatalog(a huma.API, reg *repositories.Registry, s *store.Store) {
+	runs := lastApplies{s: s}
 	huma.Register(a, huma.Operation{
 		OperationID: "list-repositories", Method: http.MethodGet, Path: Prefix + "/repositories",
 		Summary: "List the connected repositories", Tags: []string{"Repositories"},
@@ -299,6 +303,7 @@ func registerCatalog(a huma.API, reg *repositories.Registry) {
 	}, func(ctx context.Context, in *inventoryInput) (*out[[]ResourceView], error) {
 		// Each resource is checked: someone may see only what they own.
 		views := []ResourceView{}
+		applies := map[string]*RunView{} // by stack: resources share stacks
 		for _, repo := range reg.List() {
 			if in.Repository != "" && repo.Name != in.Repository {
 				continue
@@ -316,7 +321,13 @@ func registerCatalog(a huma.API, reg *repositories.Registry) {
 					continue
 				}
 				if _, err := authorize(ctx, authz.ReadInventory, resourceObject(r)); err == nil {
-					views = append(views, resourceView(r))
+					v := resourceView(r)
+					key := r.Repository + "/" + r.Stack
+					if _, ok := applies[key]; !ok {
+						applies[key] = runs.get(ctx, r.Repository, r.Stack)
+					}
+					v.LastApply = applies[key]
+					views = append(views, v)
 				}
 			}
 		}
@@ -351,8 +362,25 @@ func registerCatalog(a huma.API, reg *repositories.Registry) {
 			return nil, err
 		}
 		repo, _ := reg.Get(repoName)
-		return &out[ResourceDetail]{Body: resourceDetail(ctx, repo, snap, r)}, nil
+		d := resourceDetail(ctx, repo, snap, r)
+		d.LastApply = runs.get(ctx, r.Repository, r.Stack)
+		return &out[ResourceDetail]{Body: d}, nil
 	})
+}
+
+// lastApplies looks up the latest apply reported for a stack.
+type lastApplies struct{ s *store.Store }
+
+func (l lastApplies) get(ctx context.Context, repo, stack string) *RunView {
+	if l.s == nil || stack == "" {
+		return nil
+	}
+	r, err := l.s.LatestRun(ctx, db.LatestRunParams{Repository: repo, Stack: stack, Kind: "apply"})
+	if err != nil {
+		return nil
+	}
+	v := runView(r)
+	return &v
 }
 
 func snapshot(ctx context.Context, reg *repositories.Registry, name string) (*repositories.Snapshot, error) {

@@ -73,6 +73,13 @@ type Repository struct {
 	Delivery      Delivery     `yaml:"delivery"`
 	FloorRules    []FloorRule  `yaml:"floorRules"`
 	Sync          SyncSettings `yaml:"sync"`
+	Runner        Runner       `yaml:"runner"`
+}
+
+// Runner configures run reports from the repository's pipelines (docs/design/06). The token
+// itself is not in the configuration: only its SHA-256, in hexadecimal.
+type Runner struct {
+	TokenSHA256 string `yaml:"tokenSHA256"`
 }
 
 // Delivery says how changes reach the repository.
@@ -325,6 +332,9 @@ func (c *Config) validate() error {
 		if r.URL == "" {
 			errs = append(errs, fmt.Errorf("%s.url is required", at))
 		}
+		if h := r.Runner.TokenSHA256; h != "" && !sha256Re.MatchString(h) {
+			errs = append(errs, fmt.Errorf("%s.runner.tokenSHA256 must be 64 hexadecimal digits", at))
+		}
 		if r.Delivery.Mode != "direct" {
 			errs = append(errs, fmt.Errorf("%s.delivery.mode must be direct for now, not %q", at, r.Delivery.Mode))
 		}
@@ -349,7 +359,10 @@ func (c *Config) validate() error {
 	return errors.Join(errs...)
 }
 
-var repoNameRe = regexp.MustCompile(`^[a-z][a-z0-9-]{0,62}$`)
+var (
+	repoNameRe = regexp.MustCompile(`^[a-z][a-z0-9-]{0,62}$`)
+	sha256Re   = regexp.MustCompile(`^[0-9a-f]{64}$`)
+)
 
 // roles are the role names of docs/design/08; internal/authz defines them.
 var roles = []string{"viewer", "requester", "operator", "catalog-author", "repository-admin", "platform-admin", "auditor", "break-glass"}

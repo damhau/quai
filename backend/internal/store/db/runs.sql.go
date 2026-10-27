@@ -75,6 +75,52 @@ func (q *Queries) LatestRun(ctx context.Context, arg LatestRunParams) (Run, erro
 	return i, err
 }
 
+const reportRun = `-- name: ReportRun :one
+INSERT INTO runs (id, repository, stack, commit, kind, status, url, summary, finished_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CASE WHEN $6 = 'running' THEN NULL ELSE now() END)
+RETURNING id, org_id, repository, stack, commit, kind, status, url, summary, started_at, finished_at
+`
+
+type ReportRunParams struct {
+	ID         uuid.UUID
+	Repository string
+	Stack      string
+	Commit     string
+	Kind       string
+	Status     string
+	Url        string
+	Summary    json.RawMessage
+}
+
+// A run report from a runner, recorded as it is: running, or finished.
+func (q *Queries) ReportRun(ctx context.Context, arg ReportRunParams) (Run, error) {
+	row := q.db.QueryRow(ctx, reportRun,
+		arg.ID,
+		arg.Repository,
+		arg.Stack,
+		arg.Commit,
+		arg.Kind,
+		arg.Status,
+		arg.Url,
+		arg.Summary,
+	)
+	var i Run
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Repository,
+		&i.Stack,
+		&i.Commit,
+		&i.Kind,
+		&i.Status,
+		&i.Url,
+		&i.Summary,
+		&i.StartedAt,
+		&i.FinishedAt,
+	)
+	return i, err
+}
+
 const startRun = `-- name: StartRun :one
 INSERT INTO runs (id, repository, stack, commit, kind, status, url)
 VALUES ($1, $2, $3, $4, $5, 'running', $6)

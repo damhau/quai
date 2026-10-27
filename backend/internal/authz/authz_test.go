@@ -72,6 +72,8 @@ func TestAuthorize(t *testing.T) {
 		{"viewer cannot preview", who("vic", nil, at(Viewer, ScopeGlobal, "")), PreviewDefinitions, repo, false, "catalog author"},
 		{"repository admin manages it", who("ray", nil, at(RepositoryAdmin, ScopeRepository, "infra-live")), ManageRepository, repo, true, ""},
 		{"repository admin, other repository", who("ray", nil, at(RepositoryAdmin, ScopeRepository, "dns")), ManageRepository, repo, false, "repository admin"},
+		{"repository admin publishes", who("ray", nil, at(RepositoryAdmin, ScopeRepository, "infra-live")), PublishBlueprint, repo, true, ""},
+		{"catalog author cannot publish directly", who("cat", nil, at(CatalogAuthor, ScopeGlobal, "")), PublishBlueprint, repo, false, "repository admin"},
 		{"only platform admins manage settings", who("ray", nil, at(RepositoryAdmin, ScopeGlobal, "")), ManageSettings, Object{}, false, "platform admin"},
 		{"platform admin manages settings", who("ada", nil, at(PlatformAdmin, ScopeGlobal, "")), ManageSettings, Object{}, true, ""},
 		{"platform admin operates any resource", who("ada", nil, at(PlatformAdmin, ScopeGlobal, "")), OperateResource, resource, true, ""},

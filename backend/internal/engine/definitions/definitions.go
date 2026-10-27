@@ -251,3 +251,11 @@ func display(v any) string {
 	}
 	return fmt.Sprintf("%q", fmt.Sprint(v))
 }
+
+// LoadBlueprint reads and checks the blueprint at file in fsys against the repository's types,
+// for a blueprint about to be written: the designer publishes only blueprints that load.
+func LoadBlueprint(fsys fs.FS, file string, types map[string]*ResourceType) (*Blueprint, Problems) {
+	l := newLoader(fsys)
+	b := l.blueprint(file, types)
+	return b, l.problems
+}
