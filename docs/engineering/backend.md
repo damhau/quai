@@ -101,6 +101,7 @@ standard library is not enough.
 - **Errors.** Wrap with `fmt.Errorf("…: %w", err)`. Domain errors are typed (`ErrNotFound`, `ErrStale`, `ValidationError{Fields}`) and mapped to problem details in one place in `internal/api`. Handlers never build HTTP errors from domain logic directly.
 - **Transactions.** A state change and the jobs it triggers are written in one transaction (River's `InsertTx`), so a crash can never leave a request "submitted" without its delivery job.
 - **Idempotency.** Every job can run twice: connector calls carry idempotency keys or check current state first (a PR for this request already exists → reuse it).
+- **One job per repository at a time.** Jobs that change a repository run under its PostgreSQL advisory lock (`jobs.WithRepositoryLock`); a job that finds it taken is snoozed, not failed, and runs again shortly. A worker that dies mid-job leaves the job running; River rescues it after `RescueStuckJobsAfter` and runs it again, which the idempotency rule makes safe. River's own tables are migrated by `quai migrate` after Quai's.
 - **Authorization.** Every handler and job calls `authz.Authorize`; a static check in CI fails the build for handlers that do not.
 - **Logging.** One log line per request (middleware) and per job, plus one per domain event and per caught error, at `Info` or above. Never log bodies, tokens, credentials or file contents.
 - **No global state** besides the configuration loaded at start-up.

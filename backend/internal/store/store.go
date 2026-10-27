@@ -12,6 +12,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
+	"github.com/riverqueue/river/riverdriver/riverpgxv5"
+	"github.com/riverqueue/river/rivermigrate"
 
 	"github.com/damhau/quai/backend/internal/store/db"
 	"github.com/damhau/quai/backend/migrations"
@@ -39,7 +41,8 @@ func Open(ctx context.Context, url string) (*Store, error) {
 // Close closes the pool.
 func (s *Store) Close() { s.Pool.Close() }
 
-// Migrate applies the migrations that are not applied yet and returns how many it applied.
+// Migrate applies the migrations that are not applied yet, Quai's and then those of the River
+// job queue, and returns how many it applied.
 func Migrate(ctx context.Context, pool *pgxpool.Pool) (int, error) {
 	sqldb := stdlib.OpenDBFromPool(pool)
 	defer sqldb.Close()
@@ -51,7 +54,15 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("migrations: %w", err)
 	}
-	return len(results), nil
+	m, err := rivermigrate.New(riverpgxv5.New(pool), nil)
+	if err != nil {
+		return 0, fmt.Errorf("job queue migrations: %w", err)
+	}
+	river, err := m.Migrate(ctx, rivermigrate.DirectionUp, nil)
+	if err != nil {
+		return 0, fmt.Errorf("job queue migrations: %w", err)
+	}
+	return len(results) + len(river.Versions), nil
 }
 
 // Tx runs fn in a transaction, committed when fn returns nil and rolled back otherwise. A state
