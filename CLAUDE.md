@@ -34,7 +34,8 @@ every request becomes a reviewed change in their Git repositories. Start with
 Backend (from `backend/`, Go 1.27):
 
 ```bash
-make check     # build, vet, staticcheck, gosec, govulncheck, go test -race
+make check     # build, vet, staticcheck, gosec, govulncheck, sqlc diff, go test -race
+make generate  # regenerate internal/store/db after changing queries or migrations
 go test ./internal/engine/...            # fast loop on the engine
 go test -fuzz=FuzzYAMLEdit -fuzztime=60s ./internal/engine/edit/yamledit
 ```

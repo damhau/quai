@@ -1,0 +1,17 @@
+# Typed Go for the hand-written queries in internal/store/queries: `make generate`.
+version: "2"
+sql:
+  - engine: postgresql
+    schema: migrations
+    queries: internal/store/queries
+    gen:
+      go:
+        package: db
+        out: internal/store/db
+        sql_package: pgx/v5
+        emit_empty_slices: true
+        overrides:
+          - db_type: uuid
+            go_type: github.com/google/uuid.UUID
+          - db_type: jsonb
+            go_type: encoding/json.RawMessage

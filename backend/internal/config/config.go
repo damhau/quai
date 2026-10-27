@@ -30,6 +30,7 @@ type Config struct {
 	// are refused in production.
 	Env       string    `yaml:"env"`
 	Server    Server    `yaml:"server"`
+	Database  Database  `yaml:"database"`
 	Log       Log       `yaml:"log"`
 	Telemetry Telemetry `yaml:"telemetry"`
 }
@@ -38,6 +39,11 @@ type Config struct {
 type Server struct {
 	Addr            string        `yaml:"addr"`            // listen address, such as :8080
 	ShutdownTimeout time.Duration `yaml:"shutdownTimeout"` // how long requests in flight may finish
+}
+
+// Database configures PostgreSQL.
+type Database struct {
+	URL string `yaml:"url"` // such as postgres://quai@db:5432/quai; secrets belong in QUAI_DATABASE_URL
 }
 
 // Log configures logging.
@@ -63,6 +69,7 @@ var variables = []struct {
 		c.Server.ShutdownTimeout, err = time.ParseDuration(v)
 		return err
 	}},
+	{"QUAI_DATABASE_URL", func(c *Config, v string) error { c.Database.URL = v; return nil }},
 	{"QUAI_LOG_LEVEL", func(c *Config, v string) error { c.Log.Level = v; return nil }},
 	{"QUAI_LOG_FORMAT", func(c *Config, v string) error { c.Log.Format = v; return nil }},
 	{"QUAI_TELEMETRY_OTLP_ENDPOINT", func(c *Config, v string) error { c.Telemetry.OTLPEndpoint = v; return nil }},
@@ -134,6 +141,11 @@ func (c *Config) validate() error {
 	}
 	if _, port, err := net.SplitHostPort(c.Server.Addr); err != nil || port == "" {
 		errs = append(errs, fmt.Errorf("server.addr must be host:port or :port, not %q", c.Server.Addr))
+	}
+	if u := c.Database.URL; u != "" {
+		if p, err := url.Parse(u); err != nil || (p.Scheme != "postgres" && p.Scheme != "postgresql") {
+			errs = append(errs, errors.New("database.url must be a postgres:// URL"))
+		}
 	}
 	if c.Server.ShutdownTimeout < 0 {
 		errs = append(errs, errors.New("server.shutdownTimeout must not be negative"))

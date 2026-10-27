@@ -4,14 +4,15 @@
 STATICCHECK := honnef.co/go/tools/cmd/staticcheck@v0.8.2
 GOSEC       := github.com/securego/gosec/v2/cmd/gosec@v2.29.0
 GOVULNCHECK := golang.org/x/vuln/cmd/govulncheck@v1.9.0
+SQLC        := github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1
 
 # `go run tool@version` picks a toolchain from the tool's go.mod, not ours. Build the tools with
 # the toolchain this module selects, so they understand the standard library they analyse.
 export GOTOOLCHAIN := $(shell go env GOVERSION)
 
-.PHONY: check build vet staticcheck gosec govulncheck test
+.PHONY: check build vet staticcheck gosec govulncheck generated test generate
 
-check: build vet staticcheck gosec govulncheck test
+check: build vet staticcheck gosec govulncheck generated test
 
 build:
 	go build -o /dev/null ./...
@@ -23,10 +24,17 @@ staticcheck:
 	go run $(STATICCHECK) ./...
 
 gosec:
-	go run $(GOSEC) -quiet ./...
+	go run $(GOSEC) -quiet -exclude-generated ./...
 
 govulncheck:
 	go run $(GOVULNCHECK) ./...
 
+# The code sqlc generates from internal/store/queries must be up to date.
+generated:
+	go run $(SQLC) diff
+
 test:
 	go test -race -count=1 ./...
+
+generate:
+	go run $(SQLC) generate

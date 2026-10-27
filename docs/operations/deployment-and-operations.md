@@ -40,6 +40,7 @@ single pod with both roles.
   | `env` | `QUAI_ENV` | `development`; `production` refuses development-only features |
   | `server.addr` | `QUAI_SERVER_ADDR` | `:8080` |
   | `server.shutdownTimeout` | `QUAI_SERVER_SHUTDOWN_TIMEOUT` | `20s` for requests in flight to finish |
+  | `database.url` | `QUAI_DATABASE_URL` | none; `quai migrate` applies the migrations |
   | `log.level` | `QUAI_LOG_LEVEL` | `info` (`debug`, `info`, `warn`, `error`) |
   | `log.format` | `QUAI_LOG_FORMAT` | `json` in production, `text` otherwise |
   | `telemetry.otlpEndpoint` | `QUAI_TELEMETRY_OTLP_ENDPOINT` | none: no traces are exported; traces go to `<url>/v1/traces` |
