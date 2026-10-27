@@ -128,6 +128,18 @@ approval:
   stepUp: "params.env == 'prod'"               # approvers must have re-authenticated recently
 ```
 
+How rules combine and decide:
+
+- A rule applies when its `when` holds; `min` defaults to 1. An action's own `approval` replaces
+  the type's rules for that action (`rules: []` for none); floor rules always apply, and a
+  blueprint's rules add to its types'.
+- Rules with the same approvers (and external system) are merged into one requirement with the
+  highest `min`, so a floor rule and a type rule for `group:platform-admins` need one approval,
+  not two.
+- Each reviewer's latest decision counts. A denial rejects the request only when it comes from
+  someone who could approve for a rule that applies; an external rule is satisfied when its
+  system approves and rejects the request when it refuses.
+
 ### Approver kinds
 
 | Approver | Resolved from |
