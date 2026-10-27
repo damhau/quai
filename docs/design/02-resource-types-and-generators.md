@@ -121,6 +121,26 @@ Expressions inside `${{ }}`, `when`, `visibleIf` and `availableIf` are CEL
 | `request` | `kind`, `action`, `reason` |
 | `user` | `name`, `groups` |
 
+On create, `previous` and `doc` are empty, so conditions test fields first:
+`!has(previous.size) || previous.size != 'large'`. Reading a missing key is an error, not a
+null. Besides CEL's standard library, expressions may use optional values (`inputs.?vlan`,
+`.orValue('default')`) and the strings extension (`lowerAscii`, `split`, `join`, `format`, …).
+Each expression is at most 4,096 characters and each evaluation is bounded by a cost limit of
+1,000,000 units, the limit Kubernetes applies to each CRD validation rule.
+
+Bindings work on values, never on text:
+
+- A string that is exactly one binding, spaces around it allowed, takes the binding's value and
+  type: `${{ inputs.cpu }}` is a number, `${{ inputs.disks }}` a list.
+- Bindings among other text are interpolated: strings as they are, null as nothing, other values
+  as JSON. `x-${{ inputs.n }}` gives `x-4`.
+- A binding that evaluates to `optional.none()` (`${{ inputs.?vlan }}`) is absent: its key or
+  list item is left out of the template's result.
+- Until values are typed by their schemas, whole numbers are ints and other numbers doubles, so
+  `inputs.cpu * 2` and `inputs.ratio * 2.0` both work, whether the values came from YAML or JSON.
+- Because the result is serialized by a YAML or JSON library, a value can never add structure
+  to a file: `"a\nkind: Secret"` stays a string.
+
 ## Locators
 
 A locator maps a resource key to a **region**: the part of the repository the
