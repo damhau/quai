@@ -64,6 +64,14 @@ func Edit(src []byte, want any) (out []byte, err error) {
 	return out, nil
 }
 
+// Decode returns the first document of src in the JSON data model, as Edit reads it: nil, bool,
+// string, int64, uint64, float64, []any and map[string]any. Dates stay text, keys are their
+// text, merge keys are merged, and duplicate keys or values outside the data model are errors.
+// An empty file decodes to nil.
+func Decode(src []byte) (any, error) {
+	return decode(src)
+}
+
 // internalError starts the reason of a refusal caused by a bug in this package.
 const internalError = "internal error"
 

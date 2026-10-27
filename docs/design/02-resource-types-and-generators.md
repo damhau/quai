@@ -319,6 +319,13 @@ Resources with no owner can be changed only by admins and the type's
 3. **Format:** the edited file must parse and decode to exactly the intended content (see [03-file-editing.md](03-file-editing.md)).
 4. **Repository policy (optional):** if the repository ships an OPA/Rego bundle (`.quai/policy/` or the path its CI uses), Quai evaluates it in-process for early feedback. CI remains the enforcing check.
 
+Schemas are JSON Schema 2020-12 unless they declare 2019-09 or draft 7 with `$schema`. `format`
+is checked, not just an annotation, so an invalid `ipv4` fails as it does in most CI
+validators. A `$ref` resolves only to schema files in the repository, by relative path or by
+`$id`: Quai never fetches a schema from the network. Errors are keyed by dotted field path
+(`disks.0.size_gb`, `$` for the document) with one message per field, such as "must be one of
+110, 120, 130"; an `anyOf` or `oneOf` that fails is one message, not one per alternative.
+
 ## Terraform addresses
 
 `address: module.vm["{name}"]` tells Quai which Terraform resources belong to a
