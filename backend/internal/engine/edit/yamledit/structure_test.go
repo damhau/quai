@@ -44,6 +44,8 @@ func TestEditStructure(t *testing.T) {
 		// Keys added to block mappings.
 		{"add key", "a: 1\nb: 2\n", set(path{"c"}, 3), "a: 1\nb: 2\nc: 3\n"},
 		{"add key at the end of a file without a final line break", "a: 1", set(path{"b"}, 2), "a: 1\nb: 2"},
+		{"add key after trailing spaces", "env:\n  - GO111MODULE=on \n  \nscript:\n  - x\n", set(path{"env", 1}, "CGO_ENABLED=0"), "env:\n  - GO111MODULE=on \n  - CGO_ENABLED=0\n  \nscript:\n  - x\n"},
+		{"remove entry with trailing spaces", "a: 1   \nb: 2\n", del(path{"a"}), "b: 2\n"},
 		{"add key after a trailing comment", "a: 1 # one\n", set(path{"b"}, 2), "a: 1 # one\nb: 2\n"},
 		{"add keys in sorted order", "a: 1\n", set(path{"z"}, 3, path{"m"}, 2), "a: 1\nm: 2\nz: 3\n"},
 		{"add key to a nested mapping", "tags:\n  app: shop\nnext: 1\n", set(path{"tags", "env"}, "prod"), "tags:\n  app: shop\n  env: prod\nnext: 1\n"},
@@ -55,6 +57,9 @@ func TestEditStructure(t *testing.T) {
 		{"add list of mappings", "a: 1\n", set(path{"d"}, l(m("size", 1, "tier", "ssd"))), "a: 1\nd:\n  - size: 1\n    tier: ssd\n"},
 		{"add list of lists", "a: 1\n", set(path{"d"}, l(l(1, 2))), "a: 1\nd:\n  - - 1\n    - 2\n"},
 		{"add key to a mapping in a sequence item", "d:\n  - size: 1\n    tier: ssd\n", set(path{"d", 0, "iops"}, 300), "d:\n  - size: 1\n    tier: ssd\n    iops: 300\n"},
+		{"add key to a crlf file with comments", "# head\r\na: 1 # one\r\n\r\n# about b\r\nb: 2\r\n", set(path{"c"}, 3), "# head\r\na: 1 # one\r\n\r\n# about b\r\nb: 2\r\nc: 3\r\n"},
+		{"remove key from a crlf file with comments", "a: 1 # one\r\n# about b\r\nb: 2\r\nc: 3\r\n", del(path{"b"}), "a: 1 # one\r\nc: 3\r\n"},
+		{"replace a value in a crlf file with comments", "a: 1 # one\r\nb: 2\r\n", set(path{"b"}, m("x", 1)), "a: 1 # one\r\nb:\r\n  x: 1\r\n"},
 		{"add key with crlf", "a: 1\r\nb: 2\r\n", set(path{"c"}, m("x", 1)), "a: 1\r\nb: 2\r\nc:\r\n  x: 1\r\n"},
 		{"add key that needs quoting", "a: 1\n", set(path{"yes"}, 1), "a: 1\n\"yes\": 1\n"},
 		{"add key in the file's quote style", "a: 'x'\n", set(path{"on"}, "1"), "a: 'x'\n'on': '1'\n"},
@@ -167,6 +172,10 @@ func TestEditStructureRefuses(t *testing.T) {
 		{"add to an aliased mapping", "base: &b {x: 1}\nm: *b\n", set(path{"m", "z"}, 3), "$.m", "alias"},
 		{"remove beside a comment in a flow mapping", "m: {a: 1, # c\n  b: 2}\n", del(path{"m", "b"}), "$.m", "remove a comment"},
 		{"comment between a key and its value", "a: # note\n  x: 1\nb: 1\n", set(path{"a"}, 5), "$.a", "comment sits between"},
+		// Found by fuzzing: goccy's tree has one item here, the decoder two.
+		{"tree with fewer items than the document", "- &0\n#\n-", func(d any) any { return append(append([]any{}, d.([]any)...), "x") }, "$", "disagree"},
+		// Found by fuzzing: the item's value starts before the end of its '-'.
+		{"value before its indicator", "-\t\v-", func(any) any { return []any{[]any{"0"}} }, "$[0]", "positions do not match"},
 		{"nested sequence item", "l:\n  - - a\n    - b\n", func(d any) any { return set(path{"l", 0}, []any{"b"})(d) }, "$.l[0]", "shares its line"},
 	}
 	for _, tt := range tests {

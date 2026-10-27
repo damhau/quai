@@ -149,6 +149,13 @@ func TestEditScalars(t *testing.T) {
 		{"leading space is quoted", "s: x\n", path{"s"}, " x", `s: " x"` + "\n"},
 		{"unicode before the value", "naïve: café # c\n", path{"naïve"}, "thé", "naïve: thé # c\n"},
 		{"unicode value", "s: x\n", path{"s"}, "grüezi", "s: grüezi\n"},
+		{"trailing spaces after the value", "a: 1   \nb: 2\n", path{"a"}, 5, "a: 5   \nb: 2\n"},
+		{"trailing tab after the value", "a: x\t\nb: 2\n", path{"a"}, "y z", "a: y z\t\nb: 2\n"},
+		{"trailing spaces after a sequence item", "l:\n  - value: 1    \n", path{"l", 0, "value"}, 2, "l:\n  - value: 2    \n"},
+		{"trailing spaces before a comment", "a: 1   # one\n", path{"a"}, 5, "a: 5   # one\n"},
+		{"crlf after a comment line", "a: 1\r\n# c\r\nb: 2\r\n", path{"b"}, 5, "a: 1\r\n# c\r\nb: 5\r\n"},
+		{"crlf after line comments and blank lines", "a: \"x\" # c\r\n\r\n# d\r\nb: 2\r\nc: 3\r\n", path{"c"}, 4, "a: \"x\" # c\r\n\r\n# d\r\nb: 2\r\nc: 4\r\n"},
+		{"mixed line endings", "a: 1 # c\r\nb: 2\nc: 3\r\n", path{"c"}, 4, "a: 1 # c\r\nb: 2\nc: 4\r\n"},
 		{"crlf line endings", "a: 1\r\nb: x\r\n", path{"b"}, "z", "a: 1\r\nb: z\r\n"},
 		{"single-letter YAML 1.1 boolean is quoted", "b: x\n", path{"b"}, "y", `b: "y"` + "\n"},
 		{"flow sequence item", "l: [a, b, 3]\n", path{"l", 1}, "c", "l: [a, c, 3]\n"},
@@ -181,7 +188,9 @@ func TestEditScalars(t *testing.T) {
 		{"literal block keeps trailing blank lines", "d: |\n  one\n\nn: 1\n", path{"d"}, "two\n", "d: |\n  two\n\nn: 1\n"},
 		{"strip chomping", "d: |-\n  one\nn: 1\n", path{"d"}, "two", "d: |-\n  two\nn: 1\n"},
 		{"keep chomping is replaced", "d: |+\n  one\n\nn: 1\n", path{"d"}, "two\n", "d: |\n  two\n\nn: 1\n"},
-		{"folded block becomes literal", "d: >\n  one\n  two\nn: 1\n", path{"d"}, "three\n", "d: |\n  three\nn: 1\n"},
+		{"single-line folded block stays folded", "d: >-\n  {{ .Name }}_{{ .Os }}\nn: 1\n", path{"d"}, "{{ .Name }}-x", "d: >-\n  {{ .Name }}-x\nn: 1\n"},
+		{"single-line folded block with clip", "d: >\n  one\n", path{"d"}, "two\n", "d: >\n  two\n"},
+		{"multi-line folded block becomes literal", "d: >\n  one\n  two\nn: 1\n", path{"d"}, "three\nfour\n", "d: |\n  three\n  four\nn: 1\n"},
 		{"literal block after a comment", "d: x # note\nn: 1\n", path{"d"}, "a\nb\n", "d: | # note\n  a\n  b\nn: 1\n"},
 		{"literal block after a comment with crlf", "d: x # note\r\n", path{"d"}, "a\nb", "d: |- # note\r\n  a\r\n  b\r\n"},
 		{"literal block to a single line", "d: |\n  one\n", path{"d"}, "two", "d: |-\n  two\n"},
@@ -219,6 +228,9 @@ func TestEditRefuses(t *testing.T) {
 		{"tagged value", "a: !!str 12\n", func(d any) any { return with(d, path{"a"}, "13") }, "$.a", "explicit tag"},
 		{"indentation indicator", "d: |2\n   x\n", func(d any) any { return with(d, path{"d"}, "y\n") }, "$.d", "indentation indicator"},
 		{"comment after a block header", "d: | # note\n  x\n", func(d any) any { return with(d, path{"d"}, "y\n") }, "$.d", "comment follows"},
+		// goccy decodes a quoted string folded over CRLF lines as "one\ntwo", and over LF lines as
+		// "one two" (the spec's reading); the tree and the decoder disagree.
+		{"crlf multi-line quoted string", "a: \"one\r\n  two\"\r\nb: 2\r\n", func(d any) any { return with(d, path{"a"}, "three") }, "$.a", "disagree"},
 		{"empty value in a flow mapping", "m: {a: }\n", func(d any) any { return with(d, path{"m", "a"}, 1) }, "$.m.a", "flow collection"},
 	}
 	for _, tt := range tests {

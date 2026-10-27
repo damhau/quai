@@ -56,7 +56,7 @@ func (f *file) renderString(v string, s slot) string {
 		if indent == 0 {
 			indent = s.indent + f.width
 		}
-		if lit, ok := literal(v, indent, s.nl); ok {
+		if lit, ok := literal(v, indent, s.nl, s.kind == token.FoldedType); ok {
 			return lit
 		}
 	}
@@ -79,11 +79,15 @@ func (f *file) renderString(v string, s slot) string {
 }
 
 // literal writes v as a literal block scalar with its content at indent, if it can be written
-// that way without an indentation indicator or keep chomping.
-func literal(v string, indent int, nl string) (string, bool) {
+// that way without an indentation indicator or keep chomping. When the original was folded and
+// v is a single line, it keeps the folded header: for one line, folded and literal mean the same.
+func literal(v string, indent int, nl string, folded bool) (string, bool) {
 	header, body := "|-", v
 	if strings.HasSuffix(v, "\n") {
 		header, body = "|", strings.TrimSuffix(v, "\n")
+	}
+	if folded && !strings.Contains(body, "\n") {
+		header = ">" + header[1:]
 	}
 	if indent < 1 || strings.HasSuffix(body, "\n") || body == "" || body[0] == ' ' || body[0] == '\t' {
 		return "", false

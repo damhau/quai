@@ -3,6 +3,7 @@ package yamledit
 import (
 	"bytes"
 	"fmt"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -15,8 +16,12 @@ import (
 // file is a parsed original: its bytes, syntax tree and decoded document, plus the conventions
 // detected from it that new content follows.
 type file struct {
+	// src is the original with CRLF line breaks turned into LF: goccy miscounts lines in CRLF
+	// files after comments, so the tree and every offset come from this view, and edits are
+	// mapped back to the original's bytes (original) before they are applied.
 	src   []byte
-	lines []int    // byte offset of the start of each line
+	crs   []int    // offsets in src of the line breaks that are CRLF in the original
+	lines []int    // offset in src of the start of each line
 	body  ast.Node // the document's root node; nil for an empty document
 	value any      // the decoded, normalized document
 	quote byte     // quote character for strings that need quoting
@@ -32,7 +37,8 @@ func parse(src []byte) (*file, error) {
 	if !utf8.Valid(src) {
 		return nil, refuse(nil, "the file is not valid UTF-8")
 	}
-	tree, err := parseTree(src)
+	lf, crs := toLF(src)
+	tree, err := parseTree(lf)
 	if err != nil {
 		return nil, refuse(nil, "the file is not valid YAML: %v", err)
 	}
@@ -43,7 +49,7 @@ func parse(src []byte) (*file, error) {
 	if err != nil {
 		return nil, refuse(nil, "%v", err)
 	}
-	f := &file{src: src, lines: lineStarts(src), value: value, quote: '"', width: 2, seq: -1, item: 2}
+	f := &file{src: lf, crs: crs, lines: lineStarts(lf), value: value, quote: '"', width: 2, seq: -1, item: 2}
 	if len(tree.Docs) == 1 {
 		f.body = tree.Docs[0].Body
 	}
@@ -85,6 +91,30 @@ func decode(src []byte) (doc any, err error) {
 		return nil, fmt.Errorf("the file holds a value outside the JSON data model (%w)", err)
 	}
 	return doc, nil
+}
+
+// toLF returns src with CRLF line breaks turned into LF, and the offsets of those line breaks in
+// the result.
+func toLF(src []byte) ([]byte, []int) {
+	if !bytes.Contains(src, []byte("\r\n")) {
+		return src, nil
+	}
+	lf := make([]byte, 0, len(src))
+	var crs []int
+	for i := 0; i < len(src); i++ {
+		if src[i] == '\r' && i+1 < len(src) && src[i+1] == '\n' {
+			crs = append(crs, len(lf))
+			continue
+		}
+		lf = append(lf, src[i])
+	}
+	return lf, crs
+}
+
+// original maps an offset in src to the same position in the original bytes.
+func (f *file) original(at int) int {
+	n, _ := slices.BinarySearch(f.crs, at)
+	return at + n
 }
 
 func lineStarts(src []byte) []int {
@@ -337,15 +367,12 @@ func (f *file) scalarSpan(n ast.Node, indent int, p path) (start, end, blockInde
 		return f.blockSpan(lit, indent, p)
 	}
 	tk := n.GetToken()
-	start, ok := f.offset(tk.Position)
-	if !ok {
-		return 0, 0, 0, refuse(p, "the value's position is outside the file")
-	}
 	raw := strings.TrimSpace(tk.Origin)
-	end = start + len(raw)
-	if raw == "" || !bytes.HasPrefix(f.src[start:], []byte(raw)) {
+	start, ok := f.find(tk.Position, raw)
+	if !ok {
 		return 0, 0, 0, refuse(p, "the value's bytes are not where the syntax tree places them")
 	}
+	end = start + len(raw)
 	switch tk.Type {
 	case token.DoubleQuoteType, token.SingleQuoteType:
 		if quotedEnd(f.src, start) != end {
@@ -364,8 +391,8 @@ func (f *file) scalarSpan(n ast.Node, indent int, p path) (start, end, blockInde
 // last non-blank content line, so the line break after it and any trailing blank lines stay.
 func (f *file) blockSpan(n *ast.LiteralNode, indent int, p path) (start, end, contentIndent int, err error) {
 	header := n.Start.Value
-	start, ok := f.offset(n.Start.Position)
-	if !ok || !bytes.HasPrefix(f.src[start:], []byte(header)) {
+	start, ok := f.find(n.Start.Position, header)
+	if !ok {
 		return 0, 0, 0, refuse(p, "the block scalar's bytes are not where the syntax tree places them")
 	}
 	if strings.ContainsAny(header, "123456789") {
@@ -399,12 +426,36 @@ func (f *file) blockSpan(n *ast.LiteralNode, indent int, p path) (start, end, co
 
 // tokenSpan returns the bytes of a token, such as a key, an indicator or a bracket.
 func (f *file) tokenSpan(tk *token.Token, p path) (start, end int, err error) {
-	start, ok := f.offset(tk.Position)
 	raw := strings.TrimSpace(tk.Origin)
-	if !ok || raw == "" || !bytes.HasPrefix(f.src[start:], []byte(raw)) {
+	start, ok := f.find(tk.Position, raw)
+	if !ok {
 		return 0, 0, refuse(p, "the syntax tree's positions do not match the file")
 	}
 	return start, start + len(raw), nil
+}
+
+// find returns the offset of a token's text raw at pos. goccy reports the column of a token
+// followed by spaces or tabs on its line shifted right by the length of that whitespace, so when
+// raw is not at pos, find looks for it that far to the left: the token must end exactly where
+// whitespace reaching up to the reported end begins.
+func (f *file) find(pos *token.Position, raw string) (int, bool) {
+	at, ok := f.offset(pos)
+	if !ok || raw == "" {
+		return 0, false
+	}
+	if bytes.HasPrefix(f.src[at:], []byte(raw)) {
+		return at, true
+	}
+	for start := at - 1; start >= f.lineStart(at); start-- {
+		end := start + len(raw)
+		if end+(at-start) > len(f.src) || !bytes.HasPrefix(f.src[start:], []byte(raw)) {
+			continue
+		}
+		if strings.Trim(string(f.src[end:end+(at-start)]), " \t") == "" {
+			return start, true
+		}
+	}
+	return 0, false
 }
 
 // nodeStart returns the offset of the first byte of n.
@@ -528,15 +579,15 @@ func quotedEnd(src []byte, start int) int {
 	return -1
 }
 
-// newline returns the line break used by the line holding offset at.
+// newline returns the line break the original uses for the line holding offset at.
 func (f *file) newline(at int) string {
 	if i := bytes.IndexByte(f.src[at:], '\n'); i >= 0 {
-		if at+i > 0 && f.src[at+i-1] == '\r' {
+		if _, crlf := slices.BinarySearch(f.crs, at+i); crlf {
 			return "\r\n"
 		}
 		return "\n"
 	}
-	if bytes.Contains(f.src, []byte("\r\n")) {
+	if len(f.crs) > 0 {
 		return "\r\n"
 	}
 	return "\n"

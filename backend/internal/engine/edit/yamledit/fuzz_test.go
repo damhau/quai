@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -51,7 +52,7 @@ func FuzzYAMLEdit(f *testing.F) {
 		out, err := Edit(src, want)
 		if err != nil {
 			var refusal *RefusalError
-			if !errors.As(err, &refusal) {
+			if !errors.As(err, &refusal) || strings.HasPrefix(refusal.Reason, internalError) {
 				t.Fatalf("Edit() error = %v, want nil or a *RefusalError", err)
 			}
 			return
@@ -120,16 +121,4 @@ func nodePaths(doc any, p path, out []path) []path {
 		}
 	}
 	return out
-}
-
-func valueAt(doc any, p path) any {
-	for _, step := range p {
-		switch d := doc.(type) {
-		case map[string]any:
-			doc = d[step.(string)]
-		case []any:
-			doc = d[step.(int)]
-		}
-	}
-	return doc
 }

@@ -101,6 +101,12 @@ func (f *file) collectionAt(p path) (*collection, error) {
 	} else if len(c.elements) == 0 {
 		return nil, refuse(p, "the syntax tree's positions do not match the file")
 	}
+	// Elements must come in order and not overlap, or the spans computed from them would.
+	for i, el := range c.elements {
+		if el.end < el.start || (i > 0 && el.start < c.elements[i-1].end) || (c.flow && el.start < c.open) {
+			return nil, refuse(p, "the syntax tree's positions do not match the file")
+		}
+	}
 	return c, nil
 }
 
@@ -148,6 +154,25 @@ func (f *file) itemElement(seq *ast.SequenceNode, i int, v ast.Node, p path) (el
 	return element{start: start, end: end, indent: dash.Position.Column - 1, node: v}, err
 }
 
+// matches reports whether the collection has the decoded value's keys, or as many items.
+func (c *collection) matches(v any) bool {
+	switch v := v.(type) {
+	case map[string]any:
+		if !c.mapping || len(c.elements) != len(v) {
+			return false
+		}
+		for _, el := range c.elements {
+			if _, ok := v[el.key]; !ok {
+				return false
+			}
+		}
+		return true
+	case []any:
+		return !c.mapping && len(c.elements) == len(v)
+	}
+	return false
+}
+
 // index returns the position of the element a change's path names.
 func (c *collection) index(p path) int {
 	switch step := p[len(p)-1].(type) {
@@ -173,6 +198,11 @@ func (f *file) collectionEdits(p path, changes []change) ([]textEdit, error) {
 	c, err := f.collectionAt(p)
 	if err != nil {
 		return nil, err
+	}
+	// The tree must hold exactly the entries or items the document decoded to, or positions
+	// computed from one would be applied to the other.
+	if !c.matches(valueAt(f.value, p)) {
+		return nil, refuse(p, "the syntax tree and the decoded document disagree")
 	}
 	removed := make([]bool, len(c.elements))
 	var added []addition
@@ -291,6 +321,9 @@ func (f *file) flowRemovals(c *collection, removed []bool) ([]textEdit, error) {
 		}
 	}
 	for _, e := range edits {
+		if e.end < e.start {
+			return nil, refuse(c.path, "the syntax tree's positions do not match the file")
+		}
 		if bytes.IndexByte(f.src[e.start:e.end], '#') >= 0 {
 			return nil, refuse(c.path, "removing the element would remove a comment")
 		}
@@ -391,6 +424,9 @@ func (f *file) replace(c change) (textEdit, error) {
 	_, ownerEnd, err := f.tokenSpan(loc.owner, c.path)
 	if err != nil {
 		return textEdit{}, err
+	}
+	if start < ownerEnd {
+		return textEdit{}, refuse(c.path, "the syntax tree's positions do not match the file")
 	}
 	if bytes.IndexByte(f.src[ownerEnd:start], '#') >= 0 {
 		return textEdit{}, refuse(c.path, "a comment sits between the entry and its value")

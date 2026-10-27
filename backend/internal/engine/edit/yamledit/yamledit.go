@@ -29,8 +29,16 @@ import (
 // json.Number, []any and map[string]any, nested freely. When src already decodes to want, Edit
 // returns src itself. An edit that cannot be made safely returns a *RefusalError; any other error
 // means want is not a valid document.
-func Edit(src []byte, want any) ([]byte, error) {
-	want, err := normalize(want, path{})
+func Edit(src []byte, want any) (out []byte, err error) {
+	// The parser's positions are not trustworthy on every input. A bug that lets one through as
+	// an out-of-range offset must refuse the edit, not crash the caller; the fuzz target treats
+	// such a refusal as a failure.
+	defer func() {
+		if r := recover(); r != nil {
+			out, err = nil, refuse(nil, "%s: %v", internalError, r)
+		}
+	}()
+	want, err = normalize(want, path{})
 	if err != nil {
 		return nil, err
 	}
@@ -46,7 +54,10 @@ func Edit(src []byte, want any) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	out, err := apply(src, edits)
+	for i := range edits {
+		edits[i].start, edits[i].end = f.original(edits[i].start), f.original(edits[i].end)
+	}
+	out, err = apply(src, edits)
 	if err != nil {
 		return nil, err
 	}
@@ -55,6 +66,9 @@ func Edit(src []byte, want any) ([]byte, error) {
 	}
 	return out, nil
 }
+
+// internalError starts the reason of a refusal caused by a bug in this package.
+const internalError = "internal error"
 
 // RefusalError reports an edit that Edit will not make because it cannot be made safely.
 type RefusalError struct {

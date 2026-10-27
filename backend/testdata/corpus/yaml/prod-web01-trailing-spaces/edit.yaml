@@ -1,0 +1,9 @@
+# Trailing whitespace after a value shifts goccy's reported column; the value is found where the
+# whitespace begins, and the whitespace stays (found by the real-world sweep).
+set:
+  - path: [memory_gb]
+    value: 32
+  - path: [disks, 0, size_gb]
+    value: 120
+  - path: [tags, env]
+    value: prod

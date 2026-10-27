@@ -246,3 +246,22 @@ func sortedKeys(m map[string]any) []string {
 	slices.Sort(keys)
 	return keys
 }
+
+// valueAt returns the value at p in a normalized document, or nil when there is none.
+func valueAt(doc any, p path) any {
+	for _, step := range p {
+		switch d := doc.(type) {
+		case map[string]any:
+			doc = d[step.(string)]
+		case []any:
+			i, _ := step.(int)
+			if i < 0 || i >= len(d) {
+				return nil
+			}
+			doc = d[i]
+		default:
+			return nil
+		}
+	}
+	return doc
+}
