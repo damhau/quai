@@ -104,7 +104,7 @@ before GA and twice a year.
 ## Upgrades
 
 - Database migrations (goose) run as a pre-upgrade Helm hook; migrations are backwards-compatible for one release so rolling upgrades work.
-- Definition schema versions (`v1alpha1` → `v1beta1` → `v1`) are converted on read; `quai lint --upgrade` rewrites them in a pull request.
+- Definition schema versions (`v1beta1` → `v1`) are converted on read; `quai lint --upgrade` rewrites them in a pull request.
 - Feature flags for risky features, per installation.
 
 ## Runbooks

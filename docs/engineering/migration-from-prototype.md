@@ -10,8 +10,8 @@ in place.
 
 | Prototype | Becomes | How |
 | --- | --- | --- |
-| `packages/core/src/expr.ts` (custom expressions) | `internal/engine/expr` (CEL) | Re-implemented on cel-go; a converter rewrites `v1alpha1` expressions (see [ADR 0009](../adr/0009-cel-expressions.md)) |
-| `inputs.ts`, `blueprint.ts`, `resourcetype.ts` | `internal/engine/schema`, `definitions`, `locate` | Ported; `v1alpha1` definitions are converted on read |
+| `packages/core/src/expr.ts` (custom expressions) | `internal/engine/expr` (CEL) | Re-implemented on cel-go ([ADR 0009](../adr/0009-cel-expressions.md)); no converter, the example expressions are rewritten by hand |
+| `inputs.ts`, `blueprint.ts`, `resourcetype.ts` | `internal/engine/schema`, `definitions`, `locate` | Ported; only `v1beta1` is read, `v1alpha1` is refused |
 | `yamlpatch.ts` (minimal-diff YAML) | `internal/engine/edit/yamledit` | Ported to `go.yaml.in/yaml/v3`; TS tests ported first |
 | `components.ts` (K8s renderers) | `internal/engine/generate/component` | Ported; Crossplane renderer made generic |
 | `render.ts`, `policy.ts` | `internal/engine/plan`, `policy` | Ported |
@@ -19,7 +19,7 @@ in place.
 | `server/src/service.ts`, `resources.ts` | `requests`, `approvals`, `inventory`, `catalog` | Re-designed for PostgreSQL, jobs and providers |
 | `server/src/store.ts` (SQLite) | `store` + `migrations` (PostgreSQL) | New schema; no data migration (prototype data is demo data) |
 | `web/` | `frontend/` | Rebuilt on TanStack Router/Query, Tailwind and shadcn, page by page, reusing component logic (schema form, diff folding, designer) |
-| `examples/gitops-repo` | `examples/gitops-repo` | Kept as the demo and end-to-end fixture; definitions upgraded to `v1beta1` |
+| `examples/gitops-repo` | `examples/gitops-repo` | Kept as the demo and end-to-end fixture; definitions rewritten by hand in `v1beta1` (P0-08). Until the prototype is removed, it reads a frozen `v1alpha1` copy in `examples/prototype-gitops-repo` |
 | `docker-compose.yml` | `docker-compose.yml` | Quai (Go), PostgreSQL, Gitea, a fake runner |
 
 ## Steps

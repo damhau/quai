@@ -22,7 +22,7 @@ server's evaluation is authoritative.
 
 ## Consequences
 
-- CEL is stricter than the prototype language: missing keys are errors, so expressions use `has(previous.cpu)`; string concatenation needs `string(x)` for numbers. A converter rewrites `v1alpha1` expressions where it can, and `quai lint` reports the rest.
+- CEL is stricter than the prototype language: missing keys are errors, so expressions use `has(previous.cpu)`; string concatenation needs `string(x)` for numbers. There is no converter: no `v1alpha1` definitions exist outside the prototype, whose examples are rewritten by hand.
 - Expressions are type-checked at definition load against the declared schemas, catching errors before anyone fills a form.
 - Evaluation cost is bounded, protecting the server from expensive definitions.
 

@@ -16,7 +16,7 @@ quai/
 │   │   │   ├── locate/                 # file, dir, entry, field locators; params; fingerprints
 │   │   │   ├── generate/               # identity, mapping, component, plugin
 │   │   │   ├── edit/                   # yamledit, jsonedit, hcledit + verification
-│   │   │   ├── definitions/            # parse/validate types and blueprints; v1alpha1 conversion
+│   │   │   ├── definitions/            # parse/validate types and blueprints (v1beta1)
 │   │   │   ├── plan/                   # values → change set (edits, diff, hash)
 │   │   │   ├── policy/                 # approval rule evaluation
 │   │   │   └── tfplan/                 # terraform-json → resource changes via address patterns

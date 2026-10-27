@@ -36,7 +36,7 @@ environment. Golden tests enforce this.
 
 ## Type specification
 
-The prototype's `quai.dev/v1alpha1` types are converted automatically. The
+Quai does not read the prototype's `quai.dev/v1alpha1` types. Compared with them, the
 enterprise version adds input schemas, generators, more locators, Terraform
 addresses and deletion policy.
 

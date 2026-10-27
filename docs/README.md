@@ -48,4 +48,4 @@ repositories; their pipelines apply it.
 
 - Every document starts with its status (`Draft`, `Accepted`, `Superseded`) and date.
 - A change that breaks one of the [invariants](architecture/overview.md#invariants) or reverses an accepted decision needs a new ADR that supersedes the old one.
-- Examples in the docs use `quai.dev/v1beta1`, the planned definition format. The prototype reads `quai.dev/v1alpha1`; conversion is described in [migration from the prototype](engineering/migration-from-prototype.md).
+- Examples in the docs use `quai.dev/v1beta1`, the definition format. The prototype's `quai.dev/v1alpha1` is not read by Quai; its examples are rewritten by hand (see [migration from the prototype](engineering/migration-from-prototype.md)).
