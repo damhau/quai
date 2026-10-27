@@ -155,3 +155,35 @@ func TestAuth(t *testing.T) {
 		}
 	}
 }
+
+func TestRepositories(t *testing.T) {
+	p := write(t, `repositories:
+  - name: infra-live
+    url: /srv/git/infra-live.git
+    floorRules: [{ name: prod-floor, when: "params.env == 'prod'", approvers: [group:platform-admins] }]
+git: { cacheDir: /var/cache/quai }
+`)
+	c, err := Load(p, env(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := c.Repositories[0]
+	if r.DefaultBranch != "main" || r.Delivery.Mode != "direct" || r.Title != "infra-live" || r.Sync.MinInterval != 10*time.Second ||
+		c.Git.CacheDir != "/var/cache/quai" || c.Git.Committer.Name != "Quai" || len(r.FloorRules) != 1 {
+		t.Errorf("repository = %+v, git = %+v", r, c.Git)
+	}
+	for name, tt := range map[string]struct{ file, want string }{
+		"name":     {"repositories: [{ name: Infra, url: x }]\n", "repositories[0].name must be a lowercase DNS label"},
+		"twice":    {"repositories: [{ name: a, url: x }, { name: a, url: y }]\n", "a is declared twice"},
+		"url":      {"repositories: [{ name: a }]\n", "repositories[0].url is required"},
+		"delivery": {"repositories: [{ name: a, url: x, delivery: { mode: pull-request } }]\n", "must be direct for now"},
+		"floor":    {"repositories: [{ name: a, url: x, floorRules: [{ name: f }] }]\n", "needs a name and approvers"},
+	} {
+		if _, err := Load(write(t, tt.file), env(nil)); err == nil || !strings.Contains(err.Error(), tt.want) {
+			t.Errorf("%s: error = %v, want %q", name, err, tt.want)
+		}
+	}
+	if c, err := Load("", env(map[string]string{"QUAI_GIT_CACHE_DIR": "/tmp/m"})); err != nil || c.Git.CacheDir != "/tmp/m" {
+		t.Errorf("QUAI_GIT_CACHE_DIR = %+v, %v", c.Git, err)
+	}
+}

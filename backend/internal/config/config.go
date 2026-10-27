@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -29,12 +30,14 @@ const (
 type Config struct {
 	// Env is development or production. Development-only features, such as the user switcher,
 	// are refused in production.
-	Env       string    `yaml:"env"`
-	Server    Server    `yaml:"server"`
-	Database  Database  `yaml:"database"`
-	Auth      Auth      `yaml:"auth"`
-	Log       Log       `yaml:"log"`
-	Telemetry Telemetry `yaml:"telemetry"`
+	Env          string       `yaml:"env"`
+	Server       Server       `yaml:"server"`
+	Database     Database     `yaml:"database"`
+	Auth         Auth         `yaml:"auth"`
+	Git          Git          `yaml:"git"`
+	Repositories []Repository `yaml:"repositories"`
+	Log          Log          `yaml:"log"`
+	Telemetry    Telemetry    `yaml:"telemetry"`
 }
 
 // Server configures the HTTP server.
@@ -46,6 +49,48 @@ type Server struct {
 // Database configures PostgreSQL.
 type Database struct {
 	URL string `yaml:"url"` // such as postgres://quai@db:5432/quai; secrets belong in QUAI_DATABASE_URL
+}
+
+// Git configures how Quai works with repositories.
+type Git struct {
+	CacheDir  string    `yaml:"cacheDir"` // where repository mirrors live; the user cache directory by default
+	Committer Committer `yaml:"committer"`
+}
+
+// Committer is the identity Quai commits as; authors are the requesters.
+type Committer struct {
+	Name  string `yaml:"name"`
+	Email string `yaml:"email"`
+}
+
+// Repository is a repository connection declared in the configuration
+// (docs/design/01-repository-connections.md). Phase 0 delivers by direct commit only.
+type Repository struct {
+	Name          string       `yaml:"name"` // a DNS label, part of every resource ID
+	Title         string       `yaml:"title"`
+	URL           string       `yaml:"url"` // a local path or file:// URL for demos; https later
+	DefaultBranch string       `yaml:"defaultBranch"`
+	Delivery      Delivery     `yaml:"delivery"`
+	FloorRules    []FloorRule  `yaml:"floorRules"`
+	Sync          SyncSettings `yaml:"sync"`
+}
+
+// Delivery says how changes reach the repository.
+type Delivery struct {
+	Mode string `yaml:"mode"` // direct (pull-request comes with the connectors)
+}
+
+// FloorRule is an approval rule every type of the repository inherits.
+type FloorRule struct {
+	Name      string   `yaml:"name"`
+	When      string   `yaml:"when"`
+	Approvers []string `yaml:"approvers"`
+	Min       int      `yaml:"min"`
+}
+
+// SyncSettings bounds how often Quai fetches the repository on reads.
+type SyncSettings struct {
+	MinInterval time.Duration `yaml:"minInterval"` // 10s by default
 }
 
 // Authentication modes.
@@ -129,6 +174,7 @@ var variables = []struct {
 	{"QUAI_AUTH_OIDC_CLIENT_ID", func(c *Config, v string) error { c.Auth.OIDC.ClientID = v; return nil }},
 	{"QUAI_AUTH_OIDC_CLIENT_SECRET", func(c *Config, v string) error { c.Auth.OIDC.ClientSecret = v; return nil }},
 	{"QUAI_AUTH_OIDC_REDIRECT_URL", func(c *Config, v string) error { c.Auth.OIDC.RedirectURL = v; return nil }},
+	{"QUAI_GIT_CACHE_DIR", func(c *Config, v string) error { c.Git.CacheDir = v; return nil }},
 	{"QUAI_LOG_LEVEL", func(c *Config, v string) error { c.Log.Level = v; return nil }},
 	{"QUAI_LOG_FORMAT", func(c *Config, v string) error { c.Log.Format = v; return nil }},
 	{"QUAI_TELEMETRY_OTLP_ENDPOINT", func(c *Config, v string) error { c.Telemetry.OTLPEndpoint = v; return nil }},
@@ -191,6 +237,24 @@ func (c *Config) defaults() {
 	if c.Telemetry.ServiceName == "" {
 		c.Telemetry.ServiceName = "quai"
 	}
+	if c.Git.Committer.Name == "" {
+		c.Git.Committer = Committer{Name: "Quai", Email: "quai@localhost"}
+	}
+	for i := range c.Repositories {
+		r := &c.Repositories[i]
+		if r.DefaultBranch == "" {
+			r.DefaultBranch = "main"
+		}
+		if r.Delivery.Mode == "" {
+			r.Delivery.Mode = "direct"
+		}
+		if r.Sync.MinInterval == 0 {
+			r.Sync.MinInterval = 10 * time.Second
+		}
+		if r.Title == "" {
+			r.Title = r.Name
+		}
+	}
 	a := &c.Auth
 	if a.Mode == "" {
 		a.Mode = AuthOIDC
@@ -248,6 +312,28 @@ func (c *Config) validate() error {
 		errs = append(errs, errors.New("server.shutdownTimeout must not be negative"))
 	}
 	errs = append(errs, c.Auth.validate(c.Env))
+	names := map[string]bool{}
+	for i, r := range c.Repositories {
+		at := fmt.Sprintf("repositories[%d]", i)
+		switch {
+		case !repoNameRe.MatchString(r.Name):
+			errs = append(errs, fmt.Errorf("%s.name must be a lowercase DNS label", at))
+		case names[r.Name]:
+			errs = append(errs, fmt.Errorf("%s.name: %s is declared twice", at, r.Name))
+		}
+		names[r.Name] = true
+		if r.URL == "" {
+			errs = append(errs, fmt.Errorf("%s.url is required", at))
+		}
+		if r.Delivery.Mode != "direct" {
+			errs = append(errs, fmt.Errorf("%s.delivery.mode must be direct for now, not %q", at, r.Delivery.Mode))
+		}
+		for j, f := range r.FloorRules {
+			if f.Name == "" || len(f.Approvers) == 0 {
+				errs = append(errs, fmt.Errorf("%s.floorRules[%d] needs a name and approvers", at, j))
+			}
+		}
+	}
 	if _, err := c.Log.SlogLevel(); err != nil {
 		errs = append(errs, err)
 	}
@@ -262,6 +348,8 @@ func (c *Config) validate() error {
 	}
 	return errors.Join(errs...)
 }
+
+var repoNameRe = regexp.MustCompile(`^[a-z][a-z0-9-]{0,62}$`)
 
 // roles are the role names of docs/design/08; internal/authz defines them.
 var roles = []string{"viewer", "requester", "operator", "catalog-author", "repository-admin", "platform-admin", "auditor", "break-glass"}

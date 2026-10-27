@@ -377,3 +377,7 @@ func (s *Schema) Properties() []string {
 	props, _ := s.rootNode().m["properties"].(map[string]any)
 	return slices.Sorted(maps.Keys(props))
 }
+
+// Document returns the schema as written, for clients that render forms from it. With
+// PropertyOrder, they can show fields in the order the schema declares them.
+func (s *Schema) Document() any { return s.doc }

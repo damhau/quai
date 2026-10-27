@@ -22,6 +22,7 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 	"github.com/damhau/quai/backend/internal/auth"
+	"github.com/damhau/quai/backend/internal/repositories"
 	"github.com/damhau/quai/backend/internal/store"
 )
 
@@ -37,6 +38,8 @@ type Options struct {
 	// only /healthz and /api/v1/meta answer.
 	Auth  *auth.Authenticator
 	Store *store.Store
+	// Repositories are the connected repositories; nil when none are configured.
+	Repositories *repositories.Registry
 }
 
 // New returns the HTTP handler of the API.
@@ -67,6 +70,9 @@ func New(opts Options) http.Handler {
 	registerMeta(a, opts)
 	if opts.Store != nil {
 		registerIdentity(a, opts.Store)
+	}
+	if opts.Repositories != nil {
+		registerCatalog(a, opts.Repositories)
 	}
 
 	return otelhttp.NewHandler(r, "quai", otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {
