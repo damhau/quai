@@ -26,6 +26,7 @@ type node struct {
 	m    map[string]any // nil for a boolean schema, or a ref that would recurse
 	root any
 	base string
+	ptr  string // the node's JSON pointer in its document
 	refs []string
 }
 
@@ -37,8 +38,9 @@ func (s *Schema) rootNode() node {
 	return s.resolve(node{m: asMap(s.doc), root: s.doc, base: b, refs: []string{b + "#"}})
 }
 
-func (s *Schema) child(n node, sub any) node {
-	return s.resolve(node{m: asMap(sub), root: n.root, base: n.base, refs: n.refs})
+// child returns the subschema sub of n, at the JSON pointer n.ptr + "/" + rel.
+func (s *Schema) child(n node, sub any, rel string) node {
+	return s.resolve(node{m: asMap(sub), root: n.root, base: n.base, ptr: n.ptr + "/" + rel, refs: n.refs})
 }
 
 // resolve follows the node's `$ref`, if any.
@@ -64,7 +66,7 @@ func (s *Schema) resolve(n node) node {
 				merged[k] = v
 			}
 		}
-		n = node{m: merged, root: t.root, base: t.base, refs: append(n.refs[:len(n.refs):len(n.refs)], key)}
+		n = node{m: merged, root: t.root, base: t.base, ptr: t.ptr, refs: append(n.refs[:len(n.refs):len(n.refs)], key)}
 	}
 	return n
 }
@@ -95,7 +97,7 @@ func (s *Schema) lookup(n node, ref string) (node, string, bool) {
 	if !ok {
 		return node{}, "", false
 	}
-	return node{m: asMap(v), root: root, base: docBase}, u + "#" + frag, true
+	return node{m: asMap(v), root: root, base: docBase, ptr: frag}, u + "#" + frag, true
 }
 
 // pointer returns the value at a JSON pointer such as "/$defs/disk".
@@ -172,7 +174,7 @@ func (s *Schema) defaults(n node, depth int) (any, bool) {
 	}
 	out := map[string]any{}
 	for k, sub := range props {
-		v, ok := s.defaults(s.child(n, sub), depth+1)
+		v, ok := s.defaults(s.child(n, sub, "properties/"+escape(k)), depth+1)
 		if !ok {
 			continue
 		}
@@ -199,7 +201,7 @@ func (s *Schema) readOnly(n node, prefix string, depth int, out *[]string) {
 		return
 	}
 	for k, sub := range props {
-		c := s.child(n, sub)
+		c := s.child(n, sub, "properties/"+escape(k))
 		p := k
 		if prefix != "" {
 			p = prefix + "." + k
@@ -319,4 +321,59 @@ func clone(v any) any {
 		return out
 	}
 	return v
+}
+
+func escape(k string) string {
+	return strings.ReplaceAll(strings.ReplaceAll(k, "~", "~0"), "/", "~1")
+}
+
+// PropertyOrder returns property names in the order the schema first declares them, breadth
+// first from the root and following $refs: for the VM schema, its top-level properties, then
+// those of network, then those of a disk. New files list their keys in this order, so they read
+// like the hand-written ones. Properties of schemas that were added already decoded, without
+// their source, come in sorted order.
+func (s *Schema) PropertyOrder() []string {
+	var out []string
+	seen := map[string]bool{}
+	queue := []node{s.rootNode()}
+	visited := map[string]bool{}
+	for len(queue) > 0 && len(visited) < 10*maxDepth*maxDepth {
+		n := queue[0]
+		queue = queue[1:]
+		id := n.base + "#" + n.ptr
+		if n.m == nil || visited[id] {
+			continue
+		}
+		visited[id] = true
+		props, _ := n.m["properties"].(map[string]any)
+		order := s.keys[strings.SplitN(n.base, "#", 2)[0]][n.ptr+"/properties"]
+		if len(order) != len(props) {
+			order = slices.Sorted(maps.Keys(props))
+		}
+		for _, k := range order {
+			if !seen[k] {
+				seen[k] = true
+				out = append(out, k)
+			}
+			queue = append(queue, s.child(n, props[k], "properties/"+escape(k)))
+		}
+		for _, kw := range []string{"items", "additionalProperties"} {
+			if sub, ok := n.m[kw]; ok {
+				queue = append(queue, s.child(n, sub, kw))
+			}
+		}
+		for _, kw := range []string{"allOf", "anyOf", "oneOf"} {
+			subs, _ := n.m[kw].([]any)
+			for i, sub := range subs {
+				queue = append(queue, s.child(n, sub, kw+"/"+strconv.Itoa(i)))
+			}
+		}
+	}
+	return out
+}
+
+// Properties returns the names of the properties the schema declares at its top level, sorted.
+func (s *Schema) Properties() []string {
+	props, _ := s.rootNode().m["properties"].(map[string]any)
+	return slices.Sorted(maps.Keys(props))
 }

@@ -1,0 +1,18 @@
+owner: alice
+description: "Shop: application server"
+template: rhel-9
+cpu: 4
+memory_gb: 16
+disks:
+  - size_gb: 80
+    tier: ssd
+  - size_gb: 500
+    tier: standard
+network:
+  vlan: 120
+  ip: 10.0.20.15
+backup: true
+backup_policy: daily
+tags:
+  app: shop
+  cost_center: "4711"

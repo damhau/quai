@@ -94,14 +94,17 @@ spec:
     dns: dns/record/apps.acme.ch/shop
 ```
 
-- The record lives in Git, in the catalog repository under `instances/`, or in the target repository's `.quai/instances/` when every resource is in that one repository. It is part of the same change set, so Git remains the source of truth.
+- The record lives in Git, in the catalog repository under `instances/`, or in the target repository's `.quai/instances/` when every resource is in that one repository, as `<blueprint>/<instance>.yaml`. Its `spec.inputs` are the form values with the schema's defaults applied. It is part of the same change set, so Git remains the source of truth.
 - Day-2 actions on an instance read the record, then the current content of each resource.
 - If someone deletes one of the resources by hand, the instance shows it as missing and offers to re-create or detach it.
 
 ## Change sets
 
 A request produces a change set: per repository, the file edits, region
-fingerprints and a content hash.
+fingerprints and a content hash. The hash is a SHA-256 over each change's
+operation, path and the SHA-256 of its new content, in path order: the same
+intent on the same base always gives the same hash, and approvals are bound to
+it.
 
 ```mermaid
 flowchart LR

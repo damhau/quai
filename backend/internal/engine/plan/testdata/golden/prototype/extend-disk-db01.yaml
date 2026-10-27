@@ -1,0 +1,13 @@
+owner: dana
+description: Orders database (PostgreSQL)
+template: rhel-9
+cpu: 12
+memory_gb: 64
+disks:
+  - size_gb: 250
+    tier: ssd
+  - size_gb: 1000   # data volume
+    tier: ssd
+network: { vlan: 130, ip: 10.0.13.20 }
+backup: true
+backup_policy: hourly

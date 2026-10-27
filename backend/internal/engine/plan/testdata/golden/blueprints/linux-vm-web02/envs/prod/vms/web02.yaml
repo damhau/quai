@@ -1,0 +1,10 @@
+owner: alice
+template: rhel-9
+cpu: 16
+memory_gb: 64
+disks:
+  - size_gb: 50
+    tier: standard
+network:
+  vlan: 110
+backup: true

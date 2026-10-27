@@ -1,0 +1,16 @@
+apiVersion: quai.dev/v1beta1
+kind: Instance
+metadata:
+  name: blog-test
+  blueprint: app-servers
+  blueprintVersion: 1.0.0
+  owner: bob
+spec:
+  inputs:
+    app: blog
+    dbDiskGb: 200
+    environment: test
+    webCpu: 2
+    withDatabase: false
+  resources:
+    web: infra-live/vm/test/blog-web01

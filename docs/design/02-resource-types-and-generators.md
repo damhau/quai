@@ -238,7 +238,8 @@ generate: { kind: identity }
 - `write`: the region content is the validated values, plus managed fields.
 - `read`: the region content is the values.
 - Input schema = file schema. The form is generated from the schema the repository already has.
-- Fields the schema does not describe are preserved on update.
+- Fields the schema does not describe are preserved on update. Locked fields (the owner, param mirrors, fields the type marks `immutable` and those the schema marks `readOnly`) are kept when the form leaves them out and refused when it changes them.
+- A declarative action's `set` writes each dotted path; a binding that evaluates to null removes the field, an absent one leaves it alone.
 - Use when the file is already the right shape for a form. Implemented in the prototype.
 
 ### `mapping`: a structured template, with read-back
@@ -306,7 +307,7 @@ The editors and their safety checks are specified in [03-file-editing.md](03-fil
 | --- | --- |
 | Owner (`ownership.field`) | Set to the requester (or their team) on create; locked afterwards; changed only by a `transfer-ownership` action. |
 | Param mirrors (`paramFields`) | Kept equal to the locator params, e.g. `name:` inside `web01.yaml`. Hidden from forms. |
-| Labels (`labels`) | Optional fixed values, e.g. `managed_by: quai`. Off by default: many schemas forbid unknown keys. |
+| Labels (`labels`) | Optional fixed values by dotted field path, e.g. `managed_by: quai`. Off by default: many schemas forbid unknown keys. |
 | Timestamps | Never written to files: they would make every change touch an extra line and make no-op changes impossible to detect. Creation and change dates come from Git history. |
 
 ## Ownership

@@ -1,0 +1,8 @@
+owner: bob
+template: ubuntu-24.04
+cpu: 2
+memory_gb: 4
+disks:
+  - size_gb: 50
+network:
+  vlan: 110

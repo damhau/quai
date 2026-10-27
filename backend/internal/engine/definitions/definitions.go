@@ -115,13 +115,7 @@ func newLoader(fsys fs.FS) *loader {
 		panic(err) // the default environment is fixed; failing to build it is a bug
 	}
 	l := &loader{fsys: fsys, env: env, schemas: schema.NewCompiler()}
-	l.schemas.UseSource(func(p string) (any, error) {
-		src, err := fs.ReadFile(fsys, p)
-		if err != nil {
-			return nil, err
-		}
-		return yamledit.Decode(src)
-	})
+	l.schemas.UseSource(func(p string) ([]byte, error) { return fs.ReadFile(fsys, p) })
 	return l
 }
 

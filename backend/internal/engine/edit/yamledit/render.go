@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode"
@@ -191,12 +192,34 @@ func (f *file) scalarText(v any, indent int, nl string) string {
 	return f.render(v, slot{kind: stylePlain, block: true, indent: indent, nl: nl})
 }
 
+// keys returns the keys of a new mapping in the order they are written: sorted, or for Create,
+// by rank and then sorted.
+func (f *file) keys(m map[string]any) []string {
+	keys := sortedKeys(m)
+	if f.rank != nil {
+		slices.SortStableFunc(keys, func(a, b string) int {
+			ra, oka := f.rank[a]
+			rb, okb := f.rank[b]
+			switch {
+			case oka && okb:
+				return ra - rb
+			case oka:
+				return -1
+			case okb:
+				return 1
+			}
+			return 0
+		})
+	}
+	return keys
+}
+
 // flowText writes v in flow style. New keys are written in sorted order.
 func (f *file) flowText(v any) string {
 	switch v := v.(type) {
 	case map[string]any:
 		parts := make([]string, 0, len(v))
-		for _, k := range sortedKeys(v) {
+		for _, k := range f.keys(v) {
 			parts = append(parts, f.renderKey(k, true)+": "+f.flowText(v[k]))
 		}
 		return "{" + strings.Join(parts, ", ") + "}"
@@ -228,7 +251,7 @@ func (f *file) blockText(v any, indent int, nl string) string {
 	var lines []string
 	switch v := v.(type) {
 	case map[string]any:
-		for _, k := range sortedKeys(v) {
+		for _, k := range f.keys(v) {
 			lines = append(lines, f.entryText(k, v[k], indent, nl))
 		}
 	case []any:

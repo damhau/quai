@@ -349,15 +349,15 @@ func TestSource(t *testing.T) {
 		"schemas/bad.json":  "not decodable",
 	}
 	c := NewCompiler()
-	c.UseSource(func(path string) (any, error) {
+	c.UseSource(func(path string) ([]byte, error) {
 		doc, ok := files[path]
 		if !ok {
 			return nil, fs.ErrNotExist
 		}
 		if doc == "not decodable" {
-			return nil, errors.New("invalid YAML")
+			return nil, errors.New("cannot read")
 		}
-		return doc, nil
+		return json.Marshal(doc)
 	})
 	s, err := c.Compile("schemas/vm.json")
 	if err != nil {
@@ -368,7 +368,7 @@ func TestSource(t *testing.T) {
 	}
 	for path, want := range map[string]string{
 		"schemas/none.json": "schemas/none.json is not in the repository",
-		"schemas/bad.json":  "schemas/bad.json: invalid YAML",
+		"schemas/bad.json":  "schemas/bad.json: cannot read",
 	} {
 		if _, err := c.Compile(path); err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("Compile(%s) error = %v, want %q", path, err, want)
@@ -376,5 +376,34 @@ func TestSource(t *testing.T) {
 	}
 	if _, err := NewCompiler().Compile("schemas/vm.json"); err == nil || !strings.Contains(err.Error(), "not in the repository") {
 		t.Errorf("Compile without a source: error = %v", err)
+	}
+}
+
+func TestPropertyOrder(t *testing.T) {
+	c := NewCompiler()
+	c.UseSource(func(path string) ([]byte, error) { return os.ReadFile(filepath.Join(examples, path)) })
+	s, err := c.Compile("catalog/schemas/vm.schema.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"owner", "description", "template", "cpu", "memory_gb", "disks", "network", "backup", "backup_policy", "tags", "vlan", "ip", "size_gb", "tier"}
+	if got := s.PropertyOrder(); !slices.Equal(got, want) {
+		t.Errorf("PropertyOrder() = %v, want %v", got, want)
+	}
+
+	// Without source, properties come in sorted order; allOf and recursive refs are followed once.
+	added := compile(t, map[string]any{"s.json": map[string]any{
+		"properties": map[string]any{"b": map[string]any{}, "a": map[string]any{"$ref": "#"}},
+		"allOf":      []any{map[string]any{"properties": map[string]any{"c": true}}},
+	}}, "s.json")
+	if got := added.PropertyOrder(); !slices.Equal(got, []string{"a", "b", "c"}) {
+		t.Errorf("PropertyOrder() = %v", got)
+	}
+	if err := c.Add("bad.yaml", nil); err != nil {
+		t.Fatal(err)
+	}
+	c.UseSource(func(string) ([]byte, error) { return []byte("a: [1\n"), nil })
+	if _, err := c.Compile("other.yaml"); err == nil || !strings.Contains(err.Error(), "not valid YAML") {
+		t.Errorf("Compile of invalid YAML: error = %v", err)
 	}
 }

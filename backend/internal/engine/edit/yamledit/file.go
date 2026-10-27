@@ -15,13 +15,14 @@ import (
 // detected from it that new content follows.
 type file struct {
 	src   []byte
-	lines []int      // offset of the start of each line
-	body  *yaml.Node // the document's root node; nil for an empty document
-	value any        // the decoded, normalized document
-	quote byte       // quote character for strings that need quoting
-	width int        // indentation step of nested mappings, in columns
-	seq   int        // indentation of a block sequence under its key: width, or 0 for `key:\n- item`
-	item  int        // offset from an item's '-' to its content, usually 2 for "- "
+	lines []int          // offset of the start of each line
+	body  *yaml.Node     // the document's root node; nil for an empty document
+	value any            // the decoded, normalized document
+	quote byte           // quote character for strings that need quoting
+	width int            // indentation step of nested mappings, in columns
+	seq   int            // indentation of a block sequence under its key: width, or 0 for `key:\n- item`
+	item  int            // offset from an item's '-' to its content, usually 2 for "- "
+	rank  map[string]int // the order of new keys, from Create; nil for sorted order
 }
 
 func parse(src []byte) (*file, error) {

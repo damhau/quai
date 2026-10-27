@@ -1,0 +1,17 @@
+apiVersion: quai.dev/v1beta1
+kind: Instance
+metadata:
+  name: web02
+  blueprint: linux-vm
+  blueprintVersion: 2.0.0
+  owner: alice
+spec:
+  inputs:
+    name: web02
+    diskGb: 50
+    environment: prod
+    os: rhel-9
+    size: large
+    vlan: 110
+  resources:
+    vm: infra-live/vm/prod/web02

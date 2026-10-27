@@ -1,0 +1,288 @@
+// Package plan turns a request into a change set: the file changes it makes, the fingerprints
+// of the regions it read, and a hash of its content (docs/design/04-blueprints-and-change-sets.md
+// #change-sets). Files are written through yamledit, so an update changes only the bytes that
+// must change, and new files list their keys in the schema's order.
+//
+// Planning reads the repository through an fs.FS at the base commit and writes nothing.
+package plan
+
+import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"io/fs"
+	"maps"
+	"path"
+	"slices"
+	"strconv"
+	"strings"
+
+	"github.com/damhau/quai/backend/internal/engine/definitions"
+	"github.com/damhau/quai/backend/internal/engine/edit/yamledit"
+	"github.com/damhau/quai/backend/internal/engine/expr"
+	"github.com/damhau/quai/backend/internal/engine/generate"
+	"github.com/damhau/quai/backend/internal/engine/locate"
+)
+
+// File operations.
+const (
+	OpCreate = "create"
+	OpUpdate = "update"
+	OpDelete = "delete"
+)
+
+var (
+	// ErrExists is returned when a resource to create already exists.
+	ErrExists = errors.New("already exists")
+	// ErrNotFound is returned when a resource to change does not exist.
+	ErrNotFound = errors.New("does not exist")
+	// ErrNoChange is returned when a request would not change any file.
+	ErrNoChange = errors.New("this change would not modify anything")
+)
+
+// Change is one file the change set creates, updates or deletes.
+type Change struct {
+	Path   string
+	Op     string
+	Before []byte // nil for a create
+	After  []byte // nil for a delete
+}
+
+// ChangeSet is what a request writes to one repository.
+type ChangeSet struct {
+	Changes []Change // sorted by path
+	// Fingerprints are the regions' fingerprints at the base commit, by region path. Delivery
+	// recomputes them; if one differs, the request is stale.
+	Fingerprints map[string]string
+	// Hash identifies the content: approvals are bound to it.
+	Hash string
+}
+
+// Type plans a request on one resource of a type in the repository fsys.
+func Type(fsys fs.FS, t *definitions.ResourceType, r generate.Request) (*ChangeSet, error) {
+	cs := &ChangeSet{Fingerprints: map[string]string{}}
+	if _, err := addType(cs, fsys, t, r); err != nil {
+		return nil, err
+	}
+	cs.seal()
+	return cs, nil
+}
+
+func addType(cs *ChangeSet, fsys fs.FS, t *definitions.ResourceType, r generate.Request) (locate.Region, error) {
+	if t.Spec.Locate.Strategy != locate.File {
+		return locate.Region{}, fmt.Errorf("type %s: the %s locator is not available yet", t.Metadata.Name, t.Spec.Locate.Strategy)
+	}
+	loc, err := locate.New(t.Spec.Locate.Strategy, t.Spec.Locate.Path)
+	if err != nil {
+		return locate.Region{}, err
+	}
+	region, err := loc.Region(r.Params)
+	if err != nil {
+		return locate.Region{}, err
+	}
+	if !yamlFile(region.Path) {
+		return locate.Region{}, fmt.Errorf("%s: only YAML files can be written for now", region.Path)
+	}
+	fp, err := locate.Fingerprint(fsys, region)
+	if err != nil {
+		return locate.Region{}, err
+	}
+	if _, dup := cs.Fingerprints[region.Path]; dup {
+		return locate.Region{}, fmt.Errorf("%s is written twice by the same request", region.Path)
+	}
+	cs.Fingerprints[region.Path] = fp
+	id := t.Metadata.Name + "/" + region.Key
+
+	if r.Kind == generate.Create {
+		if fp != locate.Absent {
+			return locate.Region{}, fmt.Errorf("%s: %s %w", id, region.Path, ErrExists)
+		}
+		doc, err := generate.Identity(t, r)
+		if err != nil {
+			return locate.Region{}, err
+		}
+		out, err := yamledit.Create(doc, t.FileSchema.PropertyOrder())
+		if err != nil {
+			return locate.Region{}, err
+		}
+		cs.Changes = append(cs.Changes, Change{Path: region.Path, Op: OpCreate, After: out})
+		return region, nil
+	}
+
+	if fp == locate.Absent {
+		return locate.Region{}, fmt.Errorf("%s: %s %w", id, region.Path, ErrNotFound)
+	}
+	before, err := fs.ReadFile(fsys, region.Path)
+	if err != nil {
+		return locate.Region{}, err
+	}
+	if r.Kind == generate.Delete {
+		cs.Changes = append(cs.Changes, Change{Path: region.Path, Op: OpDelete, Before: before})
+		return region, nil
+	}
+	decoded, err := yamledit.Decode(before)
+	if err != nil {
+		return locate.Region{}, fmt.Errorf("%s cannot be read, so Quai will not edit it: %w", region.Path, err)
+	}
+	current, ok := decoded.(map[string]any)
+	if !ok {
+		return locate.Region{}, fmt.Errorf("%s does not hold a mapping, so Quai will not edit it", region.Path)
+	}
+	r.Current = current
+	doc, err := generate.Identity(t, r)
+	if err != nil {
+		return locate.Region{}, err
+	}
+	after, err := yamledit.Edit(before, doc)
+	if err != nil {
+		return locate.Region{}, err
+	}
+	if bytes.Equal(before, after) {
+		return locate.Region{}, ErrNoChange
+	}
+	cs.Changes = append(cs.Changes, Change{Path: region.Path, Op: OpUpdate, Before: before, After: after})
+	return region, nil
+}
+
+func yamlFile(p string) bool {
+	return strings.HasSuffix(p, ".yaml") || strings.HasSuffix(p, ".yml")
+}
+
+// BlueprintRequest creates an instance of a blueprint.
+type BlueprintRequest struct {
+	Name       string         // the instance's name
+	Inputs     map[string]any // the form values; defaults are applied
+	Owner      string
+	Repository string // the repository's name, for the resource IDs in the instance record
+}
+
+// InstancesDir is where instance records live when every resource of a blueprint is in the
+// blueprint's own repository.
+const InstancesDir = ".quai/instances"
+
+// Blueprint plans the creation of a blueprint instance: each resource whose `when` holds, created
+// through its type, and the instance record, in one change set.
+func Blueprint(fsys fs.FS, repo *definitions.Repository, b *definitions.Blueprint, r BlueprintRequest) (*ChangeSet, error) {
+	if !locate.SafeSegment(r.Name) {
+		return nil, fmt.Errorf("instance name %q is not valid", r.Name)
+	}
+	inputs := map[string]any{}
+	if d, ok := b.InputSchema.Defaults().(map[string]any); ok {
+		inputs = d
+	}
+	maps.Copy(inputs, r.Inputs)
+	if err := b.InputSchema.Validate(inputs); err != nil {
+		return nil, err
+	}
+	vars := expr.Vars{Inputs: inputs, Request: expr.Request{Kind: generate.Create}, User: expr.User{Name: r.Owner}}
+
+	cs := &ChangeSet{Fingerprints: map[string]string{}}
+	created := map[string]string{}
+	for _, res := range b.Spec.Resources {
+		if res.Condition != nil {
+			ok, err := res.Condition.Test(vars)
+			if err != nil {
+				return nil, fmt.Errorf("resource %s: %w", res.ID, err)
+			}
+			if !ok {
+				continue
+			}
+		}
+		if res.Type.Repository != "" {
+			return nil, fmt.Errorf("resource %s: types in other repositories come with multi-repository change sets", res.ID)
+		}
+		t := repo.Types[res.Type.Name]
+		if t == nil {
+			return nil, fmt.Errorf("resource %s: type %s is not defined", res.ID, res.Type.Name)
+		}
+		params, err := evalMap(res.ParamsValue, vars)
+		if err != nil {
+			return nil, fmt.Errorf("resource %s: params: %w", res.ID, err)
+		}
+		values, err := evalMap(res.ValuesValue, vars)
+		if err != nil {
+			return nil, fmt.Errorf("resource %s: values: %w", res.ID, err)
+		}
+		strParams, err := paramStrings(params)
+		if err != nil {
+			return nil, fmt.Errorf("resource %s: params: %w", res.ID, err)
+		}
+		region, err := addType(cs, fsys, t, generate.Request{Kind: generate.Create, Params: strParams, Values: values, Owner: r.Owner})
+		if err != nil {
+			return nil, fmt.Errorf("resource %s: %w", res.ID, err)
+		}
+		created[res.ID] = locate.ID(r.Repository, t.Metadata.Name, region.Key)
+	}
+
+	record := path.Join(InstancesDir, b.Metadata.Name, r.Name+".yaml")
+	fp, err := locate.Fingerprint(fsys, locate.Region{Strategy: locate.File, Path: record})
+	if err != nil {
+		return nil, err
+	}
+	if fp != locate.Absent {
+		return nil, fmt.Errorf("instance %s/%s: %s %w", b.Metadata.Name, r.Name, record, ErrExists)
+	}
+	cs.Fingerprints[record] = fp
+	resources := map[string]any{}
+	for id, rid := range created {
+		resources[id] = rid
+	}
+	doc := map[string]any{
+		"apiVersion": definitions.APIVersion,
+		"kind":       "Instance",
+		"metadata":   map[string]any{"name": r.Name, "blueprint": b.Metadata.Name, "blueprintVersion": b.Metadata.Version, "owner": r.Owner},
+		"spec":       map[string]any{"inputs": inputs, "resources": resources},
+	}
+	out, err := yamledit.Create(doc, []string{"apiVersion", "kind", "metadata", "spec", "name", "blueprint", "blueprintVersion", "owner", "inputs", "resources"})
+	if err != nil {
+		return nil, err
+	}
+	cs.Changes = append(cs.Changes, Change{Path: record, Op: OpCreate, After: out})
+	cs.seal()
+	return cs, nil
+}
+
+func evalMap(v *expr.Value, vars expr.Vars) (map[string]any, error) {
+	if v == nil {
+		return map[string]any{}, nil
+	}
+	out, err := v.Eval(vars)
+	if err != nil {
+		return nil, err
+	}
+	m, ok := out.(map[string]any)
+	if !ok {
+		return nil, errors.New("must evaluate to a mapping")
+	}
+	return m, nil
+}
+
+// paramStrings converts param values to text: strings and whole numbers.
+func paramStrings(m map[string]any) (map[string]string, error) {
+	out := make(map[string]string, len(m))
+	for k, v := range m {
+		switch v := v.(type) {
+		case string:
+			out[k] = v
+		case int64:
+			out[k] = strconv.FormatInt(v, 10)
+		default:
+			return nil, fmt.Errorf("%s must be text, not %v", k, v)
+		}
+	}
+	return out, nil
+}
+
+// seal sorts the changes and computes the hash: SHA-256 over each change's operation, path and
+// the SHA-256 of its new content, in path order.
+func (cs *ChangeSet) seal() {
+	slices.SortFunc(cs.Changes, func(a, b Change) int { return strings.Compare(a.Path, b.Path) })
+	h := sha256.New()
+	for _, c := range cs.Changes {
+		sum := sha256.Sum256(c.After)
+		fmt.Fprintf(h, "%s\x00%s\x00%x\n", c.Op, c.Path, sum)
+	}
+	cs.Hash = "sha256:" + hex.EncodeToString(h.Sum(nil))
+}

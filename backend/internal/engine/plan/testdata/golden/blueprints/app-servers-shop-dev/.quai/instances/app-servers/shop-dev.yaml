@@ -1,0 +1,17 @@
+apiVersion: quai.dev/v1beta1
+kind: Instance
+metadata:
+  name: shop-dev
+  blueprint: app-servers
+  blueprintVersion: 1.0.0
+  owner: bob
+spec:
+  inputs:
+    app: shop
+    dbDiskGb: 500
+    environment: dev
+    webCpu: 4
+    withDatabase: true
+  resources:
+    db: infra-live/vm/dev/shop-db01
+    web: infra-live/vm/dev/shop-web01

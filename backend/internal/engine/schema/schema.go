@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/damhau/quai/backend/internal/engine/edit/yamledit"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"github.com/santhosh-tekuri/jsonschema/v6/kind"
 	"golang.org/x/text/language"
@@ -33,15 +34,16 @@ const base = "file:///repo/"
 // Compiler holds the schema documents of a repository and compiles them. It is not safe for
 // concurrent use; the schemas it returns are.
 type Compiler struct {
-	docs   map[string]any // by URL: the repository URL of each document, and its absolute $id
+	docs   map[string]any                 // by URL: the repository URL of each document, and its absolute $id
+	keys   map[string]map[string][]string // by URL: the key order of documents read from source
 	paths  map[string]string
-	source func(path string) (any, error)
+	source func(path string) ([]byte, error)
 	c      *jsonschema.Compiler
 }
 
 // NewCompiler returns an empty compiler.
 func NewCompiler() *Compiler {
-	c := &Compiler{docs: map[string]any{}, paths: map[string]string{}, c: jsonschema.NewCompiler()}
+	c := &Compiler{docs: map[string]any{}, keys: map[string]map[string][]string{}, paths: map[string]string{}, c: jsonschema.NewCompiler()}
 	c.c.DefaultDraft(jsonschema.Draft2020)
 	c.c.AssertFormat()
 	c.c.UseLoader(loader{c})
@@ -72,9 +74,10 @@ func (c *Compiler) Add(path string, doc any) error {
 }
 
 // UseSource sets where schemas that were not added are read from, by repository path: typically
-// a file of the repository snapshot being loaded. It returns the decoded document, or an error
-// wrapping fs.ErrNotExist when there is no such file.
-func (c *Compiler) UseSource(fn func(path string) (any, error)) {
+// a file of the repository snapshot being loaded. It returns the file's content, JSON or YAML, or
+// an error wrapping fs.ErrNotExist when there is no such file. The order of properties in these
+// files is kept for PropertyOrder.
+func (c *Compiler) UseSource(fn func(path string) ([]byte, error)) {
 	c.source = fn
 }
 
@@ -94,7 +97,7 @@ func (c *Compiler) Compile(path string) (*Schema, error) {
 	if err != nil {
 		return nil, fmt.Errorf("schema %s: %w", path, err)
 	}
-	return &Schema{path: path, url: u, doc: doc, docs: c.docs, sch: sch}, nil
+	return &Schema{path: path, url: u, doc: doc, docs: c.docs, keys: c.keys, sch: sch}, nil
 }
 
 func repoURL(path string) (string, error) {
@@ -149,15 +152,27 @@ func (c *Compiler) fromSource(u string) (any, error) {
 	if c.source == nil {
 		return nil, fmt.Errorf("schema %s is not in the repository", p)
 	}
-	doc, err := c.source(p)
+	src, err := c.source(p)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, fmt.Errorf("schema %s is not in the repository", p)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("schema %s: %w", p, err)
 	}
+	doc, err := yamledit.Decode(src)
+	if err != nil {
+		return nil, fmt.Errorf("schema %s: %w", p, err)
+	}
+	keys, err := yamledit.Keys(src)
+	if err != nil {
+		return nil, fmt.Errorf("schema %s: %w", p, err)
+	}
 	if err := c.Add(p, doc); err != nil {
 		return nil, err
+	}
+	c.keys[u] = keys
+	if id := absoluteID(doc); id != "" {
+		c.keys[id] = keys
 	}
 	return doc, nil
 }
@@ -168,6 +183,7 @@ type Schema struct {
 	url  string
 	doc  any
 	docs map[string]any
+	keys map[string]map[string][]string
 	sch  *jsonschema.Schema
 }
 
