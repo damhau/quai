@@ -120,6 +120,8 @@ export const submitted: RequestView = {
   createdAt: "2026-10-27T10:00:00Z",
   updatedAt: "2026-10-27T10:00:00Z",
   canReview: false,
+  canCancel: true,
+  canRetry: false,
   rules: [{ names: ["type/production"], approvers: ["group:platform-admins"], min: 1, approvals: [], satisfied: false }],
   changes: [{ path: "envs/prod/vms/web01.yaml", op: "create", diff: [{ op: "+", text: "cpu: 2" }] }],
 }
@@ -153,5 +155,6 @@ export const catalogHandlers = [
     sent.requests.push((await request.json()) as Body)
     return HttpResponse.json({ ...submitted, number: 8, id: "8c9e6679-7425-40de-944b-e07fc1f90ae8" }, { status: 201 })
   }),
-  http.get("*/api/v1/requests/:id", ({ params }) => HttpResponse.json({ ...submitted, id: String(params.id) })),
+  // The requests just submitted; other requests are in ./requests.
+  http.get("*/api/v1/requests/:id", ({ params }) => (/^[78]c9e/.test(String(params.id)) ? HttpResponse.json({ ...submitted, id: String(params.id) }) : undefined)),
 ]

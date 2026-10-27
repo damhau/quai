@@ -1058,6 +1058,12 @@
           "blueprint": {
             "type": "string"
           },
+          "canCancel": {
+            "type": "boolean"
+          },
+          "canRetry": {
+            "type": "boolean"
+          },
           "canReview": {
             "type": "boolean"
           },
@@ -1154,6 +1160,8 @@
           "createdAt",
           "updatedAt",
           "canReview",
+          "canCancel",
+          "canRetry",
           "rules"
         ],
         "type": "object"

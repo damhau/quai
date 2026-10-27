@@ -41,7 +41,7 @@ test("a resource request previews its commit and approvals, then submits", async
 
   await user.type(screen.getByRole("textbox", { name: "Reason" }), "Needed for the launch")
   await user.click(await screen.findByRole("button", { name: "Submit for approval" }))
-  expect(await screen.findByRole("heading", { name: "Request #7" })).toBeInTheDocument()
+  expect(await screen.findByRole("heading", { name: "#7 Create infra-live/vm/prod/web01" })).toBeInTheDocument()
   expect(router.state.location.pathname).toBe("/requests/7c9e6679-7425-40de-944b-e07fc1f90ae7")
   expect(sent.requests).toEqual([expect.objectContaining({ kind: "create", params: { env: "prod", name: "web01" }, reason: "Needed for the launch" })])
 })

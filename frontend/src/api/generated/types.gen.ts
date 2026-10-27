@@ -343,6 +343,8 @@ export type RequestView = {
     readonly $schema?: string;
     action?: string;
     blueprint?: string;
+    canCancel: boolean;
+    canRetry: boolean;
     canReview: boolean;
     changes?: Array<ChangeView> | null;
     createdAt: string;
@@ -776,6 +778,8 @@ export type RepositoryViewWritable = {
 export type RequestViewWritable = {
     action?: string;
     blueprint?: string;
+    canCancel: boolean;
+    canRetry: boolean;
     canReview: boolean;
     changes?: Array<ChangeView> | null;
     createdAt: string;

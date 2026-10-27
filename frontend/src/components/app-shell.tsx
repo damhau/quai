@@ -2,7 +2,8 @@ import type { ReactNode } from "react"
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { Boxes, ClipboardCheck, GitCommitHorizontal, LayoutGrid, ListChecks, LogOut, Workflow } from "lucide-react"
-import { getMeOptions } from "@/api/generated/@tanstack/react-query.gen"
+import { getMeOptions, listRequestsOptions } from "@/api/generated/@tanstack/react-query.gen"
+import { Badge } from "@/components/ui/badge"
 import { logout } from "@/lib/auth"
 import { Button } from "@/components/ui/button"
 import {
@@ -44,6 +45,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               >
                 <Icon className="size-4" aria-hidden />
                 {label}
+                {to === "/approvals" && <InboxCount />}
               </Link>
             ))}
           </nav>
@@ -54,6 +56,18 @@ export function AppShell({ children }: { children: ReactNode }) {
       </header>
       <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6">{children}</main>
     </div>
+  )
+}
+
+/** InboxCount shows how many requests wait for the signed-in person's review. */
+function InboxCount() {
+  const { data } = useQuery({ ...listRequestsOptions({ query: { view: "inbox" } }), refetchInterval: 30_000 })
+  const n = data?.length ?? 0
+  if (!n) return null
+  return (
+    <Badge className="h-5 min-w-5 rounded-full px-1.5" aria-label={`${n} waiting`}>
+      {n}
+    </Badge>
   )
 }
 

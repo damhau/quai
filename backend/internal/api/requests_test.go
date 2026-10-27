@@ -121,7 +121,7 @@ func TestDenialAndCancel(t *testing.T) {
 		t.Errorf("denial without a comment = %d %s", status, body)
 	}
 	alice.do(http.MethodPost, Prefix+"/requests/"+r.ID+"/review", map[string]string{"decision": "deny", "comment": "use VLAN 120"}, &r)
-	if r.State != "rejected" || r.Reviews[0].Comment != "use VLAN 120" {
+	if r.State != "rejected" || r.Reviews[0].Comment != "use VLAN 120" || r.CanCancel || r.CanRetry {
 		t.Errorf("denied = %+v", r)
 	}
 	if status, _ := bob.do(http.MethodPost, Prefix+"/requests/"+r.ID+"/cancel", nil, nil); status != http.StatusConflict {
@@ -132,6 +132,13 @@ func TestDenialAndCancel(t *testing.T) {
 		t.Errorf("an admin cancels = %d", status)
 	}
 	bob.do(http.MethodPost, Prefix+"/requests/type", newVM("prod", "web09", 2), &r)
+	if !r.CanCancel {
+		t.Error("the requester is not offered to cancel a pending request")
+	}
+	var seen RequestView
+	if alice.do(http.MethodGet, Prefix+"/requests/"+r.ID, nil, &seen); !seen.CanCancel || !seen.CanReview {
+		t.Errorf("a platform admin sees %+v", seen)
+	}
 	if status, _ := h.as("carol").do(http.MethodPost, Prefix+"/requests/"+r.ID+"/cancel", nil, nil); status != http.StatusForbidden {
 		t.Errorf("someone else cancels = %d", status)
 	}

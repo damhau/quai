@@ -415,17 +415,25 @@ func (s *Service) Review(ctx context.Context, who auth.Identity, id uuid.UUID, d
 	return next, err
 }
 
+// Cancellable reports whether a request in state can be cancelled: it is not delivered yet.
+func Cancellable(state string) bool {
+	switch state {
+	case PendingApproval, Approved, Stale, Failed:
+		return true
+	}
+	return false
+}
+
 // Cancel withdraws a request that is not delivered yet.
 func (s *Service) Cancel(ctx context.Context, who auth.Identity, id uuid.UUID) (db.Request, error) {
 	r, err := s.get(ctx, id)
 	if err != nil {
 		return r, err
 	}
-	switch r.State {
-	case PendingApproval, Approved, Stale, Failed:
-		return s.transition(ctx, r, r.State, Cancelled, "cancelled", map[string]any{"by": who.Principal.Name})
+	if !Cancellable(r.State) {
+		return r, fmt.Errorf("%w: a %s request cannot be cancelled", ErrConflict, r.State)
 	}
-	return r, fmt.Errorf("%w: a %s request cannot be cancelled", ErrConflict, r.State)
+	return s.transition(ctx, r, r.State, Cancelled, "cancelled", map[string]any{"by": who.Principal.Name})
 }
 
 // Retry delivers a failed request again.
