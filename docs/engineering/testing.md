@@ -16,7 +16,7 @@ Status: Draft · 2026-10-26
 | End to end | Catalog → request → PR → approve → merge → run report → status, in a browser | Playwright against a compose stack (Quai, PostgreSQL, Gitea, a fake runner) | Every PR to `main` |
 | Accessibility | Main journeys | Playwright + axe | Every PR to `main` |
 | Load | 2,000 requests/day profile, 500 users, 500 repositories | k6 | Before each release |
-| Security | ZAP baseline, dependency and image scans | ZAP, govulncheck, Trivy | Every release |
+| Security | ZAP baseline, dependency and image scans | ZAP, govulncheck, `npm audit`, Trivy | Dependency and image scans on every PR; ZAP every release |
 | Upgrade | Migrate a database from the previous release with real data shapes | Scripted | Every release |
 | DR | Restore from backup, re-index, reconcile open PRs | Scripted runbook | Twice a year |
 

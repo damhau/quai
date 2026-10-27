@@ -99,9 +99,9 @@ Candidate mappings, to be confirmed with each customer's compliance team.
 | Practice | Tooling |
 | --- | --- |
 | Static analysis | `go vet`, `staticcheck`, `gosec`, CodeQL; `eslint` and `tsc` for the frontend |
-| Vulnerable dependencies | `govulncheck`, `npm audit` with lockfile, Renovate with grouped updates and a cool-down period before adopting new versions |
-| Images | Distroless or UBI-minimal base, non-root, read-only root file system; scanned with Trivy |
-| SBOM and provenance | Syft (CycloneDX), SLSA provenance from the build pipeline, images signed with cosign |
+| Vulnerable dependencies | `govulncheck`, `npm audit` with lockfile, Renovate with grouped updates and a cool-down period before adopting new versions. CI fails on what `govulncheck` finds reachable and on `npm audit` findings of high severity, development dependencies included; a vulnerable transitive package is pinned to its fixed version with an npm `overrides` entry until its parent catches up |
+| Images | Distroless or UBI-minimal base, non-root, read-only root file system; scanned with Trivy. For now Alpine (deployment and operations, Packaging); every build fails on HIGH or CRITICAL findings that have a fix |
+| SBOM and provenance | Syft (CycloneDX), SLSA provenance from the build pipeline, images signed with cosign. On `main`, CI publishes the image it scanned to `ghcr.io/damhau/quai` (tags `main` and `sha-<commit>`), signs it keylessly with the workflow's identity and attests its CycloneDX SBOM (`cosign verify --certificate-identity-regexp 'github.com/damhau/quai/' --certificate-oidc-issuer https://token.actions.githubusercontent.com`). Provenance comes later |
 | Secrets in the codebase | gitleaks in CI and as a pre-commit hook |
 | Dynamic testing | OWASP ZAP baseline on every release; external penetration test before GA and yearly |
 | Disclosure | `SECURITY.md` with a reporting address and response times |

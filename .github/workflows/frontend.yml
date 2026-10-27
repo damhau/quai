@@ -28,6 +28,9 @@ jobs:
           go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
       - run: npm ci
+      # Known vulnerabilities of high severity in any dependency, development ones included,
+      # fail the build; lower ones are reported.
+      - run: npm audit --audit-level=high
       # The committed OpenAPI document, generated client, route tree and CEL conformance cases
       # must match the backend and the routes.
       - name: Generated code is up to date
