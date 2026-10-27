@@ -99,6 +99,15 @@ type BlueprintInput struct {
 	Inputs     map[string]any `json:"inputs,omitempty"`
 }
 
+// InstanceActionInput runs a day-2 action of a blueprint on one of its instances.
+type InstanceActionInput struct {
+	Repository   string         `json:"repository"`
+	Blueprint    string         `json:"blueprint"`
+	Instance     string         `json:"instance"`
+	Action       string         `json:"action"`
+	ActionInputs map[string]any `json:"actionInputs,omitempty"`
+}
+
 // Plan is what a request would change and who would have to approve it.
 type Plan struct {
 	Kind, Action, Target, Repository, Type, Blueprint, Stack string
@@ -269,6 +278,74 @@ func (s *Service) PlanBlueprint(ctx context.Context, who auth.Identity, in Bluep
 
 // Submit records a planned request. Without rules to satisfy it is approved at once and its
 // delivery job is queued in the same transaction.
+// PlanInstanceAction plans a day-2 action on a blueprint instance: the changes it makes to the
+// instance's resources, and the approvals they need. Like PlanType, it returns the plan with its
+// access question even when planning fails.
+func (s *Service) PlanInstanceAction(ctx context.Context, who auth.Identity, in InstanceActionInput) (*Plan, error) {
+	repo, snap, err := s.snapshot(ctx, in.Repository)
+	if err != nil {
+		return nil, err
+	}
+	b := snap.Definitions.Blueprints[in.Blueprint]
+	if b == nil {
+		return nil, fmt.Errorf("%w: blueprint %s in %s", ErrNotFound, in.Blueprint, in.Repository)
+	}
+	inst, err := plan.ReadInstance(snap.FS, plan.InstancePath(b.Metadata.Name, in.Instance))
+	if err != nil {
+		return nil, fmt.Errorf("%w: instance %s/%s", ErrNotFound, b.Metadata.Name, in.Instance)
+	}
+	p := &Plan{Kind: generate.Action, Action: in.Action, Target: b.Metadata.Name + "/" + inst.Name, Repository: repo.Name, Blueprint: b.Metadata.Name,
+		Commit: snap.Commit, Authorize: authz.OperateResource, Object: ownedObject(repo.Name, b.Metadata.Name, inst.Owner)}
+	if inst.Owner != "" {
+		p.Owners = []string{inst.Owner}
+	}
+	for _, rid := range inst.Resources {
+		_, typeName, key, err := locate.ParseID(rid)
+		if err != nil {
+			continue
+		}
+		if r, err := inventory.Get(snap, typeName, key); err == nil && r.Status != inventory.Conforming {
+			return p, fmt.Errorf("%w: %s is %s; fix it in Git before Quai edits it", ErrConflict, r.Path, r.Status)
+		}
+	}
+	user := expr.User{Name: who.Principal.Name, Groups: who.Principal.Groups}
+	cs, inputs, err := plan.BlueprintAction(snap.FS, snap.Definitions, b, plan.BlueprintActionRequest{
+		Repository: repo.Name, Instance: inst, Action: in.Action, Inputs: in.ActionInputs, User: user,
+	})
+	if err != nil {
+		var re *plan.ResourceError
+		if !errors.As(err, &re) {
+			err = schema.Under("actionInputs", err)
+		}
+		return p, err
+	}
+	p.ChangeSet, p.Inputs = cs, inputs
+
+	// Each resource's rules see its document as it will be and as it was; the blueprint's see the
+	// instance's inputs and the action's.
+	request := expr.Request{Kind: generate.Action, Action: in.Action}
+	var sets []policy.RuleSet
+	for _, r := range cs.Resources {
+		t := snap.Definitions.Types[r.Type]
+		var previous map[string]any
+		if res, err := inventory.Get(snap, r.Type, r.Key); err == nil {
+			previous = res.Document
+		}
+		vars := expr.Vars{Inputs: r.Values, Previous: previous, Params: anyMap(r.Params), User: user, Request: request}
+		sets = append(sets, policy.RuleSet{Source: policy.SourceFloor, Rules: repo.FloorRules, Vars: vars},
+			policy.RuleSet{Source: policy.SourceType, Rules: t.Spec.Approval.Rules, Vars: vars})
+	}
+	approval := b.Spec.Approval
+	if i := slices.IndexFunc(b.Spec.Actions, func(a definitions.BlueprintAction) bool { return a.Name == in.Action }); i >= 0 && b.Spec.Actions[i].Approval != nil {
+		approval = *b.Spec.Actions[i].Approval
+	}
+	sets = append(sets, policy.RuleSet{Source: policy.SourceBlueprint, Rules: approval.Rules, Vars: expr.Vars{Inputs: inst.Inputs, Action: inputs, User: user, Request: request}})
+	if p.Rules, err = policy.Match(sets...); err != nil {
+		return p, err
+	}
+	return p, nil
+}
+
 func (s *Service) Submit(ctx context.Context, who auth.Identity, p *Plan, reason string) (db.Request, error) {
 	rules, _ := json.Marshal(p.Rules)
 	inputs, _ := json.Marshal(p.Inputs)
@@ -693,11 +770,17 @@ func findAction(t *definitions.ResourceType, name string) *definitions.Action {
 }
 
 func objectOf(r inventory.Resource) authz.Object {
-	o := authz.Object{Repository: r.Repository, CatalogItem: r.Type}
-	if team, ok := strings.CutPrefix(r.Owner, "team:"); ok {
+	return ownedObject(r.Repository, r.Type, r.Owner)
+}
+
+// ownedObject is something in a repository, made from a catalog item and owned by a person or
+// a team ("team:<name>").
+func ownedObject(repository, item, owner string) authz.Object {
+	o := authz.Object{Repository: repository, CatalogItem: item}
+	if team, ok := strings.CutPrefix(owner, "team:"); ok {
 		o.Team = team
 	} else {
-		o.Owner = r.Owner
+		o.Owner = owner
 	}
 	return o
 }

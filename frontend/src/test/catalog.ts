@@ -61,7 +61,7 @@ export const appServers: BlueprintView = {
     { id: "web", repository: "infra-live", type: "vm", dependsOn: ["db"] },
     { id: "db", repository: "infra-live", type: "vm", when: "inputs.withDatabase", dependsOn: [] },
   ],
-  actions: [],
+  actions: [{ name: "scale-web", title: "Scale the web server", kind: "declarative", inputs: [{ name: "cpu", title: "vCPUs", type: "integer", min: 1, max: 16, required: true }] }],
 }
 
 type Body = Record<string, unknown> & { values?: Record<string, unknown>; params?: Record<string, string>; inputs?: Record<string, unknown> }
@@ -183,5 +183,5 @@ export const catalogHandlers = [
     return HttpResponse.json({ ...submitted, number: 8, id: "8c9e6679-7425-40de-944b-e07fc1f90ae8" }, { status: 201 })
   }),
   // The requests just submitted; other requests are in ./requests.
-  http.get("*/api/v1/requests/:id", ({ params }) => (/^[78]c9e/.test(String(params.id)) ? HttpResponse.json({ ...submitted, id: String(params.id) }) : undefined)),
+  http.get("*/api/v1/requests/:id", ({ params }) => (/^[789]c9e/.test(String(params.id)) ? HttpResponse.json({ ...submitted, id: String(params.id) }) : undefined)),
 ]

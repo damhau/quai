@@ -2,7 +2,7 @@ import { useMemo, useState } from "react"
 import { createFileRoute, Link } from "@tanstack/react-router"
 import { useQuery } from "@tanstack/react-query"
 import { Search } from "lucide-react"
-import { getMeOptions, listInventoryOptions } from "@/api/generated/@tanstack/react-query.gen"
+import { getMeOptions, listInstancesOptions, listInventoryOptions } from "@/api/generated/@tanstack/react-query.gen"
 import type { ResourceView } from "@/api/generated/types.gen"
 import { ResourceStatusBadge } from "@/components/requests/state-badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -25,6 +25,7 @@ const text = (r: ResourceView) => `${r.key} ${r.path} ${r.owner ?? ""} ${Object.
 function Inventory() {
   const { data, isPending, error } = useQuery({ ...listInventoryOptions(), refetchInterval: 30_000 })
   const { data: me } = useQuery(getMeOptions())
+  const { data: instances } = useQuery({ ...listInstancesOptions(), refetchInterval: 30_000 })
   const [q, setQ] = useState("")
   const [type, setType] = useState("")
   const [mine, setMine] = useState(false)
@@ -57,6 +58,42 @@ function Inventory() {
           <Label htmlFor="mine">Owned by me</Label>
         </div>
       </div>
+      {(instances ?? []).length > 0 && (
+        <section aria-labelledby="deployments-title" className="grid gap-2">
+          <h2 id="deployments-title" className="text-lg font-medium">
+            Deployments
+          </h2>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Deployment</TableHead>
+                <TableHead>Blueprint</TableHead>
+                <TableHead>Owner</TableHead>
+                <TableHead>Resources</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {(instances ?? [])
+                .filter((i) => (!mine || i.owner === me?.name) && q.toLowerCase().split(/\s+/).every((w) => `${i.name} ${i.blueprint} ${i.owner}`.toLowerCase().includes(w)))
+                .map((i) => (
+                  <TableRow key={`${i.repository}/${i.blueprint}/${i.name}`}>
+                    <TableCell>
+                      <Link to="/deployments/$repository/$blueprint/$name" params={{ repository: i.repository, blueprint: i.blueprint, name: i.name }} className="font-medium hover:underline">
+                        {i.name}
+                      </Link>
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {i.blueprint} <span className="text-muted-foreground">· {i.repository}</span>
+                    </TableCell>
+                    <TableCell className="text-sm">{i.owner}</TableCell>
+                    <TableCell className="text-sm">{(i.resources ?? []).length}</TableCell>
+                  </TableRow>
+                ))}
+            </TableBody>
+          </Table>
+        </section>
+      )}
+      <h2 className="text-lg font-medium">Resources</h2>
       {isPending && <Skeleton className="h-40" />}
       {error && (
         <Alert variant="destructive">

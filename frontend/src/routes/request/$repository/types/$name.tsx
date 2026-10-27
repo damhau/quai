@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { createFileRoute, useNavigate } from "@tanstack/react-router"
-import { keepPreviousData, useMutation, useQuery, useSuspenseQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useSuspenseQuery } from "@tanstack/react-query"
 import { AlertCircle } from "lucide-react"
 import { toast } from "sonner"
 import { getMeOptions, getTypeOptions, requestTypeMutation } from "@/api/generated/@tanstack/react-query.gen"
@@ -14,7 +14,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { fieldErrors, hasFieldErrors, problemMessage } from "@/lib/problems"
-import { useDebounced } from "@/lib/use-debounced"
+import { useLivePlan } from "@/lib/use-live-plan"
 
 export const Route = createFileRoute("/request/$repository/types/$name")({
   loader: ({ context, params }) => context.queryClient.ensureQueryData(getTypeOptions({ path: params })),
@@ -65,13 +65,7 @@ function TypeRequest({ repository, name }: { repository: string; name: string })
 
   const body: TypeRequestInputBody = { repository, type: name, kind: "create", params, values }
   const ready = typeParams.every((p) => params[p.name]?.trim())
-  const settled = useDebounced(JSON.stringify(body), 300)
-  const plan = useQuery({
-    queryKey: ["plan-type", settled],
-    queryFn: async ({ signal }) => (await planType({ body: JSON.parse(settled) as TypeRequestInputBody, signal, throwOnError: true })).data,
-    enabled: ready,
-    placeholderData: keepPreviousData,
-  })
+  const { plan, settled } = useLivePlan("plan-type", body, async (b, signal) => (await planType({ body: b, signal, throwOnError: true })).data, ready)
   const submit = useMutation({
     ...requestTypeMutation(),
     onSuccess: async (r) => {

@@ -114,6 +114,13 @@ type blueprintRequestInput struct {
 	}
 }
 
+type instanceActionRequestInput struct {
+	Body struct {
+		requests.InstanceActionInput
+		Reason string `json:"reason,omitempty" maxLength:"2000"`
+	}
+}
+
 type listRequestsInput struct {
 	View string `query:"view" enum:"mine,inbox,all" default:"mine"`
 }
@@ -203,6 +210,36 @@ func registerRequests(a huma.API, svc *requests.Service, s *store.Store, log *sl
 			return nil, err
 		}
 		p, err := svc.PlanBlueprint(ctx, who(ctx), in.Body.BlueprintInput)
+		p, err = planned(ctx, p, err)
+		if err != nil {
+			return nil, err
+		}
+		return submit(ctx, p, in.Body.Reason)
+	})
+
+	huma.Register(a, huma.Operation{
+		OperationID: "plan-instance-action", Method: http.MethodPost, Path: Prefix + "/plans/instance-action",
+		Summary: "Plan a day-2 action on a blueprint instance", Tags: []string{"Requests"},
+	}, func(ctx context.Context, in *struct{ Body requests.InstanceActionInput }) (*out[PlanView], error) {
+		if _, err := authorize(ctx, authz.ReadCatalog, authz.Object{Repository: in.Body.Repository, CatalogItem: in.Body.Blueprint}); err != nil {
+			return nil, err
+		}
+		p, err := svc.PlanInstanceAction(ctx, who(ctx), in.Body)
+		p, err = planned(ctx, p, err)
+		if err != nil {
+			return nil, err
+		}
+		return &out[PlanView]{Body: planView(p)}, nil
+	})
+
+	huma.Register(a, huma.Operation{
+		OperationID: "request-instance-action", Method: http.MethodPost, Path: Prefix + "/requests/instance-action",
+		Summary: "Request a day-2 action on a blueprint instance", Tags: []string{"Requests"}, DefaultStatus: http.StatusCreated,
+	}, func(ctx context.Context, in *instanceActionRequestInput) (*out[RequestView], error) {
+		if _, err := authorize(ctx, authz.ReadCatalog, authz.Object{Repository: in.Body.Repository, CatalogItem: in.Body.Blueprint}); err != nil {
+			return nil, err
+		}
+		p, err := svc.PlanInstanceAction(ctx, who(ctx), in.Body.InstanceActionInput)
 		p, err = planned(ctx, p, err)
 		if err != nil {
 			return nil, err

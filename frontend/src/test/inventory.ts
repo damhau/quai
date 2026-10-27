@@ -1,6 +1,6 @@
 import { http, HttpResponse } from "msw"
-import type { ResourceDetail, ResourceView } from "@/api/generated/types.gen"
-import { vm } from "./catalog"
+import type { InstanceView, ResourceDetail, ResourceView } from "@/api/generated/types.gen"
+import { sent, submitted, vm } from "./catalog"
 
 // A fake inventory: VM files as the vm type reads them, one of them not matching its schema.
 
@@ -33,8 +33,48 @@ function detail(r: ResourceView, user: string | null): ResourceDetail {
   }
 }
 
+export const shopDev: InstanceView = {
+  repository: "infra-live",
+  blueprint: "app-servers",
+  blueprintVersion: "1.0.0",
+  name: "shop-dev",
+  owner: "bob",
+  path: ".quai/instances/app-servers/shop-dev.yaml",
+  inputs: { environment: "dev", app: "shop", webCpu: 2, withDatabase: true },
+  resources: [
+    { id: "db", resource: "infra-live/vm/dev/shop-db01", exists: false },
+    { id: "web", resource: "infra-live/vm/dev/shop-web01", exists: true, status: "conforming" },
+  ],
+}
+
 export function inventoryHandlers(user: () => string | null) {
   return [
+    http.get("*/api/v1/instances", () => HttpResponse.json([shopDev])),
+    http.get("*/api/v1/instances/infra-live/app-servers/shop-dev", () =>
+      HttpResponse.json({ ...shopDev, canOperate: user() === "bob" || user() === "alice", requests: [{ id: submitted.id, number: 2, kind: "create", state: "applied", requester: "bob", createdAt: "2026-10-26T10:00:00Z" }] }),
+    ),
+    http.post("*/api/v1/plans/instance-action", async ({ request }) => {
+      const b = (await request.json()) as { actionInputs?: { cpu?: number } }
+      sent.plans.push(b)
+      const cpu = b.actionInputs?.cpu
+      if (typeof cpu === "number" && cpu > 16)
+        return HttpResponse.json({ status: 422, detail: "some fields need attention", errors: [{ location: "body.actionInputs.cpu", message: "must be at most 16" }] }, { status: 422 })
+      return HttpResponse.json({
+        kind: "action",
+        action: "scale-web",
+        target: "app-servers/shop-dev",
+        repository: "infra-live",
+        blueprint: "app-servers",
+        commit: "abc123",
+        hash: "h4",
+        changes: [{ path: "envs/dev/vms/shop-web01.yaml", op: "update", diff: [{ op: "-", text: "cpu: 2" }, { op: "+", text: `cpu: ${String(cpu)}` }] }],
+        rules: [],
+      })
+    }),
+    http.post("*/api/v1/requests/instance-action", async ({ request }) => {
+      sent.requests.push((await request.json()) as Record<string, unknown>)
+      return HttpResponse.json({ ...submitted, number: 9, id: "9c9e6679-7425-40de-944b-e07fc1f90ae9", kind: "action", action: "scale-web", target: "app-servers/shop-dev" }, { status: 201 })
+    }),
     http.get("*/api/v1/inventory", () => HttpResponse.json(resources)),
     http.get("*/api/v1/resource", ({ request }) => {
       const r = resources.find((x) => x.id === new URL(request.url).searchParams.get("id"))

@@ -37,7 +37,8 @@ frontend/
 │   │   ├── index.tsx              # catalog
 │   │   ├── request/$repository/   # types/$name.tsx and blueprints/$name.tsx: request forms
 │   │   ├── inventory/
-│   │   ├── resources.$repo.$type.$key.tsx
+│   │   ├── resources/$repository/$type/$.tsx        # a resource (its key is the splat)
+│   │   ├── deployments/$repository/$blueprint/$name.tsx   # a blueprint instance
 │   │   ├── requests/
 │   │   ├── approvals.tsx
 │   │   ├── designer/

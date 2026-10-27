@@ -379,18 +379,8 @@ func registerCatalog(a huma.API, reg *repositories.Registry, s *store.Store) {
 		d := resourceDetail(ctx, repo, snap, r)
 		d.LastApply = runs.get(ctx, r.Repository, r.Stack)
 		d.CanOperate = allowed(ctx, authz.OperateResource, resourceObject(r))
-		d.Requests = []RequestSummary{}
-		if s != nil {
-			rs, err := s.ListRequests(ctx, db.ListRequestsParams{States: []string{}, Target: r.ID, MaxRows: 20})
-			if err != nil {
-				return nil, err
-			}
-			for _, q := range rs {
-				if allowed(ctx, authz.ReadRequest, authz.Object{Repository: r.Repository, Requester: q.Requester}) {
-					d.Requests = append(d.Requests, RequestSummary{ID: q.ID.String(), Number: q.Number, Kind: q.Kind, Action: q.Action,
-						State: q.State, Requester: q.Requester, CreatedAt: q.CreatedAt.Time})
-				}
-			}
+		if d.Requests, err = requestSummaries(ctx, s, r.Repository, r.ID); err != nil {
+			return nil, err
 		}
 		return &out[ResourceDetail]{Body: d}, nil
 	})
@@ -519,13 +509,38 @@ func blueprintView(repo string, b *definitions.Blueprint) BlueprintView {
 }
 
 func resourceObject(r inventory.Resource) authz.Object {
-	o := authz.Object{Repository: r.Repository, CatalogItem: r.Type}
-	if team, ok := strings.CutPrefix(r.Owner, "team:"); ok {
+	return ownedObject(r.Repository, r.Type, r.Owner)
+}
+
+// ownedObject is something in a repository, made from a catalog item and owned by a person or
+// a team ("team:<name>").
+func ownedObject(repository, item, owner string) authz.Object {
+	o := authz.Object{Repository: repository, CatalogItem: item}
+	if team, ok := strings.CutPrefix(owner, "team:"); ok {
 		o.Team = team
 	} else {
-		o.Owner = r.Owner
+		o.Owner = owner
 	}
 	return o
+}
+
+// requestSummaries returns the latest requests on a target that the caller may read.
+func requestSummaries(ctx context.Context, s *store.Store, repository, target string) ([]RequestSummary, error) {
+	out := []RequestSummary{}
+	if s == nil {
+		return out, nil
+	}
+	rs, err := s.ListRequests(ctx, db.ListRequestsParams{States: []string{}, Target: target, MaxRows: 20})
+	if err != nil {
+		return nil, err
+	}
+	for _, q := range rs {
+		if allowed(ctx, authz.ReadRequest, authz.Object{Repository: repository, Requester: q.Requester}) {
+			out = append(out, RequestSummary{ID: q.ID.String(), Number: q.Number, Kind: q.Kind, Action: q.Action,
+				State: q.State, Requester: q.Requester, CreatedAt: q.CreatedAt.Time})
+		}
+	}
+	return out, nil
 }
 
 func resourceView(r inventory.Resource) ResourceView {

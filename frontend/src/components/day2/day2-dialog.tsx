@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { useNavigate } from "@tanstack/react-router"
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { AlertCircle } from "lucide-react"
 import { toast } from "sonner"
 import { getMeOptions, getResourceQueryKey, requestTypeMutation } from "@/api/generated/@tanstack/react-query.gen"
@@ -14,7 +14,7 @@ import { hiddenFields, localErrors, setPath, type JsonSchema, type Values } from
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { fieldErrors, hasFieldErrors, problemMessage } from "@/lib/problems"
-import { useDebounced } from "@/lib/use-debounced"
+import { useLivePlan } from "@/lib/use-live-plan"
 
 /** Day2 is a change to an existing resource: edit its settings, run one of its actions, or delete it. */
 export type Day2 = { kind: "update" } | { kind: "delete" } | { kind: "action"; action: ActionView }
@@ -73,12 +73,7 @@ function Day2Form({ resource, type, day2 }: { resource: ResourceDetail; type: Ty
     ...(day2.kind === "update" && { values }),
     ...(action && { action: action.name, actionInputs: values }),
   }
-  const settled = useDebounced(JSON.stringify(body), 300)
-  const plan = useQuery({
-    queryKey: ["plan-type", settled],
-    queryFn: async ({ signal }) => (await planType({ body: JSON.parse(settled) as TypeRequestInputBody, signal, throwOnError: true })).data,
-    placeholderData: keepPreviousData,
-  })
+  const { plan, settled } = useLivePlan("plan-type", body, async (b, signal) => (await planType({ body: b, signal, throwOnError: true })).data)
   const submit = useMutation({
     ...requestTypeMutation(),
     onSuccess: async (r) => {

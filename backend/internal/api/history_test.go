@@ -81,6 +81,9 @@ func TestInstancesLogAndEvents(t *testing.T) {
 	if status, _ := bob.do(http.MethodGet, Prefix+"/instances/infra-live/app-servers/nope", nil, nil); status != http.StatusNotFound {
 		t.Errorf("missing instance = %d", status)
 	}
+	if !inst.CanOperate || len(inst.Requests) != 1 || inst.Requests[0].ID != r.ID {
+		t.Errorf("the instance's requests = %v, can operate = %v", inst.Requests, inst.CanOperate)
+	}
 
 	var log []CommitView
 	if status, _ := bob.do(http.MethodGet, Prefix+"/repositories/infra-live/log?limit=10", nil, &log); status != http.StatusOK || len(log) < 3 || log[0].Subject != "remove the database by hand" {
@@ -138,5 +141,43 @@ func TestPublishBlueprint(t *testing.T) {
 	// Publishing the same again changes nothing.
 	if status, _ := alice.do(http.MethodPut, Prefix+"/repositories/infra-live/blueprints/web-pair", map[string]any{"blueprint": bp}, nil); status != http.StatusOK {
 		t.Errorf("publishing again = %d", status)
+	}
+}
+
+func TestInstanceActions(t *testing.T) {
+	h := newHarness(t)
+	bob := h.as("bob")
+	var r RequestView
+	bob.do(http.MethodPost, Prefix+"/requests/blueprint", map[string]any{"repository": "infra-live", "blueprint": "app-servers", "name": "shop-dev",
+		"inputs": map[string]any{"environment": "dev", "app": "shop", "withDatabase": false}}, &r)
+	bob.await(r.ID, "applied")
+
+	scale := map[string]any{"repository": "infra-live", "blueprint": "app-servers", "instance": "shop-dev", "action": "scale-web", "actionInputs": map[string]any{"cpu": 64}}
+	if status, body := bob.do(http.MethodPost, Prefix+"/plans/instance-action", scale, nil); status != http.StatusUnprocessableEntity || !strings.Contains(body, `"location":"body.actionInputs.cpu"`) {
+		t.Errorf("an input out of range = %d %s", status, body)
+	}
+	scale["actionInputs"] = map[string]any{"cpu": 4}
+	var p PlanView
+	if status, body := bob.do(http.MethodPost, Prefix+"/plans/instance-action", scale, &p); status != http.StatusOK || len(p.Changes) != 1 || p.Changes[0].Path != "envs/dev/vms/shop-web01.yaml" || p.Target != "app-servers/shop-dev" {
+		t.Fatalf("plan = %d %s", status, body)
+	}
+	if status, _ := h.as("carol").do(http.MethodPost, Prefix+"/plans/instance-action", scale, nil); status != http.StatusForbidden {
+		t.Errorf("someone else's instance = %d", status)
+	}
+	bob.do(http.MethodPost, Prefix+"/requests/instance-action", map[string]any{"repository": "infra-live", "blueprint": "app-servers", "instance": "shop-dev",
+		"action": "scale-web", "actionInputs": map[string]any{"cpu": 4}, "reason": "Black Friday"}, &r)
+	bob.await(r.ID, "applied")
+	if content, _ := h.file("envs/dev/vms/shop-web01.yaml"); !strings.Contains(content, "cpu: 4\nmemory_gb: 8\n") {
+		t.Errorf("shop-web01 = %q", content)
+	}
+	if r.Kind != "action" || r.Action != "scale-web" || r.Blueprint != "app-servers" {
+		t.Errorf("request = %+v", r)
+	}
+	if status, body := bob.do(http.MethodPost, Prefix+"/plans/instance-action", scale, nil); status != http.StatusUnprocessableEntity || !strings.Contains(body, "would not modify") {
+		t.Errorf("the same action again = %d %s", status, body)
+	}
+	scale["instance"] = "nope"
+	if status, _ := bob.do(http.MethodPost, Prefix+"/plans/instance-action", scale, nil); status != http.StatusNotFound {
+		t.Errorf("an unknown instance = %d", status)
 	}
 }

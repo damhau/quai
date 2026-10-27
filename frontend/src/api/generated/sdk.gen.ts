@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { CancelRequestData, CancelRequestErrors, CancelRequestResponses, CreateTokenData, CreateTokenErrors, CreateTokenResponses, GetBlueprintData, GetBlueprintErrors, GetBlueprintResponses, GetInstanceData, GetInstanceErrors, GetInstanceResponses, GetMeData, GetMeErrors, GetMeResponses, GetMetaData, GetMetaErrors, GetMetaResponses, GetRequestData, GetRequestErrors, GetRequestResponses, GetResourceData, GetResourceErrors, GetResourceResponses, GetTypeData, GetTypeErrors, GetTypeResponses, ListCatalogData, ListCatalogErrors, ListCatalogResponses, ListEventsData, ListEventsErrors, ListEventsResponses, ListInstancesData, ListInstancesErrors, ListInstancesResponses, ListInventoryData, ListInventoryErrors, ListInventoryResponses, ListRepositoriesData, ListRepositoriesErrors, ListRepositoriesResponses, ListRequestsData, ListRequestsErrors, ListRequestsResponses, ListTokensData, ListTokensErrors, ListTokensResponses, PlanBlueprintData, PlanBlueprintErrors, PlanBlueprintResponses, PlanTypeData, PlanTypeErrors, PlanTypeResponses, PublishBlueprintData, PublishBlueprintErrors, PublishBlueprintResponses, ReportRunData, ReportRunErrors, ReportRunResponses, RepositoryCommitData, RepositoryCommitErrors, RepositoryCommitResponses, RepositoryLogData, RepositoryLogErrors, RepositoryLogResponses, RequestBlueprintData, RequestBlueprintErrors, RequestBlueprintResponses, RequestTypeData, RequestTypeErrors, RequestTypeResponses, RetryRequestData, RetryRequestErrors, RetryRequestResponses, ReviewRequestData, ReviewRequestErrors, ReviewRequestResponses, RevokeTokenData, RevokeTokenErrors, RevokeTokenResponses, SyncRepositoryData, SyncRepositoryErrors, SyncRepositoryResponses } from './types.gen';
+import type { CancelRequestData, CancelRequestErrors, CancelRequestResponses, CreateTokenData, CreateTokenErrors, CreateTokenResponses, GetBlueprintData, GetBlueprintErrors, GetBlueprintResponses, GetInstanceData, GetInstanceErrors, GetInstanceResponses, GetMeData, GetMeErrors, GetMeResponses, GetMetaData, GetMetaErrors, GetMetaResponses, GetRequestData, GetRequestErrors, GetRequestResponses, GetResourceData, GetResourceErrors, GetResourceResponses, GetTypeData, GetTypeErrors, GetTypeResponses, ListCatalogData, ListCatalogErrors, ListCatalogResponses, ListEventsData, ListEventsErrors, ListEventsResponses, ListInstancesData, ListInstancesErrors, ListInstancesResponses, ListInventoryData, ListInventoryErrors, ListInventoryResponses, ListRepositoriesData, ListRepositoriesErrors, ListRepositoriesResponses, ListRequestsData, ListRequestsErrors, ListRequestsResponses, ListTokensData, ListTokensErrors, ListTokensResponses, PlanBlueprintData, PlanBlueprintErrors, PlanBlueprintResponses, PlanInstanceActionData, PlanInstanceActionErrors, PlanInstanceActionResponses, PlanTypeData, PlanTypeErrors, PlanTypeResponses, PublishBlueprintData, PublishBlueprintErrors, PublishBlueprintResponses, ReportRunData, ReportRunErrors, ReportRunResponses, RepositoryCommitData, RepositoryCommitErrors, RepositoryCommitResponses, RepositoryLogData, RepositoryLogErrors, RepositoryLogResponses, RequestBlueprintData, RequestBlueprintErrors, RequestBlueprintResponses, RequestInstanceActionData, RequestInstanceActionErrors, RequestInstanceActionResponses, RequestTypeData, RequestTypeErrors, RequestTypeResponses, RetryRequestData, RetryRequestErrors, RetryRequestResponses, ReviewRequestData, ReviewRequestErrors, ReviewRequestResponses, RevokeTokenData, RevokeTokenErrors, RevokeTokenResponses, SyncRepositoryData, SyncRepositoryErrors, SyncRepositoryResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -58,6 +58,18 @@ export const getMeta = <ThrowOnError extends boolean = false>(options?: Options<
  */
 export const planBlueprint = <ThrowOnError extends boolean = false>(options: Options<PlanBlueprintData, ThrowOnError>): RequestResult<PlanBlueprintResponses, PlanBlueprintErrors, ThrowOnError> => (options.client ?? client).post<PlanBlueprintResponses, PlanBlueprintErrors, ThrowOnError>({
     url: '/api/v1/plans/blueprint',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Plan a day-2 action on a blueprint instance
+ */
+export const planInstanceAction = <ThrowOnError extends boolean = false>(options: Options<PlanInstanceActionData, ThrowOnError>): RequestResult<PlanInstanceActionResponses, PlanInstanceActionErrors, ThrowOnError> => (options.client ?? client).post<PlanInstanceActionResponses, PlanInstanceActionErrors, ThrowOnError>({
+    url: '/api/v1/plans/instance-action',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -129,6 +141,18 @@ export const listRequests = <ThrowOnError extends boolean = false>(options?: Opt
  */
 export const requestBlueprint = <ThrowOnError extends boolean = false>(options: Options<RequestBlueprintData, ThrowOnError>): RequestResult<RequestBlueprintResponses, RequestBlueprintErrors, ThrowOnError> => (options.client ?? client).post<RequestBlueprintResponses, RequestBlueprintErrors, ThrowOnError>({
     url: '/api/v1/requests/blueprint',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Request a day-2 action on a blueprint instance
+ */
+export const requestInstanceAction = <ThrowOnError extends boolean = false>(options: Options<RequestInstanceActionData, ThrowOnError>): RequestResult<RequestInstanceActionResponses, RequestInstanceActionErrors, ThrowOnError> => (options.client ?? client).post<RequestInstanceActionResponses, RequestInstanceActionErrors, ThrowOnError>({
+    url: '/api/v1/requests/instance-action',
     ...options,
     headers: {
         'Content-Type': 'application/json',

@@ -80,3 +80,30 @@ test("deleting previews the removal and its approvals", async () => {
   expect(within(preview()).getByTitle("delete")).toHaveTextContent("D")
   expect(within(dialog()).getByRole("button", { name: "Submit for approval" })).toBeEnabled()
 })
+
+test("deployments list their resources and run the blueprint's actions", async () => {
+  const user = userEvent.setup()
+  const { router } = renderApp("/inventory")
+  await user.click(await screen.findByRole("link", { name: "shop-dev" }))
+  expect(await screen.findByRole("heading", { name: "shop-dev" })).toBeInTheDocument()
+  expect(screen.getByRole("link", { name: "infra-live/vm/dev/shop-web01" })).toBeInTheDocument()
+  expect(screen.getByText("missing")).toBeInTheDocument() // the database VM was deleted by hand
+
+  await user.click(within(screen.getByRole("toolbar", { name: "Day-2 actions" })).getByRole("button", { name: "Scale the web server" }))
+  const cpu = within(dialog()).getByRole("spinbutton", { name: /vCPUs/ })
+  await user.type(cpu, "32")
+  expect(await within(dialog()).findByText("must be at most 16")).toBeInTheDocument()
+  await user.clear(cpu)
+  await user.type(cpu, "4")
+  expect(await within(preview()).findByText("envs/dev/vms/shop-web01.yaml")).toBeInTheDocument()
+  await user.click(within(dialog()).getByRole("button", { name: "Submit and commit" }))
+  await waitFor(() => expect(router.state.location.pathname).toBe("/requests/9c9e6679-7425-40de-944b-e07fc1f90ae9"))
+  expect(sent.requests.at(-1)).toMatchObject({ blueprint: "app-servers", instance: "shop-dev", action: "scale-web", actionInputs: { cpu: 4 } })
+})
+
+test("only the owner of a deployment, or an operator, runs its actions", async () => {
+  state.user = "carol"
+  renderApp("/deployments/infra-live/app-servers/shop-dev")
+  expect(await screen.findByRole("heading", { name: "shop-dev" })).toBeInTheDocument()
+  expect(screen.queryByRole("toolbar", { name: "Day-2 actions" })).not.toBeInTheDocument()
+})

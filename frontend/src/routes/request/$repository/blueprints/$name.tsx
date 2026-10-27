@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { createFileRoute, useNavigate } from "@tanstack/react-router"
-import { keepPreviousData, useMutation, useQuery, useSuspenseQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useSuspenseQuery } from "@tanstack/react-query"
 import { AlertCircle } from "lucide-react"
 import { toast } from "sonner"
 import { getBlueprintOptions, getMeOptions, requestBlueprintMutation } from "@/api/generated/@tanstack/react-query.gen"
@@ -13,7 +13,7 @@ import { defaults, hiddenFields, localErrors, type JsonSchema, type Values } fro
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { fieldErrors, hasFieldErrors, problemMessage } from "@/lib/problems"
-import { useDebounced } from "@/lib/use-debounced"
+import { useLivePlan } from "@/lib/use-live-plan"
 
 export const Route = createFileRoute("/request/$repository/blueprints/$name")({
   loader: ({ context, params }) => context.queryClient.ensureQueryData(getBlueprintOptions({ path: params })),
@@ -44,13 +44,7 @@ function BlueprintRequest({ repository, name }: { repository: string; name: stri
   )
   const body: BlueprintRequestInputBody = { repository, blueprint: name, name: instance, inputs }
   const ready = instance.trim() !== ""
-  const settled = useDebounced(JSON.stringify(body), 300)
-  const plan = useQuery({
-    queryKey: ["plan-blueprint", settled],
-    queryFn: async ({ signal }) => (await planBlueprint({ body: JSON.parse(settled) as BlueprintRequestInputBody, signal, throwOnError: true })).data,
-    enabled: ready,
-    placeholderData: keepPreviousData,
-  })
+  const { plan, settled } = useLivePlan("plan-blueprint", body, async (b, signal) => (await planBlueprint({ body: b, signal, throwOnError: true })).data, ready)
   const submit = useMutation({
     ...requestBlueprintMutation(),
     onSuccess: async (r) => {

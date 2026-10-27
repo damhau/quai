@@ -17,6 +17,7 @@ import { Route as DesignerIndexRouteImport } from './routes/designer/index'
 import { Route as InventoryIndexRouteImport } from './routes/inventory/index'
 import { Route as RequestsIndexRouteImport } from './routes/requests/index'
 import { Route as RequestsIdRouteImport } from './routes/requests/$id'
+import { Route as DeploymentsRepositoryBlueprintNameRouteImport } from './routes/deployments/$repository/$blueprint/$name'
 import { Route as RequestRepositoryBlueprintsNameRouteImport } from './routes/request/$repository/blueprints/$name'
 import { Route as RequestRepositoryTypesNameRouteImport } from './routes/request/$repository/types/$name'
 import { Route as ResourcesRepositoryTypeSplatRouteImport } from './routes/resources/$repository/$type/$'
@@ -61,6 +62,12 @@ const RequestsIdRoute = RequestsIdRouteImport.update({
   path: '/requests/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DeploymentsRepositoryBlueprintNameRoute =
+  DeploymentsRepositoryBlueprintNameRouteImport.update({
+    id: '/deployments/$repository/$blueprint/$name',
+    path: '/deployments/$repository/$blueprint/$name',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const RequestRepositoryBlueprintsNameRoute =
   RequestRepositoryBlueprintsNameRouteImport.update({
     id: '/request/$repository/blueprints/$name',
@@ -89,6 +96,7 @@ export interface FileRoutesByFullPath {
   '/designer/': typeof DesignerIndexRoute
   '/inventory/': typeof InventoryIndexRoute
   '/requests/': typeof RequestsIndexRoute
+  '/deployments/$repository/$blueprint/$name': typeof DeploymentsRepositoryBlueprintNameRoute
   '/request/$repository/blueprints/$name': typeof RequestRepositoryBlueprintsNameRoute
   '/request/$repository/types/$name': typeof RequestRepositoryTypesNameRoute
   '/resources/$repository/$type/$': typeof ResourcesRepositoryTypeSplatRoute
@@ -102,6 +110,7 @@ export interface FileRoutesByTo {
   '/designer': typeof DesignerIndexRoute
   '/inventory': typeof InventoryIndexRoute
   '/requests': typeof RequestsIndexRoute
+  '/deployments/$repository/$blueprint/$name': typeof DeploymentsRepositoryBlueprintNameRoute
   '/request/$repository/blueprints/$name': typeof RequestRepositoryBlueprintsNameRoute
   '/request/$repository/types/$name': typeof RequestRepositoryTypesNameRoute
   '/resources/$repository/$type/$': typeof ResourcesRepositoryTypeSplatRoute
@@ -116,6 +125,7 @@ export interface FileRoutesById {
   '/designer/': typeof DesignerIndexRoute
   '/inventory/': typeof InventoryIndexRoute
   '/requests/': typeof RequestsIndexRoute
+  '/deployments/$repository/$blueprint/$name': typeof DeploymentsRepositoryBlueprintNameRoute
   '/request/$repository/blueprints/$name': typeof RequestRepositoryBlueprintsNameRoute
   '/request/$repository/types/$name': typeof RequestRepositoryTypesNameRoute
   '/resources/$repository/$type/$': typeof ResourcesRepositoryTypeSplatRoute
@@ -131,6 +141,7 @@ export interface FileRouteTypes {
     | '/designer/'
     | '/inventory/'
     | '/requests/'
+    | '/deployments/$repository/$blueprint/$name'
     | '/request/$repository/blueprints/$name'
     | '/request/$repository/types/$name'
     | '/resources/$repository/$type/$'
@@ -144,6 +155,7 @@ export interface FileRouteTypes {
     | '/designer'
     | '/inventory'
     | '/requests'
+    | '/deployments/$repository/$blueprint/$name'
     | '/request/$repository/blueprints/$name'
     | '/request/$repository/types/$name'
     | '/resources/$repository/$type/$'
@@ -157,6 +169,7 @@ export interface FileRouteTypes {
     | '/designer/'
     | '/inventory/'
     | '/requests/'
+    | '/deployments/$repository/$blueprint/$name'
     | '/request/$repository/blueprints/$name'
     | '/request/$repository/types/$name'
     | '/resources/$repository/$type/$'
@@ -171,6 +184,7 @@ export interface RootRouteChildren {
   DesignerIndexRoute: typeof DesignerIndexRoute
   InventoryIndexRoute: typeof InventoryIndexRoute
   RequestsIndexRoute: typeof RequestsIndexRoute
+  DeploymentsRepositoryBlueprintNameRoute: typeof DeploymentsRepositoryBlueprintNameRoute
   RequestRepositoryBlueprintsNameRoute: typeof RequestRepositoryBlueprintsNameRoute
   RequestRepositoryTypesNameRoute: typeof RequestRepositoryTypesNameRoute
   ResourcesRepositoryTypeSplatRoute: typeof ResourcesRepositoryTypeSplatRoute
@@ -234,6 +248,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RequestsIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/deployments/$repository/$blueprint/$name': {
+      id: '/deployments/$repository/$blueprint/$name'
+      path: '/deployments/$repository/$blueprint/$name'
+      fullPath: '/deployments/$repository/$blueprint/$name'
+      preLoaderRoute: typeof DeploymentsRepositoryBlueprintNameRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/request/$repository/blueprints/$name': {
       id: '/request/$repository/blueprints/$name'
       path: '/request/$repository/blueprints/$name'
@@ -267,6 +288,8 @@ const rootRouteChildren: RootRouteChildren = {
   DesignerIndexRoute: DesignerIndexRoute,
   InventoryIndexRoute: InventoryIndexRoute,
   RequestsIndexRoute: RequestsIndexRoute,
+  DeploymentsRepositoryBlueprintNameRoute:
+    DeploymentsRepositoryBlueprintNameRoute,
   RequestRepositoryBlueprintsNameRoute: RequestRepositoryBlueprintsNameRoute,
   RequestRepositoryTypesNameRoute: RequestRepositoryTypesNameRoute,
   ResourcesRepositoryTypeSplatRoute: ResourcesRepositoryTypeSplatRoute,

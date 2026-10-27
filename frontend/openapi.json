@@ -659,6 +659,84 @@
         ],
         "type": "object"
       },
+      "InstanceActionInput": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/api/v1/schemas/InstanceActionInput.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "action": {
+            "type": "string"
+          },
+          "actionInputs": {
+            "additionalProperties": {},
+            "type": "object"
+          },
+          "blueprint": {
+            "type": "string"
+          },
+          "instance": {
+            "type": "string"
+          },
+          "repository": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "repository",
+          "blueprint",
+          "instance",
+          "action"
+        ],
+        "type": "object"
+      },
+      "InstanceActionRequestInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/api/v1/schemas/InstanceActionRequestInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "action": {
+            "type": "string"
+          },
+          "actionInputs": {
+            "additionalProperties": {},
+            "type": "object"
+          },
+          "blueprint": {
+            "type": "string"
+          },
+          "instance": {
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 2000,
+            "type": "string"
+          },
+          "repository": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "repository",
+          "blueprint",
+          "instance",
+          "action"
+        ],
+        "type": "object"
+      },
       "InstanceResource": {
         "additionalProperties": false,
         "properties": {
@@ -702,6 +780,10 @@
           "blueprintVersion": {
             "type": "string"
           },
+          "canOperate": {
+            "description": "Whether the caller may run the blueprint's actions on the instance (on one instance only)",
+            "type": "boolean"
+          },
           "inputs": {
             "additionalProperties": {},
             "type": "object"
@@ -717,6 +799,16 @@
           },
           "repository": {
             "type": "string"
+          },
+          "requests": {
+            "description": "The latest requests on the instance that the caller may read (on one instance only)",
+            "items": {
+              "$ref": "#/components/schemas/RequestSummary"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
           },
           "resources": {
             "items": {
@@ -2314,6 +2406,47 @@
         ]
       }
     },
+    "/api/v1/plans/instance-action": {
+      "post": {
+        "operationId": "plan-instance-action",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InstanceActionInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Plan a day-2 action on a blueprint instance",
+        "tags": [
+          "Requests"
+        ]
+      }
+    },
     "/api/v1/plans/type": {
       "post": {
         "operationId": "plan-type",
@@ -2794,6 +2927,47 @@
           }
         },
         "summary": "Request a new blueprint instance",
+        "tags": [
+          "Requests"
+        ]
+      }
+    },
+    "/api/v1/requests/instance-action": {
+      "post": {
+        "operationId": "request-instance-action",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InstanceActionRequestInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestView"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Request a day-2 action on a blueprint instance",
         "tags": [
           "Requests"
         ]

@@ -207,6 +207,35 @@ export type Input = {
     visibleIf?: string;
 };
 
+export type InstanceActionInput = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    action: string;
+    actionInputs?: {
+        [key: string]: unknown;
+    };
+    blueprint: string;
+    instance: string;
+    repository: string;
+};
+
+export type InstanceActionRequestInputBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    action: string;
+    actionInputs?: {
+        [key: string]: unknown;
+    };
+    blueprint: string;
+    instance: string;
+    reason?: string;
+    repository: string;
+};
+
 export type InstanceResource = {
     /**
      * False when someone removed it by hand
@@ -227,6 +256,10 @@ export type InstanceView = {
     readonly $schema?: string;
     blueprint: string;
     blueprintVersion?: string;
+    /**
+     * Whether the caller may run the blueprint's actions on the instance (on one instance only)
+     */
+    canOperate?: boolean;
     inputs: {
         [key: string]: unknown;
     };
@@ -234,6 +267,10 @@ export type InstanceView = {
     owner: string;
     path: string;
     repository: string;
+    /**
+     * The latest requests on the instance that the caller may read (on one instance only)
+     */
+    requests?: Array<RequestSummary> | null;
     resources: Array<InstanceResource> | null;
 };
 
@@ -716,9 +753,34 @@ export type ErrorModelWritable = {
     type?: string;
 };
 
+export type InstanceActionInputWritable = {
+    action: string;
+    actionInputs?: {
+        [key: string]: unknown;
+    };
+    blueprint: string;
+    instance: string;
+    repository: string;
+};
+
+export type InstanceActionRequestInputBodyWritable = {
+    action: string;
+    actionInputs?: {
+        [key: string]: unknown;
+    };
+    blueprint: string;
+    instance: string;
+    reason?: string;
+    repository: string;
+};
+
 export type InstanceViewWritable = {
     blueprint: string;
     blueprintVersion?: string;
+    /**
+     * Whether the caller may run the blueprint's actions on the instance (on one instance only)
+     */
+    canOperate?: boolean;
     inputs: {
         [key: string]: unknown;
     };
@@ -726,6 +788,10 @@ export type InstanceViewWritable = {
     owner: string;
     path: string;
     repository: string;
+    /**
+     * The latest requests on the instance that the caller may read (on one instance only)
+     */
+    requests?: Array<RequestSummary> | null;
     resources: Array<InstanceResource> | null;
 };
 
@@ -1201,6 +1267,31 @@ export type PlanBlueprintResponses = {
 
 export type PlanBlueprintResponse = PlanBlueprintResponses[keyof PlanBlueprintResponses];
 
+export type PlanInstanceActionData = {
+    body: InstanceActionInputWritable;
+    path?: never;
+    query?: never;
+    url: '/api/v1/plans/instance-action';
+};
+
+export type PlanInstanceActionErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type PlanInstanceActionError = PlanInstanceActionErrors[keyof PlanInstanceActionErrors];
+
+export type PlanInstanceActionResponses = {
+    /**
+     * OK
+     */
+    200: PlanView;
+};
+
+export type PlanInstanceActionResponse = PlanInstanceActionResponses[keyof PlanInstanceActionResponses];
+
 export type PlanTypeData = {
     body: TypeInputWritable;
     path?: never;
@@ -1471,6 +1562,31 @@ export type RequestBlueprintResponses = {
 };
 
 export type RequestBlueprintResponse = RequestBlueprintResponses[keyof RequestBlueprintResponses];
+
+export type RequestInstanceActionData = {
+    body: InstanceActionRequestInputBodyWritable;
+    path?: never;
+    query?: never;
+    url: '/api/v1/requests/instance-action';
+};
+
+export type RequestInstanceActionErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type RequestInstanceActionError = RequestInstanceActionErrors[keyof RequestInstanceActionErrors];
+
+export type RequestInstanceActionResponses = {
+    /**
+     * Created
+     */
+    201: RequestView;
+};
+
+export type RequestInstanceActionResponse = RequestInstanceActionResponses[keyof RequestInstanceActionResponses];
 
 export type RequestTypeData = {
     body: TypeRequestInputBodyWritable;

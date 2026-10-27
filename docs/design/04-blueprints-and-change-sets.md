@@ -95,7 +95,7 @@ spec:
 ```
 
 - The record lives in Git, in the catalog repository under `instances/`, or in the target repository's `.quai/instances/` when every resource is in that one repository, as `<blueprint>/<instance>.yaml`. Its `spec.inputs` are the form values with the schema's defaults applied. It is part of the same change set, so Git remains the source of truth.
-- Day-2 actions on an instance read the record, then the current content of each resource.
+- Day-2 actions on an instance read the record, then the current content of each resource. An action's `values` are merged into a resource's current document (nested mappings merge, anything else is replaced), and an `action` runs one of the type's actions with its inputs; a resource the action leaves as it is drops out of the change set. The approval is the union of the floor and type rules of each changed resource, which see its document as it will be and as it was, and of the blueprint's rules, or of the action's own `approval` when it has one. The request's target is the instance (`<blueprint>/<instance>`), so one action runs on an instance at a time.
 - If someone deletes one of the resources by hand, the instance shows it as missing and offers to re-create or detach it.
 
 ## Change sets

@@ -9,9 +9,10 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"net/http"
 	"path"
-	"sort"
+	"slices"
 	"strings"
 	"testing/fstest"
 	"time"
@@ -51,6 +52,8 @@ type InstanceView struct {
 	Path             string             `json:"path"`
 	Inputs           map[string]any     `json:"inputs"`
 	Resources        []InstanceResource `json:"resources"`
+	CanOperate       bool               `json:"canOperate,omitempty" doc:"Whether the caller may run the blueprint's actions on the instance (on one instance only)"`
+	Requests         []RequestSummary   `json:"requests,omitempty" doc:"The latest requests on the instance that the caller may read (on one instance only)"`
 }
 
 // CommitText is a commit as git shows it: header, message and patch.
@@ -206,6 +209,10 @@ func registerHistory(a huma.API, reg *repositories.Registry, s *store.Store) {
 					inst.Resources[i].Exists, inst.Resources[i].Status = true, res.Status
 				}
 			}
+			inst.CanOperate = allowed(ctx, authz.OperateResource, ownedObject(in.Repository, inst.Blueprint, inst.Owner))
+			if inst.Requests, err = requestSummaries(ctx, s, in.Repository, inst.Blueprint+"/"+inst.Name); err != nil {
+				return nil, err
+			}
 			return &out[InstanceView]{Body: inst}, nil
 		}
 		return nil, huma.Error404NotFound("no instance " + in.Blueprint + "/" + in.Name)
@@ -356,35 +363,16 @@ func instances(snap *repositories.Snapshot) []InstanceView {
 	files, _ := fs.Glob(snap.FS, plan.InstancesDir+"/*/*.yaml")
 	views := []InstanceView{}
 	for _, f := range files {
-		src, err := fs.ReadFile(snap.FS, f)
+		inst, err := plan.ReadInstance(snap.FS, f)
 		if err != nil {
 			continue
 		}
-		decoded, err := yamledit.Decode(src)
-		doc, _ := decoded.(map[string]any)
-		if err != nil || doc == nil || doc["kind"] != "Instance" {
-			continue
+		v := InstanceView{Repository: snap.Repository, Path: f, Name: inst.Name, Blueprint: inst.Blueprint, BlueprintVersion: inst.BlueprintVersion,
+			Owner: inst.Owner, Inputs: inst.Inputs, Resources: []InstanceResource{}}
+		for _, id := range slices.Sorted(maps.Keys(inst.Resources)) {
+			v.Resources = append(v.Resources, InstanceResource{ID: id, Resource: inst.Resources[id]})
 		}
-		meta, _ := doc["metadata"].(map[string]any)
-		spec, _ := doc["spec"].(map[string]any)
-		v := InstanceView{Repository: snap.Repository, Path: f, Resources: []InstanceResource{}, Inputs: map[string]any{}}
-		v.Name, _ = meta["name"].(string)
-		v.Blueprint, _ = meta["blueprint"].(string)
-		v.BlueprintVersion, _ = meta["blueprintVersion"].(string)
-		v.Owner, _ = meta["owner"].(string)
-		if inputs, ok := spec["inputs"].(map[string]any); ok {
-			v.Inputs = inputs
-		}
-		resources, _ := spec["resources"].(map[string]any)
-		for id, rid := range resources {
-			if s, ok := rid.(string); ok {
-				v.Resources = append(v.Resources, InstanceResource{ID: id, Resource: s})
-			}
-		}
-		sort.Slice(v.Resources, func(i, j int) bool { return v.Resources[i].ID < v.Resources[j].ID })
-		if v.Name != "" && strings.HasPrefix(f, plan.InstancesDir+"/"+v.Blueprint+"/") {
-			views = append(views, v)
-		}
+		views = append(views, v)
 	}
 	return views
 }

@@ -3,8 +3,8 @@
 import { queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { cancelRequest, createToken, getBlueprint, getInstance, getMe, getMeta, getRequest, getResource, getType, listCatalog, listEvents, listInstances, listInventory, listRepositories, listRequests, listTokens, type Options, planBlueprint, planType, publishBlueprint, reportRun, repositoryCommit, repositoryLog, requestBlueprint, requestType, retryRequest, reviewRequest, revokeToken, syncRepository } from '../sdk.gen';
-import type { CancelRequestData, CancelRequestError, CancelRequestResponse, CreateTokenData, CreateTokenError, CreateTokenResponse, GetBlueprintData, GetBlueprintError, GetBlueprintResponse, GetInstanceData, GetInstanceError, GetInstanceResponse, GetMeData, GetMeError, GetMeResponse, GetMetaData, GetMetaError, GetMetaResponse, GetRequestData, GetRequestError, GetRequestResponse, GetResourceData, GetResourceError, GetResourceResponse, GetTypeData, GetTypeError, GetTypeResponse, ListCatalogData, ListCatalogError, ListCatalogResponse, ListEventsData, ListEventsError, ListEventsResponse, ListInstancesData, ListInstancesError, ListInstancesResponse, ListInventoryData, ListInventoryError, ListInventoryResponse, ListRepositoriesData, ListRepositoriesError, ListRepositoriesResponse, ListRequestsData, ListRequestsError, ListRequestsResponse, ListTokensData, ListTokensError, ListTokensResponse, PlanBlueprintData, PlanBlueprintError, PlanBlueprintResponse, PlanTypeData, PlanTypeError, PlanTypeResponse, PublishBlueprintData, PublishBlueprintError, PublishBlueprintResponse, ReportRunData, ReportRunError, ReportRunResponse, RepositoryCommitData, RepositoryCommitError, RepositoryCommitResponse, RepositoryLogData, RepositoryLogError, RepositoryLogResponse, RequestBlueprintData, RequestBlueprintError, RequestBlueprintResponse, RequestTypeData, RequestTypeError, RequestTypeResponse, RetryRequestData, RetryRequestError, RetryRequestResponse, ReviewRequestData, ReviewRequestError, ReviewRequestResponse, RevokeTokenData, RevokeTokenError, RevokeTokenResponse, SyncRepositoryData, SyncRepositoryError, SyncRepositoryResponse } from '../types.gen';
+import { cancelRequest, createToken, getBlueprint, getInstance, getMe, getMeta, getRequest, getResource, getType, listCatalog, listEvents, listInstances, listInventory, listRepositories, listRequests, listTokens, type Options, planBlueprint, planInstanceAction, planType, publishBlueprint, reportRun, repositoryCommit, repositoryLog, requestBlueprint, requestInstanceAction, requestType, retryRequest, reviewRequest, revokeToken, syncRepository } from '../sdk.gen';
+import type { CancelRequestData, CancelRequestError, CancelRequestResponse, CreateTokenData, CreateTokenError, CreateTokenResponse, GetBlueprintData, GetBlueprintError, GetBlueprintResponse, GetInstanceData, GetInstanceError, GetInstanceResponse, GetMeData, GetMeError, GetMeResponse, GetMetaData, GetMetaError, GetMetaResponse, GetRequestData, GetRequestError, GetRequestResponse, GetResourceData, GetResourceError, GetResourceResponse, GetTypeData, GetTypeError, GetTypeResponse, ListCatalogData, ListCatalogError, ListCatalogResponse, ListEventsData, ListEventsError, ListEventsResponse, ListInstancesData, ListInstancesError, ListInstancesResponse, ListInventoryData, ListInventoryError, ListInventoryResponse, ListRepositoriesData, ListRepositoriesError, ListRepositoriesResponse, ListRequestsData, ListRequestsError, ListRequestsResponse, ListTokensData, ListTokensError, ListTokensResponse, PlanBlueprintData, PlanBlueprintError, PlanBlueprintResponse, PlanInstanceActionData, PlanInstanceActionError, PlanInstanceActionResponse, PlanTypeData, PlanTypeError, PlanTypeResponse, PublishBlueprintData, PublishBlueprintError, PublishBlueprintResponse, ReportRunData, ReportRunError, ReportRunResponse, RepositoryCommitData, RepositoryCommitError, RepositoryCommitResponse, RepositoryLogData, RepositoryLogError, RepositoryLogResponse, RequestBlueprintData, RequestBlueprintError, RequestBlueprintResponse, RequestInstanceActionData, RequestInstanceActionError, RequestInstanceActionResponse, RequestTypeData, RequestTypeError, RequestTypeResponse, RetryRequestData, RetryRequestError, RetryRequestResponse, ReviewRequestData, ReviewRequestError, ReviewRequestResponse, RevokeTokenData, RevokeTokenError, RevokeTokenResponse, SyncRepositoryData, SyncRepositoryError, SyncRepositoryResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -183,6 +183,23 @@ export const planBlueprintMutation = (options?: Partial<Options<PlanBlueprintDat
 };
 
 /**
+ * Plan a day-2 action on a blueprint instance
+ */
+export const planInstanceActionMutation = (options?: Partial<Options<PlanInstanceActionData>>): UseMutationOptions<PlanInstanceActionResponse, PlanInstanceActionError, Options<PlanInstanceActionData>> => {
+    const mutationOptions: UseMutationOptions<PlanInstanceActionResponse, PlanInstanceActionError, Options<PlanInstanceActionData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await planInstanceAction({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
  * Plan a change to a resource
  */
 export const planTypeMutation = (options?: Partial<Options<PlanTypeData>>): UseMutationOptions<PlanTypeResponse, PlanTypeError, Options<PlanTypeData>> => {
@@ -348,6 +365,23 @@ export const requestBlueprintMutation = (options?: Partial<Options<RequestBluepr
     const mutationOptions: UseMutationOptions<RequestBlueprintResponse, RequestBlueprintError, Options<RequestBlueprintData>> = {
         mutationFn: async (fnOptions) => {
             const { data } = await requestBlueprint({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Request a day-2 action on a blueprint instance
+ */
+export const requestInstanceActionMutation = (options?: Partial<Options<RequestInstanceActionData>>): UseMutationOptions<RequestInstanceActionResponse, RequestInstanceActionError, Options<RequestInstanceActionData>> => {
+    const mutationOptions: UseMutationOptions<RequestInstanceActionResponse, RequestInstanceActionError, Options<RequestInstanceActionData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await requestInstanceAction({
                 ...options,
                 ...fnOptions,
                 throwOnError: true
