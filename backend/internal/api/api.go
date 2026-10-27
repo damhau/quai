@@ -69,6 +69,7 @@ type MetaOutput struct {
 }
 
 func registerMeta(a huma.API, opts Options) {
+	// authz: public — the version and environment, for clients and probes.
 	huma.Register(a, huma.Operation{
 		OperationID: "get-meta",
 		Method:      http.MethodGet,

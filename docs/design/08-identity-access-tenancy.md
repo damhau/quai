@@ -85,6 +85,20 @@ scope. Every API handler and worker job goes through it; a lint check fails the
 build if a handler under `internal/api` does not call it. Externalizing the
 policy to OPA or Cedar later is possible behind the same function.
 
+The check is a test in `internal/api`: every operation registered with Huma must
+call `authz.Authorize`, directly or through a function of the package, unless the
+comment just above its registration says `authz: public` (only `/api/v1/meta` so
+far). Decisions the roles do not spell out:
+
+- A platform admin can do everything except use break-glass, which needs its own
+  role and never applies to one's own request.
+- Anyone can read and cancel their own requests; reviewing needs access to the
+  request, and the request's approval rules decide whose review counts.
+- Operating a resource needs the operator role and ownership: the owner, a member
+  of the owning team (the IdP group of the team's name), or a platform admin.
+- Entitlements are group patterns (`group:data-*`) or names (`user:zoe`); an empty
+  list does not restrict.
+
 ## Sessions and accounts
 
 - Sessions expire after 8 hours of activity and 30 minutes idle (configurable), and are revoked on logout and on SCIM deactivation.
