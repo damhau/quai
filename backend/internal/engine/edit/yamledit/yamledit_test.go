@@ -32,27 +32,6 @@ func mustDecode(t testing.TB, src []byte) any {
 	return doc
 }
 
-// with returns a deep copy of doc with the value at p set to v.
-func with(doc any, p path, v any) any {
-	if len(p) == 0 {
-		return v
-	}
-	switch d := doc.(type) {
-	case map[string]any:
-		out := make(map[string]any, len(d))
-		for k, item := range d {
-			out[k] = item
-		}
-		out[p[0].(string)] = with(d[p[0].(string)], p[1:], v)
-		return out
-	case []any:
-		out := slices.Clone(d)
-		out[p[0].(int)] = with(d[p[0].(int)], p[1:], v)
-		return out
-	}
-	panic("with: path does not exist")
-}
-
 // changedLines returns the lines that differ between two texts with the same number of lines.
 func changedLines(t *testing.T, before, after string) (removed, added []string) {
 	t.Helper()
@@ -203,6 +182,8 @@ func TestEditScalars(t *testing.T) {
 		{"strip chomping", "d: |-\n  one\nn: 1\n", path{"d"}, "two", "d: |-\n  two\nn: 1\n"},
 		{"keep chomping is replaced", "d: |+\n  one\n\nn: 1\n", path{"d"}, "two\n", "d: |\n  two\n\nn: 1\n"},
 		{"folded block becomes literal", "d: >\n  one\n  two\nn: 1\n", path{"d"}, "three\n", "d: |\n  three\nn: 1\n"},
+		{"literal block after a comment", "d: x # note\nn: 1\n", path{"d"}, "a\nb\n", "d: | # note\n  a\n  b\nn: 1\n"},
+		{"literal block after a comment with crlf", "d: x # note\r\n", path{"d"}, "a\nb", "d: |- # note\r\n  a\r\n  b\r\n"},
 		{"literal block to a single line", "d: |\n  one\n", path{"d"}, "two", "d: |-\n  two\n"},
 		{"empty literal block", "d: |\nn: 1\n", path{"d"}, "x\n", "d: |\n  x\nn: 1\n"},
 		{"literal block in a sequence item mapping", "l:\n  - d: |\n      one\n    n: 1\n", path{"l", 0, "d"}, "two\n", "l:\n  - d: |\n      two\n    n: 1\n"},
@@ -239,11 +220,6 @@ func TestEditRefuses(t *testing.T) {
 		{"indentation indicator", "d: |2\n   x\n", func(d any) any { return with(d, path{"d"}, "y\n") }, "$.d", "indentation indicator"},
 		{"comment after a block header", "d: | # note\n  x\n", func(d any) any { return with(d, path{"d"}, "y\n") }, "$.d", "comment follows"},
 		{"empty value in a flow mapping", "m: {a: }\n", func(d any) any { return with(d, path{"m", "a"}, 1) }, "$.m.a", "flow collection"},
-		{"added key", "a: 1\n", func(any) any { return map[string]any{"a": 1, "b": 2} }, "$.b", "adding a key"},
-		{"removed key", "a: 1\nb: 2\n", func(any) any { return map[string]any{"a": 1} }, "$.b", "removing a key"},
-		{"added list item", "l: [1]\n", func(any) any { return map[string]any{"l": []any{1, 2}} }, "$.l", "list items"},
-		{"scalar to mapping", "a: 1\n", func(any) any { return map[string]any{"a": map[string]any{"b": 1}} }, "$.a", "between a scalar"},
-		{"empty file", "", func(any) any { return map[string]any{"a": 1} }, "$", "between a scalar"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -265,11 +241,12 @@ func TestEditRefuses(t *testing.T) {
 
 func TestEditRejectsInvalidIntent(t *testing.T) {
 	for name, want := range map[string]any{
-		"unsupported type": map[string]any{"a": struct{}{}},
-		"NaN":              map[string]any{"a": math.NaN()},
-		"infinity":         []any{math.Inf(1)},
-		"invalid UTF-8":    map[string]any{"a": "\xff"},
-		"invalid number":   map[string]any{"a": json.Number("x")},
+		"unsupported type":  map[string]any{"a": struct{}{}},
+		"NaN":               map[string]any{"a": math.NaN()},
+		"infinity":          []any{math.Inf(1)},
+		"invalid UTF-8":     map[string]any{"a": "\xff"},
+		"invalid UTF-8 key": map[string]any{"\xff": 1},
+		"invalid number":    map[string]any{"a": json.Number("x")},
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := Edit([]byte("a: 1\n"), want)

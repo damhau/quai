@@ -1,0 +1,4 @@
+# A key added to a nested mapping goes after its last entry, indented like its siblings.
+set:
+  - path: [tags, env]
+    value: prod

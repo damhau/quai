@@ -1,0 +1,13 @@
+owner: bob
+description: CI build agent
+template: ubuntu-24.04
+cpu: 8
+memory_gb: 16
+disks:
+  - size_gb: 100
+network:
+  vlan: 110
+backup: false
+tags:
+  app: ci
+  cost_center: "4711"

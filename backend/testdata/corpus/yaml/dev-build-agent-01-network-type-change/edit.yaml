@@ -1,0 +1,8 @@
+# Several changes in one mapping: a key removed, one added, one changed.
+delete:
+  - path: [network, vlan]
+set:
+  - path: [network, ip]
+    value: 10.0.11.40
+  - path: [network, dns]
+    value: [10.0.0.53, 10.0.1.53]

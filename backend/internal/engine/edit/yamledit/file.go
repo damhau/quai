@@ -20,7 +20,9 @@ type file struct {
 	body  ast.Node // the document's root node; nil for an empty document
 	value any      // the decoded, normalized document
 	quote byte     // quote character for strings that need quoting
-	width int      // indentation step, in columns
+	width int      // indentation step of nested mappings, in columns
+	seq   int      // indentation of a block sequence under its key: width, or 0 for `key:\n- item`
+	item  int      // offset from an item's '-' to its content, usually 2 for "- "
 }
 
 func parse(src []byte) (*file, error) {
@@ -41,9 +43,12 @@ func parse(src []byte) (*file, error) {
 	if err != nil {
 		return nil, refuse(nil, "%v", err)
 	}
-	f := &file{src: src, lines: lineStarts(src), value: value, quote: '"', width: 2}
+	f := &file{src: src, lines: lineStarts(src), value: value, quote: '"', width: 2, seq: -1, item: 2}
 	if len(tree.Docs) == 1 {
 		f.body = tree.Docs[0].Body
+	}
+	if _, ok := f.body.(*ast.CommentGroupNode); ok {
+		f.body = nil // only comments
 	}
 	f.detectConventions()
 	return f, nil
@@ -92,32 +97,55 @@ func lineStarts(src []byte) []int {
 	return starts
 }
 
-// detectConventions sets the quote character and indentation step the file already uses.
+// detectConventions sets the quote character, indentation step and sequence style the file
+// already uses, from the first examples it finds; files without examples get the defaults.
 func (f *file) detectConventions() {
-	if f.body != nil {
-		var single, double int
-		ast.Walk(visitFunc(func(n ast.Node) {
-			switch n.GetToken().Type {
-			case token.SingleQuoteType:
-				single++
-			case token.DoubleQuoteType:
-				double++
-			}
-		}), f.body)
-		if single > double {
-			f.quote = '\''
-		}
+	if f.body == nil {
+		f.seq = f.width
+		return
 	}
-	width := 0
-	for _, line := range strings.Split(string(f.src), "\n") {
-		content := strings.TrimLeft(line, " ")
-		indent := len(line) - len(content)
-		if indent > 0 && strings.TrimSpace(content) != "" && !strings.HasPrefix(content, "#") && (width == 0 || indent < width) {
-			width = indent
+	var single, double int
+	width, seq, item := 0, -1, 0
+	ast.Walk(visitFunc(func(n ast.Node) {
+		switch n.GetToken().Type {
+		case token.SingleQuoteType:
+			single++
+		case token.DoubleQuoteType:
+			double++
 		}
+		switch n := n.(type) {
+		case *ast.MappingValueNode:
+			keyCol := n.Key.GetToken().Position.Column
+			switch v := n.Value.(type) {
+			case *ast.MappingNode:
+				if !v.IsFlowStyle && len(v.Values) > 0 && width == 0 {
+					width = max(v.Values[0].Key.GetToken().Position.Column-keyCol, 0)
+				}
+			case *ast.SequenceNode:
+				if !v.IsFlowStyle && len(v.Entries) > 0 && seq < 0 {
+					seq = max(v.Entries[0].Start.Position.Column-keyCol, 0)
+				}
+			}
+		case *ast.SequenceNode:
+			for i, entry := range n.Entries {
+				if m, ok := n.Values[i].(*ast.MappingNode); ok && !n.IsFlowStyle && !m.IsFlowStyle && len(m.Values) > 0 && item == 0 {
+					item = m.Values[0].Key.GetToken().Position.Column - entry.Start.Position.Column
+				}
+			}
+		}
+	}), f.body)
+	if single > double {
+		f.quote = '\''
 	}
 	if width > 0 {
 		f.width = width
+	}
+	f.seq = f.width
+	if seq >= 0 {
+		f.seq = seq
+	}
+	if item >= 2 {
+		f.item = item
 	}
 }
 
@@ -267,99 +295,203 @@ type slot struct {
 	blockIndent int        // content indentation of the original block scalar, if it is one
 	indent      int        // indentation of the entry holding the value
 	flow        bool
+	nl          string // line break for multi-line replacements
 }
 
 // slot finds the bytes of the scalar at loc.
 func (f *file) slot(loc location, p path) (slot, error) {
 	s := slot{kind: loc.node.GetToken().Type, indent: loc.indent, flow: loc.flow, block: !loc.flow && loc.owner != nil}
-	switch n := loc.node.(type) {
-	case *ast.LiteralNode:
-		return f.blockSlot(n, s, p)
-	case *ast.NullNode:
-		if n.Token.Type == token.ImplicitNullType {
-			return f.emptySlot(loc, s, p)
+	if isEmpty(loc.node) {
+		if loc.flow || loc.owner == nil {
+			return slot{}, refuse(p, "cannot fill an empty value in a flow collection")
 		}
+		_, at, err := f.tokenSpan(loc.owner, p)
+		if err != nil {
+			return slot{}, err
+		}
+		s.start, s.end, s.insert, s.block, s.nl = at, at, true, false, f.newline(at)
+		return s, nil
 	}
-	tk := loc.node.GetToken()
+	if _, ok := loc.node.(*ast.LiteralNode); ok && !s.block {
+		return slot{}, refuse(p, "the block scalar is not inside a block mapping or sequence")
+	}
+	start, end, blockIndent, err := f.scalarSpan(loc.node, loc.indent, p)
+	if err != nil {
+		return slot{}, err
+	}
+	s.start, s.end, s.blockIndent, s.nl = start, end, blockIndent, f.newline(start)
+	return s, nil
+}
+
+// isEmpty reports whether n is an empty value (`key:` or `-`), which has no bytes of its own.
+func isEmpty(n ast.Node) bool {
+	null, ok := n.(*ast.NullNode)
+	return ok && null.Token.Type == token.ImplicitNullType
+}
+
+// scalarSpan returns the bytes of a scalar node. indent is the indentation of the entry holding
+// it, which bounds the content of a block scalar. For a block scalar it also returns the content
+// indentation.
+func (f *file) scalarSpan(n ast.Node, indent int, p path) (start, end, blockIndent int, err error) {
+	if lit, ok := n.(*ast.LiteralNode); ok {
+		return f.blockSpan(lit, indent, p)
+	}
+	tk := n.GetToken()
 	start, ok := f.offset(tk.Position)
 	if !ok {
-		return slot{}, refuse(p, "the value's position is outside the file")
+		return 0, 0, 0, refuse(p, "the value's position is outside the file")
 	}
 	raw := strings.TrimSpace(tk.Origin)
-	end := start + len(raw)
+	end = start + len(raw)
 	if raw == "" || !bytes.HasPrefix(f.src[start:], []byte(raw)) {
-		return slot{}, refuse(p, "the value's bytes are not where the syntax tree places them")
+		return 0, 0, 0, refuse(p, "the value's bytes are not where the syntax tree places them")
 	}
 	switch tk.Type {
 	case token.DoubleQuoteType, token.SingleQuoteType:
 		if quotedEnd(f.src, start) != end {
-			return slot{}, refuse(p, "the quoted value's bytes are not where the syntax tree places them")
+			return 0, 0, 0, refuse(p, "the quoted value's bytes are not where the syntax tree places them")
 		}
 	default:
 		// A plain scalar, possibly folded over several lines: its words must be the token's.
 		if strings.Join(strings.Fields(raw), " ") != strings.Join(strings.Fields(tk.Value), " ") {
-			return slot{}, refuse(p, "the value's bytes are not where the syntax tree places them")
+			return 0, 0, 0, refuse(p, "the value's bytes are not where the syntax tree places them")
 		}
 	}
-	s.start, s.end = start, end
-	return s, nil
+	return start, end, 0, nil
 }
 
-// emptySlot handles an empty value (`key:` or `-`): the replacement goes right after the
-// indicator.
-func (f *file) emptySlot(loc location, s slot, p path) (slot, error) {
-	if loc.flow || loc.owner == nil {
-		return slot{}, refuse(p, "cannot fill an empty value in a flow collection")
-	}
-	at, ok := f.offset(loc.owner.Position)
-	if !ok || !bytes.HasPrefix(f.src[at:], []byte(loc.owner.Value)) {
-		return slot{}, refuse(p, "the entry's bytes are not where the syntax tree places them")
-	}
-	at += len(loc.owner.Value)
-	s.start, s.end, s.insert, s.block = at, at, true, false
-	return s, nil
-}
-
-// blockSlot handles a block scalar (`|` or `>`): the span runs from the header to the end of the
+// blockSpan handles a block scalar (`|` or `>`): the span runs from the header to the end of the
 // last non-blank content line, so the line break after it and any trailing blank lines stay.
-func (f *file) blockSlot(n *ast.LiteralNode, s slot, p path) (slot, error) {
-	if !s.block {
-		return slot{}, refuse(p, "the block scalar is not inside a block mapping or sequence")
-	}
+func (f *file) blockSpan(n *ast.LiteralNode, indent int, p path) (start, end, contentIndent int, err error) {
 	header := n.Start.Value
 	start, ok := f.offset(n.Start.Position)
 	if !ok || !bytes.HasPrefix(f.src[start:], []byte(header)) {
-		return slot{}, refuse(p, "the block scalar's bytes are not where the syntax tree places them")
+		return 0, 0, 0, refuse(p, "the block scalar's bytes are not where the syntax tree places them")
 	}
 	if strings.ContainsAny(header, "123456789") {
-		return slot{}, refuse(p, "the block scalar has an explicit indentation indicator")
+		return 0, 0, 0, refuse(p, "the block scalar has an explicit indentation indicator")
 	}
-	end := start + len(header)
+	end = start + len(header)
 	lineEnd := end + indexOrEnd(f.src[end:], '\n')
 	if strings.TrimSpace(string(f.src[end:lineEnd])) != "" {
-		return slot{}, refuse(p, "a comment follows the block scalar header")
+		return 0, 0, 0, refuse(p, "a comment follows the block scalar header")
 	}
-	contentIndent := 0
 	for at := lineEnd + 1; at < len(f.src); {
 		next := at + indexOrEnd(f.src[at:], '\n')
 		line := strings.TrimSuffix(string(f.src[at:next]), "\r")
 		if strings.TrimLeft(line, " ") != "" {
-			indent := len(line) - len(strings.TrimLeft(line, " "))
+			lineIndent := len(line) - len(strings.TrimLeft(line, " "))
 			if contentIndent == 0 {
-				if indent <= s.indent {
+				if lineIndent <= indent {
 					break
 				}
-				contentIndent = indent
+				contentIndent = lineIndent
 			}
-			if indent < contentIndent {
+			if lineIndent < contentIndent {
 				break
 			}
 			end = at + len(line)
 		}
 		at = next + 1
 	}
-	s.start, s.end, s.blockIndent = start, end, contentIndent
-	return s, nil
+	return start, end, contentIndent, nil
+}
+
+// tokenSpan returns the bytes of a token, such as a key, an indicator or a bracket.
+func (f *file) tokenSpan(tk *token.Token, p path) (start, end int, err error) {
+	start, ok := f.offset(tk.Position)
+	raw := strings.TrimSpace(tk.Origin)
+	if !ok || raw == "" || !bytes.HasPrefix(f.src[start:], []byte(raw)) {
+		return 0, 0, refuse(p, "the syntax tree's positions do not match the file")
+	}
+	return start, start + len(raw), nil
+}
+
+// nodeStart returns the offset of the first byte of n.
+func (f *file) nodeStart(n ast.Node, p path) (int, error) {
+	var tk *token.Token
+	switch n := n.(type) {
+	case *ast.MappingNode:
+		if n.IsFlowStyle || len(n.Values) == 0 {
+			tk = n.Start
+		} else {
+			return f.nodeStart(n.Values[0].Key, p)
+		}
+	case *ast.MappingValueNode:
+		return f.nodeStart(n.Key, p)
+	case *ast.SequenceNode:
+		tk = n.Start
+		if !n.IsFlowStyle && len(n.Entries) > 0 {
+			tk = n.Entries[0].Start
+		}
+	case *ast.LiteralNode:
+		tk = n.Start
+	case *ast.TagNode:
+		tk = n.Start
+	case *ast.AnchorNode:
+		tk = n.Start
+	case *ast.AliasNode:
+		tk = n.Start
+	default:
+		tk = n.GetToken()
+	}
+	start, _, err := f.tokenSpan(tk, p)
+	return start, err
+}
+
+// nodeEnd returns the offset just past the last byte of n, not counting a trailing comment.
+// indent is the indentation of the entry holding n.
+func (f *file) nodeEnd(n ast.Node, indent int, p path) (int, error) {
+	switch n := n.(type) {
+	case *ast.MappingNode:
+		if n.IsFlowStyle || len(n.Values) == 0 {
+			_, end, err := f.tokenSpan(n.End, p)
+			return end, err
+		}
+		return f.entryEnd(n.Values[len(n.Values)-1], p)
+	case *ast.MappingValueNode:
+		return f.entryEnd(n, p)
+	case *ast.SequenceNode:
+		if n.IsFlowStyle || len(n.Values) == 0 {
+			_, end, err := f.tokenSpan(n.End, p)
+			return end, err
+		}
+		last := len(n.Values) - 1
+		if last >= len(n.Entries) {
+			return 0, refuse(p, "the syntax tree's positions do not match the file")
+		}
+		return f.itemEnd(n.Entries[last].Start, n.Values[last], p)
+	case *ast.TagNode:
+		return f.nodeEnd(n.Value, indent, p)
+	case *ast.AnchorNode:
+		return f.nodeEnd(n.Value, indent, p)
+	case *ast.AliasNode:
+		_, end, err := f.tokenSpan(n.Value.GetToken(), p)
+		return end, err
+	}
+	if isEmpty(n) {
+		return 0, refuse(p, "the syntax tree's positions do not match the file")
+	}
+	_, end, _, err := f.scalarSpan(n, indent, p)
+	return end, err
+}
+
+// entryEnd returns the end of a mapping entry's value, or of its ':' when the value is empty.
+func (f *file) entryEnd(mv *ast.MappingValueNode, p path) (int, error) {
+	if isEmpty(mv.Value) {
+		_, end, err := f.tokenSpan(mv.Start, p)
+		return end, err
+	}
+	return f.nodeEnd(mv.Value, mv.Key.GetToken().Position.Column-1, p)
+}
+
+// itemEnd returns the end of a block sequence item, or of its '-' when the item is empty.
+func (f *file) itemEnd(dash *token.Token, value ast.Node, p path) (int, error) {
+	if isEmpty(value) {
+		_, end, err := f.tokenSpan(dash, p)
+		return end, err
+	}
+	return f.nodeEnd(value, dash.Position.Column-1, p)
 }
 
 func indexOrEnd(b []byte, c byte) int {
@@ -367,6 +499,17 @@ func indexOrEnd(b []byte, c byte) int {
 		return i
 	}
 	return len(b)
+}
+
+// lineStart returns the offset of the start of the line holding at.
+func (f *file) lineStart(at int) int {
+	return bytes.LastIndexByte(f.src[:at], '\n') + 1
+}
+
+// lineAfter returns the offset of the start of the line after the one holding at, or the end of
+// the file when that line is the last one and has no line break.
+func (f *file) lineAfter(at int) int {
+	return at + min(indexOrEnd(f.src[at:], '\n')+1, len(f.src)-at)
 }
 
 // quotedEnd returns the offset just past the quoted scalar starting at src[start], or -1.
@@ -393,20 +536,34 @@ func (f *file) newline(at int) string {
 		}
 		return "\n"
 	}
-	if bytes.HasSuffix(f.src[:at], []byte("\r\n")) || bytes.Contains(f.src, []byte("\r\n")) {
+	if bytes.Contains(f.src, []byte("\r\n")) {
 		return "\r\n"
 	}
 	return "\n"
 }
 
-// textEdit replaces src[start:end] with text.
+// hasAnchor reports whether n or anything inside it has an anchor, which aliases elsewhere may
+// depend on.
+func hasAnchor(n ast.Node) bool {
+	found := false
+	ast.Walk(visitFunc(func(n ast.Node) {
+		if _, ok := n.(*ast.AnchorNode); ok {
+			found = true
+		}
+	}), n)
+	return found
+}
+
+// textEdit replaces src[start:end] with text. Edits at the same offset apply deepest first, so
+// content added inside a node comes before content added after it.
 type textEdit struct {
 	start, end int
 	text       string
+	depth      int
 }
 
-// edit turns a scalar change into a text edit.
-func (f *file) edit(c change) (textEdit, error) {
+// setScalar turns a scalar change into a text edit.
+func (f *file) setScalar(c change) (textEdit, error) {
 	loc, err := f.locate(c.path)
 	if err != nil {
 		return textEdit{}, err
@@ -420,12 +577,9 @@ func (f *file) edit(c change) (textEdit, error) {
 	if err != nil {
 		return textEdit{}, err
 	}
-	text, err := f.render(c.to, s, c.path)
-	if err != nil {
-		return textEdit{}, err
-	}
+	text := f.render(c.to, s)
 	if s.insert {
 		text = " " + text
 	}
-	return textEdit{start: s.start, end: s.end, text: text}, nil
+	return f.keepLineComment(textEdit{start: s.start, end: s.end, text: text, depth: len(c.path)}), nil
 }

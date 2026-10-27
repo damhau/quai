@@ -1,0 +1,11 @@
+# Created before Quai. No owner on record: only platform admins can change it.
+description: Partner file drop (to be retired)
+template: rhel-9
+cpu: 2
+memory_gb: 4
+disks:
+  - size_gb: 200
+network:
+  vlan: 110
+backup: false
+owner: platform-team

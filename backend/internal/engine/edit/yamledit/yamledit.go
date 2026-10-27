@@ -11,8 +11,10 @@
 // Documents use the JSON data model: mappings with string keys, sequences, strings, numbers,
 // booleans and null. Numbers compare by value, so 8 and 8.0 are equal, but 8 and "8" are not.
 //
-// Only scalar changes are supported so far. Adding or removing keys and list items, and changing
-// a scalar into a mapping or a list, are refused.
+// Changes are made at the smallest node that differs: a scalar is replaced in place, a new entry
+// or item is inserted after its siblings in their style, a removed one takes its lines with it,
+// and a value whose type changes is replaced whole. New content follows the file's conventions
+// (indentation, sequence style, quote style, line endings); new keys are written in sorted order.
 package yamledit
 
 import (
@@ -36,20 +38,13 @@ func Edit(src []byte, want any) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	changes, err := diff(f.value, want, path{}, nil)
-	if err != nil {
-		return nil, err
-	}
+	changes := diff(f.value, want, path{}, nil)
 	if len(changes) == 0 {
 		return src, nil
 	}
-	edits := make([]textEdit, 0, len(changes))
-	for _, c := range changes {
-		e, err := f.edit(c)
-		if err != nil {
-			return nil, err
-		}
-		edits = append(edits, e)
+	edits, err := f.edits(changes)
+	if err != nil {
+		return nil, err
 	}
 	out, err := apply(src, edits)
 	if err != nil {

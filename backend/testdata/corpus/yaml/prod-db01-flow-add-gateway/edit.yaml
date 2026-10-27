@@ -1,0 +1,4 @@
+# A key added to a flow mapping goes inside the braces.
+set:
+  - path: [network, gw]
+    value: 10.0.13.1

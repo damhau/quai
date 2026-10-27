@@ -46,6 +46,15 @@ New content is rendered with the file's own conventions, detected from its
 siblings: indentation width, sequence indentation style, quote style for
 strings, line ending (LF or CRLF).
 
+Details the table leaves open:
+
+- **Several new keys** in one mapping are written in sorted order; the document model has no key order. (New files follow the schema's key order, which is the generator's job.)
+- **A removed entry's own comments** are its line comment and the comment lines directly above it at its indentation, with no blank line in between. Above the first entry of a mapping or list such comments usually describe the whole collection (or the file), so they stay.
+- **Flow collections** get the same changes inside their brackets: new entries after the last one with `, `, removed ones with their separator. A removal that would take a comment with it is refused.
+- **Lists** are compared item by item: equal items at both ends are kept, the items in between are compared pairwise (so a changed item is edited in place), and the surplus is inserted or removed. When no original item survives, the whole list is replaced. Mappings that share no key with the intended value are replaced the same way.
+- **Emptied collections** become `{}` or `[]`.
+- **A line comment after a value** that becomes several lines stays on the first line (`key: # note` followed by the new block), so it never ends up inside a block scalar's content.
+
 ### Scalars
 
 - Plain scalars are replaced by plain scalars when that is unambiguous. A string that would be read as another type (`"4711"`, `"yes"`, `"1e3"`, `"null"`) is quoted.

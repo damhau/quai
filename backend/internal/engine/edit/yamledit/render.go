@@ -13,22 +13,23 @@ import (
 )
 
 // render writes a normalized scalar as YAML text that fits s.
-func (f *file) render(v any, s slot, p path) (string, error) {
+func (f *file) render(v any, s slot) string {
 	switch v := v.(type) {
 	case nil:
-		return "null", nil
+		return "null"
 	case bool:
-		return strconv.FormatBool(v), nil
+		return strconv.FormatBool(v)
 	case int64:
-		return strconv.FormatInt(v, 10), nil
+		return strconv.FormatInt(v, 10)
 	case uint64:
-		return strconv.FormatUint(v, 10), nil
+		return strconv.FormatUint(v, 10)
 	case float64:
-		return formatFloat(v), nil
+		return formatFloat(v)
 	case string:
-		return f.renderString(v, s), nil
+		return f.renderString(v, s)
 	}
-	return "", fmt.Errorf("yamledit: %s: cannot write a value of type %T", p, v)
+	// Unreachable for normalized documents; verification would refuse the result.
+	return fmt.Sprint(v)
 }
 
 // formatFloat writes integral numbers as integers (the JSON data model does not tell them
@@ -55,7 +56,7 @@ func (f *file) renderString(v string, s slot) string {
 		if indent == 0 {
 			indent = s.indent + f.width
 		}
-		if lit, ok := literal(v, indent, f.newline(s.start)); ok {
+		if lit, ok := literal(v, indent, s.nl); ok {
 			return lit
 		}
 	}
@@ -155,4 +156,113 @@ func plainSafe(v string, flow bool) bool {
 	}
 	s, ok := got["k"].(string)
 	return ok && s == v
+}
+
+// renderKey writes a mapping key, quoting it when a plain key would not read back as the same
+// string.
+func (f *file) renderKey(k string, flow bool) string {
+	if plainSafe(k, flow) {
+		return k
+	}
+	if f.quote == '\'' {
+		if q, ok := singleQuoted(k); ok {
+			return q
+		}
+	}
+	return strconv.Quote(k)
+}
+
+// scalarText writes a scalar or an empty collection held by an entry at indent, in block
+// context.
+func (f *file) scalarText(v any, indent int, nl string) string {
+	switch v := v.(type) {
+	case map[string]any:
+		if len(v) == 0 {
+			return "{}"
+		}
+	case []any:
+		if len(v) == 0 {
+			return "[]"
+		}
+	}
+	return f.render(v, slot{kind: token.StringType, block: true, indent: indent, nl: nl})
+}
+
+// flowText writes v in flow style. New keys are written in sorted order.
+func (f *file) flowText(v any) string {
+	switch v := v.(type) {
+	case map[string]any:
+		parts := make([]string, 0, len(v))
+		for _, k := range sortedKeys(v) {
+			parts = append(parts, f.renderKey(k, true)+": "+f.flowText(v[k]))
+		}
+		return "{" + strings.Join(parts, ", ") + "}"
+	case []any:
+		parts := make([]string, len(v))
+		for i, item := range v {
+			parts[i] = f.flowText(item)
+		}
+		return "[" + strings.Join(parts, ", ") + "]"
+	}
+	return f.render(v, slot{kind: token.StringType, flow: true})
+}
+
+// isCollection reports whether v is a mapping or a list with something in it.
+func isCollection(v any) bool {
+	switch v := v.(type) {
+	case map[string]any:
+		return len(v) > 0
+	case []any:
+		return len(v) > 0
+	}
+	return false
+}
+
+// blockText writes a non-empty mapping or list in block style at indent, with the file's
+// indentation and sequence style, without a final line break. New keys are written in sorted
+// order.
+func (f *file) blockText(v any, indent int, nl string) string {
+	var lines []string
+	switch v := v.(type) {
+	case map[string]any:
+		for _, k := range sortedKeys(v) {
+			lines = append(lines, f.entryText(k, v[k], indent, nl))
+		}
+	case []any:
+		for _, item := range v {
+			lines = append(lines, f.itemText(item, indent, nl))
+		}
+	}
+	return strings.Join(lines, nl)
+}
+
+// entryText writes the mapping entry k: v with its key at indent.
+func (f *file) entryText(k string, v any, indent int, nl string) string {
+	return strings.Repeat(" ", indent) + f.renderKey(k, false) + ":" + f.valueText(v, indent, false, nl)
+}
+
+// itemText writes the sequence item v with its '-' at indent.
+func (f *file) itemText(v any, indent int, nl string) string {
+	return strings.Repeat(" ", indent) + "-" + f.valueText(v, indent, true, nl)
+}
+
+// valueText writes v as the value of an entry at indent: after "key:" or, when dash is set,
+// after "-". With indent -1, v is the whole document.
+func (f *file) valueText(v any, indent int, dash bool, nl string) string {
+	switch {
+	case !isCollection(v) && indent < 0:
+		return f.scalarText(v, 0, nl)
+	case !isCollection(v):
+		return " " + f.scalarText(v, indent, nl)
+	case indent < 0:
+		return f.blockText(v, 0, nl)
+	case dash:
+		// "- key: value" or "- - item": the first line shares the '-' line.
+		inner := f.blockText(v, indent+f.item, nl)
+		return strings.Repeat(" ", f.item-1) + inner[indent+f.item:]
+	}
+	if _, ok := v.(map[string]any); ok {
+		return nl + f.blockText(v, indent+f.width, nl)
+	}
+	return nl + f.blockText(v, indent+f.seq, nl)
 }

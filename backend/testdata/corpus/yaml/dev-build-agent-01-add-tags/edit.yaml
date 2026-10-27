@@ -1,0 +1,4 @@
+# A nested mapping added with the file's indentation; a numeric string is quoted.
+set:
+  - path: [tags]
+    value: {app: ci, cost_center: "4711"}

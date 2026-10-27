@@ -1,0 +1,4 @@
+# A list item added after the last one, in the same style.
+set:
+  - path: [disks, 1]
+    value: {size_gb: 200, tier: standard}

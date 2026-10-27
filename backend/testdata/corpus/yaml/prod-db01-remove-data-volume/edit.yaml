@@ -1,0 +1,3 @@
+# Removing a list item removes its lines, with its trailing comment, and nothing else.
+delete:
+  - path: [disks, 1]

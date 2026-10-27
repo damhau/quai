@@ -1,0 +1,4 @@
+# A new top-level key goes after the last entry; the header comment stays.
+set:
+  - path: [owner]
+    value: platform-team

@@ -1,0 +1,13 @@
+owner: bob
+description: CI build agent
+template: ubuntu-24.04
+cpu: 8
+memory_gb: 16
+disks:
+  - size_gb: 100
+network:
+  dns:
+    - 10.0.0.53
+    - 10.0.1.53
+  ip: 10.0.11.40
+backup: false

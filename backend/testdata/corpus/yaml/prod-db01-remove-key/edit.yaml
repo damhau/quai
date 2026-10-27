@@ -1,3 +1,3 @@
-# Removing a key is a structural edit, not supported before P0-03.
+# Removing a key removes its line and nothing else.
 delete:
   - path: [backup_policy]

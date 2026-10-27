@@ -8,8 +8,10 @@ import (
 	"testing"
 )
 
-// FuzzYAMLEdit changes one scalar of a random document to a random value. Edit may refuse, but
-// whatever it returns must parse, decode to the intent, and be left alone by the same edit.
+// FuzzYAMLEdit makes one random change to a random document: a new scalar, a removed or added
+// entry or item, or a new mapping or list in place of a value. Edit may refuse, but whatever it
+// returns must parse, decode to the intent, and be left alone by the same edit. That every byte
+// outside the edited spans is unchanged is verified inside Edit.
 func FuzzYAMLEdit(f *testing.F) {
 	inputs, _ := filepath.Glob(filepath.Join(corpusDir, "*", "input.yaml"))
 	for _, name := range inputs {
@@ -17,42 +19,34 @@ func FuzzYAMLEdit(f *testing.F) {
 		if err != nil {
 			f.Fatal(err)
 		}
-		f.Add(src, uint(3), uint8(0), "changed", int64(7))
+		for op := range uint8(9) {
+			f.Add(src, uint(3+op), op, "changed", int64(7))
+		}
 	}
 	for _, src := range []string{
 		"a: 1\nb: [x, 'y', \"z\"]\nc: {d: e}\n",
 		"l:\n  - |\n    text\n  - plain\n    folded\n",
 		"k: # empty\nm: { a: 1, b: 2 }\n",
 		"x: 'it''s'\r\ny: \"esc\\n\"\r\n",
+		"# header\nd:\n- a: 1\n  b: 2\n- c\n",
+		"m:\n    a: 1\n    # comment\n    b: [1, 2]\nn: {}\n",
 	} {
-		f.Add([]byte(src), uint(1), uint8(0), "a: b\nc", int64(-1))
+		for op := range uint8(9) {
+			f.Add([]byte(src), uint(op), op, "a: b\nc", int64(-1))
+		}
 	}
-	f.Fuzz(func(t *testing.T, src []byte, leaf uint, kind uint8, s string, n int64) {
+	f.Fuzz(func(t *testing.T, src []byte, target uint, op uint8, s string, n int64) {
 		doc, err := decode(src)
 		if err != nil {
 			return
 		}
-		leaves := scalarPaths(doc, path{}, nil)
-		if len(leaves) == 0 {
+		want, ok := mutate(doc, target, op, s, n)
+		if !ok {
 			return
 		}
-		var v any
-		switch kind % 5 {
-		case 0:
-			v = s
-		case 1:
-			v = n
-		case 2:
-			v = n%2 == 0
-		case 3:
-			v = nil
-		case 4:
-			v = float64(n) / 7
-		}
-		if _, err := normalize(v, nil); err != nil {
+		if _, err := normalize(want, nil); err != nil {
 			return
 		}
-		want := with(doc, leaves[leaf%uint(len(leaves))], v)
 
 		out, err := Edit(src, want)
 		if err != nil {
@@ -77,20 +71,65 @@ func FuzzYAMLEdit(f *testing.F) {
 	})
 }
 
-// scalarPaths appends the paths of every scalar in doc, in a stable order.
-func scalarPaths(doc any, p path, out []path) []path {
+// mutate returns doc with one change made to the node at paths[target], chosen by op.
+func mutate(doc any, target uint, op uint8, s string, n int64) (any, bool) {
+	paths := nodePaths(doc, path{}, nil)
+	p := paths[target%uint(len(paths))]
+	switch op % 9 {
+	case 0:
+		return with(doc, p, s), true
+	case 1:
+		return with(doc, p, n), true
+	case 2:
+		return with(doc, p, n%2 == 0), true
+	case 3:
+		return with(doc, p, nil), true
+	case 4:
+		return with(doc, p, float64(n)/7), true
+	case 5: // remove the entry or item
+		if len(p) == 0 {
+			return nil, false
+		}
+		return without(doc, p), true
+	case 6: // add an entry or insert an item
+		switch v := valueAt(doc, p).(type) {
+		case map[string]any:
+			return with(doc, p.key(s), n), true
+		case []any:
+			return with(doc, p, slices.Insert(slices.Clone(v), int(uint64(n)%uint64(len(v)+1)), any(s))), true
+		}
+		return nil, false
+	case 7:
+		return with(doc, p, map[string]any{s: n, "k": []any{s}}), true
+	default:
+		return with(doc, p, []any{s, map[string]any{"k": n}}), true
+	}
+}
+
+// nodePaths appends the paths of every node in doc, collections included, in a stable order.
+func nodePaths(doc any, p path, out []path) []path {
+	out = append(out, slices.Clone(p))
 	switch d := doc.(type) {
 	case map[string]any:
-		keys := sortedKeys(d)
-		for _, k := range keys {
-			out = scalarPaths(d[k], p.key(k), out)
+		for _, k := range sortedKeys(d) {
+			out = nodePaths(d[k], p.key(k), out)
 		}
 	case []any:
 		for i, item := range d {
-			out = scalarPaths(item, p.index(i), out)
+			out = nodePaths(item, p.index(i), out)
 		}
-	default:
-		out = append(out, slices.Clone(p))
 	}
 	return out
+}
+
+func valueAt(doc any, p path) any {
+	for _, step := range p {
+		switch d := doc.(type) {
+		case map[string]any:
+			doc = d[step.(string)]
+		case []any:
+			doc = d[step.(int)]
+		}
+	}
+	return doc
 }

@@ -95,21 +95,6 @@ func corpusPath(t *testing.T, steps []any) path {
 	return p
 }
 
-// without returns a copy of doc without the mapping entry at p.
-func without(doc any, p path) any {
-	m := doc.(map[string]any)
-	out := make(map[string]any, len(m))
-	for k, v := range m {
-		out[k] = v
-	}
-	if len(p) == 1 {
-		delete(out, p[0].(string))
-	} else {
-		out[p[0].(string)] = without(m[p[0].(string)], p[1:])
-	}
-	return out
-}
-
 func readFile(t *testing.T, name string) []byte {
 	t.Helper()
 	b, err := os.ReadFile(name)

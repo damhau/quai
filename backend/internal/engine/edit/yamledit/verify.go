@@ -7,8 +7,7 @@ import (
 
 // apply applies non-overlapping edits to src.
 func apply(src []byte, edits []textEdit) ([]byte, error) {
-	edits = slices.Clone(edits)
-	slices.SortFunc(edits, func(a, b textEdit) int { return a.start - b.start })
+	edits = sortEdits(edits)
 	var out bytes.Buffer
 	at := 0
 	for _, e := range edits {
@@ -49,8 +48,7 @@ func verify(src, out []byte, edits []textEdit, want any) error {
 // outsideUnchanged reports whether out is src with each edit's span replaced by its text and
 // nothing else.
 func outsideUnchanged(src, out []byte, edits []textEdit) bool {
-	edits = slices.Clone(edits)
-	slices.SortFunc(edits, func(a, b textEdit) int { return a.start - b.start })
+	edits = sortEdits(edits)
 	at, shift := 0, 0
 	for _, e := range edits {
 		gap := src[at:e.start]
@@ -63,4 +61,23 @@ func outsideUnchanged(src, out []byte, edits []textEdit) bool {
 		at = e.end
 	}
 	return bytes.Equal(out[min(at+shift, len(out)):], src[at:]) && len(out) == len(src)+shift
+}
+
+// sortEdits orders edits by offset; at the same offset, insertions come before replacements and
+// deeper edits before shallower ones.
+func sortEdits(edits []textEdit) []textEdit {
+	edits = slices.Clone(edits)
+	slices.SortStableFunc(edits, func(a, b textEdit) int {
+		if a.start != b.start {
+			return a.start - b.start
+		}
+		if ai, bi := a.end == a.start, b.end == b.start; ai != bi {
+			if ai {
+				return -1
+			}
+			return 1
+		}
+		return b.depth - a.depth
+	})
+	return edits
 }

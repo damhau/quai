@@ -1,0 +1,5 @@
+# A value with a line comment becomes a mapping: the comment stays on the key's line instead of
+# moving to the end of the new block (found by fuzzing, where it ended up inside a block scalar).
+set:
+  - path: [cpu]
+    value: {cores: 8, sockets: 1}

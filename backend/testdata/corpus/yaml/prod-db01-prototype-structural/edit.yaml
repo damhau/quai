@@ -1,0 +1,8 @@
+# The prototype's structural case: a key removed, a value changed and a mapping added.
+delete:
+  - path: [backup_policy]
+set:
+  - path: [backup]
+    value: false
+  - path: [tags]
+    value: {app: orders}
