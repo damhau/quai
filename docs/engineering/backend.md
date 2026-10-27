@@ -119,5 +119,6 @@ govulncheck ./...
 go test -race -count=1 ./...
 ```
 
-Plus the integration suite (testcontainers, see [testing](testing.md)) and a
-fuzzing smoke run of the editors (`go test -fuzz=. -fuzztime=60s` per fuzz target).
+Store and API tests start their own embedded PostgreSQL ([testing](testing.md)), so
+`go test` runs them too. Plus a fuzzing smoke run of the editors
+(`go test -fuzz=. -fuzztime=60s` per fuzz target).

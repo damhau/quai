@@ -12,6 +12,7 @@ Decisions still needed, with the default the plan assumes until they are answere
 | 2 | Pilot Server details: which collection(s) hold the IaC repositories, is the `/tfs` virtual directory in use, who can grant the service account its branch-folder permissions (`tf git permission`) and create the service hook subscription, and what maximum PAT lifetime does the Server allow? | URL parsing, registration wizard, rotation reminders | One collection, `/tfs` in use; a project collection administrator does the setup once; PAT lifetime 1 year | Phase 1 start |
 | 3 | Is Quai's approval the only authority, or must Azure DevOps required-reviewer policies also pass? | Auto-complete vs waiting for both; approver kinds | Quai is the sole authority ([ADR 0002](../adr/0002-quai-is-the-approval-authority.md)); Azure DevOps path-based reviewers feed Quai's rules through the `codeowners` approver kind | Phase 1 |
 | 4 | Is there an ITSM tool (ServiceNow, Jira Service Management) that must hold change records? | Phase 4 scope | ServiceNow in Phase 4 | Phase 4 |
+| 6 | Which PostgreSQL major version must Quai support at the pilot (the version the pilot can run on OpenShift)? | Tests run against one version (embedded PostgreSQL); the Helm chart and docs name it | PostgreSQL 17; tests run on 17 | P0-15 |
 
 ## Decided
 

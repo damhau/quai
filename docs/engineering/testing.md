@@ -8,9 +8,9 @@ Status: Draft · 2026-10-26
 | Golden | Generator and editor output, byte for byte | `testdata/golden/`, `-update` flag to regenerate deliberately | Every PR |
 | File-editing corpus | Real-world YAML, JSON, HCL files with edits and expected results | `testdata/corpus/` | Every PR |
 | Fuzzing | Editors: parse, decode-equals-intent, bytes-outside-region-unchanged, idempotence | `go test -fuzz` | 60 s per target on PRs; 1 h nightly |
-| Store | SQL queries and migrations against real PostgreSQL | testcontainers-go | Every PR |
+| Store | SQL queries and migrations against real PostgreSQL | Embedded PostgreSQL 17 (`internal/pgtest`, `fergusstrange/embedded-postgres`), or the database in `QUAI_TEST_DATABASE_URL` | Every PR |
 | Connector conformance | The shared suite in [Git connectors](../design/12-git-connectors.md#conformance-suite): branch, PR, status, enforcement, merge, policies, webhooks, throttling | **Azure DevOps Server (first):** recorded fixtures on every PR, plus a nightly run against a Server 2022 lab VM and, before each pilot release, against a test project on the pilot's Server. **Azure DevOps Services:** nightly run against a sandbox organization. **Gitea:** testcontainers on every PR. GitHub and GitLab added with their connectors. | PR (containers, fixtures), nightly (real platforms) |
-| API | Handlers end to end with a real database and a Gitea repository | `httptest`, testcontainers-go | Every PR |
+| API | Handlers end to end with a real database and real Git repositories | `httptest`, embedded PostgreSQL, local bare repositories (Gitea once its connector exists) | Every PR |
 | Jobs | Delivery, staleness, merge, run ingestion, retries after crashes | River test helpers, fault injection (kill a worker mid-job) | Every PR |
 | Frontend unit | Components, schema form, hooks | Vitest, Testing Library, MSW | Every PR |
 | End to end | Catalog → request → PR → approve → merge → run report → status, in a browser | Playwright against a compose stack (Quai, PostgreSQL, Gitea, a fake runner) | Every PR to `main` |
@@ -24,5 +24,5 @@ Principles:
 
 - **The engine is tested hardest.** It decides what gets written to customer repositories. Target 90 %+ line coverage in `internal/engine`, plus fuzzing.
 - **Every editing bug becomes a corpus case** before it is fixed.
-- **No mocks for PostgreSQL or Git.** Use the real thing in containers; mocks for these hide exactly the bugs that matter.
+- **No mocks for PostgreSQL or Git.** Use the real thing; mocks for these hide exactly the bugs that matter. Tests start their own PostgreSQL with embedded-postgres: a real server process, listening on TCP only, whose binaries are downloaded once into the user cache directory. It needs no Docker and runs inside the agents' sandbox, where commands have their own network namespace and cannot reach a container's ports. Containers are for what has no lighter form (the compose stack, Gitea).
 - **Prototype tests are ported first.** The TypeScript tests (expressions, policy, rendering, `patchYaml`, the API scenarios including stale approvals) become the first Go tests, so the port starts from proven behaviour.
