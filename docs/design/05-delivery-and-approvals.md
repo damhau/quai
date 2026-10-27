@@ -12,6 +12,14 @@ binding.
 | `pull-request` (default) | Branch + PR at submit; CI plans while approvals are pending; Quai merges when approved and green. | Every production repository. |
 | `direct` | Quai commits to the branch after approval, as the prototype does. No CI plan before approval. | Sandboxes, demos, repositories without a supported connector. |
 
+In `direct` mode the worker, under the repository's lock: fetches the mirror, checks out
+the branch head in a temporary worktree, recomputes the request's region fingerprints
+(any difference, including a file to create that now exists, makes the request stale),
+writes the changes, commits with the requester as author, Quai as committer and the
+trailers below, and pushes. A push that loses a race with another push is retried on
+the new head, up to four attempts. Git runs without hooks, prompts, or system and global
+configuration.
+
 See [ADR 0008](../adr/0008-pull-requests-by-default.md).
 
 ## Pull request protocol
