@@ -23,6 +23,7 @@ import (
 	"github.com/damhau/quai/backend/internal/jobs"
 	"github.com/damhau/quai/backend/internal/pgtest"
 	"github.com/damhau/quai/backend/internal/repositories"
+	"github.com/damhau/quai/backend/internal/secrets"
 	"github.com/damhau/quai/backend/internal/requests"
 	"github.com/damhau/quai/backend/internal/store"
 )
@@ -55,6 +56,9 @@ func git(t *testing.T, dir string, args ...string) string {
 	return string(b)
 }
 
+// runToken is the token runners report to infra-live with (spec.runner.reportToken).
+const runToken = "run-token-for-infra-live"
+
 func newHarness(t *testing.T) *harness {
 	t.Helper()
 	dir := t.TempDir()
@@ -81,6 +85,7 @@ spec:
   url: ` + bare + `
   enforcement:
     floorRules: [{ name: production-floor, when: "params.env == 'prod'", approvers: [group:platform-admins] }]
+  runner: { reportToken: { ref: env:INFRA_LIVE_RUN_TOKEN } }
   sync: { minInterval: 1ns }
 `))
 	if err != nil {
@@ -92,7 +97,10 @@ spec:
 	if err := repositories.Reconcile(context.Background(), s, docs); err != nil {
 		t.Fatal(err)
 	}
-	reg, err := repositories.Open(context.Background(), cfg, repositories.FromStore(s), log)
+	store := secrets.New(map[string]secrets.Backend{"env": secrets.Env{Lookup: func(name string) (string, bool) {
+		return runToken, name == "INFRA_LIVE_RUN_TOKEN"
+	}}})
+	reg, err := repositories.Open(context.Background(), cfg, repositories.FromStore(s), store, log)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -27,6 +27,7 @@ import (
 	"github.com/damhau/quai/backend/internal/engine/definitions"
 	"github.com/damhau/quai/backend/internal/engine/expr"
 	"github.com/damhau/quai/backend/internal/gitx"
+	"github.com/damhau/quai/backend/internal/secrets"
 	"github.com/damhau/quai/backend/internal/store"
 	"github.com/damhau/quai/backend/internal/store/db"
 )
@@ -51,14 +52,13 @@ type Repo struct {
 	Delivery   string
 	FloorRules []definitions.Rule
 	Mirror     *gitx.Mirror
-	// RunTokenSHA256 is the SHA-256 of the token runners report with; empty when none may.
-	RunTokenSHA256 string
 	// Document is the connection as declared; Generation moves when it changes.
 	Document   Document
 	Generation int64
 	ManagedBy  string
 
 	minInterval time.Duration
+	secrets     *secrets.Store
 	log         *slog.Logger
 	mu          sync.Mutex
 	lastFetch   time.Time
@@ -150,6 +150,7 @@ func Reconcile(ctx context.Context, s *store.Store, docs []Document) error {
 // Registry is the set of connected repositories.
 type Registry struct {
 	src       Source
+	secrets   *secrets.Store
 	cache     string
 	committer gitx.Signature
 	log       *slog.Logger
@@ -166,9 +167,9 @@ type Registry struct {
 const worktreeGrace = 2 * time.Minute
 
 // Open loads the connections of src: it clones or fetches their mirrors and compiles their floor
-// rules. A connection that cannot be opened (an unreachable remote, say) is logged and left out
-// until a reload opens it.
-func Open(ctx context.Context, cfg *config.Config, src Source, log *slog.Logger) (*Registry, error) {
+// rules. Their secret references resolve through store. A connection that cannot be opened (an
+// unreachable remote, say) is logged and left out until a reload opens it.
+func Open(ctx context.Context, cfg *config.Config, src Source, store *secrets.Store, log *slog.Logger) (*Registry, error) {
 	cache := cfg.Git.CacheDir
 	if cache == "" {
 		dir, err := os.UserCacheDir()
@@ -177,7 +178,7 @@ func Open(ctx context.Context, cfg *config.Config, src Source, log *slog.Logger)
 		}
 		cache = filepath.Join(dir, "quai", "mirrors")
 	}
-	reg := &Registry{src: src, cache: cache, log: log, repos: map[string]*Repo{}, failed: map[string]int64{},
+	reg := &Registry{src: src, secrets: store, cache: cache, log: log, repos: map[string]*Repo{}, failed: map[string]int64{},
 		committer: gitx.Signature{Name: cfg.Git.Committer.Name, Email: cfg.Git.Committer.Email}}
 	if err := reg.Reload(ctx); err != nil {
 		return nil, err
@@ -245,8 +246,9 @@ func (r *Registry) open(ctx context.Context, s Stored, prev *Repo) (*Repo, error
 		return nil, err
 	}
 	repo := &Repo{Name: d.Metadata.Name, Title: d.Metadata.Title, Branch: d.Spec.DefaultBranch, Delivery: d.Spec.Delivery.Mode,
-		RunTokenSHA256: d.Spec.Runner.TokenSHA256, Document: d, Generation: s.Generation, ManagedBy: s.ManagedBy,
-		minInterval: time.Duration(d.Spec.Sync.MinInterval), log: r.log, lastFetch: time.Now()}
+		Document: d, Generation: s.Generation, ManagedBy: s.ManagedBy, minInterval: time.Duration(d.Spec.Sync.MinInterval),
+		secrets: r.secrets, log: r.log, lastFetch: time.Now()}
+	repo.checkCredentials(ctx)
 	for _, f := range d.Spec.Enforcement.FloorRules {
 		rule := definitions.Rule{Name: f.Name, When: f.When, Approvers: f.Approvers, Min: f.Min}
 		if f.When != "" {
@@ -320,6 +322,51 @@ func (r *Registry) Close() {
 			repo.snap = nil
 		}
 		repo.mu.Unlock()
+	}
+}
+
+// ExpiryWarning is how long before a credential expires Quai starts warning.
+const ExpiryWarning = 30 * 24 * time.Hour
+
+// Credentials resolves the connection's credentials (spec.credentials.ref); ok is false when it
+// names none.
+func (repo *Repo) Credentials(ctx context.Context) (s secrets.Secret, ok bool, err error) {
+	return repo.resolve(ctx, repo.Document.Spec.Credentials.Ref)
+}
+
+// WebhookSecret resolves the secret the platform's webhooks carry (spec.webhooks.secret.ref).
+func (repo *Repo) WebhookSecret(ctx context.Context) (s secrets.Secret, ok bool, err error) {
+	return repo.resolve(ctx, repo.Document.Spec.Webhooks.Secret.Ref)
+}
+
+// RunToken resolves the token runners report with (spec.runner.reportToken.ref); ok is false
+// when the repository takes no run reports.
+func (repo *Repo) RunToken(ctx context.Context) (s secrets.Secret, ok bool, err error) {
+	return repo.resolve(ctx, repo.Document.Spec.Runner.ReportToken.Ref)
+}
+
+func (repo *Repo) resolve(ctx context.Context, ref string) (secrets.Secret, bool, error) {
+	if ref == "" {
+		return secrets.Secret{}, false, nil
+	}
+	if repo.secrets == nil {
+		return secrets.Secret{}, false, fmt.Errorf("repository %s: no secret store", repo.Name)
+	}
+	s, err := repo.secrets.Resolve(ctx, ref)
+	if err != nil {
+		return secrets.Secret{}, false, fmt.Errorf("repository %s: %w", repo.Name, err)
+	}
+	return s, true, nil
+}
+
+// checkCredentials warns when the connection's credentials cannot be read, or expire soon.
+func (repo *Repo) checkCredentials(ctx context.Context) {
+	s, ok, err := repo.Credentials(ctx)
+	switch {
+	case err != nil:
+		repo.log.WarnContext(ctx, "credentials cannot be read", slog.String("repository", repo.Name), slog.Any("error", err))
+	case ok && s.ExpiresWithin(ExpiryWarning, time.Now()):
+		repo.log.WarnContext(ctx, "credentials expire soon", slog.String("repository", repo.Name), slog.Time("expires", s.Expires))
 	}
 }
 

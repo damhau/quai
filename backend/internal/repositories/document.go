@@ -92,10 +92,7 @@ type FloorRule struct {
 // Runner says where plan and apply results come from (docs/design/06).
 type Runner struct {
 	Kind        string    `json:"kind,omitempty" yaml:"kind"`
-	ReportToken SecretRef `json:"reportToken,omitzero" yaml:"reportToken"`
-	// TokenSHA256 is the SHA-256 of the report token, in hexadecimal, until the secret store
-	// (P1-02) resolves reportToken.
-	TokenSHA256 string `json:"tokenSHA256,omitempty" yaml:"tokenSHA256"`
+	ReportToken SecretRef `json:"reportToken,omitzero" yaml:"reportToken"` // the token runners report with
 }
 
 // Webhooks holds the secret the platform's webhooks carry.
@@ -137,9 +134,8 @@ func (d *Duration) parse(s string) error {
 var Connectors = []string{"azure-devops", "github", "gitlab", "bitbucket", "gitea", "generic"}
 
 var (
-	nameRe   = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
-	sha256Re = regexp.MustCompile(`^[0-9a-f]{64}$`)
-	refRe    = regexp.MustCompile(`^(env|k8s|vault|azkv):\S+$`)
+	nameRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
+	refRe  = regexp.MustCompile(`^(env|k8s|vault|azkv):\S+$`)
 )
 
 // ApplyDefaults fills what the document leaves out.
@@ -226,9 +222,6 @@ func (d *Document) Validate() error {
 	}
 	if !slices.Contains([]string{"merge", "squash", "rebase"}, s.Delivery.MergeMethod) {
 		add("spec.delivery.mergeMethod must be merge, squash or rebase")
-	}
-	if h := s.Runner.TokenSHA256; h != "" && !sha256Re.MatchString(h) {
-		add("spec.runner.tokenSHA256 must be 64 hexadecimal digits")
 	}
 	if s.Sync.PollInterval < Duration(time.Second) || s.Sync.MinInterval < 0 {
 		add("spec.sync.pollInterval must be at least 1s and spec.sync.minInterval not negative")

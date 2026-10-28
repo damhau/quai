@@ -163,6 +163,11 @@ Vault (KV v2, with Kubernetes or JWT auth) and Azure Key Vault follow when a
 customer needs them. Quai checks expiry where the
 platform exposes it and warns 30 days ahead.
 
+References read `k8s:<namespace>/<name>#<key>` (the key may be left out when the Secret holds one)
+and `env:<NAME>`. Values are read when they are used and kept for a minute, so a rotated secret
+is picked up within that time; they never appear in logs or API responses. A Kubernetes Secret
+can carry its expiry in the annotation `quai.dev/expires-at` (RFC 3339), for example a PAT's.
+
 ## Definitions
 
 Layout of `.quai/` in an IaC repository:

@@ -13,6 +13,7 @@ import (
 
 	"github.com/damhau/quai/backend/internal/config"
 	"github.com/damhau/quai/backend/internal/pgtest"
+	"github.com/damhau/quai/backend/internal/secrets"
 	"github.com/damhau/quai/backend/internal/store/db"
 )
 
@@ -103,7 +104,7 @@ spec:
 		"secret":        {"apiVersion: quai.dev/v1beta1\nkind: Repository\nmetadata: { name: a }\nspec: { connector: gitea, url: x, credentials: { ref: hunter2 } }\n", "spec.credentials.ref must be a secret reference"},
 		"delivery":      {"apiVersion: quai.dev/v1beta1\nkind: Repository\nmetadata: { name: a }\nspec: { connector: gitea, url: x, delivery: { mode: pull-request } }\n", "until pull-request delivery exists"},
 		"floor":         {"apiVersion: quai.dev/v1beta1\nkind: Repository\nmetadata: { name: a }\nspec: { connector: gitea, url: x, enforcement: { floorRules: [{ name: f, when: \"params.env ==\", approvers: [owners] }] } }\n", "floorRules[0].when"},
-		"run token":     {"apiVersion: quai.dev/v1beta1\nkind: Repository\nmetadata: { name: a }\nspec: { connector: gitea, url: x, runner: { tokenSHA256: secret } }\n", "64 hexadecimal digits"},
+		"run token":     {"apiVersion: quai.dev/v1beta1\nkind: Repository\nmetadata: { name: a }\nspec: { connector: gitea, url: x, runner: { reportToken: { ref: token123 } } }\n", "spec.runner.reportToken.ref must be a secret reference"},
 		"duration":      {"apiVersion: quai.dev/v1beta1\nkind: Repository\nmetadata: { name: a }\nspec: { connector: gitea, url: x, sync: { pollInterval: often } }\n", "is not a duration"},
 	} {
 		if _, err := Parse([]byte(tt.src)); err == nil || !strings.Contains(err.Error(), tt.want) {
@@ -143,7 +144,7 @@ func TestRefresh(t *testing.T) {
 	r := newRemote(t, "infra")
 	d := doc(t, "apiVersion: quai.dev/v1beta1\nkind: Repository\nmetadata: { name: infra }\nspec: { connector: generic, url: "+r.url+", sync: { minInterval: 1h } }\n")
 	ctx := context.Background()
-	reg, err := Open(ctx, testConfig(t), Static([]Document{d}), slog.New(slog.DiscardHandler))
+	reg, err := Open(ctx, testConfig(t), Static([]Document{d}), nil, slog.New(slog.DiscardHandler))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +196,7 @@ func TestReconcileAndReload(t *testing.T) {
 	if err := Reconcile(ctx, s, []Document{repoDoc("alpha", alpha.url, "Alpha"), repoDoc("beta", beta.url, "Beta")}); err != nil {
 		t.Fatal(err)
 	}
-	reg, err := Open(ctx, testConfig(t), FromStore(s), slog.New(slog.DiscardHandler))
+	reg, err := Open(ctx, testConfig(t), FromStore(s), nil, slog.New(slog.DiscardHandler))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -270,5 +271,34 @@ func TestReconcileAndReload(t *testing.T) {
 	}
 	if _, err := reg.Get("delta"); err == nil {
 		t.Error("an unreachable repository was connected")
+	}
+}
+
+func TestSecretReferences(t *testing.T) {
+	ctx := context.Background()
+	r := newRemote(t, "infra")
+	d := doc(t, "apiVersion: quai.dev/v1beta1\nkind: Repository\nmetadata: { name: infra }\nspec:\n  connector: generic\n  url: "+r.url+
+		"\n  credentials: { ref: env:INFRA_PAT }\n  runner: { reportToken: { ref: env:INFRA_RUN_TOKEN } }\n")
+	env := map[string]string{"INFRA_PAT": "pat-value"}
+	store := secrets.New(map[string]secrets.Backend{"env": secrets.Env{Lookup: func(n string) (string, bool) { v, ok := env[n]; return v, ok }}})
+	var logs strings.Builder
+	reg, err := Open(ctx, testConfig(t), Static([]Document{d}), store, slog.New(slog.NewTextHandler(&logs, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reg.Close()
+	repo, _ := reg.Get("infra")
+	if s, ok, err := repo.Credentials(ctx); err != nil || !ok || s.Reveal() != "pat-value" {
+		t.Errorf("credentials = %v %v %v", s, ok, err)
+	}
+	if _, ok, err := repo.WebhookSecret(ctx); ok || err != nil {
+		t.Errorf("no webhook secret: %v %v", ok, err)
+	}
+	// A reference that does not resolve is an error when it is used, not when the repository opens.
+	if _, _, err := repo.RunToken(ctx); err == nil || !strings.Contains(err.Error(), "env:INFRA_RUN_TOKEN") {
+		t.Errorf("a missing run token: %v", err)
+	}
+	if strings.Contains(logs.String(), "pat-value") {
+		t.Errorf("the logs show the secret: %s", logs.String())
 	}
 }

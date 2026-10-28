@@ -1,8 +1,6 @@
 package api
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"net/http"
 	"strings"
 	"testing"
@@ -12,10 +10,7 @@ import (
 // repository's run token, and resources show their stack's latest apply.
 func TestRunReports(t *testing.T) {
 	h := newHarness(t)
-	token := "run-token-for-infra-live"
-	sum := sha256.Sum256([]byte(token))
-	repo, _ := h.reg.Get("infra-live")
-	repo.RunTokenSHA256 = hex.EncodeToString(sum[:])
+	token := runToken
 	runner := h.as("")
 
 	send := func(tok string) int {

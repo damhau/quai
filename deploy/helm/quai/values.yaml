@@ -44,6 +44,16 @@ oidc:
   secretName: quai-oidc # key: clientSecret
   secretKey: clientSecret
 
+# Where secret references resolve. Repository connections name their credentials, webhook secret
+# and run token as references: env:NAME (the pods' environment) or k8s:<namespace>/<name>#<key>.
+secretStore:
+  kubernetes:
+    # A Role lets the pods read the Secrets of the release's namespace; list their names to
+    # restrict it to those. The annotation quai.dev/expires-at (RFC 3339) on a Secret makes Quai
+    # warn 30 days before it expires.
+    enabled: true
+    secretNames: []
+
 serviceAccount:
   create: true
   name: ""

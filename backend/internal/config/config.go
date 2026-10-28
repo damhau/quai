@@ -35,6 +35,7 @@ type Config struct {
 	Auth         Auth         `yaml:"auth"`
 	Git          Git          `yaml:"git"`
 	Repositories Repositories `yaml:"repositories"`
+	Secrets      Secrets      `yaml:"secrets"`
 	Log          Log          `yaml:"log"`
 	Telemetry    Telemetry    `yaml:"telemetry"`
 }
@@ -67,6 +68,16 @@ type Committer struct {
 // reconciled into the database at start-up; the API manages the others.
 type Repositories struct {
 	Path string `yaml:"path"`
+}
+
+// Secrets configures where secret references resolve (docs/design/01-repository-connections.md#credentials):
+// `env:NAME` from Quai's environment, `k8s:namespace/name#key` from Kubernetes Secrets.
+type Secrets struct {
+	Kubernetes struct {
+		// Kubeconfig is the file to reach the cluster with; empty: the cluster Quai runs in, or
+		// the default kubeconfig (KUBECONFIG, ~/.kube/config) outside one.
+		Kubeconfig string `yaml:"kubeconfig"`
+	} `yaml:"kubernetes"`
 }
 
 // UnmarshalYAML refuses the list of repositories of earlier versions with a pointer to where its
@@ -167,6 +178,7 @@ var variables = []struct {
 	{"QUAI_TELEMETRY_OTLP_ENDPOINT", func(c *Config, v string) error { c.Telemetry.OTLPEndpoint = v; return nil }},
 	{"QUAI_TELEMETRY_SERVICE_NAME", func(c *Config, v string) error { c.Telemetry.ServiceName = v; return nil }},
 	{"QUAI_REPOSITORIES_PATH", func(c *Config, v string) error { c.Repositories.Path = v; return nil }},
+	{"QUAI_SECRETS_KUBECONFIG", func(c *Config, v string) error { c.Secrets.Kubernetes.Kubeconfig = v; return nil }},
 }
 
 // Load reads the configuration file at path, or at QUAI_CONFIG when path is empty, applies the

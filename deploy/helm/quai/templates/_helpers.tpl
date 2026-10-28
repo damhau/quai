@@ -69,6 +69,7 @@ volumeMounts:
 
 {{- define "quai.pod" -}}
 serviceAccountName: {{ include "quai.serviceAccountName" .root }}
+automountServiceAccountToken: {{ .root.Values.secretStore.kubernetes.enabled }}
 securityContext: {{- toYaml .root.Values.podSecurityContext | nindent 2 }}
 {{- with .root.Values.imagePullSecrets }}
 imagePullSecrets: {{- toYaml . | nindent 2 }}

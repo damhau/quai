@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/subtle"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -247,8 +246,13 @@ func registerHistory(a huma.API, reg *repositories.Registry, s *store.Store) {
 			return nil, huma.Error401Unauthorized("invalid run token")
 		}
 		token, _ := strings.CutPrefix(in.Authorization, "Bearer ")
-		sum := sha256.Sum256([]byte(token))
-		if repo.RunTokenSHA256 == "" || subtle.ConstantTimeCompare([]byte(hex.EncodeToString(sum[:])), []byte(repo.RunTokenSHA256)) != 1 {
+		want, ok, err := repo.RunToken(ctx)
+		if err != nil {
+			return nil, err
+		}
+		// Compared as hashes, so that the comparison takes the same time whatever the lengths.
+		sent, expected := sha256.Sum256([]byte(token)), sha256.Sum256([]byte(want.Reveal()))
+		if !ok || subtle.ConstantTimeCompare(sent[:], expected[:]) != 1 {
 			return nil, huma.Error401Unauthorized("invalid run token")
 		}
 		summary := in.Body.Summary
