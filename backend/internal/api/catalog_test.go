@@ -96,7 +96,8 @@ func TestSyncAndProblems(t *testing.T) {
 		t.Errorf("statuses = %v", status)
 	}
 	var repos []RepositoryView
-	if code, _ := alice.do(http.MethodGet, Prefix+"/repositories", nil, &repos); code != http.StatusOK || len(repos) != 1 || repos[0].Commit != repo.Commit {
+	if code, _ := alice.do(http.MethodGet, Prefix+"/repositories", nil, &repos); code != http.StatusOK || len(repos) != 1 || repos[0].Commit != repo.Commit ||
+		repos[0].Connector != "generic" || repos[0].ManagedBy != "config" {
 		t.Errorf("repositories = %d %+v", code, repos)
 	}
 	if code, _ := alice.do(http.MethodPost, Prefix+"/repositories/nope/sync", nil, nil); code != http.StatusNotFound {

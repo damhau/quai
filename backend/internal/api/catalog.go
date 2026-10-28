@@ -35,6 +35,8 @@ type ProblemView struct {
 type RepositoryView struct {
 	Name       string        `json:"name"`
 	Title      string        `json:"title"`
+	Connector  string        `json:"connector"`
+	ManagedBy  string        `json:"managedBy" enum:"config,api" doc:"config: declared in Quai's configuration and read-only through the API; api: managed through the API"`
 	Branch     string        `json:"branch"`
 	Delivery   string        `json:"delivery"`
 	Commit     string        `json:"commit"`
@@ -418,7 +420,8 @@ func snapshot(ctx context.Context, reg *repositories.Registry, name string) (*re
 }
 
 func repositoryView(repo *repositories.Repo, snap *repositories.Snapshot) RepositoryView {
-	v := RepositoryView{Name: repo.Name, Title: repo.Title, Branch: repo.Branch, Delivery: repo.Delivery, Commit: snap.Commit,
+	v := RepositoryView{Name: repo.Name, Title: repo.Title, Connector: repo.Document.Spec.Connector, ManagedBy: repo.ManagedBy,
+		Branch: repo.Branch, Delivery: repo.Delivery, Commit: snap.Commit,
 		Types: len(snap.Definitions.Types), Blueprints: len(snap.Definitions.Blueprints), Problems: []ProblemView{}}
 	for _, p := range snap.Problems {
 		v.Problems = append(v.Problems, ProblemView{Path: p.Path, Field: p.Field, Message: p.Message})

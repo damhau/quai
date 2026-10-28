@@ -21,8 +21,20 @@ config:
       redirectURL: https://quai.example.com/auth/callback
     roles:
       - { group: platform-admins, role: platform-admin, scope: global }
-  repositories: []
-configSecret: "" # an existing Secret with a quai.yaml key, used instead of config
+configSecret: "" # an existing Secret with the quai.yaml and repositories.yaml keys, used instead of config and repositories
+
+# The repository connections declared here: Repository documents
+# (docs/design/01-repository-connections.md), reconciled into the database when the pods start.
+# Connections can also be managed through the API.
+repositories: []
+# - apiVersion: quai.dev/v1beta1
+#   kind: Repository
+#   metadata: { name: infra-live, title: Infrastructure }
+#   spec:
+#     connector: azure-devops
+#     url: https://devops.acme.ch/tfs/DefaultCollection/Infrastructure/_git/live
+#     enforcement:
+#       floorRules: [{ name: production-floor, when: "params.env == 'prod'", approvers: [group:platform-admins] }]
 
 # Existing Secrets the processes read their secrets from.
 database:

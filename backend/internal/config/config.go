@@ -12,7 +12,6 @@ import (
 	"net"
 	"net/url"
 	"os"
-	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -35,7 +34,7 @@ type Config struct {
 	Database     Database     `yaml:"database"`
 	Auth         Auth         `yaml:"auth"`
 	Git          Git          `yaml:"git"`
-	Repositories []Repository `yaml:"repositories"`
+	Repositories Repositories `yaml:"repositories"`
 	Log          Log          `yaml:"log"`
 	Telemetry    Telemetry    `yaml:"telemetry"`
 }
@@ -63,41 +62,22 @@ type Committer struct {
 	Email string `yaml:"email"`
 }
 
-// Repository is a repository connection declared in the configuration
-// (docs/design/01-repository-connections.md). Phase 0 delivers by direct commit only.
-type Repository struct {
-	Name          string       `yaml:"name"` // a DNS label, part of every resource ID
-	Title         string       `yaml:"title"`
-	URL           string       `yaml:"url"` // a local path or file:// URL for demos; https later
-	DefaultBranch string       `yaml:"defaultBranch"`
-	Delivery      Delivery     `yaml:"delivery"`
-	FloorRules    []FloorRule  `yaml:"floorRules"`
-	Sync          SyncSettings `yaml:"sync"`
-	Runner        Runner       `yaml:"runner"`
+// Repositories says where the Repository documents managed by the configuration are
+// (docs/design/01-repository-connections.md): a YAML file, or a directory of them. They are
+// reconciled into the database at start-up; the API manages the others.
+type Repositories struct {
+	Path string `yaml:"path"`
 }
 
-// Runner configures run reports from the repository's pipelines (docs/design/06). The token
-// itself is not in the configuration: only its SHA-256, in hexadecimal.
-type Runner struct {
-	TokenSHA256 string `yaml:"tokenSHA256"`
-}
-
-// Delivery says how changes reach the repository.
-type Delivery struct {
-	Mode string `yaml:"mode"` // direct (pull-request comes with the connectors)
-}
-
-// FloorRule is an approval rule every type of the repository inherits.
-type FloorRule struct {
-	Name      string   `yaml:"name"`
-	When      string   `yaml:"when"`
-	Approvers []string `yaml:"approvers"`
-	Min       int      `yaml:"min"`
-}
-
-// SyncSettings bounds how often Quai fetches the repository on reads.
-type SyncSettings struct {
-	MinInterval time.Duration `yaml:"minInterval"` // 10s by default
+// UnmarshalYAML refuses the list of repositories of earlier versions with a pointer to where its
+// entries went.
+func (r *Repositories) UnmarshalYAML(n *yaml.Node) error {
+	if n.Kind == yaml.SequenceNode {
+		return errors.New("repositories is now { path: <file or directory> } holding Repository documents " +
+			"(apiVersion: quai.dev/v1beta1, kind: Repository); see docs/design/01-repository-connections.md")
+	}
+	type plain Repositories
+	return n.Decode((*plain)(r))
 }
 
 // Authentication modes.
@@ -186,6 +166,7 @@ var variables = []struct {
 	{"QUAI_LOG_FORMAT", func(c *Config, v string) error { c.Log.Format = v; return nil }},
 	{"QUAI_TELEMETRY_OTLP_ENDPOINT", func(c *Config, v string) error { c.Telemetry.OTLPEndpoint = v; return nil }},
 	{"QUAI_TELEMETRY_SERVICE_NAME", func(c *Config, v string) error { c.Telemetry.ServiceName = v; return nil }},
+	{"QUAI_REPOSITORIES_PATH", func(c *Config, v string) error { c.Repositories.Path = v; return nil }},
 }
 
 // Load reads the configuration file at path, or at QUAI_CONFIG when path is empty, applies the
@@ -247,21 +228,6 @@ func (c *Config) defaults() {
 	if c.Git.Committer.Name == "" {
 		c.Git.Committer = Committer{Name: "Quai", Email: "quai@localhost"}
 	}
-	for i := range c.Repositories {
-		r := &c.Repositories[i]
-		if r.DefaultBranch == "" {
-			r.DefaultBranch = "main"
-		}
-		if r.Delivery.Mode == "" {
-			r.Delivery.Mode = "direct"
-		}
-		if r.Sync.MinInterval == 0 {
-			r.Sync.MinInterval = 10 * time.Second
-		}
-		if r.Title == "" {
-			r.Title = r.Name
-		}
-	}
 	a := &c.Auth
 	if a.Mode == "" {
 		a.Mode = AuthOIDC
@@ -319,31 +285,6 @@ func (c *Config) validate() error {
 		errs = append(errs, errors.New("server.shutdownTimeout must not be negative"))
 	}
 	errs = append(errs, c.Auth.validate(c.Env))
-	names := map[string]bool{}
-	for i, r := range c.Repositories {
-		at := fmt.Sprintf("repositories[%d]", i)
-		switch {
-		case !repoNameRe.MatchString(r.Name):
-			errs = append(errs, fmt.Errorf("%s.name must be a lowercase DNS label", at))
-		case names[r.Name]:
-			errs = append(errs, fmt.Errorf("%s.name: %s is declared twice", at, r.Name))
-		}
-		names[r.Name] = true
-		if r.URL == "" {
-			errs = append(errs, fmt.Errorf("%s.url is required", at))
-		}
-		if h := r.Runner.TokenSHA256; h != "" && !sha256Re.MatchString(h) {
-			errs = append(errs, fmt.Errorf("%s.runner.tokenSHA256 must be 64 hexadecimal digits", at))
-		}
-		if r.Delivery.Mode != "direct" {
-			errs = append(errs, fmt.Errorf("%s.delivery.mode must be direct for now, not %q", at, r.Delivery.Mode))
-		}
-		for j, f := range r.FloorRules {
-			if f.Name == "" || len(f.Approvers) == 0 {
-				errs = append(errs, fmt.Errorf("%s.floorRules[%d] needs a name and approvers", at, j))
-			}
-		}
-	}
 	if _, err := c.Log.SlogLevel(); err != nil {
 		errs = append(errs, err)
 	}
@@ -358,11 +299,6 @@ func (c *Config) validate() error {
 	}
 	return errors.Join(errs...)
 }
-
-var (
-	repoNameRe = regexp.MustCompile(`^[a-z][a-z0-9-]{0,62}$`)
-	sha256Re   = regexp.MustCompile(`^[0-9a-f]{64}$`)
-)
 
 // roles are the role names of docs/design/08; internal/authz defines them.
 var roles = []string{"viewer", "requester", "operator", "catalog-author", "repository-admin", "platform-admin", "auditor", "break-glass"}

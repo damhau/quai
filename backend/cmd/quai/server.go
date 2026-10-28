@@ -18,7 +18,6 @@ import (
 	"github.com/damhau/quai/backend/internal/auth"
 	"github.com/damhau/quai/backend/internal/config"
 	"github.com/damhau/quai/backend/internal/jobs"
-	"github.com/damhau/quai/backend/internal/repositories"
 	"github.com/damhau/quai/backend/internal/requests"
 	"github.com/damhau/quai/backend/internal/store"
 	"github.com/damhau/quai/backend/internal/telemetry"
@@ -77,11 +76,11 @@ func serve(ctx context.Context, cfg *config.Config, log *slog.Logger, ln net.Lis
 	if s != nil {
 		opts.Store, opts.Auth = s, auth.New(cfg, s, log)
 	}
-	if len(cfg.Repositories) > 0 {
-		reg, err := repositories.Open(ctx, cfg, log)
-		if err != nil {
-			return err
-		}
+	reg, err := openRepositories(ctx, cfg, s, log)
+	if err != nil {
+		return err
+	}
+	if reg != nil {
 		defer reg.Close()
 		opts.Repositories = reg
 		if s != nil {

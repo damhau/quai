@@ -102,11 +102,20 @@ spec:
 | Field | Notes |
 | --- | --- |
 | `metadata.name` | Immutable after creation: it is part of every resource ID and request record. |
+| `spec.connector` | `azure-devops`, `github`, `gitlab`, `bitbucket`, `gitea` or `generic`. |
 | `spec.credentials.ref` | A reference, never the secret itself. Resolved at use time; never logged or returned by the API. |
 | `spec.definitions` | One repository can host types for itself only. A type cannot point its locator into another repository. |
 | `spec.delivery.mode` | `direct` exists for sandboxes and demos. Production repositories should use pull requests ([ADR 0008](../adr/0008-pull-requests-by-default.md)). |
 | `spec.enforcement.floorRules` | Lets admins guarantee, for example, that nothing reaches `prod` without platform approval, whatever a type's author writes. Types can add rules, never remove floor rules. |
 | `spec.runner` | Where plan and apply results come from. Optional: without it, resources show *In repo* after merge. |
+
+Connections live in PostgreSQL, one row per document. Those declared in configuration (the
+`repositories.path` setting: a file or a directory of `Repository` documents; in the Helm chart,
+the `repositories` value) are reconciled at start-up: added, updated, and removed when the
+configuration no longer declares them. They are read-only through the API, and a configuration
+document cannot take the name of a connection the API manages. Every server and worker reloads
+the connections that changed within seconds, without a restart; a connection that cannot be
+opened (an unreachable remote) is reported and retried, and the others keep working.
 
 ## Connectors
 

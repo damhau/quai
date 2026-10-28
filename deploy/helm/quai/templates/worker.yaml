@@ -12,7 +12,8 @@ spec:
     metadata:
       labels: {{- include "quai.selector" (dict "root" . "component" "worker") | nindent 8 }}
       annotations:
-        checksum/config: {{ toYaml .Values.config | sha256sum }}
+        # Repositories in the configuration are reconciled at start-up: a change restarts the pods.
+        checksum/config: {{ list .Values.config .Values.repositories | toYaml | sha256sum }}
     spec:
       {{- include "quai.pod" (dict "root" .) | nindent 6 }}
       containers:

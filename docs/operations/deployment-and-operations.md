@@ -48,14 +48,14 @@ single pod with both roles.
   | `auth.roles` | | `- { group: sg-quai-admins, role: platform-admin, scope: global }`; scope can be `team:`, `repository:` or `catalog-item:` and a name |
   | `auth.session.lifetime`, `.idleTimeout` | | `8h`, `30m` |
   | `git.cacheDir`, `git.committer` | `QUAI_GIT_CACHE_DIR` | the user cache directory; `Quai <quai@localhost>` |
-  | `repositories[]` | | `name`, `url`, `defaultBranch` (`main`), `delivery.mode` (`direct` in Phase 0), `floorRules`, `sync.minInterval` (`10s`), `runner.tokenSHA256` |
+  | `repositories.path` | `QUAI_REPOSITORIES_PATH` | none: a YAML file, or a directory of them, holding `Repository` documents ([repository connections](../design/01-repository-connections.md#repository-connection)); reconciled into the database at start-up, read-only through the API. Until the secret store (P1-02), `spec.runner.tokenSHA256` holds the report token's SHA-256 |
   | `log.level` | `QUAI_LOG_LEVEL` | `info` (`debug`, `info`, `warn`, `error`) |
   | `log.format` | `QUAI_LOG_FORMAT` | `json` in production, `text` otherwise |
   | `telemetry.otlpEndpoint` | `QUAI_TELEMETRY_OTLP_ENDPOINT` | none: no traces are exported; traces go to `<url>/v1/traces` |
   | `telemetry.serviceName` | `QUAI_TELEMETRY_SERVICE_NAME` | `quai` |
 
   Unknown keys in the file are errors, and the configuration is validated before the server
-  starts. Later tasks add their own keys (database, authentication, repositories).
+  starts. Later tasks add their own keys.
 
 ## Network
 

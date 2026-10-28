@@ -1102,7 +1102,18 @@
           "commit": {
             "type": "string"
           },
+          "connector": {
+            "type": "string"
+          },
           "delivery": {
+            "type": "string"
+          },
+          "managedBy": {
+            "description": "config: declared in Quai's configuration and read-only through the API; api: managed through the API",
+            "enum": [
+              "config",
+              "api"
+            ],
             "type": "string"
           },
           "name": {
@@ -1128,6 +1139,8 @@
         "required": [
           "name",
           "title",
+          "connector",
+          "managedBy",
           "branch",
           "delivery",
           "commit",

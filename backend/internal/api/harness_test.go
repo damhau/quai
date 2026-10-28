@@ -73,17 +73,30 @@ func newHarness(t *testing.T) *harness {
 		t.Fatal(err)
 	}
 	cfg.Git.CacheDir = filepath.Join(dir, "mirrors")
-	cfg.Repositories = []config.Repository{{Name: "infra-live", Title: "Infrastructure", URL: bare, DefaultBranch: "main",
-		Delivery: config.Delivery{Mode: "direct"}, Sync: config.SyncSettings{MinInterval: time.Nanosecond},
-		FloorRules: []config.FloorRule{{Name: "production-floor", When: "params.env == 'prod'", Approvers: []string{"group:platform-admins"}}}}}
+	docs, err := repositories.Parse([]byte(`apiVersion: quai.dev/v1beta1
+kind: Repository
+metadata: { name: infra-live, title: Infrastructure }
+spec:
+  connector: generic
+  url: ` + bare + `
+  enforcement:
+    floorRules: [{ name: production-floor, when: "params.env == 'prod'", approvers: [group:platform-admins] }]
+  sync: { minInterval: 1ns }
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
 	var logs bytes.Buffer
 	log := slog.New(slog.NewTextHandler(&logs, nil))
-	reg, err := repositories.Open(context.Background(), cfg, log)
+	s := pgtest.Store(t)
+	if err := repositories.Reconcile(context.Background(), s, docs); err != nil {
+		t.Fatal(err)
+	}
+	reg, err := repositories.Open(context.Background(), cfg, repositories.FromStore(s), log)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(reg.Close)
-	s := pgtest.Store(t)
 	svc := requests.New(s, reg, nil, log)
 	worker, err := jobs.NewWorker(s.Pool, jobs.Options{Logger: log, Workers: func(w *river.Workers) { river.AddWorker(w, requests.NewWorker(svc)) }})
 	if err != nil {

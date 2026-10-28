@@ -372,7 +372,12 @@ export type RepositoryView = {
     blueprints: number;
     branch: string;
     commit: string;
+    connector: string;
     delivery: string;
+    /**
+     * config: declared in Quai's configuration and read-only through the API; api: managed through the API
+     */
+    managedBy: 'config' | 'api';
     name: string;
     problems: Array<ProblemView> | null;
     title: string;
@@ -864,7 +869,12 @@ export type RepositoryViewWritable = {
     blueprints: number;
     branch: string;
     commit: string;
+    connector: string;
     delivery: string;
+    /**
+     * config: declared in Quai's configuration and read-only through the API; api: managed through the API
+     */
+    managedBy: 'config' | 'api';
     name: string;
     problems: Array<ProblemView> | null;
     title: string;

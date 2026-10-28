@@ -4,6 +4,6 @@
 # credentials for now.
 set -eu
 token=$(cat /run/quai/git-token)
-sed "s/@GIT_TOKEN@/$token/" /etc/quai/quai.yaml >/tmp/quai.yaml
-export QUAI_CONFIG=/tmp/quai.yaml
+sed "s/@GIT_TOKEN@/$token/" /etc/quai/repositories.yaml >/tmp/repositories.yaml
+export QUAI_CONFIG=/etc/quai/quai.yaml
 exec quai "$@"

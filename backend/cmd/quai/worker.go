@@ -13,7 +13,6 @@ import (
 
 	"github.com/damhau/quai/backend/internal/config"
 	"github.com/damhau/quai/backend/internal/jobs"
-	"github.com/damhau/quai/backend/internal/repositories"
 	"github.com/damhau/quai/backend/internal/requests"
 	"github.com/damhau/quai/backend/internal/store"
 )
@@ -54,11 +53,11 @@ func newWorkerCmd() *cobra.Command {
 func work(ctx context.Context, cfg *config.Config, log *slog.Logger, s *store.Store) error {
 	opts := jobs.Options{Logger: log}
 	var svc *requests.Service
-	if len(cfg.Repositories) > 0 {
-		reg, err := repositories.Open(ctx, cfg, log)
-		if err != nil {
-			return err
-		}
+	reg, err := openRepositories(ctx, cfg, s, log)
+	if err != nil {
+		return err
+	}
+	if reg != nil {
 		defer reg.Close()
 		svc = requests.New(s, reg, nil, log)
 		opts.Workers = func(w *river.Workers) { river.AddWorker(w, requests.NewWorker(svc)) }

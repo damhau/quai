@@ -16,6 +16,7 @@ x-quai: &quai
   tmpfs: [/tmp]
   volumes:
     - ./deploy/compose/quai.yaml:/etc/quai/quai.yaml:ro
+    - ./deploy/compose/repositories.yaml:/etc/quai/repositories.yaml:ro
     - ./deploy/compose/run-quai.sh:/etc/quai/run-quai.sh:ro
     - seed:/run/quai:ro
 
@@ -72,6 +73,7 @@ services:
     ports: ["${QUAI_PORT:-8080}:8080"]
     volumes:
       - ./deploy/compose/quai.yaml:/etc/quai/quai.yaml:ro
+      - ./deploy/compose/repositories.yaml:/etc/quai/repositories.yaml:ro
       - ./deploy/compose/run-quai.sh:/etc/quai/run-quai.sh:ro
       - seed:/run/quai:ro
       - server-cache:/var/cache/quai
@@ -86,6 +88,7 @@ services:
     command: ["worker"]
     volumes:
       - ./deploy/compose/quai.yaml:/etc/quai/quai.yaml:ro
+      - ./deploy/compose/repositories.yaml:/etc/quai/repositories.yaml:ro
       - ./deploy/compose/run-quai.sh:/etc/quai/run-quai.sh:ro
       - seed:/run/quai:ro
       - worker-cache:/var/cache/quai

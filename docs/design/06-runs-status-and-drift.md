@@ -22,7 +22,7 @@ and derived per resource, not reported per resource as in the prototype.
 
 Phase 0 records each report as a run and shows the latest apply of a resource's
 stack on the resource. The run token is configured per repository as its SHA-256
-(`repositories[].runner.tokenSHA256`): Quai never stores the token itself.
+(`spec.runner.tokenSHA256` of the `Repository` document, until the secret store resolves `spec.runner.reportToken`): Quai never stores the token itself.
 
 Every adapter ends up calling one endpoint, with a token scoped to one repository:
 

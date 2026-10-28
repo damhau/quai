@@ -74,6 +74,10 @@ func OpenMirror(ctx context.Context, remote, dir string, committer Signature) (*
 		}
 		return m, nil
 	}
+	// The connection's URL may have changed since the mirror was cloned.
+	if _, err := m.git(ctx, "", "remote", "set-url", "origin", remote); err != nil {
+		return nil, err
+	}
 	return m, m.Fetch(ctx)
 }
 

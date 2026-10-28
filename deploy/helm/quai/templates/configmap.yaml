@@ -1,4 +1,6 @@
 {{- if not .Values.configSecret }}
+{{- $config := deepCopy .Values.config }}
+{{- $_ := set $config "repositories" (dict "path" "/etc/quai/repositories.yaml") }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -6,5 +8,10 @@ metadata:
   labels: {{- include "quai.labels" . | nindent 4 }}
 data:
   quai.yaml: |
-    {{- toYaml .Values.config | nindent 4 }}
+    {{- toYaml $config | nindent 4 }}
+  repositories.yaml: |
+    {{- range .Values.repositories }}
+    ---
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
 {{- end }}

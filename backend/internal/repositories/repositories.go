@@ -1,28 +1,47 @@
 // Package repositories holds Quai's repository connections (docs/design/01-repository-connections.md):
-// for each, its mirror and a snapshot of the default branch's head with the definitions read
+// the Repository documents, stored in PostgreSQL or read from configuration files, and for each
+// connection its mirror and a snapshot of the default branch's head with the definitions read
 // from it. A snapshot is reloaded only when the head moves; reads fetch the mirror at most once
-// per sync interval, and an explicit sync fetches at once.
+// per sync interval, and an explicit sync fetches at once. The registry reloads connections that
+// change, without a restart.
 package repositories
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 
 	"github.com/damhau/quai/backend/internal/config"
 	"github.com/damhau/quai/backend/internal/engine/definitions"
 	"github.com/damhau/quai/backend/internal/engine/expr"
 	"github.com/damhau/quai/backend/internal/gitx"
+	"github.com/damhau/quai/backend/internal/store"
+	"github.com/damhau/quai/backend/internal/store/db"
 )
 
 // ErrNotFound is returned for a repository that is not connected.
 var ErrNotFound = errors.New("no such repository")
+
+// Who manages a repository connection.
+const (
+	ManagedByConfig = "config"
+	ManagedByAPI    = "api"
+)
+
+// ReloadInterval is how often a watching registry looks for connections that changed.
+const ReloadInterval = 10 * time.Second
 
 // Repo is one connected repository.
 type Repo struct {
@@ -34,6 +53,10 @@ type Repo struct {
 	Mirror     *gitx.Mirror
 	// RunTokenSHA256 is the SHA-256 of the token runners report with; empty when none may.
 	RunTokenSHA256 string
+	// Document is the connection as declared; Generation moves when it changes.
+	Document   Document
+	Generation int64
+	ManagedBy  string
 
 	minInterval time.Duration
 	log         *slog.Logger
@@ -52,19 +75,100 @@ type Snapshot struct {
 	worktree    *gitx.Worktree
 }
 
+// Stored is a connection as its source holds it.
+type Stored struct {
+	Document   Document
+	ManagedBy  string
+	Generation int64
+}
+
+// Source lists the connections: the store, or configuration files when there is no database.
+type Source func(ctx context.Context) ([]Stored, error)
+
+// FromStore lists the connections stored in PostgreSQL.
+func FromStore(s *store.Store) Source {
+	return func(ctx context.Context) ([]Stored, error) {
+		rows, err := s.ListRepositories(ctx)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]Stored, 0, len(rows))
+		for _, r := range rows {
+			var d Document
+			if err := json.Unmarshal(r.Document, &d); err != nil {
+				return nil, fmt.Errorf("repository %s: %w", r.Name, err)
+			}
+			out = append(out, Stored{Document: d, ManagedBy: r.ManagedBy, Generation: r.Generation})
+		}
+		return out, nil
+	}
+}
+
+// Static lists fixed documents, as configuration-managed connections that never change.
+func Static(docs []Document) Source {
+	return func(context.Context) ([]Stored, error) {
+		out := make([]Stored, len(docs))
+		for i, d := range docs {
+			out[i] = Stored{Document: d, ManagedBy: ManagedByConfig, Generation: 1}
+		}
+		return out, nil
+	}
+}
+
+// Reconcile makes the connections managed by configuration those docs declare: it adds and
+// updates them, and removes those docs no longer declare. A document named like a connection
+// managed through the API is an error. Processes starting together reconcile one at a time.
+func Reconcile(ctx context.Context, s *store.Store, docs []Document) error {
+	return s.Tx(ctx, func(_ pgx.Tx, q *db.Queries) error {
+		if err := q.LockRepositories(ctx); err != nil {
+			return err
+		}
+		rows, err := q.ListRepositories(ctx)
+		if err != nil {
+			return err
+		}
+		keep := make([]string, 0, len(docs))
+		for _, d := range docs {
+			name := d.Metadata.Name
+			if i := slices.IndexFunc(rows, func(r db.ListRepositoriesRow) bool { return r.Name == name }); i >= 0 && rows[i].ManagedBy == ManagedByAPI {
+				return fmt.Errorf("repository %q is managed through the API: delete it there, or give the one in the configuration another name", name)
+			}
+			doc, err := json.Marshal(d)
+			if err != nil {
+				return err
+			}
+			if err := q.PutConfigRepository(ctx, db.PutConfigRepositoryParams{Name: name, Document: doc}); err != nil {
+				return err
+			}
+			keep = append(keep, name)
+		}
+		_, err = q.DeleteConfigRepositoriesExcept(ctx, keep)
+		return err
+	})
+}
+
 // Registry is the set of connected repositories.
 type Registry struct {
-	repos []*Repo
-	log   *slog.Logger
+	src       Source
+	cache     string
+	committer gitx.Signature
+	log       *slog.Logger
+
+	mu    sync.RWMutex
+	repos map[string]*Repo
+	// failed holds the generations that could not be opened. They are retried on every reload,
+	// and logged as errors the first time only.
+	failed map[string]int64
 }
 
 // worktreeGrace is how long a replaced snapshot's files stay readable for requests still using
 // it.
 const worktreeGrace = 2 * time.Minute
 
-// Open connects the repositories of the configuration: it clones or fetches their mirrors and
-// compiles their floor rules.
-func Open(ctx context.Context, cfg *config.Config, log *slog.Logger) (*Registry, error) {
+// Open loads the connections of src: it clones or fetches their mirrors and compiles their floor
+// rules. A connection that cannot be opened (an unreachable remote, say) is logged and left out
+// until a reload opens it.
+func Open(ctx context.Context, cfg *config.Config, src Source, log *slog.Logger) (*Registry, error) {
 	cache := cfg.Git.CacheDir
 	if cache == "" {
 		dir, err := os.UserCacheDir()
@@ -73,47 +177,142 @@ func Open(ctx context.Context, cfg *config.Config, log *slog.Logger) (*Registry,
 		}
 		cache = filepath.Join(dir, "quai", "mirrors")
 	}
-	env, err := expr.NewEnv()
-	if err != nil {
+	reg := &Registry{src: src, cache: cache, log: log, repos: map[string]*Repo{}, failed: map[string]int64{},
+		committer: gitx.Signature{Name: cfg.Git.Committer.Name, Email: cfg.Git.Committer.Email}}
+	if err := reg.Reload(ctx); err != nil {
 		return nil, err
-	}
-	reg := &Registry{log: log}
-	for _, rc := range cfg.Repositories {
-		m, err := gitx.OpenMirror(ctx, rc.URL, filepath.Join(cache, rc.Name+".git"), gitx.Signature{Name: cfg.Git.Committer.Name, Email: cfg.Git.Committer.Email})
-		if err != nil {
-			return nil, fmt.Errorf("repository %s: %w", rc.Name, err)
-		}
-		r := &Repo{Name: rc.Name, Title: rc.Title, Branch: rc.DefaultBranch, Delivery: rc.Delivery.Mode, Mirror: m,
-			RunTokenSHA256: rc.Runner.TokenSHA256, minInterval: rc.Sync.MinInterval, log: log, lastFetch: time.Now()}
-		for _, f := range rc.FloorRules {
-			rule := definitions.Rule{Name: f.Name, When: f.When, Approvers: f.Approvers, Min: f.Min}
-			if f.When != "" {
-				if rule.Condition, err = env.CompileCondition(f.When); err != nil {
-					return nil, fmt.Errorf("repository %s: floor rule %s: %w", rc.Name, f.Name, err)
-				}
-			}
-			r.FloorRules = append(r.FloorRules, rule)
-		}
-		reg.repos = append(reg.repos, r)
 	}
 	return reg, nil
 }
 
-// List returns the repositories in configuration order.
-func (r *Registry) List() []*Repo { return r.repos }
+// Reload brings the registry in line with its source: it opens new connections, reopens those
+// whose generation moved, and drops those that are gone. A connection that fails to reopen keeps
+// its previous version.
+func (r *Registry) Reload(ctx context.Context) error {
+	stored, err := r.src(ctx)
+	if err != nil {
+		return err
+	}
+	r.mu.RLock()
+	current, failed := maps.Clone(r.repos), maps.Clone(r.failed)
+	r.mu.RUnlock()
+
+	next, nextFailed := map[string]*Repo{}, map[string]int64{}
+	for _, s := range stored {
+		name := s.Document.Metadata.Name
+		prev := current[name]
+		if prev != nil && prev.Generation == s.Generation {
+			next[name] = prev
+			continue
+		}
+		repo, err := r.open(ctx, s, prev)
+		if err != nil {
+			level := slog.LevelError
+			if g, ok := failed[name]; ok && g == s.Generation {
+				level = slog.LevelDebug
+			}
+			r.log.Log(ctx, level, "repository not connected", slog.String("repository", name), slog.Any("error", err))
+			nextFailed[name] = s.Generation
+			if prev != nil {
+				next[name] = prev
+			}
+			continue
+		}
+		next[name] = repo
+		if prev != nil {
+			r.log.InfoContext(ctx, "repository reloaded", slog.String("repository", name), slog.Int64("generation", s.Generation))
+		}
+	}
+	r.mu.Lock()
+	old := r.repos
+	r.repos, r.failed = next, nextFailed
+	r.mu.Unlock()
+	for name, repo := range old {
+		if next[name] == nil {
+			r.log.InfoContext(ctx, "repository disconnected", slog.String("repository", name))
+			repo.closeLater()
+		}
+	}
+	return nil
+}
+
+// open connects one repository, reusing prev's mirror, and its snapshot when the branch stays,
+// when the URL does not change.
+func (r *Registry) open(ctx context.Context, s Stored, prev *Repo) (*Repo, error) {
+	d := s.Document
+	env, err := expr.NewEnv()
+	if err != nil {
+		return nil, err
+	}
+	repo := &Repo{Name: d.Metadata.Name, Title: d.Metadata.Title, Branch: d.Spec.DefaultBranch, Delivery: d.Spec.Delivery.Mode,
+		RunTokenSHA256: d.Spec.Runner.TokenSHA256, Document: d, Generation: s.Generation, ManagedBy: s.ManagedBy,
+		minInterval: time.Duration(d.Spec.Sync.MinInterval), log: r.log, lastFetch: time.Now()}
+	for _, f := range d.Spec.Enforcement.FloorRules {
+		rule := definitions.Rule{Name: f.Name, When: f.When, Approvers: f.Approvers, Min: f.Min}
+		if f.When != "" {
+			if rule.Condition, err = env.CompileCondition(f.When); err != nil {
+				return nil, fmt.Errorf("floor rule %s: %w", f.Name, err)
+			}
+		}
+		repo.FloorRules = append(repo.FloorRules, rule)
+	}
+	if prev != nil && prev.Document.Spec.URL == d.Spec.URL {
+		prev.mu.Lock()
+		repo.Mirror, repo.lastFetch = prev.Mirror, prev.lastFetch
+		if prev.Branch == repo.Branch {
+			repo.snap, prev.snap = prev.snap, nil
+		}
+		prev.mu.Unlock()
+		return repo, nil
+	}
+	if repo.Mirror, err = gitx.OpenMirror(ctx, d.Spec.URL, filepath.Join(r.cache, repo.Name+".git"), r.committer); err != nil {
+		return nil, err
+	}
+	if prev != nil {
+		prev.closeLater()
+	}
+	return repo, nil
+}
+
+// Watch reloads the registry every interval until ctx ends; errors are logged.
+func (r *Registry) Watch(ctx context.Context, interval time.Duration) {
+	t := time.NewTicker(interval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			if err := r.Reload(ctx); err != nil && ctx.Err() == nil {
+				r.log.ErrorContext(ctx, "reloading the repositories", slog.Any("error", err))
+			}
+		}
+	}
+}
+
+// List returns the connected repositories by name.
+func (r *Registry) List() []*Repo {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := slices.Collect(maps.Values(r.repos))
+	slices.SortFunc(out, func(a, b *Repo) int { return strings.Compare(a.Name, b.Name) })
+	return out
+}
 
 // Get returns a repository by name.
 func (r *Registry) Get(name string) (*Repo, error) {
-	for _, repo := range r.repos {
-		if repo.Name == name {
-			return repo, nil
-		}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if repo := r.repos[name]; repo != nil {
+		return repo, nil
 	}
 	return nil, fmt.Errorf("%w: %s", ErrNotFound, name)
 }
 
 // Close removes the snapshots' worktrees.
 func (r *Registry) Close() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	for _, repo := range r.repos {
 		repo.mu.Lock()
 		if repo.snap != nil {
@@ -121,6 +320,16 @@ func (r *Registry) Close() {
 			repo.snap = nil
 		}
 		repo.mu.Unlock()
+	}
+}
+
+// closeLater removes the snapshot's worktree once requests still reading it are done.
+func (repo *Repo) closeLater() {
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if old := repo.snap; old != nil {
+		repo.snap = nil
+		time.AfterFunc(worktreeGrace, func() { _ = old.worktree.Close() })
 	}
 }
 

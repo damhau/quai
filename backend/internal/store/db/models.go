@@ -53,6 +53,16 @@ type Event struct {
 	CreatedAt pgtype.Timestamptz
 }
 
+type Repository struct {
+	OrgID      string
+	Name       string
+	Document   json.RawMessage
+	ManagedBy  string
+	Generation int64
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
+}
+
 type Request struct {
 	ID                uuid.UUID
 	OrgID             string
