@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"io/fs"
 	"log/slog"
+	"net"
 	"net/http"
 	"regexp"
 	"strings"
@@ -49,12 +50,22 @@ type Options struct {
 	// UI is the frontend's build, served at every path the API and /auth do not answer; nil when
 	// the binary was built without it.
 	UI fs.FS
+	// Webhooks receives the platforms' deliveries under /webhooks/; nil without a database.
+	Webhooks http.Handler
+	// WebhookHost, when set, is the only host name /webhooks/ answers on, and that host answers
+	// nothing but /webhooks/, the run reports and /healthz: it can be exposed to the platforms
+	// without exposing the rest.
+	WebhookHost string
 }
 
 // New returns the HTTP handler of the API.
 func New(opts Options) http.Handler {
 	r, _ := build(opts, false)
-	return otelhttp.NewHandler(r, "quai", otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {
+	var h http.Handler = r
+	if opts.WebhookHost != "" {
+		h = webhookHost(opts.WebhookHost, r)
+	}
+	return otelhttp.NewHandler(h, "quai", otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {
 		return r.Method + " " + r.URL.Path
 	}))
 }
@@ -89,6 +100,9 @@ func build(opts Options, all bool) (*chi.Mux, huma.API) {
 	r.MethodNotAllowed(func(w http.ResponseWriter, _ *http.Request) {
 		writeProblem(w, http.StatusMethodNotAllowed, "this method is not allowed on this resource")
 	})
+	if opts.Webhooks != nil {
+		r.Mount(auth.WebhooksPath, opts.Webhooks)
+	}
 	r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		_, _ = w.Write([]byte("ok\n"))
@@ -112,6 +126,23 @@ func build(opts Options, all bool) (*chi.Mux, huma.API) {
 		registerHistory(a, opts.Repositories, opts.Store)
 	}
 	return r, a
+}
+
+// webhookHost keeps the webhooks on their own host name, and that host to the webhooks.
+func webhookHost(host string, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		name := r.Host
+		if h, _, err := net.SplitHostPort(r.Host); err == nil {
+			name = h
+		}
+		onHost := strings.EqualFold(name, host)
+		hook := strings.HasPrefix(r.URL.Path, auth.WebhooksPath)
+		if hook != onHost && !(onHost && (r.URL.Path == auth.RunsPath || r.URL.Path == "/healthz")) {
+			writeProblem(w, http.StatusNotFound, "no such resource")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // MetaOutput describes the running server.

@@ -17,6 +17,7 @@ import (
 	"github.com/damhau/quai/backend/internal/api"
 	"github.com/damhau/quai/backend/internal/auth"
 	"github.com/damhau/quai/backend/internal/config"
+	"github.com/damhau/quai/backend/internal/ingest"
 	"github.com/damhau/quai/backend/internal/jobs"
 	"github.com/damhau/quai/backend/internal/netx"
 	"github.com/damhau/quai/backend/internal/requests"
@@ -99,6 +100,9 @@ func serve(ctx context.Context, cfg *config.Config, log *slog.Logger, ln net.Lis
 				return err
 			}
 			opts.Requests = requests.New(s, reg, ins, log)
+			hooks := ingest.New(s, reg, log)
+			hooks.UseJobs(ins)
+			opts.Webhooks, opts.WebhookHost = hooks.Webhooks(), cfg.Webhooks.Host
 		}
 	}
 	srv := &http.Server{

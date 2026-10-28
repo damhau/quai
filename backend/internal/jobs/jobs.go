@@ -31,8 +31,10 @@ type Client = river.Client[pgx.Tx]
 type Options struct {
 	Logger     *slog.Logger
 	MaxWorkers int // jobs run at once; 10 when zero
-	// Workers adds the workers of other packages to the built-in ones.
-	Workers func(*river.Workers)
+	// Workers adds the workers of other packages to the built-in ones, and Periodic their
+	// periodic jobs.
+	Workers  func(*river.Workers)
+	Periodic []*river.PeriodicJob
 	// RescueStuckJobsAfter is how long a job may stay running before it is considered abandoned
 	// by a worker that died, and run again. One hour when zero.
 	RescueStuckJobsAfter time.Duration
@@ -58,11 +60,11 @@ func NewWorker(pool *pgxpool.Pool, opts Options) (*Client, error) {
 		Workers:              workers,
 		RescueStuckJobsAfter: opts.RescueStuckJobsAfter,
 		JobTimeout:           opts.JobTimeout,
-		PeriodicJobs: []*river.PeriodicJob{
+		PeriodicJobs: append([]*river.PeriodicJob{
 			river.NewPeriodicJob(river.PeriodicInterval(time.Hour), func() (river.JobArgs, *river.InsertOpts) {
 				return CleanupSessionsArgs{}, nil
 			}, &river.PeriodicJobOpts{RunOnStart: true}),
-		},
+		}, opts.Periodic...),
 	})
 }
 

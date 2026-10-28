@@ -33,16 +33,25 @@ var admin string // URL of the server's maintenance database
 // Main starts PostgreSQL, prepares the migrated template database, runs the tests and stops
 // PostgreSQL. Use it as `func TestMain(m *testing.M) { os.Exit(pgtest.Main(m)) }`.
 func Main(m *testing.M) int {
-	stop, err := start()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "pgtest:", err)
-		return 1
+	return Around(m.Run)()
+}
+
+// Around returns run wrapped in PostgreSQL's start and stop, for a package whose TestMain also
+// starts something else: `os.Exit(giteatest.Main(m))` becomes
+// `os.Exit(pgtest.Around(func() int { return giteatest.Main(m) })())`.
+func Around(run func() int) func() int {
+	return func() int {
+		stop, err := start()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "pgtest:", err)
+			return 1
+		}
+		code := run()
+		if err := stop(); err != nil {
+			fmt.Fprintln(os.Stderr, "pgtest: stop:", err)
+		}
+		return code
 	}
-	code := m.Run()
-	if err := stop(); err != nil {
-		fmt.Fprintln(os.Stderr, "pgtest: stop:", err)
-	}
-	return code
 }
 
 func start() (stop func() error, err error) {

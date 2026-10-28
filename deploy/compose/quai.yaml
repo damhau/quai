@@ -1,5 +1,5 @@
 # The configuration of the local stack (docker-compose.yml). The repositories are in
-# repositories.yaml, which run-quai.sh renders to /tmp with Gitea's token.
+# repositories.yaml.
 env: development
 database:
   url: postgres://quai@postgres:5432/quai?sslmode=disable
@@ -8,4 +8,4 @@ auth:
 git:
   cacheDir: /var/cache/quai
 repositories:
-  path: /tmp/repositories.yaml
+  path: /etc/quai/repositories.yaml

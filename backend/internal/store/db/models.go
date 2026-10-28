@@ -63,6 +63,15 @@ type Repository struct {
 	UpdatedAt  pgtype.Timestamptz
 }
 
+type RepositorySync struct {
+	OrgID         string
+	Repository    string
+	LastWebhookAt pgtype.Timestamptz
+	LastFetchAt   pgtype.Timestamptz
+	LastPollAt    pgtype.Timestamptz
+	Head          string
+}
+
 type Request struct {
 	ID                uuid.UUID
 	OrgID             string
@@ -115,4 +124,11 @@ type Session struct {
 	Token  string
 	Data   []byte
 	Expiry pgtype.Timestamptz
+}
+
+type WebhookDelivery struct {
+	OrgID      string
+	Repository string
+	DeliveryID string
+	ReceivedAt pgtype.Timestamptz
 }

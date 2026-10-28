@@ -37,6 +37,7 @@ type Config struct {
 	Repositories Repositories `yaml:"repositories"`
 	Secrets      Secrets      `yaml:"secrets"`
 	Network      Network      `yaml:"network"`
+	Webhooks     Webhooks     `yaml:"webhooks"`
 	Log          Log          `yaml:"log"`
 	Telemetry    Telemetry    `yaml:"telemetry"`
 }
@@ -79,6 +80,13 @@ type Secrets struct {
 		// the default kubeconfig (KUBECONFIG, ~/.kube/config) outside one.
 		Kubeconfig string `yaml:"kubeconfig"`
 	} `yaml:"kubernetes"`
+}
+
+// Webhooks configures where the Git platforms deliver webhooks.
+type Webhooks struct {
+	// Host, when set, is the only host name /webhooks/ answers on (and that host answers only
+	// webhooks, run reports and /healthz), to expose it to the platforms alone.
+	Host string `yaml:"host"`
 }
 
 // Network configures outgoing connections: Git, platform APIs, the identity provider, traces.
@@ -189,6 +197,7 @@ var variables = []struct {
 	{"QUAI_REPOSITORIES_PATH", func(c *Config, v string) error { c.Repositories.Path = v; return nil }},
 	{"QUAI_SECRETS_KUBECONFIG", func(c *Config, v string) error { c.Secrets.Kubernetes.Kubeconfig = v; return nil }},
 	{"QUAI_NETWORK_CA_FILE", func(c *Config, v string) error { c.Network.CAFile = v; return nil }},
+	{"QUAI_WEBHOOKS_HOST", func(c *Config, v string) error { c.Webhooks.Host = v; return nil }},
 }
 
 // Load reads the configuration file at path, or at QUAI_CONFIG when path is empty, applies the

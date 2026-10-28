@@ -1,11 +1,12 @@
 # The repository connections of the local stack (docker-compose.yml): Repository documents,
-# reconciled into the database at start-up. run-quai.sh replaces @GIT_TOKEN@ with the token the
-# seed step created in Gitea.
+# reconciled into the database at start-up. The token the seed step created in Gitea is in the
+# environment of Quai's processes (run-quai.sh).
 apiVersion: quai.dev/v1beta1
 kind: Repository
 metadata: { name: infra-live, title: Infrastructure (Terraform) }
 spec:
   connector: gitea
-  url: http://quai:@GIT_TOKEN@@gitea:3000/quai/infra-live.git
+  url: http://gitea:3000/quai/infra-live.git
+  credentials: { ref: env:QUAI_GITEA_TOKEN }
   defaultBranch: main
   delivery: { mode: direct }

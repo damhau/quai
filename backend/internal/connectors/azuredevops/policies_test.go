@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/damhau/quai/backend/internal/adotest"
 	"github.com/damhau/quai/backend/internal/connectors"
 	"github.com/damhau/quai/backend/internal/secrets"
 )
@@ -126,11 +127,11 @@ func mustOne(t *testing.T, deliver func(string) (connectors.Delivery, error)) fu
 // TestReplay reads a request as a subscription's history shows it.
 func TestReplay(t *testing.T) {
 	recorded := "Method: POST\r\nURI: https://quai.example.com/webhooks/live\r\nHTTP Version: 1.1\r\nHeaders:\r\n{\r\n  X-Quai-Webhook-Secret: ********\r\n  Content-Type: application/json; charset=utf-8\r\n}\r\nContent:\r\n{\r\n  \"id\": \"e-1\"\r\n}"
-	h, body, ok := replay(recorded, "s3cret")
+	h, body, ok := adotest.Replay(recorded, SecretHeader, "s3cret")
 	if !ok || h.Get(SecretHeader) != "s3cret" || h.Get("Content-Type") != "application/json; charset=utf-8" || string(body) != "{\n  \"id\": \"e-1\"\n}" {
 		t.Errorf("replay = %v %q %v", h, body, ok)
 	}
-	if _, _, ok := replay("Method: POST\nno content", "s"); ok {
+	if _, _, ok := adotest.Replay("Method: POST\nno content", SecretHeader, "s"); ok {
 		t.Error("a request without content")
 	}
 }

@@ -35,6 +35,7 @@ quai/
 │   │   ├── notify/                     # email, Teams, Slack, outgoing webhooks
 │   │   ├── itsm/                       # ServiceNow, JSM
 │   │   ├── gitx/                       # mirror cache, worktrees, git CLI wrapper
+│   │   ├── ingest/                     # webhooks and polling: deliveries verified, re-read as jobs
 │   │   ├── netx/                       # CA bundle and proxy shared by git and every HTTP client
 │   │   ├── connectors/                 # azuredevops (first), gitea, github, gitlab, bitbucket, generic
 │   │   │   └── conformance/            # shared suite every connector must pass

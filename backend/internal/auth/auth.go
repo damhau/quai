@@ -71,6 +71,10 @@ type sessionUser struct {
 	AuthTime time.Time `json:"authTime"`
 }
 
+// WebhooksPath is where Git platforms deliver webhooks: no sessions or tokens there, the
+// repository's connector verifies each delivery.
+const WebhooksPath = "/webhooks/"
+
 // RunsPath is where runners report runs; its Authorization header carries a run token, not an
 // API token (docs/design/06-runs-status-and-drift.md#run-report-protocol).
 const RunsPath = "/api/v1/runs"
@@ -122,6 +126,10 @@ func (a *Authenticator) Mode() string { return a.cfg.Mode }
 func (a *Authenticator) Middleware(next http.Handler) http.Handler {
 	identify := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
+		if strings.HasPrefix(r.URL.Path, WebhooksPath) {
+			next.ServeHTTP(w, r)
+			return
+		}
 		// Runners report with their repository's run token, which the run endpoint checks.
 		if h := r.Header.Get("Authorization"); h != "" && r.URL.Path != RunsPath {
 			id, err := a.tokenIdentity(ctx, h)

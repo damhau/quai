@@ -240,6 +240,16 @@ spec:
 | Mirror cache | One bare mirror per repository (`git clone --mirror`, partial clone with `--filter=blob:none` for large monorepos when `spec.sync.partialClone` is set, from the first clone). Each job gets a temporary `git worktree`, with sparse checkout limited to the paths it needs: a delivery checks out the files it changes and the regions it re-fingerprints. Git gets its credentials from the connector, as an HTTP header scoped to the remote's host or an SSH key checked against known host keys, through the environment, never the command line, and they are removed from anything it reports. |
 | Inventory index | On every new head, only the paths changed since the last indexed commit are re-read (`git diff --name-only`). A full re-index runs nightly and on demand. |
 
+Webhooks arrive at `POST /webhooks/{repository}` (only on the `webhooks.host` name when one is
+configured). The repository's connector verifies the delivery with `spec.webhooks.secret`; its
+delivery ID is recorded for a week, so a redelivery is taken once; its events are queued as a job
+in the same transaction. The job re-reads what the events name: a push fetches the repository
+(new head, definitions), a pull request or a status on one is read again from the platform before
+anything acts on it. A scheduler runs every minute and queues a poll for each repository whose
+`sync.pollInterval` has passed: the poll fetches, notes a head that moved without a webhook, and
+reconciles Quai's open pull requests (those under `delivery.branchPrefix`). The last webhook,
+fetch and poll, and the head, are recorded for the health page.
+
 ## Registering a repository
 
 The admin flow, in the UI or API:

@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/damhau/quai/backend/internal/config"
+	"github.com/damhau/quai/backend/internal/ingest"
 	"github.com/damhau/quai/backend/internal/jobs"
 	"github.com/damhau/quai/backend/internal/netx"
 	"github.com/damhau/quai/backend/internal/requests"
@@ -59,6 +60,7 @@ func newWorkerCmd() *cobra.Command {
 func work(ctx context.Context, cfg *config.Config, log *slog.Logger, s *store.Store, network *netx.Network) error {
 	opts := jobs.Options{Logger: log}
 	var svc *requests.Service
+	var hooks *ingest.Service
 	reg, err := openRepositories(ctx, cfg, s, network, log)
 	if err != nil {
 		return err
@@ -66,7 +68,12 @@ func work(ctx context.Context, cfg *config.Config, log *slog.Logger, s *store.St
 	if reg != nil {
 		defer reg.Close()
 		svc = requests.New(s, reg, nil, log)
-		opts.Workers = func(w *river.Workers) { river.AddWorker(w, requests.NewWorker(svc)) }
+		hooks = ingest.New(s, reg, log)
+		opts.Workers = func(w *river.Workers) {
+			river.AddWorker(w, requests.NewWorker(svc))
+			hooks.Workers(w)
+		}
+		opts.Periodic = append(opts.Periodic, ingest.Periodic())
 	}
 	c, err := jobs.NewWorker(s.Pool, opts)
 	if err != nil {
@@ -74,6 +81,7 @@ func work(ctx context.Context, cfg *config.Config, log *slog.Logger, s *store.St
 	}
 	if svc != nil {
 		svc.UseJobs(c)
+		hooks.UseJobs(c)
 	}
 	if err := c.Start(ctx); err != nil {
 		return err
