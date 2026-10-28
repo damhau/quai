@@ -22,6 +22,12 @@ jobs:
         with:
           go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
+      # The binaries tests start (PostgreSQL, the Kubernetes API server, Gitea), checksum-verified
+      # when downloaded; the key follows the packages that pin their versions.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/quai
+          key: test-binaries-${{ runner.os }}-${{ hashFiles('backend/internal/pgtest/*.go', 'backend/internal/k8stest/*.go', 'backend/internal/giteatest/*.go', 'backend/go.sum') }}
       - run: make check
       - name: quai lint on the example repository
         run: go run ./cmd/quai lint ../examples/gitops-repo
