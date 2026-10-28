@@ -6,9 +6,12 @@
 package gitea
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"path"
@@ -310,37 +313,51 @@ func (p *pullRequests) merge(ctx context.Context, id string, o connectors.MergeO
 	opt := sdk.MergePullRequestOption{Style: style, Title: title, Message: strings.TrimSpace(message),
 		DeleteBranchAfterMerge: &o.DeleteBranch, HeadCommitId: o.Head, MergeWhenChecksSucceed: auto}
 	// Gitea checks a new pull request's mergeability in the background, and asks to try again
-	// until it is done.
+	// until it is done; any other refusal is the protection's.
 	for attempt := 0; ; attempt++ {
-		cl, err := c.client(ctx)
-		if err != nil {
+		status, message, err := c.postMerge(ctx, n, opt)
+		switch {
+		case err != nil:
 			return err
-		}
-		ok, resp, err := cl.MergePullRequest(c.owner, c.repo, n, opt)
-		if err == nil && ok {
+		case status/100 == 2: // 201 when the merge is scheduled for when checks succeed
 			return nil
-		}
-		if resp != nil && resp.StatusCode == http.StatusMethodNotAllowed {
-			if strings.Contains(strings.ToLower(errorText(err)), "try again later") && attempt < 20 {
-				if err := sleep(ctx, 500*time.Millisecond); err != nil {
-					return err
-				}
-				continue
+		case status == http.StatusMethodNotAllowed && strings.Contains(strings.ToLower(message), "try again later") && attempt < 40:
+			if err := sleep(ctx, 500*time.Millisecond); err != nil {
+				return err
 			}
-			return fmt.Errorf("%w: %v", connectors.ErrBlocked, err)
+		case status == http.StatusMethodNotAllowed:
+			return fmt.Errorf("%w: %s", connectors.ErrBlocked, message)
+		case status == http.StatusNotFound:
+			return fmt.Errorf("%w: pull request %s", connectors.ErrNotFound, id)
+		default:
+			return fmt.Errorf("gitea: merge pull request %s: %d %s", id, status, message)
 		}
-		if err == nil {
-			err = errors.New("gitea did not merge")
-		}
-		return check(resp, err)
 	}
 }
 
-func errorText(err error) string {
-	if err == nil {
-		return ""
+// postMerge calls the merge endpoint itself: the SDK drops the message that tells "try again
+// later" from a refusal.
+func (c *Connector) postMerge(ctx context.Context, n int64, opt sdk.MergePullRequestOption) (int, string, error) {
+	body, err := json.Marshal(opt)
+	if err != nil {
+		return 0, "", err
 	}
-	return err.Error()
+	u := fmt.Sprintf("%s/api/v1/repos/%s/%s/pulls/%d/merge", c.base, url.PathEscape(c.owner), url.PathEscape(c.repo), n)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, bytes.NewReader(body))
+	if err != nil {
+		return 0, "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return 0, "", err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	var m struct {
+		Message string `json:"message"`
+	}
+	_ = json.NewDecoder(io.LimitReader(resp.Body, 1<<16)).Decode(&m)
+	return resp.StatusCode, m.Message, nil
 }
 
 func sleep(ctx context.Context, d time.Duration) error {
