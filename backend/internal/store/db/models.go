@@ -42,6 +42,15 @@ type ChangeSet struct {
 	CreatedAt    pgtype.Timestamptz
 }
 
+type DefinitionSet struct {
+	OrgID      string
+	Repository string
+	Commit     string
+	Active     json.RawMessage
+	Problems   json.RawMessage
+	CreatedAt  pgtype.Timestamptz
+}
+
 type Event struct {
 	ID        int64
 	OrgID     string

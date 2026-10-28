@@ -100,7 +100,7 @@ spec:
 	store := secrets.New(map[string]secrets.Backend{"env": secrets.Env{Lookup: func(name string) (string, bool) {
 		return runToken, name == "INFRA_LIVE_RUN_TOKEN"
 	}}})
-	reg, err := repositories.Open(context.Background(), cfg, repositories.FromStore(s), repositories.Options{Secrets: store, Log: log})
+	reg, err := repositories.Open(context.Background(), cfg, repositories.FromStore(s), repositories.Options{Secrets: store, Store: s, Log: log})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -40,8 +40,8 @@ func connectorRegistry(network *netx.Network, log *slog.Logger) *connectors.Regi
 	}
 }
 
-func repositoryOptions(cfg *config.Config, network *netx.Network, log *slog.Logger) repositories.Options {
-	return repositories.Options{Secrets: secretStore(cfg), Network: network, Connectors: connectorRegistry(network, log), Log: log}
+func repositoryOptions(cfg *config.Config, s *store.Store, network *netx.Network, log *slog.Logger) repositories.Options {
+	return repositories.Options{Secrets: secretStore(cfg), Network: network, Connectors: connectorRegistry(network, log), Store: s, Log: log}
 }
 
 // openRepositories connects the repositories. With a database, the Repository documents of the
@@ -57,12 +57,12 @@ func openRepositories(ctx context.Context, cfg *config.Config, s *store.Store, n
 		if len(docs) == 0 {
 			return nil, nil
 		}
-		return repositories.Open(ctx, cfg, repositories.Static(docs), repositoryOptions(cfg, network, log))
+		return repositories.Open(ctx, cfg, repositories.Static(docs), repositoryOptions(cfg, nil, network, log))
 	}
 	if err := repositories.Reconcile(ctx, s, docs); err != nil {
 		return nil, err
 	}
-	reg, err := repositories.Open(ctx, cfg, repositories.FromStore(s), repositoryOptions(cfg, network, log))
+	reg, err := repositories.Open(ctx, cfg, repositories.FromStore(s), repositoryOptions(cfg, s, network, log))
 	if err != nil {
 		return nil, err
 	}

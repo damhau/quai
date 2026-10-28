@@ -30,6 +30,9 @@ type ResourceType struct {
 
 	// Path is the definition's file in the repository.
 	Path string `json:"-"`
+	// Files are the repository files the type is made of: its own and its schemas'. Digest
+	// fingerprints them.
+	Files []string `json:"-"`
 	// FileSchema validates the content of the type's files; InputSchema validates form values.
 	// They are the same schema when the type has no separate input schema.
 	FileSchema  *schema.Schema `json:"-"`
@@ -211,6 +214,7 @@ type Blueprint struct {
 	Spec       BlueprintSpec `json:"spec"`
 
 	Path        string         `json:"-"`
+	Files       []string       `json:"-"` // its own, its input schema's and its types' files
 	InputSchema *schema.Schema `json:"-"`
 }
 

@@ -193,6 +193,18 @@ How Quai loads definitions:
 3. Every plan records the definitions commit it used. A request is always delivered with the definitions it was planned with; if the type changes before merge, the request is marked stale and must be re-planned.
 4. Authors can preview definitions from any branch or open PR ("try this type before merging it"). Previews are visible only to the author and catalog admins and cannot be submitted.
 
+How this is implemented: each definition has a digest of its files (its own, the schemas its
+schemas reach through `$ref`, and for a blueprint the files of its types), so the same digest at
+two commits means the same definition. Whatever process loads a commit stores the set of
+definitions active there (`definition_sets`): the valid ones, and those of the previous set whose
+file is broken at the commit, kept with the commit their version comes from and read back from
+it. The first process to store a set records each definition added, changed, removed or broken
+as an event (`definition_<change>`, target `definitions:<repository>/<kind>/<name>`) with the
+author and commit of the file's last change, and the problems. At approval and at delivery, a
+request whose definition's digest differs from the one at its definitions commit, or which is
+gone, becomes stale. The health page (P1-17) shows the problems; the check on the commit that
+introduced them is not published yet.
+
 ### Trust
 
 Definitions are code: whoever can merge to `.quai/` decides what forms show,

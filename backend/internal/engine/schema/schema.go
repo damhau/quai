@@ -97,7 +97,7 @@ func (c *Compiler) Compile(path string) (*Schema, error) {
 	if err != nil {
 		return nil, fmt.Errorf("schema %s: %w", path, err)
 	}
-	return &Schema{path: path, url: u, doc: doc, docs: c.docs, keys: c.keys, sch: sch}, nil
+	return &Schema{path: path, url: u, doc: doc, docs: c.docs, paths: c.paths, keys: c.keys, sch: sch}, nil
 }
 
 func repoURL(path string) (string, error) {
@@ -179,16 +179,76 @@ func (c *Compiler) fromSource(u string) (any, error) {
 
 // Schema is a compiled schema. It is safe for concurrent use.
 type Schema struct {
-	path string
-	url  string
-	doc  any
-	docs map[string]any
-	keys map[string]map[string][]string
-	sch  *jsonschema.Schema
+	path  string
+	url   string
+	doc   any
+	docs  map[string]any
+	paths map[string]string // the repository path of each document, by URL
+	keys  map[string]map[string][]string
+	sch   *jsonschema.Schema
 }
 
 // Path returns the repository path the schema was compiled from.
 func (s *Schema) Path() string { return s.path }
+
+// Files returns the repository paths of the documents the schema uses: its own, and those its
+// $refs reach, transitively; sorted. A change to any of them changes the schema.
+func (s *Schema) Files() []string {
+	seen := map[string]bool{}
+	var walk func(u string)
+	walk = func(u string) {
+		doc, ok := s.docs[u]
+		if !ok || seen[u] {
+			return
+		}
+		seen[u] = true
+		b := u
+		if id := absoluteID(doc); id != "" {
+			b = id
+		}
+		at, err := url.Parse(b)
+		if err != nil {
+			return
+		}
+		for _, ref := range refs(doc, nil) {
+			r, err := url.Parse(ref)
+			if err != nil {
+				continue
+			}
+			target := at.ResolveReference(r)
+			target.Fragment = ""
+			walk(target.String())
+		}
+	}
+	walk(s.url)
+	var out []string
+	for u := range seen {
+		if p, ok := s.paths[u]; ok {
+			out = append(out, p)
+		}
+	}
+	slices.Sort(out)
+	return slices.Compact(out)
+}
+
+// refs collects the $ref values of a document.
+func refs(v any, out []string) []string {
+	switch v := v.(type) {
+	case map[string]any:
+		for k, x := range v {
+			if s, ok := x.(string); ok && k == "$ref" {
+				out = append(out, s)
+			} else {
+				out = refs(x, out)
+			}
+		}
+	case []any:
+		for _, x := range v {
+			out = refs(x, out)
+		}
+	}
+	return out
+}
 
 // ValidationError lists what is wrong with a document, by field path: dotted, with list indices
 // as numbers ("disks.0.size_gb"), or "$" for the document itself.

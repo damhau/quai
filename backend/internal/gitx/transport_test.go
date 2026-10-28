@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"math/big"
 	"net"
 	"net/http"
@@ -511,5 +512,49 @@ func TestNewBranch(t *testing.T) {
 	}
 	if _, err := m.Parents(ctx, "zzz"); err == nil {
 		t.Error("Parents of an invalid commit")
+	}
+}
+
+// TestFiles reads a commit's files without a checkout, as fs.FS.
+func TestFiles(t *testing.T) {
+	bare, push := remote(t)
+	m := mirror(t, bare)
+	old, _ := m.Head(ctx, "main")
+	push("envs/prod/vms/web01.yaml", "cpu: 16\n")
+	if err := m.Fetch(ctx); err != nil {
+		t.Fatal(err)
+	}
+	fsys, err := m.Files(ctx, old)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b, err := fs.ReadFile(fsys, "envs/prod/vms/web01.yaml"); err != nil || string(b) != "cpu: 4\n" {
+		t.Errorf("the old version = %q, %v", b, err)
+	}
+	entries, err := fs.ReadDir(fsys, "envs/prod/vms")
+	if err != nil || len(entries) != 2 || entries[0].Name() != "db01.yaml" || entries[0].IsDir() {
+		t.Errorf("ReadDir = %v, %v", entries, err)
+	}
+	if root, err := fs.ReadDir(fsys, "."); err != nil || len(root) != 2 || !root[1].IsDir() {
+		t.Errorf("the root = %v, %v", root, err)
+	}
+	if _, err := fs.ReadFile(fsys, "nope.yaml"); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("a missing file: %v", err)
+	}
+	if _, err := fs.ReadFile(fsys, "../etc/passwd"); err == nil {
+		t.Error("an invalid path")
+	}
+	var walked []string
+	_ = fs.WalkDir(fsys, ".", func(p string, d fs.DirEntry, err error) error {
+		if err == nil && !d.IsDir() {
+			walked = append(walked, p)
+		}
+		return err
+	})
+	if strings.Join(walked, ",") != "README.md,envs/prod/vms/db01.yaml,envs/prod/vms/web01.yaml" {
+		t.Errorf("walked %v", walked)
+	}
+	if _, err := m.Files(ctx, "main"); err == nil {
+		t.Error("a branch name instead of a commit")
 	}
 }

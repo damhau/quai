@@ -114,7 +114,7 @@ spec:
 		t.Fatal(err)
 	}
 	log := slog.New(slog.DiscardHandler)
-	opts.Log = log
+	opts.Log, opts.Store = log, s
 	reg, err := repositories.Open(ctx, &config.Config{Git: config.Git{CacheDir: t.TempDir()}}, repositories.FromStore(s), opts)
 	if err != nil {
 		t.Fatal(err)

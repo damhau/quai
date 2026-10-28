@@ -64,6 +64,7 @@ type Repo struct {
 
 	minInterval time.Duration
 	secrets     *secrets.Store
+	store       *store.Store // definition sets and events; nil without a database
 	log         *slog.Logger
 	mu          sync.Mutex
 	lastFetch   time.Time
@@ -74,8 +75,9 @@ type Repo struct {
 type Snapshot struct {
 	Repository  string
 	Commit      string
-	Definitions *definitions.Repository
+	Definitions *definitions.Repository // the active ones: valid at Commit, or kept from before
 	Problems    definitions.Problems
+	Set         DefinitionSet // the active definitions' versions
 	FS          fs.FS
 	worktree    *gitx.Worktree
 }
@@ -157,6 +159,7 @@ type Registry struct {
 	src        Source
 	connectors *connectors.Registry
 	secrets    *secrets.Store
+	db         *store.Store
 	cache      string
 	committer  gitx.Signature
 	caFile     string // the CA bundle git verifies servers with; empty: git's own
@@ -179,7 +182,10 @@ type Options struct {
 	Secrets    *secrets.Store       // resolves the connections' secret references
 	Network    *netx.Network        // how git reaches the remotes; nil: git's defaults, no proxy
 	Connectors *connectors.Registry // makes each connection's connector; nil: Git transport only
-	Log        *slog.Logger
+	// Store keeps the definitions active at each commit, and their changes as events; nil
+	// without a database.
+	Store *store.Store
+	Log   *slog.Logger
 }
 
 // Open loads the connections of src: it makes their connectors, clones or fetches their mirrors
@@ -203,7 +209,7 @@ func Open(ctx context.Context, cfg *config.Config, src Source, opts Options) (*R
 		}
 		cache = filepath.Join(dir, "quai", "mirrors")
 	}
-	reg := &Registry{src: src, connectors: conns, secrets: store, cache: cache, log: log, repos: map[string]*Repo{}, failed: map[string]int64{},
+	reg := &Registry{src: src, connectors: conns, secrets: store, db: opts.Store, cache: cache, log: log, repos: map[string]*Repo{}, failed: map[string]int64{},
 		committer: gitx.Signature{Name: cfg.Git.Committer.Name, Email: cfg.Git.Committer.Email}}
 	if network != nil {
 		reg.proxy = network.Proxy
@@ -304,7 +310,7 @@ func (r *Registry) open(ctx context.Context, s Stored, prev *Repo) (*Repo, error
 	}
 	repo := &Repo{Name: d.Metadata.Name, Title: d.Metadata.Title, Branch: d.Spec.DefaultBranch, Delivery: d.Spec.Delivery.Mode,
 		Document: d, Generation: s.Generation, ManagedBy: s.ManagedBy, minInterval: time.Duration(d.Spec.Sync.MinInterval),
-		secrets: r.secrets, log: r.log, lastFetch: time.Now()}
+		secrets: r.secrets, store: r.db, log: r.log, lastFetch: time.Now()}
 	repo.checkCredentials(ctx)
 	if repo.Connector, err = r.connectors.New(d.Spec.Connector, connectors.Config{URL: d.Spec.URL, Credentials: repo.Credentials,
 		KnownHosts: d.Spec.Credentials.KnownHosts}); err != nil {
@@ -485,7 +491,8 @@ func (repo *Repo) Snapshot(ctx context.Context, sync bool) (*Snapshot, error) {
 		return nil, err
 	}
 	defs, problems := definitions.Load(wt.FS())
-	snap := &Snapshot{Repository: repo.Name, Commit: head, Definitions: defs, Problems: problems, FS: wt.FS(), worktree: wt}
+	set := repo.activate(ctx, head, defs, problems, wt.FS())
+	snap := &Snapshot{Repository: repo.Name, Commit: head, Definitions: defs, Problems: problems, Set: set, FS: wt.FS(), worktree: wt}
 	if old := repo.snap; old != nil {
 		time.AfterFunc(worktreeGrace, func() { _ = old.worktree.Close() })
 	}

@@ -454,6 +454,11 @@ func (s *Service) Review(ctx context.Context, who auth.Identity, id uuid.UUID, d
 	} else if stale != "" {
 		return s.transition(ctx, r, PendingApproval, Stale, "stale", map[string]any{"region": stale})
 	}
+	if changed, err := s.definitionsChanged(ctx, r, sets); err != nil {
+		return r, err
+	} else if changed != "" {
+		return s.transition(ctx, r, PendingApproval, Stale, "stale", map[string]any{"definitions": changed})
+	}
 	var next db.Request
 	err = s.store.Tx(ctx, func(tx pgx.Tx, q *db.Queries) error {
 		if _, err := q.CreateReview(ctx, db.CreateReviewParams{
@@ -596,6 +601,43 @@ func conflict(err error, r db.Request) error {
 	return err
 }
 
+// definitionsChanged says how the definition the request was planned with changed since (its
+// digest differs, or it is gone), or "". Without the set of the planned commit (planned before
+// definitions were kept per commit), it cannot tell and says "".
+func (s *Service) definitionsChanged(ctx context.Context, r db.Request, sets []db.ChangeSet) (string, error) {
+	if len(sets) == 0 {
+		return "", nil
+	}
+	kind, name := "type", r.TypeName
+	if r.Blueprint != "" {
+		kind, name = "blueprint", r.Blueprint
+	}
+	if name == "" {
+		return "", nil
+	}
+	repo := sets[0].Repository
+	planned, ok, err := repositories.DefinitionsAt(ctx, s.store, repo, r.DefinitionsCommit)
+	if err != nil || !ok {
+		return "", err
+	}
+	_, snap, err := s.snapshot(ctx, repo)
+	if err != nil {
+		return "", err
+	}
+	before, now := planned.Types, snap.Set.Types
+	if kind == "blueprint" {
+		before, now = planned.Blueprints, snap.Set.Blueprints
+	}
+	v, ok := now[name]
+	switch {
+	case !ok:
+		return fmt.Sprintf("the %s %s was removed", kind, name), nil
+	case v.Digest != before[name].Digest:
+		return fmt.Sprintf("the %s %s changed in %.12s", kind, name, v.Commit), nil
+	}
+	return "", nil
+}
+
 // stale returns the first region of the change sets that changed on its branch, or "".
 func (s *Service) stale(ctx context.Context, sets []db.ChangeSet) (string, error) {
 	for _, cs := range sets {
@@ -673,6 +715,14 @@ func (w *Worker) Work(ctx context.Context, job *river.Job[DeliverArgs]) error {
 			if r, err = s.transition(ctx, r, Approved, Merging, "merging", nil); err != nil {
 				return err
 			}
+		}
+		// A request is delivered with the definitions it was planned with: if they changed, it
+		// must be planned again.
+		if changed, err := s.definitionsChanged(ctx, r, sets); err != nil {
+			return err
+		} else if changed != "" {
+			_, err = s.transition(ctx, r, Merging, Stale, "stale", map[string]any{"definitions": changed})
+			return err
 		}
 		changes, err := s.store.ListChanges(ctx, cs.ID)
 		if err != nil {

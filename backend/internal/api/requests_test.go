@@ -239,6 +239,60 @@ func TestStale(t *testing.T) {
 	}
 }
 
+// A request is delivered with the definitions it was planned with: a change to its type before
+// the approval makes it stale; a broken edit of the type does not, as the planned version stays
+// active; a change elsewhere does not either.
+func TestStaleDefinitions(t *testing.T) {
+	h := newHarness(t)
+	bob, alice := h.as("bob"), h.as("alice")
+	original, ok := h.file(".quai/types/vm.yaml")
+	if !ok {
+		t.Fatal("no vm type")
+	}
+	resize := func(cpu int) RequestView {
+		t.Helper()
+		var r RequestView
+		if status, body := bob.do(http.MethodPost, Prefix+"/requests/type", map[string]any{"repository": "infra-live", "type": "vm", "kind": "action", "key": "prod/web01",
+			"action": "resize", "actionInputs": map[string]any{"cpu": cpu, "memory_gb": 16}}, &r); status != http.StatusCreated {
+			t.Fatalf("submit = %d %s", status, body)
+		}
+		return r
+	}
+	approve := func(r RequestView) string {
+		t.Helper()
+		var out RequestView
+		if status, body := alice.do(http.MethodPost, Prefix+"/requests/"+r.ID+"/review", map[string]string{"decision": "approve"}, &out); status != http.StatusOK {
+			t.Fatalf("approve = %d %s", status, body)
+		}
+		return out.State
+	}
+
+	r := resize(6)
+	h.push("README.md", "# infra\n\nAn edit that changes no definition.\n")
+	h.push(".quai/types/vm.yaml", strings.Replace(original, "kind: ResourceType", "kind: ResourceTyp", 1))
+	if state := approve(r); state == "stale" {
+		t.Fatalf("after an unrelated edit and a broken edit of the type: %s", state)
+	}
+	bob.await(r.ID, "applied")
+
+	r = resize(7)
+	h.push(".quai/types/vm.yaml", strings.Replace(original, "Virtual machine (Terraform)", "Virtual machine", 1))
+	if state := approve(r); state != "stale" {
+		t.Errorf("after a change to the type: %s", state)
+	}
+	var got RequestView
+	alice.do(http.MethodGet, Prefix+"/requests/"+r.ID, nil, &got)
+	found := false
+	for _, e := range got.Events {
+		if e.Kind == "stale" && strings.Contains(string(e.Data), "the type vm changed") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("the stale event does not say why: %+v", got.Events)
+	}
+}
+
 // Ported from "delete removes the file; unparseable files are listed but never edited".
 func TestDeleteAndUnparseable(t *testing.T) {
 	h := newHarness(t)

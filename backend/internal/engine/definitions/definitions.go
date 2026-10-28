@@ -10,6 +10,8 @@ package definitions
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -97,6 +99,18 @@ func Load(fsys fs.FS) (*Repository, Problems) {
 			continue
 		}
 		repo.Blueprints[b.Metadata.Name] = b
+	}
+	for _, t := range repo.Types {
+		t.Files = files([]string{t.Path}, t.FileSchema, t.InputSchema)
+	}
+	for _, b := range repo.Blueprints {
+		own := []string{b.Path}
+		for _, r := range b.Spec.Resources {
+			if t := repo.Types[r.Type.Name]; t != nil && r.Type.Repository == "" {
+				own = append(own, t.Files...)
+			}
+		}
+		b.Files = files(own, b.InputSchema)
 	}
 	slices.SortStableFunc(l.problems, func(a, b Problem) int { return strings.Compare(a.Path, b.Path) })
 	return repo, l.problems
@@ -254,6 +268,30 @@ func display(v any) string {
 
 // LoadBlueprint reads and checks the blueprint at file in fsys against the repository's types,
 // for a blueprint about to be written: the designer publishes only blueprints that load.
+// files returns the paths given and the schemas' files, sorted and without duplicates.
+func files(paths []string, schemas ...*schema.Schema) []string {
+	out := slices.Clone(paths)
+	for _, s := range schemas {
+		if s != nil {
+			out = append(out, s.Files()...)
+		}
+	}
+	slices.Sort(out)
+	return slices.Compact(out)
+}
+
+// Digest fingerprints a definition by the content of its files in fsys: the same digest at two
+// commits means the same definition. A missing file counts as empty.
+func Digest(fsys fs.FS, files []string) string {
+	h := sha256.New()
+	for _, f := range files {
+		b, _ := fs.ReadFile(fsys, f)
+		fmt.Fprintf(h, "%s\x00%d\x00", f, len(b))
+		h.Write(b)
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
 func LoadBlueprint(fsys fs.FS, file string, types map[string]*ResourceType) (*Blueprint, Problems) {
 	l := newLoader(fsys)
 	b := l.blueprint(file, types)

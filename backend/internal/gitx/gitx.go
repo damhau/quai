@@ -645,3 +645,116 @@ func runScrubbed(ctx context.Context, dir string, env, secrets []string, args ..
 	}
 	return stdout.String(), nil
 }
+
+// Files returns the files of a commit, read from the mirror's objects without a checkout: an
+// fs.FS that also reads files (fs.ReadFileFS) and directories (fs.ReadDirFS), for reading
+// definitions as they were at an earlier commit.
+func (m *Mirror) Files(ctx context.Context, commit string) (fs.FS, error) {
+	if err := checkCommit(commit); err != nil {
+		return nil, err
+	}
+	return &commitFS{m: m, ctx: ctx, commit: commit}, nil
+}
+
+type commitFS struct {
+	m      *Mirror
+	ctx    context.Context
+	commit string
+}
+
+func (c *commitFS) object(name string) string {
+	if name == "." {
+		return c.commit + "^{tree}"
+	}
+	return c.commit + ":" + name
+}
+
+func (c *commitFS) ReadFile(name string) ([]byte, error) {
+	if !fs.ValidPath(name) || name == "." {
+		return nil, &fs.PathError{Op: "read", Path: name, Err: fs.ErrInvalid}
+	}
+	out, err := c.m.git(c.ctx, "", "cat-file", "blob", c.object(name))
+	if err != nil {
+		return nil, &fs.PathError{Op: "read", Path: name, Err: fs.ErrNotExist}
+	}
+	return []byte(out), nil
+}
+
+func (c *commitFS) ReadDir(name string) ([]fs.DirEntry, error) {
+	if !fs.ValidPath(name) {
+		return nil, &fs.PathError{Op: "readdir", Path: name, Err: fs.ErrInvalid}
+	}
+	out, err := c.m.git(c.ctx, "", "ls-tree", "-z", c.object(name))
+	if err != nil {
+		return nil, &fs.PathError{Op: "readdir", Path: name, Err: fs.ErrNotExist}
+	}
+	var entries []fs.DirEntry
+	for _, rec := range strings.Split(strings.TrimSuffix(out, "\x00"), "\x00") {
+		meta, entryName, ok := strings.Cut(rec, "\t")
+		f := strings.Fields(meta)
+		if !ok || len(f) != 3 {
+			continue
+		}
+		var mode fs.FileMode
+		switch f[1] {
+		case "tree":
+			mode = fs.ModeDir
+		case "blob":
+			if f[0] == "120000" {
+				mode = fs.ModeSymlink
+			}
+		default:
+			continue // a submodule
+		}
+		entries = append(entries, entry{name: entryName, mode: mode})
+	}
+	slices.SortFunc(entries, func(a, b fs.DirEntry) int { return strings.Compare(a.Name(), b.Name()) })
+	return entries, nil
+}
+
+func (c *commitFS) Open(name string) (fs.File, error) {
+	if b, err := c.ReadFile(name); err == nil {
+		return &memFile{entry: entry{name: path.Base(name)}, r: bytes.NewReader(b), size: int64(len(b))}, nil
+	}
+	if _, err := c.ReadDir(name); err == nil {
+		return &memFile{entry: entry{name: path.Base(name), mode: fs.ModeDir}}, nil
+	}
+	return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrNotExist}
+}
+
+// entry is a file of a commit, as a directory lists it.
+type entry struct {
+	name string
+	mode fs.FileMode
+}
+
+func (e entry) Name() string               { return e.name }
+func (e entry) IsDir() bool                { return e.mode.IsDir() }
+func (e entry) Type() fs.FileMode          { return e.mode.Type() }
+func (e entry) Info() (fs.FileInfo, error) { return info{e, 0}, nil }
+
+type info struct {
+	entry
+	size int64
+}
+
+func (i info) Size() int64        { return i.size }
+func (i info) Mode() fs.FileMode  { return i.mode | 0o444 }
+func (i info) ModTime() time.Time { return time.Time{} }
+func (i info) Sys() any           { return nil }
+
+// memFile is an opened file or directory of a commit.
+type memFile struct {
+	entry
+	r    *bytes.Reader
+	size int64
+}
+
+func (f *memFile) Stat() (fs.FileInfo, error) { return info{f.entry, f.size}, nil }
+func (f *memFile) Close() error               { return nil }
+func (f *memFile) Read(b []byte) (int, error) {
+	if f.r == nil {
+		return 0, &fs.PathError{Op: "read", Path: f.name, Err: fs.ErrInvalid}
+	}
+	return f.r.Read(b)
+}
