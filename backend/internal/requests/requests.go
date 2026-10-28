@@ -421,7 +421,7 @@ func (s *Service) Submit(ctx context.Context, who auth.Identity, p *Plan, reason
 
 // Reviews returns a request's reviews and the decision they make.
 func (s *Service) Reviews(ctx context.Context, r db.Request) ([]db.Review, policy.Outcome, error) {
-	reviews, err := s.store.ListReviews(ctx, r.ID)
+	reviews, err := s.reviews(ctx, r)
 	if err != nil {
 		return nil, policy.Outcome{}, err
 	}
@@ -487,7 +487,8 @@ func (s *Service) Review(ctx context.Context, who auth.Identity, id uuid.UUID, d
 		if err := event(ctx, q, r, decision, who.Principal.Name, map[string]any{"comment": comment}); err != nil {
 			return err
 		}
-		reviews, err := q.ListReviews(ctx, r.ID)
+		all, err := q.ListReviews(ctx, r.ID)
+		reviews := bound(all, sets[0].Hash)
 		if err != nil {
 			return err
 		}
@@ -535,7 +536,7 @@ func (s *Service) Refresh(ctx context.Context, r db.Request) {
 
 // Reviewed reports whether someone has reviewed a request already. An error counts as not.
 func (s *Service) Reviewed(ctx context.Context, r db.Request, name string) bool {
-	reviews, err := s.store.ListReviews(ctx, r.ID)
+	reviews, err := s.reviews(ctx, r)
 	return err == nil && slices.ContainsFunc(reviews, func(v db.Review) bool { return v.Reviewer == name })
 }
 
@@ -635,8 +636,9 @@ func (s *Service) statusJob(ctx context.Context, tx pgx.Tx, q *db.Queries, r db.
 	return jobs.InsertTx(ctx, s.jobs, tx, StatusArgs{RequestID: r.ID}, nil)
 }
 
-// commit is a request's commit, with the fingerprints its regions had when it was planned.
-func (s *Service) commit(ctx context.Context, r db.Request, cs db.ChangeSet, repo *repositories.Repo) (gitx.Commit, error) {
+// commit is a request's commit, with the fingerprints its regions had when it was planned; with
+// approvals, its message carries the Approved-by trailers.
+func (s *Service) commit(ctx context.Context, r db.Request, cs db.ChangeSet, repo *repositories.Repo, approvals bool) (gitx.Commit, error) {
 	changes, err := s.store.ListChanges(ctx, cs.ID)
 	if err != nil {
 		return gitx.Commit{}, err
@@ -646,7 +648,7 @@ func (s *Service) commit(ctx context.Context, r db.Request, cs db.ChangeSet, rep
 	// In direct mode the commit comes after the approvals, and carries them; a pull request's
 	// commit comes before (its merge carries them).
 	var approved []gitx.Trailer
-	if r.State == Merging {
+	if approvals {
 		if approved, err = s.approvals(ctx, r); err != nil {
 			return gitx.Commit{}, err
 		}
@@ -800,7 +802,7 @@ func (w *Worker) Work(ctx context.Context, job *river.Job[DeliverArgs]) error {
 			_, err = s.transition(ctx, r, Merging, Stale, "stale", map[string]any{"definitions": changed})
 			return err
 		}
-		commit, err := s.commit(ctx, r, cs, repo)
+		commit, err := s.commit(ctx, r, cs, repo, true)
 		if err != nil {
 			return err
 		}
@@ -847,7 +849,7 @@ func message(r db.Request, cs db.ChangeSet, extra ...gitx.Trailer) string {
 
 // approvals are the request's Approved-by trailers, in the order of the approvals.
 func (s *Service) approvals(ctx context.Context, r db.Request) ([]gitx.Trailer, error) {
-	reviews, err := s.store.ListReviews(ctx, r.ID)
+	reviews, err := s.reviews(ctx, r)
 	if err != nil {
 		return nil, err
 	}
@@ -875,6 +877,31 @@ func event(ctx context.Context, q *db.Queries, r db.Request, kind, actor string,
 	}
 	_, err := q.AddEvent(ctx, db.AddEventParams{RequestID: pgtype.UUID{Bytes: r.ID, Valid: true}, Target: r.Target, Kind: kind, Actor: actor, Data: raw})
 	return err
+}
+
+// reviews returns the request's reviews that count: those of its current change set. A review
+// is bound to the content it reviewed (docs/design/05-delivery-and-approvals.md#approvals-bound-to-content).
+func (s *Service) reviews(ctx context.Context, r db.Request) ([]db.Review, error) {
+	all, err := s.store.ListReviews(ctx, r.ID)
+	if err != nil {
+		return nil, err
+	}
+	sets, err := s.store.ListChangeSets(ctx, r.ID)
+	if err != nil || len(sets) == 0 {
+		return all, err
+	}
+	return bound(all, sets[0].Hash), nil
+}
+
+// bound keeps the reviews of the change set hash.
+func bound(all []db.Review, hash string) []db.Review {
+	var out []db.Review
+	for _, v := range all {
+		if v.ChangeSetHash == hash {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 func toReviews(rs []db.Review) []policy.Review {

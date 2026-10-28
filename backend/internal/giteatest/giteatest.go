@@ -433,6 +433,21 @@ func (r *Repo) Unprotect(branch string) error {
 	return err
 }
 
+// Write changes a file on branch through the API, creating it if needed, as a person editing it
+// in the web UI would.
+func (r *Repo) Write(branch, path, content string) error {
+	existing, _, err := r.g.Client.GetContents(r.Owner, r.Name, branch, path)
+	if err != nil || existing == nil {
+		return r.Commit(branch, path, content)
+	}
+	_, _, err = r.g.Client.UpdateFile(r.Owner, r.Name, path, gitea.UpdateFileOptions{
+		FileOptions: gitea.FileOptions{BranchName: branch, Message: "Edit " + path},
+		SHA:         existing.SHA,
+		Content:     base64.StdEncoding.EncodeToString([]byte(content)),
+	})
+	return err
+}
+
 // Commit writes a file on branch through the API, as a person editing it in the web UI would.
 func (r *Repo) Commit(branch, path, content string) error {
 	_, _, err := r.g.Client.CreateFile(r.Owner, r.Name, path, gitea.CreateFileOptions{

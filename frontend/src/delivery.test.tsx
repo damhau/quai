@@ -27,3 +27,26 @@ test("while the pull request is being opened, the page says so", async () => {
   renderApp(`/requests/${submitted.id}`)
   expect(await screen.findByText("Opening the pull request")).toBeInTheDocument()
 })
+
+test("the timeline says what happened to the pull request", async () => {
+  const at = "2026-10-28T10:00:00Z"
+  server.use(
+    http.get("*/api/v1/requests/:id", ({ params }) =>
+      HttpResponse.json({
+        ...submitted,
+        id: String(params.id),
+        state: "stale",
+        delivery: { branch: "quai/r-7-web01-create", pullRequest: "12" },
+        events: [
+          { kind: "rebuilt", data: { base: "4b825dc642cb6eb9a060e54bf8d69288fbee4904" }, at },
+          { kind: "modified_outside_quai", data: { reason: "the pull request was changed outside Quai: its approvals are void, approve the new content" }, at },
+          { kind: "stale", data: { region: "envs/prod/vms/web01.yaml" }, at },
+        ],
+      }),
+    ),
+  )
+  renderApp(`/requests/${submitted.id}`)
+  expect(await screen.findByText(/rebuilt the pull request on the new base 4b825dc;/)).toBeInTheDocument()
+  expect(screen.getByText(/changed outside Quai: its approvals are void/)).toBeInTheDocument()
+  expect(screen.getByText(/envs\/prod\/vms\/web01.yaml changed on the base branch/)).toBeInTheDocument()
+})

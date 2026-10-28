@@ -70,6 +70,15 @@ func (q *Queries) CreateChangeSet(ctx context.Context, arg CreateChangeSetParams
 	return i, err
 }
 
+const deleteChanges = `-- name: DeleteChanges :exec
+DELETE FROM changes WHERE change_set_id = $1
+`
+
+func (q *Queries) DeleteChanges(ctx context.Context, changeSetID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteChanges, changeSetID)
+	return err
+}
+
 const listChangeSets = `-- name: ListChangeSets :many
 SELECT id, request_id, repository, hash, fingerprints, created_at FROM change_sets WHERE request_id = $1 ORDER BY repository
 `
@@ -129,4 +138,18 @@ func (q *Queries) ListChanges(ctx context.Context, changeSetID uuid.UUID) ([]Cha
 		return nil, err
 	}
 	return items, nil
+}
+
+const setChangeSetHash = `-- name: SetChangeSetHash :exec
+UPDATE change_sets SET hash = $2 WHERE id = $1
+`
+
+type SetChangeSetHashParams struct {
+	ID   uuid.UUID
+	Hash string
+}
+
+func (q *Queries) SetChangeSetHash(ctx context.Context, arg SetChangeSetHashParams) error {
+	_, err := q.db.Exec(ctx, setChangeSetHash, arg.ID, arg.Hash)
+	return err
 }

@@ -16,3 +16,9 @@ UPDATE deliveries SET merge_commit = $2, updated_at = now() WHERE request_id = $
 -- The pull requests of a repository whose requests are not over: Quai waits on their merge.
 SELECT d.pull_request FROM deliveries d JOIN requests r ON r.id = d.request_id
 WHERE d.repository = $1 AND d.pull_request <> '' AND r.state IN ('pending_approval', 'approved', 'merging', 'stale');
+
+-- name: ListOpenDeliveries :many
+-- The pull requests of a repository whose requests still wait on approval or merge.
+SELECT d.* FROM deliveries d JOIN requests r ON r.id = d.request_id
+WHERE d.repository = $1 AND d.pull_request <> '' AND r.state IN ('pending_approval', 'approved', 'merging')
+ORDER BY d.created_at;

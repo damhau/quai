@@ -127,8 +127,10 @@ git verify-commit <commit>        # or: git log --show-signature
 ## Approvals bound to content
 
 An approval is valid only for one **change set hash**: a SHA-256 over the
-rendered file edits, the definitions commit and the region fingerprints. It
-changes if anything that was reviewed changes.
+rendered file edits (each file's operation, path and new content). Reviews of
+another hash do not count. What the edits were planned from is bound by
+staleness instead: if the definitions or a region's fingerprint change, the
+request is stale, so an approval never outlives what was reviewed.
 
 | Event | Effect |
 | --- | --- |
@@ -138,6 +140,34 @@ changes if anything that was reviewed changes.
 | The PR is closed outside Quai | Request cancelled. |
 | The PR is merged without `quai/approval` success | Should be impossible with enforcement. Recorded as a **bypass** audit event and alerted. |
 | The type or blueprint definition changes before merge | Request becomes stale. |
+
+After every fetch of a repository (a push webhook or a poll), Quai reconciles
+the pull request of each request waiting on approval or merge with what Git
+holds:
+
+- Before acting on a branch, it re-reads the pull request: one merged or
+  closed meanwhile (the base then holds its content) is handled as a merge or
+  a close, never as a change of the base.
+- A rebuild re-applies the request's edits, with the planned region
+  fingerprints, on the base's head, and replaces the branch with a push that
+  is refused if the branch is no longer at Quai's commit (`--force-with-lease`):
+  a rebuild never overwrites someone's push. An approved request is then merged
+  on the new head. While the platform merges (`merging`), the branch is not
+  rebuilt.
+- A push by someone else: the files it changes, from the merge base, must all
+  be files the request changes or inside the regions it owns. Then the
+  request's change set becomes the branch's diff, with a new hash, its
+  `quai/approval` turns pending ("Modified outside Quai") and the request
+  waits for approval of the new content under its rules; with the same content
+  (a reworded or rebased commit), the approvals stand and `quai/approval` is
+  published again on the new head. Beyond those files, the request is
+  cancelled and its pull request closed.
+- A bypass is a `merged_without_approval` event on the request and an
+  `alert_bypass` event on the repository's timeline (`repository:<name>`),
+  naming the pull request, the merge commit and the state the request was in.
+- "Requester notified": until the notification channels (Phase 7,
+  [integrations](11-integrations.md)), the requester sees the stale state and
+  its reason on the request.
 
 ## Approval policy
 

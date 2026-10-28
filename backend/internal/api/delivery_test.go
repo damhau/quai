@@ -215,3 +215,51 @@ func TestManualMerge(t *testing.T) {
 		t.Errorf("comments = %+v, %v", comments, err)
 	}
 }
+
+// giteaHead returns a branch's head on Gitea.
+func (h *harness) giteaHead(t *testing.T, r *giteatest.Repo, branch string) string {
+	t.Helper()
+	b, _, err := giteatest.Get(t).Client.GetRepoBranch(r.Owner, r.Name, branch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b.Commit.ID
+}
+
+// awaitStatus waits until quai/approval is in state on a commit, polling the repository.
+func (h *harness) awaitStatus(t *testing.T, r *giteatest.Repo, sha string, want gitea.StatusState) {
+	t.Helper()
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		combined, _, err := giteatest.Get(t).Client.GetCombinedStatus(r.Owner, r.Name, sha)
+		if err == nil {
+			for _, st := range combined.Statuses {
+				if st.Context == "quai/approval" && st.State == want {
+					return
+				}
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("quai/approval on %.12s is not %s: %+v, %v", sha, want, combined, err)
+		}
+		_ = h.ingest.Poll(context.Background(), "infra-live")
+		time.Sleep(200 * time.Millisecond)
+	}
+}
+
+// awaitPullRequest waits until ok holds for the pull request, polling the repository.
+func (h *harness) awaitPullRequest(t *testing.T, r *giteatest.Repo, number int64, ok func(*gitea.PullRequest) bool) {
+	t.Helper()
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		pr, _, err := giteatest.Get(t).Client.GetPullRequest(r.Owner, r.Name, number)
+		if err == nil && ok(pr) {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("pull request %d: still not as expected: %+v, %v", number, pr, err)
+		}
+		_ = h.ingest.Poll(context.Background(), "infra-live")
+		time.Sleep(300 * time.Millisecond)
+	}
+}

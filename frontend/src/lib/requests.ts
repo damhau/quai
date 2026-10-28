@@ -53,6 +53,8 @@ export function eventText(e: EventView): string {
     case "rejected":
       return "denied the request"
     case "stale":
+      if (str(d, "definitions")) return `${str(d, "definitions")} since the plan; plan the request again`
+      if (str(d, "region")) return `${str(d, "region")} changed on the base branch; plan the request again`
       return `the files changed since the plan${str(d, "error") ? `: ${str(d, "error")}` : ""}; plan the request again`
     case "merging":
       return "delivering the change to Git"
@@ -63,7 +65,19 @@ export function eventText(e: EventView): string {
     case "failed":
       return `delivery failed: ${str(d, "error") ?? "unknown error"}`
     case "cancelled":
-      return "cancelled the request"
+      return str(d, "reason") ? `cancelled: ${str(d, "reason")}` : "cancelled the request"
+    case "pull_request_opened":
+      return `opened pull request #${str(d, "pullRequest") ?? ""}`
+    case "rebuilt":
+      return `rebuilt the pull request on the new base ${shortSha(str(d, "base") ?? "")}; the approvals stand`
+    case "modified_outside_quai":
+      return str(d, "reason") ?? "the pull request was changed outside Quai"
+    case "merged":
+      return `the pull request was merged as ${shortSha(str(d, "commit") ?? "")}`
+    case "merged_without_approval":
+      return `the pull request was merged without Quai's approval, as ${shortSha(str(d, "commit") ?? "")}: the enforcement was bypassed`
+    case "approvals_commented":
+      return "recorded the approvals on the pull request"
     case "retried":
       return "retried the delivery"
   }

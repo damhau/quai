@@ -254,7 +254,11 @@ type Commit struct {
 	Branch string
 	// Base is the branch to start from when Branch does not exist yet (a pull request's
 	// source branch); empty: Branch must exist.
-	Base    string
+	Base string
+	// Replace, when set, rebuilds Branch from Base's head and replaces it, provided Branch is
+	// still at this commit (a force push with a lease): a pull request's branch rebuilt on a new
+	// base, never over someone else's push.
+	Replace string
 	Changes []plan.Change
 	Message string
 	Author  Signature
@@ -300,7 +304,7 @@ func (m *Mirror) commitOnce(ctx context.Context, c Commit, attempt int) (string,
 		return "", err
 	}
 	head, err := m.Head(ctx, c.Branch)
-	if errors.Is(err, ErrNotFound) && c.Base != "" {
+	if (errors.Is(err, ErrNotFound) || c.Replace != "") && c.Base != "" {
 		head, err = m.Head(ctx, c.Base)
 	}
 	if err != nil {
@@ -375,7 +379,11 @@ func (m *Mirror) commitOnce(ctx context.Context, c Commit, attempt int) (string,
 	if m.beforePush != nil {
 		m.beforePush(attempt)
 	}
-	if _, err := m.command(ctx, wt.dir, nil, true, "push", "--quiet", "--no-verify", "origin", "HEAD:refs/heads/"+c.Branch); err != nil {
+	push := []string{"push", "--quiet", "--no-verify", "origin", "HEAD:refs/heads/" + c.Branch}
+	if c.Replace != "" {
+		push = append(push[:3], "--force-with-lease=refs/heads/"+c.Branch+":"+c.Replace, "origin", "HEAD:refs/heads/"+c.Branch)
+	}
+	if _, err := m.command(ctx, wt.dir, nil, true, push...); err != nil {
 		if strings.Contains(err.Error(), "rejected") || strings.Contains(err.Error(), "non-fast-forward") || strings.Contains(err.Error(), "fetch first") {
 			return "", fmt.Errorf("%w: %v", errRejected, err)
 		}
@@ -460,6 +468,47 @@ func (m *Mirror) DeleteBranch(ctx context.Context, branch string) error {
 	}
 	_, _ = m.git(ctx, "", "update-ref", "-d", "refs/heads/"+branch)
 	return nil
+}
+
+// MergeBase returns the best common ancestor of two commits.
+func (m *Mirror) MergeBase(ctx context.Context, a, b string) (string, error) {
+	if err := checkCommit(a); err != nil {
+		return "", err
+	}
+	if err := checkCommit(b); err != nil {
+		return "", err
+	}
+	out, err := m.git(ctx, "", "merge-base", a, b)
+	if err != nil {
+		return "", fmt.Errorf("merge base of %.12s and %.12s: %w", a, b, err)
+	}
+	return strings.TrimSpace(out), nil
+}
+
+// FileChange is a file a diff touches: Status is A (added), M (modified) or D (deleted).
+type FileChange struct {
+	Path   string
+	Status string
+}
+
+// Diff returns the files that differ between two commits, without rename detection.
+func (m *Mirror) Diff(ctx context.Context, from, to string) ([]FileChange, error) {
+	if err := checkCommit(from); err != nil {
+		return nil, err
+	}
+	if err := checkCommit(to); err != nil {
+		return nil, err
+	}
+	out, err := m.git(ctx, "", "diff", "--name-status", "--no-renames", "-z", from, to)
+	if err != nil {
+		return nil, err
+	}
+	f := strings.Split(strings.TrimSuffix(out, "\x00"), "\x00")
+	var changes []FileChange
+	for i := 0; i+1 < len(f); i += 2 {
+		changes = append(changes, FileChange{Status: f[i][:1], Path: f[i+1]})
+	}
+	return changes, nil
 }
 
 // Parents returns a commit's parents: one for a squash or a rebase, two for a merge commit.

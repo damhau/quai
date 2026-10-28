@@ -625,3 +625,53 @@ func TestSigning(t *testing.T) {
 		t.Error("an unsigned commit verified")
 	}
 }
+
+// TestRebuild replaces a branch with the same change on a new base, unless the branch moved; and
+// reads what a branch changed.
+func TestRebuild(t *testing.T) {
+	bare, push := remote(t)
+	m := mirror(t, bare)
+	change := Commit{Branch: "quai/r-1-web01", Base: "main", Message: "Resize web01\n", Author: bob,
+		Changes: []plan.Change{{Op: plan.OpUpdate, Path: "envs/prod/vms/web01.yaml", After: []byte("cpu: 8\n")}}}
+	first, err := m.CommitAndPush(ctx, change)
+	if err != nil {
+		t.Fatal(err)
+	}
+	push("README.md", "# infra, moved\n")
+	if err := m.Fetch(ctx); err != nil {
+		t.Fatal(err)
+	}
+	main, _ := m.Head(ctx, "main")
+	if mb, err := m.MergeBase(ctx, main, first); err != nil || mb == main {
+		t.Fatalf("merge base = %s, %v", mb, err)
+	}
+	change.Replace = first
+	rebuilt, err := m.CommitAndPush(ctx, change)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parents, _ := m.Parents(ctx, rebuilt); len(parents) != 1 || parents[0] != main {
+		t.Errorf("the rebuilt commit's parents = %v, main is %s", parents, main)
+	}
+	files, err := m.Diff(ctx, main, rebuilt)
+	if err != nil || len(files) != 1 || files[0] != (FileChange{Path: "envs/prod/vms/web01.yaml", Status: "M"}) {
+		t.Errorf("diff = %+v, %v", files, err)
+	}
+	// Someone pushes to the branch: a rebuild that expects Quai's commit there is refused.
+	clone := t.TempDir()
+	mustRun(t, "", "clone", "--quiet", "--branch", "quai/r-1-web01", bare, clone)
+	write(t, filepath.Join(clone, "envs/prod/vms/web01.yaml"), "cpu: 9\n")
+	commitAllTo(t, clone, "a person's edit", "quai/r-1-web01")
+	if _, err := m.CommitAndPush(ctx, change); err == nil || !strings.Contains(err.Error(), "rejected") && !strings.Contains(err.Error(), "stale info") {
+		t.Errorf("a rebuild over someone's push: %v", err)
+	}
+}
+
+func commitAllTo(t *testing.T, work, msg, branch string) {
+	t.Helper()
+	mustRun(t, work, "add", "--all")
+	if _, err := run(ctx, work, []string{"GIT_AUTHOR_NAME=Alice", "GIT_AUTHOR_EMAIL=alice@example.com", "GIT_COMMITTER_NAME=Alice", "GIT_COMMITTER_EMAIL=alice@example.com"}, "commit", "--quiet", "-m", msg); err != nil {
+		t.Fatal(err)
+	}
+	mustRun(t, work, "push", "--quiet", "origin", "HEAD:"+branch)
+}

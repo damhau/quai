@@ -86,6 +86,44 @@ func (q *Queries) ListAwaitedPullRequests(ctx context.Context, repository string
 	return items, nil
 }
 
+const listOpenDeliveries = `-- name: ListOpenDeliveries :many
+SELECT d.request_id, d.org_id, d.repository, d.branch, d.pull_request, d.url, d.head, d.merge_commit, d.created_at, d.updated_at FROM deliveries d JOIN requests r ON r.id = d.request_id
+WHERE d.repository = $1 AND d.pull_request <> '' AND r.state IN ('pending_approval', 'approved', 'merging')
+ORDER BY d.created_at
+`
+
+// The pull requests of a repository whose requests still wait on approval or merge.
+func (q *Queries) ListOpenDeliveries(ctx context.Context, repository string) ([]Delivery, error) {
+	rows, err := q.db.Query(ctx, listOpenDeliveries, repository)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Delivery{}
+	for rows.Next() {
+		var i Delivery
+		if err := rows.Scan(
+			&i.RequestID,
+			&i.OrgID,
+			&i.Repository,
+			&i.Branch,
+			&i.PullRequest,
+			&i.Url,
+			&i.Head,
+			&i.MergeCommit,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const putDelivery = `-- name: PutDelivery :one
 INSERT INTO deliveries (request_id, repository, branch, pull_request, url, head) VALUES ($1, $2, $3, $4, $5, $6)
 ON CONFLICT (request_id) DO UPDATE SET pull_request = EXCLUDED.pull_request, url = EXCLUDED.url, head = EXCLUDED.head, updated_at = now()

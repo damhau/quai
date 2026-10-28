@@ -142,7 +142,7 @@ func (w *openWorker) Work(ctx context.Context, job *river.Job[OpenArgs]) error {
 		return err
 	}
 	return jobs.WithRepositoryLock(ctx, s.store.Pool, repo.Name, 5*time.Second, func(ctx context.Context) error {
-		commit, err := s.commit(ctx, r, cs, repo)
+		commit, err := s.commit(ctx, r, cs, repo, false)
 		if err != nil {
 			return err
 		}
@@ -202,6 +202,8 @@ func (s *Service) findOrOpen(ctx context.Context, prs connectors.PullRequests, n
 // a request that is over without a merge.
 type StatusArgs struct {
 	RequestID uuid.UUID `json:"requestId"`
+	// Description replaces the state's description: why the request waits again.
+	Description string `json:"description,omitempty"`
 }
 
 // Kind names the job.
@@ -235,12 +237,12 @@ func (w *statusWorker) Work(ctx context.Context, job *river.Job[StatusArgs]) err
 	if err != nil {
 		return err
 	}
-	return s.publish(ctx, repo, r, d)
+	return s.publish(ctx, repo, r, d, job.Args.Description)
 }
 
-// publish sets quai/approval for the request's state; a rejected or cancelled request's pull
-// request is closed and its branch deleted.
-func (s *Service) publish(ctx context.Context, repo *repositories.Repo, r db.Request, d db.Delivery) error {
+// publish sets quai/approval for the request's state, with description if given; a rejected or
+// cancelled request's pull request is closed and its branch deleted.
+func (s *Service) publish(ctx context.Context, repo *repositories.Repo, r db.Request, d db.Delivery, description string) error {
 	st := connectors.Status{Name: repo.Document.Spec.Enforcement.RequiredCheck, URL: s.link(r)}
 	closePR := false
 	switch r.State {
@@ -256,6 +258,9 @@ func (s *Service) publish(ctx context.Context, repo *repositories.Repo, r db.Req
 		st.State, st.Description = connectors.StatusNotApplicable, "Stale: plan the request again in Quai"
 	default:
 		return nil
+	}
+	if description != "" {
+		st.Description = description
 	}
 	if err := repo.Connector.Statuses().Set(ctx, connectors.StatusTarget{PullRequest: d.PullRequest, Commit: d.Head}, st); err != nil {
 		return fmt.Errorf("publish %s on pull request %s: %w", st.Name, d.PullRequest, err)
@@ -287,7 +292,7 @@ func (s *Service) deliverPR(ctx context.Context, job *river.Job[DeliverArgs], r 
 		return s.merged(ctx, r, d, pr)
 	}
 	if r.State == Approved {
-		if err := s.publish(ctx, repo, r, d); err != nil {
+		if err := s.publish(ctx, repo, r, d, ""); err != nil {
 			return err
 		}
 		// When the merge keeps Quai's commit (a rebase), or a person merges, the approvals are a
@@ -411,8 +416,9 @@ func (s *Service) merged(ctx context.Context, r db.Request, d db.Delivery, pr co
 	from := r.State
 	kind := "merged"
 	data := map[string]any{"commit": pr.MergeCommit, "pullRequest": pr.ID}
-	if from == PendingApproval || from == Stale {
-		// Merged without Quai's approval: enforcement was bypassed (P1-15 alerts on it).
+	bypass := from != Approved && from != Merging
+	if bypass {
+		// Merged without Quai's approval: the enforcement was bypassed.
 		kind = "merged_without_approval"
 	}
 	err := s.store.Tx(ctx, func(_ pgx.Tx, q *db.Queries) error {
@@ -422,7 +428,14 @@ func (s *Service) merged(ctx context.Context, r db.Request, d db.Delivery, pr co
 		if _, err := q.TransitionRequest(ctx, db.TransitionRequestParams{ID: r.ID, FromState: from, ToState: Applied}); err != nil {
 			return conflict(err, r)
 		}
-		return event(ctx, q, r, kind, "", data)
+		if err := event(ctx, q, r, kind, "", data); err != nil {
+			return err
+		}
+		if bypass {
+			return alert(ctx, q, d.Repository, "bypass", map[string]any{"request": r.ID.String(), "number": r.Number, "state": from,
+				"pullRequest": pr.ID, "commit": pr.MergeCommit, "message": fmt.Sprintf("pull request %s was merged without Quai's approval: check the branch protection", pr.ID)})
+		}
+		return nil
 	})
 	if err != nil {
 		return err

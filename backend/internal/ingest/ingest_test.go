@@ -47,6 +47,7 @@ func (r *recorder) PullRequest(_ context.Context, _ *repositories.Repo, pr conne
 }
 
 func (r *recorder) Awaited(context.Context, *repositories.Repo) ([]string, error) { return nil, nil }
+func (r *recorder) Reconcile(context.Context, *repositories.Repo) error           { return nil }
 
 func (r *recorder) seen(id string, state connectors.PullRequestState) bool {
 	r.mu.Lock()

@@ -299,14 +299,19 @@ func paramStrings(m map[string]any) (map[string]string, error) {
 	return out, nil
 }
 
-// seal sorts the changes and computes the hash: SHA-256 over each change's operation, path and
-// the SHA-256 of its new content, in path order.
+// seal sorts the changes and computes the hash.
 func (cs *ChangeSet) seal() {
 	slices.SortFunc(cs.Changes, func(a, b Change) int { return strings.Compare(a.Path, b.Path) })
+	cs.Hash = Hash(cs.Changes)
+}
+
+// Hash is the content hash of changes, sorted by path: SHA-256 over each change's operation, path
+// and the SHA-256 of its new content. Approvals are bound to it.
+func Hash(changes []Change) string {
 	h := sha256.New()
-	for _, c := range cs.Changes {
+	for _, c := range changes {
 		sum := sha256.Sum256(c.After)
 		fmt.Fprintf(h, "%s\x00%s\x00%x\n", c.Op, c.Path, sum)
 	}
-	cs.Hash = "sha256:" + hex.EncodeToString(h.Sum(nil))
+	return "sha256:" + hex.EncodeToString(h.Sum(nil))
 }

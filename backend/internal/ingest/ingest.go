@@ -36,6 +36,8 @@ type Handler interface {
 	// Awaited returns the pull requests of the repository Quai waits on: a poll re-reads them
 	// whatever their state, so a merge or a close without a webhook is seen.
 	Awaited(ctx context.Context, repo *repositories.Repo) ([]string, error)
+	// Reconcile reconciles what waits on the repository with what Git holds, after each fetch.
+	Reconcile(ctx context.Context, repo *repositories.Repo) error
 }
 
 // Service ingests webhooks and polls repositories.
@@ -259,13 +261,20 @@ func (s *Service) Process(ctx context.Context, name string, events []Event) erro
 	})
 }
 
-// fetch brings the repository's mirror and snapshot up to date and records it.
+// fetch brings the repository's mirror and snapshot up to date, records it, and has the Handler
+// reconcile what waits on the repository.
 func (s *Service) fetch(ctx context.Context, repo *repositories.Repo) error {
 	snap, err := repo.Snapshot(ctx, true)
 	if err != nil {
 		return fmt.Errorf("fetch %s: %w", repo.Name, err)
 	}
-	return s.store.RecordFetch(ctx, db.RecordFetchParams{Repository: repo.Name, Head: snap.Commit})
+	if err := s.store.RecordFetch(ctx, db.RecordFetchParams{Repository: repo.Name, Head: snap.Commit}); err != nil {
+		return err
+	}
+	if s.handler != nil {
+		return s.handler.Reconcile(ctx, repo)
+	}
+	return nil
 }
 
 // reread reads a pull request from the platform and hands it to the Handler.
