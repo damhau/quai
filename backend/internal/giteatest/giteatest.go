@@ -407,21 +407,28 @@ func (r *Repo) AddCollaborator(t testing.TB, u *User) {
 	}
 }
 
-// Protect protects branch: changes go through pull requests whose checks succeeded.
-func (r *Repo) Protect(t testing.TB, branch string, checks ...string) {
-	t.Helper()
-	opt := gitea.CreateBranchProtectionOption{RuleName: branch, EnableStatusCheck: len(checks) > 0, StatusCheckContexts: checks}
-	if _, _, err := r.g.Client.CreateBranchProtection(r.Owner, r.Name, opt); err != nil {
-		t.Fatal(err)
-	}
+// Protect protects branch: changes go through pull requests whose checks succeeded. The admin
+// may still push to it, to set a test up.
+func (r *Repo) Protect(branch string, checks ...string) error {
+	opt := gitea.CreateBranchProtectionOption{RuleName: branch, EnableStatusCheck: len(checks) > 0, StatusCheckContexts: checks,
+		EnablePush: true, EnablePushWhitelist: true, PushWhitelistUsernames: []string{Admin}}
+	_, _, err := r.g.Client.CreateBranchProtection(r.Owner, r.Name, opt)
+	return err
 }
 
 // Unprotect removes branch's protection.
-func (r *Repo) Unprotect(t testing.TB, branch string) {
-	t.Helper()
-	if _, err := r.g.Client.DeleteBranchProtection(r.Owner, r.Name, branch); err != nil {
-		t.Fatal(err)
-	}
+func (r *Repo) Unprotect(branch string) error {
+	_, err := r.g.Client.DeleteBranchProtection(r.Owner, r.Name, branch)
+	return err
+}
+
+// Commit writes a file on branch through the API, as a person editing it in the web UI would.
+func (r *Repo) Commit(branch, path, content string) error {
+	_, _, err := r.g.Client.CreateFile(r.Owner, r.Name, path, gitea.CreateFileOptions{
+		FileOptions: gitea.FileOptions{BranchName: branch, Message: "Add " + path},
+		Content:     base64.StdEncoding.EncodeToString([]byte(content)),
+	})
+	return err
 }
 
 // Webhook makes the repository deliver its events to url, signed with secret.

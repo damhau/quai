@@ -43,12 +43,19 @@ func TestPullRequest(t *testing.T) {
 		t.Errorf("read back %+v (head %+v)", got, got.Head)
 	}
 
-	r.Protect(t, "main", "quai/approval")
+	if err := r.Protect("main", "quai/approval"); err != nil {
+		t.Fatal(err)
+	}
 	bp, _, err := g.Client.GetBranchProtection(r.Owner, r.Name, "main")
 	if err != nil || !bp.EnableStatusCheck || len(bp.StatusCheckContexts) != 1 || bp.StatusCheckContexts[0] != "quai/approval" {
 		t.Errorf("protection = %+v, %v", bp, err)
 	}
-	r.Unprotect(t, "main")
+	if err := r.Commit("main", ".gitea/CODEOWNERS", "envs/prod/.* @quai-admin\n"); err != nil {
+		t.Errorf("the admin cannot write to the protected branch: %v", err)
+	}
+	if err := r.Unprotect("main"); err != nil {
+		t.Fatal(err)
+	}
 
 	u := g.User(t, "intruder")
 	r.AddCollaborator(t, u)

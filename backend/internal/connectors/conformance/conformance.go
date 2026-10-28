@@ -145,7 +145,7 @@ func Run(t *testing.T, h Harness) {
 		enforced = true
 		pr := s.openPR(t)
 		s.setStatus(t, c, pr, connectors.StatusPending)
-		opts := connectors.MergeOptions{Method: info.MergeMethods[0], Message: "Conformance\n", DeleteBranch: true}
+		opts := connectors.MergeOptions{Head: pr.Head, Method: info.MergeMethods[0], Message: "Conformance\n", DeleteBranch: true}
 		if _, err := prs.Merge(ctx, pr.ID, opts); !errors.Is(err, connectors.ErrBlocked) {
 			t.Errorf("merging with the check pending: %v, want ErrBlocked", err)
 		}
@@ -162,7 +162,7 @@ func Run(t *testing.T, h Harness) {
 		}
 		pr := s.openPR(t)
 		s.setStatus(t, repo.Other, pr, connectors.StatusSuccess)
-		opts := connectors.MergeOptions{Method: info.MergeMethods[0], Message: "Conformance\n", DeleteBranch: true}
+		opts := connectors.MergeOptions{Head: pr.Head, Method: info.MergeMethods[0], Message: "Conformance\n", DeleteBranch: true}
 		if _, err := prs.Merge(ctx, pr.ID, opts); !errors.Is(err, connectors.ErrBlocked) {
 			t.Errorf("merging on another identity's status: %v, want ErrBlocked", err)
 		}
@@ -186,7 +186,7 @@ func Run(t *testing.T, h Harness) {
 					s.setStatus(t, c, pr, connectors.StatusSuccess)
 				}
 				message := "Conformance " + string(method) + "\n\nApproved-by: Conformance <conformance@example.com>\n"
-				merged, err := prs.Merge(ctx, pr.ID, connectors.MergeOptions{Method: method, Message: message, DeleteBranch: true})
+				merged, err := prs.Merge(ctx, pr.ID, connectors.MergeOptions{Head: pr.Head, Method: method, Message: message, DeleteBranch: true})
 				if err != nil {
 					t.Fatal(err)
 				}

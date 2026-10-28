@@ -27,15 +27,15 @@ func TestRegistry(t *testing.T) {
 	}
 
 	// A platform whose connector is not built yet gets Git transport only, and a warning.
-	c, err = r.New("gitea", connectors.Config{URL: "https://git.example.com/quai/infra.git"})
-	if err != nil || c.Info().Platform != "gitea" || c.Info().Has(connectors.CapPullRequests) {
-		t.Fatalf("gitea = %+v, %v", c, err)
+	c, err = r.New("github", connectors.Config{URL: "https://github.com/quai/infra.git"})
+	if err != nil || c.Info().Platform != "github" || c.Info().Has(connectors.CapPullRequests) {
+		t.Fatalf("github = %+v, %v", c, err)
 	}
-	if !strings.Contains(logs.String(), "connector=gitea") {
+	if !strings.Contains(logs.String(), "connector=github") {
 		t.Errorf("no warning: %s", logs.String())
 	}
 	r.Fallback = nil
-	if _, err := r.New("github", connectors.Config{}); err == nil {
+	if _, err := r.New("gitlab", connectors.Config{}); err == nil {
 		t.Error("a connector without a factory")
 	}
 

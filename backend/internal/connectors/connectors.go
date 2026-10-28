@@ -127,6 +127,9 @@ type PullRequestUpdate struct {
 
 // MergeOptions say how to merge.
 type MergeOptions struct {
+	// Head is the source commit the approvals cover: the platform refuses to merge if the
+	// branch moved since. Empty: whatever the head is.
+	Head         string
 	Method       MergeMethod
 	Message      string // the merge or squash commit's message
 	DeleteBranch bool   // delete the source branch afterwards
@@ -207,7 +210,7 @@ type Policies interface {
 
 // OwnerRule gives the owners of the paths a pattern matches.
 type OwnerRule struct {
-	Pattern string   // gitignore-style, as in CODEOWNERS
+	Pattern string   // as the platform writes it: gitignore-style, or a regular expression on Gitea
 	Owners  []string // users or groups, as the platform names them
 }
 
