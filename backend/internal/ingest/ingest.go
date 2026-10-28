@@ -14,9 +14,9 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/riverqueue/river"
@@ -65,11 +65,22 @@ func (s *Service) UseHandler(h Handler) { s.handler = h }
 // MaxDelivery is the largest webhook body accepted.
 const MaxDelivery = 4 << 20
 
-// Webhooks returns the endpoint platforms deliver to: POST /webhooks/{repository}.
+// Webhooks returns the endpoint platforms deliver to: POST /webhooks/{repository}. It reads the
+// whole path, so it answers the same mounted under /webhooks/ or not.
 func (s *Service) Webhooks() http.Handler {
-	r := chi.NewRouter()
-	r.Post("/webhooks/{repository}", s.receive)
-	return r
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		name, ok := strings.CutPrefix(r.URL.Path, "/webhooks/")
+		if !ok || name == "" || strings.Contains(name, "/") {
+			problem(w, http.StatusNotFound, "no repository takes webhooks here")
+			return
+		}
+		if r.Method != http.MethodPost {
+			w.Header().Set("Allow", http.MethodPost)
+			problem(w, http.StatusMethodNotAllowed, "deliver webhooks with POST")
+			return
+		}
+		s.receive(w, r, name)
+	})
 }
 
 // Event is a normalized event, as a job carries it.
@@ -97,9 +108,8 @@ func wrap(e connectors.Event) Event {
 	return Event{}
 }
 
-func (s *Service) receive(w http.ResponseWriter, r *http.Request) {
+func (s *Service) receive(w http.ResponseWriter, r *http.Request, name string) {
 	ctx := r.Context()
-	name := chi.URLParam(r, "repository")
 	repo, err := s.reg.Get(name)
 	if err != nil || repo.Connector == nil || repo.Connector.Webhooks() == nil {
 		problem(w, http.StatusNotFound, "no repository takes webhooks here")

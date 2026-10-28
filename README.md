@@ -38,8 +38,11 @@ you out to switch.
 
 1. As bob, request a **Linux virtual machine** in `prod`, size `large`. The preview shows the file
    it adds and that the platform admins and FinOps must approve.
-2. Approve it from **Approvals** as alice, then as fiona. The second approval commits it; it shows
-   in the **Git log**.
+2. The request opens a pull request on Gitea (`quai/infra-live`, whose `main` requires the
+   `quai/approval` status); the request page links it. Approve it from **Approvals** as alice,
+   then as fiona: the second approval turns `quai/approval` to success and Quai merges the pull
+   request; it shows in the **Git log**. The repository is public on the local Gitea: follow the
+   link to see the pull request and its status.
 3. In the **Inventory**, open `prod/web01` as bob and **Resize** it. The diff touches only the
    `cpu` line and keeps its `# bumped in INC-4411` comment.
 4. As carol, open the same VM: she cannot change it, bob owns it.
@@ -68,8 +71,8 @@ and [testing](docs/engineering/testing.md).
 
 ## Status
 
-Phase 0 (the foundations, and the port of the TypeScript prototype) is done: Quai commits
-directly to a repository's branch. Next are pull requests whose approval is enforced by the Git
-platform, Azure DevOps first, then run and plan status from pipelines. The
+Phase 0 (the foundations, and the port of the TypeScript prototype) is done. Phase 1 delivers
+through pull requests whose approval the Git platform enforces, on Azure DevOps and Gitea: the
+local stack runs that way. Next are run and plan status from pipelines. The
 [roadmap](docs/plan/roadmap.md) has the phases; the work is tracked in
 [GitHub issues](https://github.com/damhau/quai/issues), by milestone.

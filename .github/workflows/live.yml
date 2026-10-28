@@ -1,0 +1,63 @@
+name: live
+
+# The live tests against the Azure DevOps sandbox (docs/plan/phase-1-backlog.md#test-infrastructure),
+# nightly and on demand: the connector's conformance suite, webhooks replayed from the sandbox,
+# and the scenarios that follow a request through its pull request (pending status, approval,
+# auto-complete). They need the AZURE_DEVOPS_PAT repository secret; without it, the job says so
+# and does nothing.
+on:
+  schedule:
+    - cron: "23 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One run at a time: they share the sandbox organization.
+concurrency:
+  group: live
+  cancel-in-progress: false
+
+jobs:
+  azure-devops:
+    runs-on: ubuntu-latest
+    env:
+      HAS_PAT: ${{ secrets.AZURE_DEVOPS_PAT != '' }}
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - if: env.HAS_PAT != 'true'
+        working-directory: .
+        run: echo "::notice::No AZURE_DEVOPS_PAT secret: the live tests did not run."
+      - if: env.HAS_PAT == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - if: env.HAS_PAT == 'true'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - if: env.HAS_PAT == 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/quai
+          key: test-binaries-${{ runner.os }}-${{ hashFiles('backend/internal/pgtest/*.go', 'backend/internal/k8stest/*.go', 'backend/internal/giteatest/*.go', 'backend/go.sum') }}
+          restore-keys: test-binaries-${{ runner.os }}-
+      # The tests read the PAT from a file only; it is never on a command line.
+      - if: env.HAS_PAT == 'true'
+        name: The PAT, in a file only this job reads
+        env:
+          PAT: ${{ secrets.AZURE_DEVOPS_PAT }}
+        run: |
+          umask 077
+          printf '%s' "$PAT" > "$RUNNER_TEMP/azure-devops-pat"
+      - if: env.HAS_PAT == 'true'
+        name: Live tests on the sandbox
+        env:
+          QUAI_TEST_AZURE_DEVOPS_PAT_FILE: ${{ runner.temp }}/azure-devops-pat
+          QUAI_TEST_AZURE_DEVOPS_URL: https://dev.azure.com/dh-consulting/quai-sandbox
+        run: go test -count=1 -timeout 30m ./internal/connectors/azuredevops/... ./internal/ingest/... ./internal/api/...
+      - if: always() && env.HAS_PAT == 'true'
+        run: rm -f "$RUNNER_TEMP/azure-devops-pat"

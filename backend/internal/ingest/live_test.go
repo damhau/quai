@@ -43,9 +43,11 @@ func TestAzureDevOpsReplay(t *testing.T) {
 		}
 	}
 	e.eventually("the pull request is re-read from the sandbox", func() bool { return e.handler.seen(pr.ID, connectors.PROpen) })
-	if s, err := e.store.GetRepositorySync(ctx, name); err != nil || !s.LastWebhookAt.Valid || !s.LastFetchAt.Valid || s.Head == "" {
-		t.Errorf("sync = %+v, %v", s, err)
-	}
+	// The push is another delivery, processed by its own job: its fetch may end later.
+	e.eventually("the push is fetched", func() bool {
+		s, err := e.store.GetRepositorySync(ctx, name)
+		return err == nil && s.LastWebhookAt.Valid && s.LastFetchAt.Valid && s.Head != ""
+	})
 	// Replayed again: duplicates.
 	if status, out := e.send("/webhooks/"+name, delivery{deliveries[0].Header, deliveries[0].Body}); status != http.StatusAccepted || out["duplicate"] != true {
 		t.Errorf("a redelivery: %d %v", status, out)

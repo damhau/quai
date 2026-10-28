@@ -40,8 +40,9 @@ project (`https://dev.azure.com/dh-consulting/quai-sandbox`). Rules:
   prefix and delete it when they finish, failed or not. They delete nothing they did not create.
 - Azure DevOps cannot reach a Quai running on a laptop: live tests use polling, and webhook
   handling is tested with payloads recorded from the sandbox and replayed to the handler.
-- In CI, the live tests run nightly once the owner adds the `AZURE_DEVOPS_PAT` repository secret;
-  until then they run locally and pull requests rely on Gitea.
+- In CI, the live tests run nightly (`.github/workflows/live.yml`, also on demand) once the owner
+  adds the `AZURE_DEVOPS_PAT` repository secret; until then the workflow says so and does
+  nothing, the tests run locally, and pull requests rely on Gitea.
 
 Network hosts to declare per command: `dev.azure.com`, `*.visualstudio.com`,
 `vssps.dev.azure.com` (Azure DevOps), `dl.gitea.com` (Gitea), and the hosts of the envtest

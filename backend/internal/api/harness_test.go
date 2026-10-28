@@ -148,7 +148,8 @@ func start(t *testing.T, dir, spec string, opts repositories.Options, configure 
 		defer cancel()
 		_ = worker.StopAndCancel(ctx)
 	})
-	srv := httptest.NewServer(New(Options{Version: "test", Env: cfg.Env, Logger: log, Store: s, Auth: auth.New(cfg, s, nil, log), Repositories: reg, Requests: svc, PublicURL: public}))
+	srv := httptest.NewServer(New(Options{Version: "test", Env: cfg.Env, Logger: log, Store: s, Auth: auth.New(cfg, s, nil, log), Repositories: reg, Requests: svc, PublicURL: public,
+		Webhooks: hooks.Webhooks()}))
 	t.Cleanup(srv.Close)
 	return &harness{t: t, srv: srv, store: s, reg: reg, ingest: hooks, log: &logs}
 }

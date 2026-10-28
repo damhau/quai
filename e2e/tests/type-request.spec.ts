@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test"
-import { approve, delivered, preview, signIn, unique } from "./helpers"
+import { approvalOnGitea, approve, delivered, onGitea, preview, pullRequest, signIn, unique } from "./helpers"
 
 test("a VM created through the vm type lands in its environment's folder", async ({ page }) => {
   const name = `vm${unique()}`
@@ -10,7 +10,8 @@ test("a VM created through the vm type lands in its environment's folder", async
   await expect(preview(page).getByText(`envs/dev/vms/${name}.yaml`)).toBeVisible()
   await expect(preview(page).getByText(/No approval needed/)).toBeVisible()
   await page.getByRole("button", { name: "Submit and commit" }).click()
-  await delivered(page)
+  await delivered(page) // no approval needed: Quai merges its pull request at once
+  expect(await onGitea(await pullRequest(page))).toEqual({ merged: true, approval: "success" })
 
   await page.getByRole("link", { name: "Inventory" }).click()
   await page.getByRole("link", { name: `dev/${name}` }).click()
@@ -34,9 +35,12 @@ test("resizing a VM changes only its size, keeping the file's comments", async (
   await dialog.getByRole("button", { name: "Submit for approval" }).click()
   const title = "resize on infra-live/vm/prod/web01"
   await expect(page.getByRole("heading", { name: new RegExp(title) })).toBeVisible()
+  const pr = await pullRequest(page)
+  await approvalOnGitea(pr, "pending")
 
   await approve(page, "alice", title)
   await delivered(page)
+  expect(await onGitea(pr)).toEqual({ merged: true, approval: "success" })
   await page.goto("/resources/infra-live/vm/prod/web01")
   await expect(page.getByLabel("Content of envs/prod/vms/web01.yaml")).toContainText(`cpu: ${to}          # bumped in INC-4411`)
 })

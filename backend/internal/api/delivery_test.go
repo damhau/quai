@@ -263,3 +263,44 @@ func (h *harness) awaitPullRequest(t *testing.T, r *giteatest.Repo, number int64
 		time.Sleep(300 * time.Millisecond)
 	}
 }
+
+// TestWebhooksThroughTheServer: Gitea's deliveries reach the ingestion through the server's
+// /webhooks/ mount: a push is recorded as a webhook, and fetched.
+func TestWebhooksThroughTheServer(t *testing.T) {
+	g := giteatest.Get(t)
+	r := g.Repo(t, "infra")
+	pushExample(t, r.CloneURL, func(context.Context) (gitx.Credentials, error) { return gitx.Credentials{Header: g.GitHeader()}, nil }, nil)
+	vars := map[string]string{"GITEA_TOKEN": g.Token, "HOOK_SECRET": "a webhook secret"}
+	h := start(t, t.TempDir(), `connector: gitea
+  url: `+r.CloneURL+`
+  credentials: { ref: env:GITEA_TOKEN }
+  webhooks: { secret: { ref: env:HOOK_SECRET } }
+  delivery: { mode: direct }
+  sync: { minInterval: 1ns }`, repositories.Options{
+		Secrets:    secrets.New(map[string]secrets.Backend{"env": secrets.Env{Lookup: func(n string) (string, bool) { v, ok := vars[n]; return v, ok }}}),
+		Connectors: &connectors.Registry{Factories: map[string]connectors.Factory{"gitea": giteaconn.New}},
+	})
+	r.Webhook(t, h.srv.URL+"/webhooks/infra-live", vars["HOOK_SECRET"])
+	if err := r.Commit("main", "docs/notes.md", "# Notes\n"); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		s, err := h.store.GetRepositorySync(context.Background(), "infra-live")
+		if err == nil && s.LastWebhookAt.Valid {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("no webhook recorded: %+v, %v\nlog:\n%s", s, err, h.log.String())
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	resp, err := http.Post(h.srv.URL+"/webhooks/elsewhere", "application/json", strings.NewReader("{}"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("a delivery for no repository = %d", resp.StatusCode)
+	}
+}

@@ -38,9 +38,10 @@ services:
     environment:
       GITEA__security__INSTALL_LOCK: "true"
       GITEA__database__DB_TYPE: sqlite3
-      GITEA__server__ROOT_URL: http://localhost:3000/
+      GITEA__server__ROOT_URL: http://localhost:${GITEA_PORT:-3000}/ # the links in Quai's pages
       GITEA__server__HTTP_PORT: "3000"
       GITEA__service__DISABLE_REGISTRATION: "true"
+      GITEA__security__ALLOWED_HOST_LIST: server # webhooks reach Quai's server, and nothing else
     ports: ["${GITEA_PORT:-3000}:3000"]
     volumes: [gitea:/data]
     healthcheck:
@@ -101,9 +102,11 @@ services:
     image: mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea
     environment:
       E2E_BASE_URL: http://server:8080
+      E2E_GITEA_URL: http://gitea:3000 # the scenarios read pull requests and statuses there
+      E2E_GITEA_TOKEN_FILE: /run/quai/git-token
       E2E_OUTPUT: /tmp/e2e # copy it out with docker cp to read the report
       CI: ${CI:-}
-    volumes: [./e2e:/src:ro]
+    volumes: [./e2e:/src:ro, seed:/run/quai:ro]
     shm_size: 1gb # Chromium's shared memory
     command: ["sh", "-c", "mkdir -p /e2e && cp -R /src/. /e2e && cd /e2e && npm ci --no-audit --no-fund && npx playwright test"]
     depends_on:

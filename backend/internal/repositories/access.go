@@ -76,7 +76,7 @@ var permissions = map[string]map[string]string{
 		CheckConnector:   "a Gitea repository URL (https://<host>/<owner>/<repository>.git)",
 		CheckRead:        "read access to the repository",
 		CheckPush:        "write access to the repository, and no protection on the branches under %s",
-		CheckPullRequest: "write access to the repository",
+		CheckPullRequest: "write access to the repository, and a token with the repository and issue scopes (Gitea labels pull requests as issues)",
 		CheckStatus:      "write access to the repository",
 		CheckDelete:      "write access to the repository, and no protection on the branches under %s",
 		CheckProtection:  "admin access to the repository: Gitea shows branch protection to admins",
@@ -209,7 +209,8 @@ func (a *accessRun) push(ctx context.Context, d Document, conn connectors.Connec
 		a.skip(CheckPullRequest, "the "+spec.Connector+" connector has no pull requests")
 		a.skip(CheckStatus, "the "+spec.Connector+" connector has no pull requests")
 	} else {
-		pr, err := prs.Open(ctx, connectors.NewPullRequest{Source: branch, Target: spec.DefaultBranch, Draft: true, Title: "Quai's access test",
+		// Labelled as Quai's are, which takes more permissions on some platforms.
+		pr, err := prs.Open(ctx, connectors.NewPullRequest{Source: branch, Target: spec.DefaultBranch, Draft: true, Title: "Quai's access test", Labels: []string{"quai"},
 			Description: "Quai checks that it can open a pull request and post a status on it; it closes it at once."})
 		if a.check(CheckPullRequest, err) {
 			err := conn.Statuses().Set(ctx, connectors.StatusTarget{PullRequest: pr.ID, Commit: sha},
