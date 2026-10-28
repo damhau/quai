@@ -18,10 +18,23 @@ spec:
       labels: {{- include "quai.selector" (dict "root" . "component" "migrate") | nindent 8 }}
     spec:
       restartPolicy: Never
-      {{- include "quai.pod" (dict "root" .) | nindent 6 }}
+      # Before installing, the release's other objects (its configuration, its service account)
+      # do not exist yet: the migrations need the database alone.
+      {{- include "quai.pod" (dict "root" . "hook" true) | nindent 6 }}
       containers:
         - name: migrate
-          {{- include "quai.container" (dict "root" . "command" "migrate") | nindent 10 }}
+          image: {{ include "quai.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["migrate"]
+          env: {{- include "quai.env" . | nindent 12 }}
+          securityContext: {{- toYaml .Values.securityContext | nindent 12 }}
+          {{- if .Values.network.caBundle.configMap }}
+          volumeMounts:
+            - { name: ca, mountPath: /etc/quai-ca, readOnly: true }
+          {{- end }}
+      {{- with .Values.network.caBundle.configMap }}
       volumes:
-        {{- include "quai.volumes" (dict "root" . "sizeLimit" "") | nindent 8 }}
+        - name: ca
+          configMap: { name: {{ . }} }
+      {{- end }}
 {{- end }}

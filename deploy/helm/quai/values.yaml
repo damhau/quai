@@ -1,6 +1,7 @@
-# Quai's chart (docs/operations/deployment-and-operations.md). A skeleton: server and worker
+# Quai's chart (docs/operations/deployment-and-operations.md#helm): server and worker
 # Deployments, the migrations as a hook Job, the configuration file, and the secrets it refers
-# to. PodDisruptionBudgets, autoscaling and ingress are optional.
+# to. PodDisruptionBudgets, autoscaling and ingress are optional. CI installs it on kind with
+# deploy/kind/values.yaml.
 
 image:
   repository: ghcr.io/damhau/quai

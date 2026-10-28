@@ -29,8 +29,8 @@ single pod with both roles.
 ## Packaging
 
 - **Image:** static Go binary on a distroless or UBI-minimal base, plus `git` and `openssh` (needed for transport). Non-root, read-only root file system, no shell in the distroless variant. Today (`Dockerfile`): Alpine with `git` and `openssh-client`, user 10001 in group 0 (OpenShift's arbitrary user ids run in it), the frontend's build embedded in the binary and served by `quai server` at every path the API and `/auth` do not answer, with a strict Content-Security-Policy and year-long caching of hashed assets. It runs with a read-only root file system given a writable `/tmp` and `/var/cache/quai` (the Git mirror cache). Base images are pinned by digest.
-- **Helm chart:** server and worker Deployments, PodDisruptionBudgets, HorizontalPodAutoscaler for the server, NetworkPolicies, ServiceMonitor, optional CloudNativePG `Cluster`, configuration via values and a mounted `quai.yaml`. Today (`deploy/helm/quai`, a skeleton): server and worker Deployments, the server's Service, PodDisruptionBudget and optional HorizontalPodAutoscaler, an optional Ingress, `quai migrate` as a pre-install and pre-upgrade hook Job, the configuration from values (or from an existing Secret when repository URLs carry tokens), the database URL and OIDC client secret from existing Secrets, a Role that lets the pods read the Secrets that repository connections reference (`secretStore.kubernetes`, optionally restricted by name), and the outgoing network setup (`network`: an internal CA from a ConfigMap, the proxy variables). Pods run non-root with a read-only root file system and no capabilities. CI lints it and checks the rendered objects against the Kubernetes schemas.
-- **Local stack:** `docker compose up --build` runs the server, a worker, PostgreSQL and Gitea, which a one-shot step seeds with `examples/gitops-repo` as `quai/infra-live` (a random password, and a token Quai reads from a shared volume). The development sign-in and its demo users are on; `QUAI_PORT` and `GITEA_PORT` move the published ports.
+- **Helm chart:** server and worker Deployments, PodDisruptionBudgets, HorizontalPodAutoscaler for the server, NetworkPolicies, ServiceMonitor, optional CloudNativePG `Cluster`, configuration via values and a mounted `quai.yaml`. Today (`deploy/helm/quai`, [below](#helm)): server and worker Deployments, the server's Service, PodDisruptionBudget and optional HorizontalPodAutoscaler, an optional Ingress, `quai migrate` as a pre-install and pre-upgrade hook Job (it needs the database Secret alone, so it runs before the release's other objects exist), the configuration from values (or from an existing Secret when repository URLs carry tokens), the database URL and OIDC client secret from existing Secrets, a Role that lets the pods read the Secrets that repository connections reference (`secretStore.kubernetes`, optionally restricted by name), and the outgoing network setup (`network`: an internal CA from a ConfigMap, the proxy variables). Pods run non-root with a read-only root file system and no capabilities. CI lints it and checks the rendered objects against the Kubernetes schemas, and installs it on kind.
+- **Local stack:** `docker compose up --build` runs the server, a worker, PostgreSQL and Gitea, which a one-shot step seeds with `examples/gitops-repo` as `quai/infra-live` (a random password, and a token and a webhook secret Quai reads from a shared volume). Requests go through pull requests: `main` requires `quai/approval`, and Gitea's webhook reaches Quai's server. The development sign-in and its demo users are on; `QUAI_PORT` and `GITEA_PORT` move the published ports.
 - **OpenShift:** runs under the `restricted-v2` SCC with an arbitrary UID; a `Route` instead of an `Ingress`; UBI-based image variant.
 - **Air-gapped:** an offline bundle (images, chart, `quai` CLI binaries for Linux, macOS and Windows) with checksums and signatures. Nothing is fetched at runtime: no CDNs, no fonts, no telemetry.
 - **Configuration:** a YAML file, overridable by environment variables; secrets only as references (Vault, Kubernetes Secrets). Repository connections can be managed in the UI or declared in the configuration (GitOps for Quai itself).
@@ -62,6 +62,33 @@ single pod with both roles.
 
   Unknown keys in the file are errors, and the configuration is validated before the server
   starts. Later tasks add their own keys.
+
+### Helm
+
+Before installing, create in the release's namespace the Secrets the chart reads: the database URL
+(`database.secretName`, key `url`) and, with OIDC, the client secret (`oidc.secretName`, key
+`clientSecret`). Repository connections refer to their own Secrets (`k8s:<namespace>/<name>#<key>`),
+which the release's Role can read (`secretStore.kubernetes.secretNames` restricts it to those).
+
+```bash
+helm install quai deploy/helm/quai -n quai -f my-values.yaml --wait   # migrations first, as a hook
+helm upgrade quai deploy/helm/quai -n quai -f my-values.yaml --wait   # the same, before the new pods
+```
+
+CI installs the chart on a kind cluster on every change (`.github/workflows/kind.yml`), with the
+image built from the commit and PostgreSQL in the cluster (`deploy/kind/fixtures.yaml`): install,
+upgrade, every migration applied, then a smoke test in the cluster (`deploy/kind/smoke.yaml`):
+health, a development sign-in, a repository connected, and a run report whose token's hash Quai
+reads from a Kubernetes Secret. Locally, the same commands (`kind`, `kubectl` and `helm` run
+outside the agents' sandbox):
+
+```bash
+kind create cluster --name quai && docker build -t quai:kind . && kind load docker-image quai:kind --name quai
+kubectl apply -f deploy/kind/fixtures.yaml && kubectl -n quai rollout status deploy/postgres
+helm install quai deploy/helm/quai -n quai -f deploy/kind/values.yaml --wait
+kubectl apply -f deploy/kind/smoke.yaml && kubectl -n quai wait --for=condition=complete job/smoke && kubectl -n quai logs job/smoke
+kind delete cluster --name quai
+```
 
 ## Network
 

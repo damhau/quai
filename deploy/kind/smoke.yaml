@@ -1,0 +1,52 @@
+# The chart's smoke test, a Job next to the release on kind: health, the meta endpoint, a
+# development sign-in (the migrations ran: sessions are in the database), the repository
+# connected, and a run report whose token Quai checks against a Kubernetes Secret. It uses Quai's
+# image, already in the cluster.
+apiVersion: v1
+kind: ConfigMap
+metadata: { name: smoke, namespace: quai }
+data:
+  smoke.sh: |
+    set -eu
+    base=http://quai
+    fail() { echo "FAIL: $*"; exit 1; }
+    echo "health"
+    [ "$(wget -qO- "$base/healthz")" = ok ] || fail "/healthz"
+    echo "meta"
+    wget -qO- "$base/api/v1/meta" | grep -q '"auth":"dev"' || fail "/api/v1/meta is not in development mode"
+    echo "sign in as alice"
+    cookie=$(wget -S -qO /dev/null --header 'Content-Type: application/json' --post-data '{"name":"alice"}' "$base/auth/dev/login" 2>&1 |
+      sed -n 's/^ *Set-Cookie: \([^;]*\).*/\1/p' | head -n 1)
+    [ -n "$cookie" ] || fail "no session cookie"
+    wget -qO- --header "Cookie: $cookie" "$base/api/v1/me" | grep -q '"name":"alice"' || fail "/api/v1/me"
+    echo "the repository"
+    wget -qO- --header "Cookie: $cookie" "$base/api/v1/repositories" | grep -q '"name":"quai"' || fail "the repository is not connected"
+    echo "a run report, with the token whose hash is in a Kubernetes Secret"
+    wget -qO- --header "Authorization: Bearer $RUN_TOKEN" --header 'Content-Type: application/json' \
+      --post-data '{"repository":"quai","stack":"envs/prod","commit":"abcdef1","kind":"apply","status":"succeeded"}' "$base/api/v1/runs" >/dev/null ||
+      fail "the run report was refused"
+    echo "ok"
+---
+apiVersion: batch/v1
+kind: Job
+metadata: { name: smoke, namespace: quai }
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: smoke
+          image: quai:kind
+          imagePullPolicy: Never
+          command: [/bin/sh, /smoke/smoke.sh]
+          env:
+            - name: RUN_TOKEN
+              valueFrom: { secretKeyRef: { name: quai-run-token, key: token } }
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+          volumeMounts: [{ name: smoke, mountPath: /smoke }]
+      volumes:
+        - name: smoke
+          configMap: { name: smoke }

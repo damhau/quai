@@ -1,0 +1,48 @@
+# What the chart's smoke test on kind needs besides the chart (docs/operations/deployment-and-operations.md#helm):
+# the namespace, a PostgreSQL that trusts the cluster's network, and the Secrets the release
+# refers to. Test values for a throwaway cluster: they protect nothing.
+apiVersion: v1
+kind: Namespace
+metadata: { name: quai }
+---
+apiVersion: v1
+kind: Secret
+metadata: { name: quai-database, namespace: quai }
+stringData:
+  url: postgres://quai@postgres:5432/quai?sslmode=disable
+---
+# The repository's run token: Quai reads its SHA-256 through the chart's RBAC; the smoke test
+# sends the token.
+apiVersion: v1
+kind: Secret
+metadata: { name: quai-run-token, namespace: quai }
+stringData:
+  token: kind-smoke-run-token
+  sha256: 44e7194769e675bc13c39f253564227826e0931de418bc4c58c3474aa4f48270
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: postgres, namespace: quai }
+spec:
+  selector: { matchLabels: { app: postgres } }
+  template:
+    metadata: { labels: { app: postgres } }
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:17-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b
+          env:
+            - { name: POSTGRES_USER, value: quai }
+            - { name: POSTGRES_DB, value: quai }
+            - { name: POSTGRES_HOST_AUTH_METHOD, value: trust } # reachable in this cluster only
+          ports: [{ containerPort: 5432 }]
+          readinessProbe:
+            exec: { command: [pg_isready, -U, quai] }
+            periodSeconds: 2
+---
+apiVersion: v1
+kind: Service
+metadata: { name: postgres, namespace: quai }
+spec:
+  selector: { app: postgres }
+  ports: [{ port: 5432 }]

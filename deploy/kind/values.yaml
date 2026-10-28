@@ -1,0 +1,22 @@
+# The chart's values for the smoke test on kind: the image built and loaded into the cluster,
+# development sign-in, one replica each, and a public repository whose run token is a Kubernetes
+# Secret reference.
+image: { repository: quai, tag: kind, pullPolicy: Never }
+config:
+  env: development
+  # The demo users (alice, bob, carol, fiona) apply without role mappings: clear the chart's.
+  auth: { mode: dev, roles: [], oidc: null }
+server: { replicas: 1, pdb: { enabled: false } }
+worker: { replicas: 1 }
+secretStore:
+  kubernetes: { enabled: true, secretNames: [quai-run-token] }
+repositories:
+  - apiVersion: quai.dev/v1beta1
+    kind: Repository
+    metadata: { name: quai, title: Quai }
+    spec:
+      connector: generic
+      url: https://github.com/damhau/quai.git
+      delivery: { mode: direct }
+      runner: { reportToken: { ref: "k8s:quai/quai-run-token#sha256" } }
+      sync: { partialClone: true }

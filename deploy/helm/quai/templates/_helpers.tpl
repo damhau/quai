@@ -33,7 +33,28 @@ app.kubernetes.io/component: {{ .component }}
 {{ .Values.image.repository }}:{{ default .Chart.AppVersion .Values.image.tag }}
 {{- end -}}
 
-{{/* The container shared by the server, the worker and the migrations: image, configuration, secrets. */}}
+{{/* The environment of every process: the database, the CA bundle, the proxy. */}}
+{{- define "quai.env" -}}
+- name: QUAI_DATABASE_URL
+  valueFrom: { secretKeyRef: { name: {{ .Values.database.secretName }}, key: {{ .Values.database.secretKey }} } }
+{{- with .Values.network.caBundle.configMap }}
+- name: QUAI_NETWORK_CA_FILE
+  value: /etc/quai-ca/{{ $.Values.network.caBundle.key }}
+{{- end }}
+{{- with .Values.network.proxy }}
+{{- if .https }}
+- { name: HTTPS_PROXY, value: {{ .https | quote }} }
+{{- end }}
+{{- if .http }}
+- { name: HTTP_PROXY, value: {{ .http | quote }} }
+{{- end }}
+{{- if .noProxy }}
+- { name: NO_PROXY, value: {{ .noProxy | quote }} }
+{{- end }}
+{{- end }}
+{{- end -}}
+
+{{/* The container of the server and the worker: image, configuration, secrets. */}}
 {{- define "quai.container" -}}
 image: {{ include "quai.image" .root }}
 imagePullPolicy: {{ .root.Values.image.pullPolicy }}
@@ -41,26 +62,10 @@ args: [{{ .command | quote }}]
 env:
   - name: QUAI_CONFIG
     value: /etc/quai/quai.yaml
-  - name: QUAI_DATABASE_URL
-    valueFrom: { secretKeyRef: { name: {{ .root.Values.database.secretName }}, key: {{ .root.Values.database.secretKey }} } }
+  {{- include "quai.env" .root | nindent 2 }}
   {{- if eq (dig "auth" "mode" "" .root.Values.config) "oidc" }}
   - name: QUAI_AUTH_OIDC_CLIENT_SECRET
     valueFrom: { secretKeyRef: { name: {{ .root.Values.oidc.secretName }}, key: {{ .root.Values.oidc.secretKey }} } }
-  {{- end }}
-  {{- with .root.Values.network.caBundle.configMap }}
-  - name: QUAI_NETWORK_CA_FILE
-    value: /etc/quai-ca/{{ $.root.Values.network.caBundle.key }}
-  {{- end }}
-  {{- with .root.Values.network.proxy }}
-  {{- if .https }}
-  - { name: HTTPS_PROXY, value: {{ .https | quote }} }
-  {{- end }}
-  {{- if .http }}
-  - { name: HTTP_PROXY, value: {{ .http | quote }} }
-  {{- end }}
-  {{- if .noProxy }}
-  - { name: NO_PROXY, value: {{ .noProxy | quote }} }
-  {{- end }}
   {{- end }}
 securityContext: {{- toYaml .root.Values.securityContext | nindent 2 }}
 volumeMounts:
@@ -89,9 +94,14 @@ volumeMounts:
   emptyDir: {{ if .sizeLimit }}{ sizeLimit: {{ .sizeLimit }} }{{ else }}{}{{ end }}
 {{- end -}}
 
+{{/* The pod settings. A hook runs before the release's service account exists, and needs none. */}}
 {{- define "quai.pod" -}}
+{{- if .hook -}}
+automountServiceAccountToken: false
+{{- else -}}
 serviceAccountName: {{ include "quai.serviceAccountName" .root }}
 automountServiceAccountToken: {{ .root.Values.secretStore.kubernetes.enabled }}
+{{- end }}
 securityContext: {{- toYaml .root.Values.podSecurityContext | nindent 2 }}
 {{- with .root.Values.imagePullSecrets }}
 imagePullSecrets: {{- toYaml . | nindent 2 }}

@@ -1,0 +1,59 @@
+name: kind
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  # The Helm chart on a kind cluster (docs/operations/deployment-and-operations.md#helm): the
+  # image built from this commit, PostgreSQL in the cluster, install and upgrade with the
+  # migrations as hooks, then the smoke test of deploy/kind/smoke.yaml.
+  chart:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # kind, pinned and checksum-verified; helm and kubectl come with the runner.
+      - name: kind
+        run: |
+          curl -fsSLo "$RUNNER_TEMP/kind" https://github.com/kubernetes-sigs/kind/releases/download/v0.33.0/kind-linux-amd64
+          echo "aee6151561422756b764a4ae28e7f44cda5af5a9eead3cc9985112b1de8d8e0d  $RUNNER_TEMP/kind" | sha256sum -c -
+          sudo install -m 0755 "$RUNNER_TEMP/kind" /usr/local/bin/kind
+          kind version && helm version --short && kubectl version --client
+      - run: helm lint deploy/helm/quai -f deploy/kind/values.yaml
+      - run: kind create cluster --name quai --wait 120s
+      - run: docker build --quiet -t quai:kind .
+      - run: kind load docker-image quai:kind --name quai
+      - run: kubectl apply -f deploy/kind/fixtures.yaml
+      - run: kubectl -n quai rollout status deploy/postgres --timeout 180s
+      - name: Install (the migrations as a pre-install hook)
+        run: helm install quai deploy/helm/quai -n quai -f deploy/kind/values.yaml --wait --timeout 5m
+      - name: Upgrade (the migrations as a pre-upgrade hook)
+        run: helm upgrade quai deploy/helm/quai -n quai -f deploy/kind/values.yaml --wait --timeout 5m
+      - name: Every migration applied
+        run: |
+          applied=$(kubectl -n quai exec deploy/postgres -- psql -U quai -d quai -tAc 'select max(version_id) from goose_db_version')
+          embedded=$(ls backend/migrations/*.sql | wc -l)
+          echo "applied $applied of $embedded"
+          test "$applied" -eq "$embedded"
+      - name: Smoke test
+        run: |
+          kubectl apply -f deploy/kind/smoke.yaml
+          status=0
+          kubectl -n quai wait --for=condition=complete job/smoke --timeout 180s || status=1
+          kubectl -n quai logs job/smoke
+          exit $status
+      - if: failure()
+        name: What the cluster shows
+        run: |
+          kubectl -n quai get all,events || true
+          kubectl -n quai describe pods || true
+          kubectl -n quai logs deploy/quai-server --tail 200 || true
+          kubectl -n quai logs deploy/quai-worker --tail 200 || true
+      - if: always()
+        run: kind delete cluster --name quai
