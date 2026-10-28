@@ -477,3 +477,30 @@ func TestSSH(t *testing.T) {
 		}
 	}
 }
+
+// TestNewBranch commits on a new branch started from another one, as a pull request's source.
+func TestNewBranch(t *testing.T) {
+	bare, _ := remote(t)
+	m := mirror(t, bare)
+	main, _ := m.Head(ctx, "main")
+	sha, err := m.CommitAndPush(ctx, Commit{Branch: "quai/r-1-web01", Base: "main", Message: "Resize web01\n", Author: bob,
+		Changes: []plan.Change{{Op: plan.OpUpdate, Path: "envs/prod/vms/web01.yaml", After: []byte("cpu: 8\n")}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parents, err := m.Parents(ctx, sha); err != nil || len(parents) != 1 || parents[0] != main {
+		t.Errorf("parents = %v, %v; main is %s", parents, err, main)
+	}
+	if head, _ := m.Head(ctx, "main"); head != main {
+		t.Error("main moved")
+	}
+	if _, err := m.CommitAndPush(ctx, Commit{Branch: "quai/r-2", Base: "nope", Message: "m\n"}); !errors.Is(err, ErrNotFound) {
+		t.Errorf("a missing base: %v", err)
+	}
+	if _, err := m.CommitAndPush(ctx, Commit{Branch: "quai/r-2", Base: "../main", Message: "m\n"}); err == nil {
+		t.Error("an invalid base")
+	}
+	if _, err := m.Parents(ctx, "zzz"); err == nil {
+		t.Error("Parents of an invalid commit")
+	}
+}

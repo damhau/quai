@@ -23,8 +23,8 @@ import (
 	"github.com/damhau/quai/backend/internal/jobs"
 	"github.com/damhau/quai/backend/internal/pgtest"
 	"github.com/damhau/quai/backend/internal/repositories"
-	"github.com/damhau/quai/backend/internal/secrets"
 	"github.com/damhau/quai/backend/internal/requests"
+	"github.com/damhau/quai/backend/internal/secrets"
 	"github.com/damhau/quai/backend/internal/store"
 )
 
@@ -100,7 +100,7 @@ spec:
 	store := secrets.New(map[string]secrets.Backend{"env": secrets.Env{Lookup: func(name string) (string, bool) {
 		return runToken, name == "INFRA_LIVE_RUN_TOKEN"
 	}}})
-	reg, err := repositories.Open(context.Background(), cfg, repositories.FromStore(s), store, nil, log)
+	reg, err := repositories.Open(context.Background(), cfg, repositories.FromStore(s), repositories.Options{Secrets: store, Log: log})
 	if err != nil {
 		t.Fatal(err)
 	}

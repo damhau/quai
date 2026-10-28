@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"go.yaml.in/yaml/v3"
+	"golang.org/x/crypto/ssh"
 
 	"github.com/damhau/quai/backend/internal/engine/expr"
 )
@@ -45,13 +46,20 @@ type Spec struct {
 	Connector     string      `json:"connector" yaml:"connector"`
 	URL           string      `json:"url" yaml:"url"`
 	DefaultBranch string      `json:"defaultBranch" yaml:"defaultBranch"`
-	Credentials   SecretRef   `json:"credentials,omitzero" yaml:"credentials"`
+	Credentials   Credentials `json:"credentials,omitzero" yaml:"credentials"`
 	Definitions   Definitions `json:"definitions" yaml:"definitions"`
 	Delivery      Delivery    `json:"delivery" yaml:"delivery"`
 	Enforcement   Enforcement `json:"enforcement" yaml:"enforcement"`
 	Runner        Runner      `json:"runner,omitzero" yaml:"runner"`
 	Webhooks      Webhooks    `json:"webhooks,omitzero" yaml:"webhooks"`
 	Sync          Sync        `json:"sync" yaml:"sync"`
+}
+
+// Credentials name the secret Quai authenticates to the platform with. KnownHosts holds the
+// SSH host keys of the remote (known_hosts lines), for an SSH deploy key: they are verified.
+type Credentials struct {
+	Ref        string `json:"ref,omitempty" yaml:"ref"`
+	KnownHosts string `json:"knownHosts,omitempty" yaml:"knownHosts"`
 }
 
 // SecretRef names a secret in a secret store (env:, k8s:, vault:, azkv:), never the secret itself.
@@ -210,6 +218,9 @@ func (d *Document) Validate() error {
 			add("%s must be a secret reference such as k8s:namespace/name#key or env:NAME", at)
 		}
 	}
+	if err := checkKnownHosts(s.Credentials.KnownHosts); err != nil {
+		add("spec.credentials.knownHosts: %v", err)
+	}
 	switch s.Delivery.Mode {
 	case "direct":
 	case "pull-request":
@@ -245,6 +256,21 @@ func (d *Document) Validate() error {
 	}
 	if len(errs) > 0 {
 		return fmt.Errorf("repository %q: %s", d.Metadata.Name, strings.Join(errs, "; "))
+	}
+	return nil
+}
+
+// checkKnownHosts checks known_hosts lines.
+func checkKnownHosts(lines string) error {
+	rest := []byte(lines)
+	for len(bytes.TrimSpace(rest)) > 0 {
+		var err error
+		if _, _, _, _, rest, err = ssh.ParseKnownHosts(rest); err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+			return err
+		}
 	}
 	return nil
 }

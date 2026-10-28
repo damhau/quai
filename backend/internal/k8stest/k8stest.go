@@ -25,8 +25,8 @@ import (
 
 	"github.com/go-logr/logr"
 	"k8s.io/client-go/rest"
-	ctrllog "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
+	ctrllog "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 // Version is the envtest release: Kubernetes 1.37.

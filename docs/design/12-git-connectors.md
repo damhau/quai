@@ -31,6 +31,8 @@ flowchart LR
 - Connectors are Go packages compiled into the binary (`internal/connectors/<platform>`), not plugins. They hold credentials and make network calls, so they must be in-tree and security-reviewed. The WASM plugin sandbox is for generators only.
 - Git transport (clone, fetch, push) is shared: the `git` CLI, with credentials supplied by the connector (HTTP header, SSH key, credential helper).
 - Everything else goes through the platform API, behind the connector.
+- A registry makes each connection's connector from `spec.connector`. Until a platform's own connector is built, its connections get Git transport only, like generic (direct delivery, no enforcement), and Quai logs a warning.
+- API calls go through one shared HTTP client: the CA bundle and proxy Quai is configured with, rate limits honoured (`Retry-After` holds back calls to that host and retries a 429, or a 503 when the call is idempotent; `X-RateLimit-Remaining: 0` waits for `X-RateLimit-Reset`; exponential backoff without `Retry-After`; a wait over a minute fails the call rather than blocking it), and logging of method, URL without credentials or secret-looking query values, status and duration only.
 
 ### Interface
 
@@ -69,15 +71,17 @@ const (
 ### Normalized events
 
 Webhook payloads differ per platform. Connectors turn them into a small set of internal events,
-which the rest of Quai consumes:
+which the rest of Quai consumes. The connection's own connector parses its deliveries and drops
+other repositories' events (an Azure DevOps service hook can be project-wide), so the events below
+belong to that repository:
 
 | Event | Fields |
 | --- | --- |
-| `Push` | repository, ref, before, after, changed paths (when the payload has them) |
-| `PullRequestChanged` | repository, PR id, action (opened, updated, completed, abandoned), head commit, source and target branches |
-| `StatusChanged` | repository, PR id or commit, name, state, URL |
-| `PolicyChanged` | repository, branch (for enforcement re-checks) |
-| `PipelineRunChanged` | repository, pipeline, run id, state, result, commit |
+| `Push` | ref, before, after, changed paths (when the payload has them) |
+| `PullRequestChanged` | PR id, action (opened, updated, completed, abandoned), head commit, source and target branches |
+| `StatusChanged` | PR id or commit, name, state, URL |
+| `PolicyChanged` | branch (for enforcement re-checks) |
+| `PipelineRunChanged` | pipeline, run id, state, result, commit |
 
 **Webhooks are notifications, not truth.** After an event, Quai re-reads the pull request, status
 or ref from the API before acting. A forged or replayed payload can at worst trigger an extra read.
@@ -86,7 +90,10 @@ This matters most on platforms that do not sign webhook payloads, Azure DevOps a
 ### Conformance suite
 
 Every connector must pass one shared suite (`internal/connectors/conformance`), run against a real
-instance of the platform:
+instance of the platform. The connector's tests give it a harness: a throwaway repository on the
+instance, and what only an administrator does there (requiring the check, adding an ownership rule,
+a second identity, recorded webhook deliveries when the platform cannot reach the test). Steps the
+connector's capabilities or the harness do not cover are skipped, with the reason:
 
 1. Push a branch under `quai/`, open a PR, update it with a second commit.
 2. Publish `quai/approval` pending, then succeeded; verify the platform shows it on the latest iteration or commit.
@@ -265,4 +272,4 @@ sequenceDiagram
 | --- | --- |
 | Bitbucket Cloud and Data Center | REST over `net/http`; build statuses as `quai/approval`; required builds or merge checks for enforcement (edition-dependent). After GitLab. |
 | Gitea and Forgejo | `code.gitea.io/sdk/gitea`; commit status; required status checks in branch protection. Built first alongside Azure DevOps because it runs in a container and anchors the conformance suite. |
-| Generic Git | Git transport only; direct delivery; no enforcement. Quai shows "approvals not enforced" on every request. |
+| Generic Git | Git transport only; direct delivery; no enforcement. Quai shows "approvals not enforced" on every request. Authenticates with an SSH deploy key (`spec.credentials.ref`) against the host keys of `spec.credentials.knownHosts`; without credentials, the URL is used as it is (a public repository, or a local one). |

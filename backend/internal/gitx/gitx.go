@@ -248,7 +248,10 @@ func firstLine(s string) string {
 
 // Commit is a change to deliver straight to a branch.
 type Commit struct {
-	Branch  string
+	Branch string
+	// Base is the branch to start from when Branch does not exist yet (a pull request's
+	// source branch); empty: Branch must exist.
+	Base    string
 	Changes []plan.Change
 	Message string
 	Author  Signature
@@ -266,6 +269,11 @@ const maxAttempts = 4
 func (m *Mirror) CommitAndPush(ctx context.Context, c Commit) (string, error) {
 	if err := checkRef(c.Branch); err != nil {
 		return "", err
+	}
+	if c.Base != "" {
+		if err := checkRef(c.Base); err != nil {
+			return "", err
+		}
 	}
 	for _, ch := range c.Changes {
 		if err := checkPath(ch.Path); err != nil {
@@ -289,6 +297,9 @@ func (m *Mirror) commitOnce(ctx context.Context, c Commit, attempt int) (string,
 		return "", err
 	}
 	head, err := m.Head(ctx, c.Branch)
+	if errors.Is(err, ErrNotFound) && c.Base != "" {
+		head, err = m.Head(ctx, c.Base)
+	}
 	if err != nil {
 		return "", err
 	}
@@ -400,6 +411,22 @@ func (m *Mirror) Log(ctx context.Context, branch, file string, limit int) ([]Log
 		entries = append(entries, LogEntry{SHA: f[0], Author: f[1], Email: f[2], Date: date, Subject: f[4], Body: strings.TrimSpace(f[5])})
 	}
 	return entries, nil
+}
+
+// Parents returns a commit's parents: one for a squash or a rebase, two for a merge commit.
+func (m *Mirror) Parents(ctx context.Context, commit string) ([]string, error) {
+	if err := checkCommit(commit); err != nil {
+		return nil, err
+	}
+	out, err := m.git(ctx, "", "rev-list", "--parents", "-n1", commit)
+	if err != nil {
+		return nil, fmt.Errorf("commit %.12s: %w", commit, ErrNotFound)
+	}
+	f := strings.Fields(out)
+	if len(f) == 0 {
+		return nil, fmt.Errorf("commit %.12s: %w", commit, ErrNotFound)
+	}
+	return f[1:], nil
 }
 
 // Show returns a commit's header, message and patch.

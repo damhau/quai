@@ -30,6 +30,10 @@ type Secret struct {
 	Expires time.Time
 }
 
+// FromValue makes a Secret of a value Quai has in hand: one it generated (a webhook secret, a
+// run token), or a test's.
+func FromValue(value string) Secret { return Secret{value: value} }
+
 // Reveal returns the secret's value.
 func (s Secret) Reveal() string { return s.value }
 

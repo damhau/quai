@@ -25,6 +25,8 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/damhau/quai/backend/internal/config"
+	"github.com/damhau/quai/backend/internal/connectors"
+	"github.com/damhau/quai/backend/internal/connectors/generic"
 	"github.com/damhau/quai/backend/internal/engine/definitions"
 	"github.com/damhau/quai/backend/internal/engine/expr"
 	"github.com/damhau/quai/backend/internal/gitx"
@@ -54,6 +56,7 @@ type Repo struct {
 	Delivery   string
 	FloorRules []definitions.Rule
 	Mirror     *gitx.Mirror
+	Connector  connectors.Connector // the platform, as spec.connector names it
 	// Document is the connection as declared; Generation moves when it changes.
 	Document   Document
 	Generation int64
@@ -151,13 +154,14 @@ func Reconcile(ctx context.Context, s *store.Store, docs []Document) error {
 
 // Registry is the set of connected repositories.
 type Registry struct {
-	src       Source
-	secrets   *secrets.Store
-	cache     string
-	committer gitx.Signature
-	caFile    string // the CA bundle git verifies servers with; empty: git's own
-	proxy     func(*url.URL) (*url.URL, error)
-	log       *slog.Logger
+	src        Source
+	connectors *connectors.Registry
+	secrets    *secrets.Store
+	cache      string
+	committer  gitx.Signature
+	caFile     string // the CA bundle git verifies servers with; empty: git's own
+	proxy      func(*url.URL) (*url.URL, error)
+	log        *slog.Logger
 
 	mu    sync.RWMutex
 	repos map[string]*Repo
@@ -170,11 +174,26 @@ type Registry struct {
 // it.
 const worktreeGrace = 2 * time.Minute
 
-// Open loads the connections of src: it clones or fetches their mirrors and compiles their floor
-// rules. Their secret references resolve through store, and git reaches them through network
-// (nil: git's defaults, no proxy). A connection that cannot be opened (an unreachable remote,
+// Options are what a registry works with besides its source.
+type Options struct {
+	Secrets    *secrets.Store       // resolves the connections' secret references
+	Network    *netx.Network        // how git reaches the remotes; nil: git's defaults, no proxy
+	Connectors *connectors.Registry // makes each connection's connector; nil: Git transport only
+	Log        *slog.Logger
+}
+
+// Open loads the connections of src: it makes their connectors, clones or fetches their mirrors
+// and compiles their floor rules. A connection that cannot be opened (an unreachable remote,
 // say) is logged and left out until a reload opens it.
-func Open(ctx context.Context, cfg *config.Config, src Source, store *secrets.Store, network *netx.Network, log *slog.Logger) (*Registry, error) {
+func Open(ctx context.Context, cfg *config.Config, src Source, opts Options) (*Registry, error) {
+	store, network, log := opts.Secrets, opts.Network, opts.Log
+	if log == nil {
+		log = slog.New(slog.DiscardHandler)
+	}
+	conns := opts.Connectors
+	if conns == nil {
+		conns = &connectors.Registry{Factories: map[string]connectors.Factory{"generic": generic.New}, Fallback: generic.Fallback, Log: log}
+	}
 	var err error
 	cache := cfg.Git.CacheDir
 	if cache == "" {
@@ -184,7 +203,7 @@ func Open(ctx context.Context, cfg *config.Config, src Source, store *secrets.St
 		}
 		cache = filepath.Join(dir, "quai", "mirrors")
 	}
-	reg := &Registry{src: src, secrets: store, cache: cache, log: log, repos: map[string]*Repo{}, failed: map[string]int64{},
+	reg := &Registry{src: src, connectors: conns, secrets: store, cache: cache, log: log, repos: map[string]*Repo{}, failed: map[string]int64{},
 		committer: gitx.Signature{Name: cfg.Git.Committer.Name, Email: cfg.Git.Committer.Email}}
 	if network != nil {
 		reg.proxy = network.Proxy
@@ -287,6 +306,10 @@ func (r *Registry) open(ctx context.Context, s Stored, prev *Repo) (*Repo, error
 		Document: d, Generation: s.Generation, ManagedBy: s.ManagedBy, minInterval: time.Duration(d.Spec.Sync.MinInterval),
 		secrets: r.secrets, log: r.log, lastFetch: time.Now()}
 	repo.checkCredentials(ctx)
+	if repo.Connector, err = r.connectors.New(d.Spec.Connector, connectors.Config{URL: d.Spec.URL, Credentials: repo.Credentials,
+		KnownHosts: d.Spec.Credentials.KnownHosts}); err != nil {
+		return nil, err
+	}
 	for _, f := range d.Spec.Enforcement.FloorRules {
 		rule := definitions.Rule{Name: f.Name, When: f.When, Approvers: f.Approvers, Min: f.Min}
 		if f.When != "" {
@@ -296,7 +319,9 @@ func (r *Registry) open(ctx context.Context, s Stored, prev *Repo) (*Repo, error
 		}
 		repo.FloorRules = append(repo.FloorRules, rule)
 	}
-	if prev != nil && prev.Document.Spec.URL == d.Spec.URL {
+	// The mirror is kept while git reaches the remote the same way.
+	if prev != nil && prev.Document.Spec.URL == d.Spec.URL && prev.Document.Spec.Connector == d.Spec.Connector &&
+		prev.Document.Spec.Credentials == d.Spec.Credentials {
 		prev.mu.Lock()
 		repo.Mirror, repo.lastFetch = prev.Mirror, prev.lastFetch
 		if prev.Branch == repo.Branch {
@@ -305,7 +330,7 @@ func (r *Registry) open(ctx context.Context, s Stored, prev *Repo) (*Repo, error
 		prev.mu.Unlock()
 		return repo, nil
 	}
-	opts := gitx.Options{Committer: r.committer, CAFile: r.caFile, Proxy: r.proxy, PartialClone: d.Spec.Sync.PartialClone}
+	opts := gitx.Options{Committer: r.committer, Auth: repo.Connector.GitAuth, CAFile: r.caFile, Proxy: r.proxy, PartialClone: d.Spec.Sync.PartialClone}
 	if repo.Mirror, err = gitx.OpenMirror(ctx, d.Spec.URL, filepath.Join(r.cache, repo.Name+".git"), opts); err != nil {
 		return nil, err
 	}

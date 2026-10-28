@@ -16,6 +16,9 @@ import (
 	"time"
 
 	"github.com/damhau/quai/backend/internal/config"
+	"github.com/damhau/quai/backend/internal/connectors"
+	"github.com/damhau/quai/backend/internal/connectors/generic"
+	"github.com/damhau/quai/backend/internal/gitx"
 	"github.com/damhau/quai/backend/internal/netx"
 	"github.com/damhau/quai/backend/internal/pgtest"
 	"github.com/damhau/quai/backend/internal/secrets"
@@ -74,6 +77,24 @@ func testConfig(t *testing.T) *config.Config {
 	return &config.Config{Git: config.Git{CacheDir: filepath.Join(t.TempDir(), "cache")}}
 }
 
+func TestKnownHosts(t *testing.T) {
+	d := doc(t, `apiVersion: quai.dev/v1beta1
+kind: Repository
+metadata: { name: infra }
+spec:
+  connector: generic
+  url: git@git.example.com:infra.git
+  credentials:
+    ref: k8s:quai/infra-deploy-key
+    knownHosts: |
+      # git.example.com
+      git.example.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl
+`)
+	if !strings.Contains(d.Spec.Credentials.KnownHosts, "ssh-ed25519") {
+		t.Errorf("known hosts = %q", d.Spec.Credentials.KnownHosts)
+	}
+}
+
 func TestParse(t *testing.T) {
 	d := doc(t, `apiVersion: quai.dev/v1beta1
 kind: Repository
@@ -101,6 +122,7 @@ spec:
 	}
 
 	for name, tt := range map[string]struct{ src, want string }{
+		"known hosts":   {"apiVersion: quai.dev/v1beta1\nkind: Repository\nmetadata: { name: a }\nspec: { connector: generic, url: 'git@h:r', credentials: { ref: env:KEY, knownHosts: 'h not-a-key' } }\n", "spec.credentials.knownHosts"},
 		"unknown field": {"apiVersion: quai.dev/v1beta1\nkind: Repository\nmetadata: { name: a }\nspec: { connector: gitea, url: x, branch: main }\n", "field branch not found"},
 		"kind":          {"apiVersion: quai.dev/v1beta1\nkind: Repo\nmetadata: { name: a }\nspec: { connector: gitea, url: x }\n", "kind must be Repository"},
 		"name":          {"apiVersion: quai.dev/v1beta1\nkind: Repository\nmetadata: { name: Infra }\nspec: { connector: gitea, url: x }\n", "metadata.name must be a lowercase DNS label"},
@@ -149,7 +171,7 @@ func TestRefresh(t *testing.T) {
 	r := newRemote(t, "infra")
 	d := doc(t, "apiVersion: quai.dev/v1beta1\nkind: Repository\nmetadata: { name: infra }\nspec: { connector: generic, url: "+r.url+", sync: { minInterval: 1h } }\n")
 	ctx := context.Background()
-	reg, err := Open(ctx, testConfig(t), Static([]Document{d}), nil, nil, slog.New(slog.DiscardHandler))
+	reg, err := Open(ctx, testConfig(t), Static([]Document{d}), Options{Log: slog.New(slog.DiscardHandler)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -201,7 +223,7 @@ func TestReconcileAndReload(t *testing.T) {
 	if err := Reconcile(ctx, s, []Document{repoDoc("alpha", alpha.url, "Alpha"), repoDoc("beta", beta.url, "Beta")}); err != nil {
 		t.Fatal(err)
 	}
-	reg, err := Open(ctx, testConfig(t), FromStore(s), nil, nil, slog.New(slog.DiscardHandler))
+	reg, err := Open(ctx, testConfig(t), FromStore(s), Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -279,6 +301,11 @@ func TestReconcileAndReload(t *testing.T) {
 	}
 }
 
+// apiOnly is a connector whose credentials are not for git.
+type apiOnly struct{ connectors.Connector }
+
+func (apiOnly) GitAuth(context.Context) (gitx.Credentials, error) { return gitx.Credentials{}, nil }
+
 func TestSecretReferences(t *testing.T) {
 	ctx := context.Background()
 	r := newRemote(t, "infra")
@@ -287,12 +314,33 @@ func TestSecretReferences(t *testing.T) {
 	env := map[string]string{"INFRA_PAT": "pat-value"}
 	store := secrets.New(map[string]secrets.Backend{"env": secrets.Env{Lookup: func(n string) (string, bool) { v, ok := env[n]; return v, ok }}})
 	var logs strings.Builder
-	reg, err := Open(ctx, testConfig(t), Static([]Document{d}), store, nil, slog.New(slog.NewTextHandler(&logs, nil)))
+	log := slog.New(slog.NewTextHandler(&logs, nil))
+
+	// The generic connector authenticates git with an SSH deploy key only: credentials on any
+	// other URL keep the connection from opening.
+	reg, err := Open(ctx, testConfig(t), Static([]Document{d}), Options{Secrets: store, Log: log})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reg.Get("infra"); err == nil || !strings.Contains(logs.String(), "SSH deploy key") {
+		t.Errorf("credentials on a local path: %v\n%s", err, logs.String())
+	}
+	reg.Close()
+
+	// A platform's connector, whose credentials are for its API; git reaches a local remote.
+	conns := &connectors.Registry{Factories: map[string]connectors.Factory{"generic": func(cfg connectors.Config) (connectors.Connector, error) {
+		c, err := generic.New(cfg)
+		return apiOnly{c}, err
+	}}}
+	reg, err = Open(ctx, testConfig(t), Static([]Document{d}), Options{Secrets: store, Connectors: conns, Log: log})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer reg.Close()
-	repo, _ := reg.Get("infra")
+	repo, err := reg.Get("infra")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if s, ok, err := repo.Credentials(ctx); err != nil || !ok || s.Reveal() != "pat-value" {
 		t.Errorf("credentials = %v %v %v", s, ok, err)
 	}
@@ -328,11 +376,14 @@ func TestNetwork(t *testing.T) {
 	d := doc(t, "apiVersion: quai.dev/v1beta1\nkind: Repository\nmetadata: { name: infra }\nspec:\n  connector: generic\n  url: file://"+r.url+
 		"\n  sync: { partialClone: true }\n")
 	cfg := testConfig(t)
-	reg, err := Open(ctx, cfg, Static([]Document{d}), nil, network, slog.New(slog.DiscardHandler))
+	reg, err := Open(ctx, cfg, Static([]Document{d}), Options{Network: network})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer reg.Close()
+	if repo, err := reg.Get("infra"); err != nil || repo.Connector.Info().Platform != "generic" {
+		t.Errorf("the connector: %v", err)
+	}
 	if b, err := os.ReadFile(filepath.Join(cfg.Git.CacheDir, "ca-bundle.pem")); err != nil || !bytes.HasSuffix(b, ca) {
 		t.Errorf("git's CA bundle: %v", err)
 	}

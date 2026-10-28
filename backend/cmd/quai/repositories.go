@@ -3,9 +3,12 @@ package main
 import (
 	"context"
 	"log/slog"
+	"net/http"
 	"os"
 
 	"github.com/damhau/quai/backend/internal/config"
+	"github.com/damhau/quai/backend/internal/connectors"
+	"github.com/damhau/quai/backend/internal/connectors/generic"
 	"github.com/damhau/quai/backend/internal/netx"
 	"github.com/damhau/quai/backend/internal/repositories"
 	"github.com/damhau/quai/backend/internal/secrets"
@@ -18,6 +21,25 @@ func secretStore(cfg *config.Config) *secrets.Store {
 		"env": secrets.Env{Lookup: os.LookupEnv},
 		"k8s": secrets.NewKubernetes(secrets.KubeConfig(cfg.Secrets.Kubernetes.Kubeconfig)),
 	})
+}
+
+// connectorRegistry makes the connectors, their API calls going through network (nil: the
+// defaults).
+func connectorRegistry(network *netx.Network, log *slog.Logger) *connectors.Registry {
+	var base http.RoundTripper = http.DefaultTransport
+	if network != nil {
+		base = network.Transport()
+	}
+	return &connectors.Registry{
+		Factories: map[string]connectors.Factory{"generic": generic.New},
+		Fallback:  generic.Fallback,
+		HTTP:      connectors.NewHTTPClient(base, log),
+		Log:       log,
+	}
+}
+
+func repositoryOptions(cfg *config.Config, network *netx.Network, log *slog.Logger) repositories.Options {
+	return repositories.Options{Secrets: secretStore(cfg), Network: network, Connectors: connectorRegistry(network, log), Log: log}
 }
 
 // openRepositories connects the repositories. With a database, the Repository documents of the
@@ -33,12 +55,12 @@ func openRepositories(ctx context.Context, cfg *config.Config, s *store.Store, n
 		if len(docs) == 0 {
 			return nil, nil
 		}
-		return repositories.Open(ctx, cfg, repositories.Static(docs), secretStore(cfg), network, log)
+		return repositories.Open(ctx, cfg, repositories.Static(docs), repositoryOptions(cfg, network, log))
 	}
 	if err := repositories.Reconcile(ctx, s, docs); err != nil {
 		return nil, err
 	}
-	reg, err := repositories.Open(ctx, cfg, repositories.FromStore(s), secretStore(cfg), network, log)
+	reg, err := repositories.Open(ctx, cfg, repositories.FromStore(s), repositoryOptions(cfg, network, log))
 	if err != nil {
 		return nil, err
 	}

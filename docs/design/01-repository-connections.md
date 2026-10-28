@@ -105,6 +105,7 @@ spec:
 | `metadata.name` | Immutable after creation: it is part of every resource ID and request record. |
 | `spec.connector` | `azure-devops`, `github`, `gitlab`, `bitbucket`, `gitea` or `generic`. |
 | `spec.credentials.ref` | A reference, never the secret itself. Resolved at use time; never logged or returned by the API. |
+| `spec.credentials.knownHosts` | For an SSH deploy key (generic Git): the server's host keys, as `known_hosts` lines. Public, so written in the document; the host key is always verified, and a key without them is refused. |
 | `spec.definitions` | One repository can host types for itself only. A type cannot point its locator into another repository. |
 | `spec.delivery.mode` | `direct` exists for sandboxes and demos. Production repositories should use pull requests ([ADR 0008](../adr/0008-pull-requests-by-default.md)). |
 | `spec.enforcement.floorRules` | Lets admins guarantee, for example, that nothing reaches `prod` without platform approval, whatever a type's author writes. Types can add rules, never remove floor rules. |
@@ -153,7 +154,7 @@ webhook subscription.
 | Azure DevOps Services | PAT, as on Server; a Microsoft Entra service principal (workload identity federation, certificate or client secret) for customers who forbid PATs, before GA | The PAT works on both editions with one code path. A service principal has no personal account behind it and Entra's conditional access and audit apply. |
 | GitHub | GitHub App installed on the selected repositories | Short-lived installation tokens, fine-grained permissions, verified commits, no user seat. |
 | GitLab | Project or group access token for a bot, with `api` and `write_repository` | Scoped to the project or group; rotate with expiry. |
-| Generic | SSH deploy key with write access | The only option without an API. |
+| Generic | SSH deploy key with write access, and the server's host keys in `spec.credentials.knownHosts` | The only option without an API. |
 
 The exact permissions per platform, and how the registration wizard verifies
 them, are in [Git connectors](12-git-connectors.md#permissions).
