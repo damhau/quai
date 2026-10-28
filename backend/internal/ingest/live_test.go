@@ -66,3 +66,47 @@ func (e sandboxEnv) Get(ctx context.Context, name string) (secrets.Secret, error
 	}
 	return secrets.Env{Lookup: func(n string) (string, bool) { return hookSecret, n == "HOOK_SECRET" }}.Get(ctx, name)
 }
+
+// TestAzureDevOpsTrust: on Azure DevOps, the branch is protected by any policy, and .quai/ is
+// covered by an "Automatically included reviewers" policy with a path filter.
+func TestAzureDevOpsTrust(t *testing.T) {
+	sb := adotest.New(t)
+	ctx := context.Background()
+	name, id := sb.Repository(t)
+	e := start(t, name, `connector: azure-devops
+  url: `+sb.URL(name)+`
+  credentials: { ref: env:ADO_PAT }`, repositories.Options{
+		Secrets:    secrets.New(map[string]secrets.Backend{"env": sandboxEnv{sb}}),
+		Connectors: &connectors.Registry{Factories: map[string]connectors.Factory{"azure-devops": azuredevops.New}, HTTP: sb.HTTP},
+		Network:    sb.Network,
+	})
+	if err := e.svc.Poll(ctx, name); err != nil {
+		t.Fatal(err)
+	}
+	if problems, ok := e.trust(); !ok || len(problems) != 2 {
+		t.Fatalf("an open repository: %v, %v", problems, ok)
+	}
+	me, err := e.repo().Connector.(*azuredevops.Connector).Client().Detect(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scope := []map[string]any{{"repositoryId": id, "refName": "refs/heads/main", "matchKind": "exact"}}
+	for _, p := range []map[string]any{
+		{"type": map[string]string{"id": "fa4e907d-c16b-4a4c-9dfa-4906e5d171dd"}, "settings": map[string]any{"minimumApproverCount": 1, "scope": scope}},
+		{"type": map[string]string{"id": "fd2167ab-b0be-447a-8ec8-39368250530e"}, "settings": map[string]any{"requiredReviewerIds": []string{me.User.ID},
+			"minimumApproverCount": 1, "filenamePatterns": []string{"/.quai/*"}, "scope": scope}},
+	} {
+		p["isEnabled"], p["isBlocking"] = true, true
+		if err := sb.Do(ctx, http.MethodPost, adotest.Path(sb.Project, "_apis", "policy", "configurations"), nil, p, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Azure DevOps lists new policies after a moment.
+	e.eventually("the policies make the repository trusted", func() bool {
+		if err := e.svc.Poll(ctx, name); err != nil {
+			t.Fatal(err)
+		}
+		problems, ok := e.trust()
+		return ok && len(problems) == 0
+	})
+}

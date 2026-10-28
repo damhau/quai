@@ -179,6 +179,10 @@ func TestURLs(t *testing.T) {
 
 func TestCodeOwners(t *testing.T) {
 	rules := parseCodeOwners("# owners\n\nenvs/prod/.* @platform @org/team-a # prod\ndocs/.*\nREADME.md @alice\n")
+	if !rules[0].Match("envs/prod/vms/web01.yaml") || rules[0].Match("x/envs/prod/a") || !connectors.Covered(parseCodeOwners(`\.quai/.* @platform`), ".quai/types/vm.yaml") ||
+		connectors.Covered(parseCodeOwners("!.quai/.* @platform\n[ @x"), ".quai/types/vm.yaml") {
+		t.Error("CODEOWNERS patterns are anchored regular expressions; a negated or invalid one covers nothing")
+	}
 	if len(rules) != 2 || rules[0].Pattern != "envs/prod/.*" || strings.Join(rules[0].Owners, ",") != "platform,org/team-a" || rules[1].Owners[0] != "alice" {
 		t.Errorf("rules = %+v", rules)
 	}

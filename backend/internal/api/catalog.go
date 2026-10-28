@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io/fs"
 	"maps"
@@ -43,6 +44,14 @@ type RepositoryView struct {
 	Types      int           `json:"types"`
 	Blueprints int           `json:"blueprints"`
 	Problems   []ProblemView `json:"problems"`
+	Trust      TrustView     `json:"trust"`
+}
+
+// TrustView is whether a repository's definitions only change through review, as last checked.
+type TrustView struct {
+	Checked   bool       `json:"checked" doc:"False until the first check, every poll interval"`
+	Problems  []string   `json:"problems" doc:"What lets definitions change without review: the definitions branch unprotected, or no required reviewers on the definitions folder"`
+	CheckedAt *time.Time `json:"checkedAt,omitempty"`
 }
 
 // CatalogItem is something people can request: a type or a blueprint.
@@ -56,6 +65,7 @@ type CatalogItem struct {
 	Category    string   `json:"category,omitempty"`
 	Version     string   `json:"version,omitempty"`
 	Tags        []string `json:"tags"`
+	Trust       []string `json:"trust,omitempty" doc:"Why the item's definitions may change without review, shown as a warning: its repository's trust problems"`
 }
 
 // ParamView is a locator param, with the values found in the repository for discovered ones.
@@ -213,7 +223,9 @@ func registerCatalog(a huma.API, reg *repositories.Registry, s *store.Store) {
 			if err != nil {
 				return nil, err
 			}
-			views = append(views, repositoryView(repo, snap))
+			v := repositoryView(repo, snap)
+			v.Trust = trustOf(ctx, s, repo.Name)
+			views = append(views, v)
 		}
 		if len(views) == 0 {
 			if _, err := authorize(ctx, authz.ReadInventory, authz.Object{}); err != nil {
@@ -238,7 +250,9 @@ func registerCatalog(a huma.API, reg *repositories.Registry, s *store.Store) {
 		if err != nil {
 			return nil, err
 		}
-		return &out[RepositoryView]{Body: repositoryView(repo, snap)}, nil
+		v := repositoryView(repo, snap)
+		v.Trust = trustOf(ctx, s, repo.Name)
+		return &out[RepositoryView]{Body: v}, nil
 	})
 
 	huma.Register(a, huma.Operation{
@@ -252,6 +266,7 @@ func registerCatalog(a huma.API, reg *repositories.Registry, s *store.Store) {
 			if err != nil {
 				return nil, err
 			}
+			warn := trustOf(ctx, s, repo.Name).Problems
 			for _, name := range slices.Sorted(maps.Keys(snap.Definitions.Types)) {
 				t := snap.Definitions.Types[name]
 				if t.Spec.Catalog == "hidden" {
@@ -261,7 +276,9 @@ func registerCatalog(a huma.API, reg *repositories.Registry, s *store.Store) {
 					denied++
 					continue
 				}
-				items = append(items, item("type", repo.Name, t.Metadata))
+				it := item("type", repo.Name, t.Metadata)
+				it.Trust = warn
+				items = append(items, it)
 			}
 			for _, name := range slices.Sorted(maps.Keys(snap.Definitions.Blueprints)) {
 				b := snap.Definitions.Blueprints[name]
@@ -269,7 +286,9 @@ func registerCatalog(a huma.API, reg *repositories.Registry, s *store.Store) {
 					denied++
 					continue
 				}
-				items = append(items, item("blueprint", repo.Name, b.Metadata))
+				it := item("blueprint", repo.Name, b.Metadata)
+				it.Trust = warn
+				items = append(items, it)
 			}
 		}
 		if len(items) == 0 && denied > 0 {
@@ -294,7 +313,9 @@ func registerCatalog(a huma.API, reg *repositories.Registry, s *store.Store) {
 		if t == nil {
 			return nil, huma.Error404NotFound("no type " + in.Name + " in " + in.Repository)
 		}
-		return &out[TypeView]{Body: typeView(snap, t)}, nil
+		v := typeView(snap, t)
+		v.Trust = trustOf(ctx, s, in.Repository).Problems
+		return &out[TypeView]{Body: v}, nil
 	})
 
 	huma.Register(a, huma.Operation{
@@ -312,12 +333,8 @@ func registerCatalog(a huma.API, reg *repositories.Registry, s *store.Store) {
 		if b == nil {
 			return nil, huma.Error404NotFound("no blueprint " + in.Name + " in " + in.Repository)
 		}
-		v := blueprintView(in.Repository, b)
-		if src, err := fs.ReadFile(snap.FS, b.Path); err == nil {
-			if doc, err := yamledit.Decode(src); err == nil {
-				v.Definition, _ = doc.(map[string]any)
-			}
-		}
+		v := blueprintDetail(snap, b)
+		v.Trust = trustOf(ctx, s, in.Repository).Problems
 		return &out[BlueprintView]{Body: v}, nil
 	})
 
@@ -419,10 +436,29 @@ func snapshot(ctx context.Context, reg *repositories.Registry, name string) (*re
 	return repo.Snapshot(ctx, false)
 }
 
+// trustOf returns the repository's last trust check; unchecked before the first poll, or without a
+// database.
+func trustOf(ctx context.Context, s *store.Store, repository string) TrustView {
+	v := TrustView{Problems: []string{}}
+	if s == nil {
+		return v
+	}
+	row, err := s.GetRepositorySync(ctx, repository)
+	if err != nil || !row.TrustCheckedAt.Valid {
+		return v
+	}
+	_ = json.Unmarshal(row.TrustProblems, &v.Problems)
+	if v.Problems == nil {
+		v.Problems = []string{}
+	}
+	v.Checked, v.CheckedAt = true, &row.TrustCheckedAt.Time
+	return v
+}
+
 func repositoryView(repo *repositories.Repo, snap *repositories.Snapshot) RepositoryView {
 	v := RepositoryView{Name: repo.Name, Title: repo.Title, Connector: repo.Document.Spec.Connector, ManagedBy: repo.ManagedBy,
 		Branch: repo.Branch, Delivery: repo.Delivery, Commit: snap.Commit,
-		Types: len(snap.Definitions.Types), Blueprints: len(snap.Definitions.Blueprints), Problems: []ProblemView{}}
+		Types: len(snap.Definitions.Types), Blueprints: len(snap.Definitions.Blueprints), Problems: []ProblemView{}, Trust: TrustView{Problems: []string{}}}
 	for _, p := range snap.Problems {
 		v.Problems = append(v.Problems, ProblemView{Path: p.Path, Field: p.Field, Message: p.Message})
 	}
@@ -492,6 +528,17 @@ func typeView(snap *repositories.Snapshot, t *definitions.ResourceType) TypeView
 			pv.Options = inventory.Discover(snap, t, p.Name)
 		}
 		v.Params = append(v.Params, pv)
+	}
+	return v
+}
+
+// blueprintDetail is a blueprint's view with its file as written.
+func blueprintDetail(snap *repositories.Snapshot, b *definitions.Blueprint) BlueprintView {
+	v := blueprintView(snap.Repository, b)
+	if src, err := fs.ReadFile(snap.FS, b.Path); err == nil {
+		if doc, err := yamledit.Decode(src); err == nil {
+			v.Definition, _ = doc.(map[string]any)
+		}
 	}
 	return v
 }

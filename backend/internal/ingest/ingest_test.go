@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -287,5 +288,50 @@ func TestPolling(t *testing.T) {
 	time.Sleep(2 * time.Second)
 	if after, _ := e.store.GetRepositorySync(ctx, name); !after.LastPollAt.Time.Equal(before.LastPollAt.Time) {
 		t.Error("polled again within the poll interval")
+	}
+}
+
+// trust returns the trust problems the last poll recorded.
+func (e *env) trust() ([]string, bool) {
+	e.t.Helper()
+	row, err := e.store.GetRepositorySync(context.Background(), e.name)
+	if err != nil || !row.TrustCheckedAt.Valid {
+		return nil, false
+	}
+	var problems []string
+	if err := json.Unmarshal(row.TrustProblems, &problems); err != nil {
+		e.t.Fatal(err)
+	}
+	return problems, true
+}
+
+// TestTrust: a poll records whether the definitions only change through review, on Gitea: the
+// branch protected, and CODEOWNERS covering .quai/.
+func TestTrust(t *testing.T) {
+	ctx := context.Background()
+	e := setup(t)
+	if err := e.svc.Poll(ctx, e.name); err != nil {
+		t.Fatal(err)
+	}
+	if problems, ok := e.trust(); !ok || len(problems) != 2 || !strings.Contains(problems[0], "not protected") || !strings.Contains(problems[1], "CODEOWNERS") {
+		t.Fatalf("an open repository: %v, %v", problems, ok)
+	}
+	if err := e.remote.Protect("main"); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.svc.Poll(ctx, e.name); err != nil {
+		t.Fatal(err)
+	}
+	if problems, _ := e.trust(); len(problems) != 1 || !strings.Contains(problems[0], "no required reviewers cover .quai/") {
+		t.Errorf("protected, without owners: %v", problems)
+	}
+	if err := e.remote.Commit("main", ".gitea/CODEOWNERS", `\.quai/.* @`+giteatest.Admin+"\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.svc.Poll(ctx, e.name); err != nil {
+		t.Fatal(err)
+	}
+	if problems, ok := e.trust(); !ok || len(problems) != 0 {
+		t.Errorf("protected and owned: %v", problems)
 	}
 }

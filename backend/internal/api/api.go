@@ -120,6 +120,7 @@ func build(opts Options, all bool) (*chi.Mux, huma.API) {
 	}
 	if all || opts.Repositories != nil {
 		registerCatalog(a, opts.Repositories, opts.Store)
+		registerPreview(a, opts.Repositories)
 	}
 	if all || opts.Requests != nil {
 		registerRequests(a, opts.Requests, opts.Store, opts.Logger)

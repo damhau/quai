@@ -221,6 +221,16 @@
           "title": {
             "type": "string"
           },
+          "trust": {
+            "description": "Why the item's definitions may change without review, shown as a warning: its repository's trust problems",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "ui": {
             "$ref": "#/components/schemas/UIView"
           },
@@ -279,6 +289,16 @@
           },
           "title": {
             "type": "string"
+          },
+          "trust": {
+            "description": "Why the item's definitions may change without review, shown as a warning: its repository's trust problems",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
           },
           "version": {
             "type": "string"
@@ -1038,6 +1058,59 @@
         ],
         "type": "object"
       },
+      "PreviewView": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/api/v1/schemas/PreviewView.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "branch": {
+            "type": "string"
+          },
+          "commit": {
+            "description": "The commit previewed: the branch's or the pull request's head",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogItem"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "problems": {
+            "description": "What is wrong with the definitions at that commit",
+            "items": {
+              "$ref": "#/components/schemas/ProblemView"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "pullRequest": {
+            "type": "string"
+          },
+          "repository": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "repository",
+          "commit",
+          "items",
+          "problems"
+        ],
+        "type": "object"
+      },
       "ProblemView": {
         "additionalProperties": false,
         "properties": {
@@ -1131,6 +1204,9 @@
           "title": {
             "type": "string"
           },
+          "trust": {
+            "$ref": "#/components/schemas/TrustView"
+          },
           "types": {
             "format": "int64",
             "type": "integer"
@@ -1146,7 +1222,8 @@
           "commit",
           "types",
           "blueprints",
-          "problems"
+          "problems",
+          "trust"
         ],
         "type": "object"
       },
@@ -1792,6 +1869,34 @@
         ],
         "type": "object"
       },
+      "TrustView": {
+        "additionalProperties": false,
+        "properties": {
+          "checked": {
+            "description": "False until the first check, every poll interval",
+            "type": "boolean"
+          },
+          "checkedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "problems": {
+            "description": "What lets definitions change without review: the definitions branch unprotected, or no required reviewers on the definitions folder",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "checked",
+          "problems"
+        ],
+        "type": "object"
+      },
       "TypeInput": {
         "additionalProperties": false,
         "properties": {
@@ -2012,6 +2117,16 @@
           },
           "title": {
             "type": "string"
+          },
+          "trust": {
+            "description": "Why the item's definitions may change without review, shown as a warning: its repository's trust problems",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
           },
           "ui": {
             "$ref": "#/components/schemas/UIView"
@@ -2763,6 +2878,206 @@
         "summary": "List a repository's latest commits",
         "tags": [
           "Repositories"
+        ]
+      }
+    },
+    "/api/v1/repositories/{repository}/preview": {
+      "get": {
+        "description": "Catalog authors try types and blueprints before merging them. Nothing can be requested from a preview.",
+        "operationId": "preview-definitions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "repository",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The branch to preview",
+            "explode": false,
+            "in": "query",
+            "name": "branch",
+            "schema": {
+              "description": "The branch to preview",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The pull request to preview (its head), by its ID on the platform",
+            "explode": false,
+            "in": "query",
+            "name": "pullRequest",
+            "schema": {
+              "description": "The pull request to preview (its head), by its ID on the platform",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Preview the definitions of a branch or a pull request",
+        "tags": [
+          "Catalog"
+        ]
+      }
+    },
+    "/api/v1/repositories/{repository}/preview/blueprints/{name}": {
+      "get": {
+        "operationId": "preview-blueprint",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "repository",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The branch to preview",
+            "explode": false,
+            "in": "query",
+            "name": "branch",
+            "schema": {
+              "description": "The branch to preview",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The pull request to preview (its head), by its ID on the platform",
+            "explode": false,
+            "in": "query",
+            "name": "pullRequest",
+            "schema": {
+              "description": "The pull request to preview (its head), by its ID on the platform",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlueprintView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Preview a blueprint from a branch or a pull request",
+        "tags": [
+          "Catalog"
+        ]
+      }
+    },
+    "/api/v1/repositories/{repository}/preview/types/{name}": {
+      "get": {
+        "operationId": "preview-type",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "repository",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The branch to preview",
+            "explode": false,
+            "in": "query",
+            "name": "branch",
+            "schema": {
+              "description": "The branch to preview",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The pull request to preview (its head), by its ID on the platform",
+            "explode": false,
+            "in": "query",
+            "name": "pullRequest",
+            "schema": {
+              "description": "The pull request to preview (its head), by its ID on the platform",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TypeView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Preview a resource type from a branch or a pull request",
+        "tags": [
+          "Catalog"
         ]
       }
     },

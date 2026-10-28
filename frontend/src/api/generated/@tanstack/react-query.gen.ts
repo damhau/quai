@@ -3,8 +3,8 @@
 import { queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { cancelRequest, createToken, getBlueprint, getInstance, getMe, getMeta, getRequest, getResource, getType, listCatalog, listEvents, listInstances, listInventory, listRepositories, listRequests, listTokens, type Options, planBlueprint, planInstanceAction, planType, publishBlueprint, reportRun, repositoryCommit, repositoryLog, requestBlueprint, requestInstanceAction, requestType, retryRequest, reviewRequest, revokeToken, syncRepository } from '../sdk.gen';
-import type { CancelRequestData, CancelRequestError, CancelRequestResponse, CreateTokenData, CreateTokenError, CreateTokenResponse, GetBlueprintData, GetBlueprintError, GetBlueprintResponse, GetInstanceData, GetInstanceError, GetInstanceResponse, GetMeData, GetMeError, GetMeResponse, GetMetaData, GetMetaError, GetMetaResponse, GetRequestData, GetRequestError, GetRequestResponse, GetResourceData, GetResourceError, GetResourceResponse, GetTypeData, GetTypeError, GetTypeResponse, ListCatalogData, ListCatalogError, ListCatalogResponse, ListEventsData, ListEventsError, ListEventsResponse, ListInstancesData, ListInstancesError, ListInstancesResponse, ListInventoryData, ListInventoryError, ListInventoryResponse, ListRepositoriesData, ListRepositoriesError, ListRepositoriesResponse, ListRequestsData, ListRequestsError, ListRequestsResponse, ListTokensData, ListTokensError, ListTokensResponse, PlanBlueprintData, PlanBlueprintError, PlanBlueprintResponse, PlanInstanceActionData, PlanInstanceActionError, PlanInstanceActionResponse, PlanTypeData, PlanTypeError, PlanTypeResponse, PublishBlueprintData, PublishBlueprintError, PublishBlueprintResponse, ReportRunData, ReportRunError, ReportRunResponse, RepositoryCommitData, RepositoryCommitError, RepositoryCommitResponse, RepositoryLogData, RepositoryLogError, RepositoryLogResponse, RequestBlueprintData, RequestBlueprintError, RequestBlueprintResponse, RequestInstanceActionData, RequestInstanceActionError, RequestInstanceActionResponse, RequestTypeData, RequestTypeError, RequestTypeResponse, RetryRequestData, RetryRequestError, RetryRequestResponse, ReviewRequestData, ReviewRequestError, ReviewRequestResponse, RevokeTokenData, RevokeTokenError, RevokeTokenResponse, SyncRepositoryData, SyncRepositoryError, SyncRepositoryResponse } from '../types.gen';
+import { cancelRequest, createToken, getBlueprint, getInstance, getMe, getMeta, getRequest, getResource, getType, listCatalog, listEvents, listInstances, listInventory, listRepositories, listRequests, listTokens, type Options, planBlueprint, planInstanceAction, planType, previewBlueprint, previewDefinitions, previewType, publishBlueprint, reportRun, repositoryCommit, repositoryLog, requestBlueprint, requestInstanceAction, requestType, retryRequest, reviewRequest, revokeToken, syncRepository } from '../sdk.gen';
+import type { CancelRequestData, CancelRequestError, CancelRequestResponse, CreateTokenData, CreateTokenError, CreateTokenResponse, GetBlueprintData, GetBlueprintError, GetBlueprintResponse, GetInstanceData, GetInstanceError, GetInstanceResponse, GetMeData, GetMeError, GetMeResponse, GetMetaData, GetMetaError, GetMetaResponse, GetRequestData, GetRequestError, GetRequestResponse, GetResourceData, GetResourceError, GetResourceResponse, GetTypeData, GetTypeError, GetTypeResponse, ListCatalogData, ListCatalogError, ListCatalogResponse, ListEventsData, ListEventsError, ListEventsResponse, ListInstancesData, ListInstancesError, ListInstancesResponse, ListInventoryData, ListInventoryError, ListInventoryResponse, ListRepositoriesData, ListRepositoriesError, ListRepositoriesResponse, ListRequestsData, ListRequestsError, ListRequestsResponse, ListTokensData, ListTokensError, ListTokensResponse, PlanBlueprintData, PlanBlueprintError, PlanBlueprintResponse, PlanInstanceActionData, PlanInstanceActionError, PlanInstanceActionResponse, PlanTypeData, PlanTypeError, PlanTypeResponse, PreviewBlueprintData, PreviewBlueprintError, PreviewBlueprintResponse, PreviewDefinitionsData, PreviewDefinitionsError, PreviewDefinitionsResponse, PreviewTypeData, PreviewTypeError, PreviewTypeResponse, PublishBlueprintData, PublishBlueprintError, PublishBlueprintResponse, ReportRunData, ReportRunError, ReportRunResponse, RepositoryCommitData, RepositoryCommitError, RepositoryCommitResponse, RepositoryLogData, RepositoryLogError, RepositoryLogResponse, RequestBlueprintData, RequestBlueprintError, RequestBlueprintResponse, RequestInstanceActionData, RequestInstanceActionError, RequestInstanceActionResponse, RequestTypeData, RequestTypeError, RequestTypeResponse, RetryRequestData, RetryRequestError, RetryRequestResponse, ReviewRequestData, ReviewRequestError, ReviewRequestResponse, RevokeTokenData, RevokeTokenError, RevokeTokenResponse, SyncRepositoryData, SyncRepositoryError, SyncRepositoryResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -303,6 +303,62 @@ export const repositoryLogOptions = (options: Options<RepositoryLogData>) => que
         return data;
     },
     queryKey: repositoryLogQueryKey(options)
+});
+
+export const previewDefinitionsQueryKey = (options: Options<PreviewDefinitionsData>) => createQueryKey('previewDefinitions', options);
+
+/**
+ * Preview the definitions of a branch or a pull request
+ *
+ * Catalog authors try types and blueprints before merging them. Nothing can be requested from a preview.
+ */
+export const previewDefinitionsOptions = (options: Options<PreviewDefinitionsData>) => queryOptions<PreviewDefinitionsResponse, PreviewDefinitionsError, PreviewDefinitionsResponse, ReturnType<typeof previewDefinitionsQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await previewDefinitions({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: previewDefinitionsQueryKey(options)
+});
+
+export const previewBlueprintQueryKey = (options: Options<PreviewBlueprintData>) => createQueryKey('previewBlueprint', options);
+
+/**
+ * Preview a blueprint from a branch or a pull request
+ */
+export const previewBlueprintOptions = (options: Options<PreviewBlueprintData>) => queryOptions<PreviewBlueprintResponse, PreviewBlueprintError, PreviewBlueprintResponse, ReturnType<typeof previewBlueprintQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await previewBlueprint({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: previewBlueprintQueryKey(options)
+});
+
+export const previewTypeQueryKey = (options: Options<PreviewTypeData>) => createQueryKey('previewType', options);
+
+/**
+ * Preview a resource type from a branch or a pull request
+ */
+export const previewTypeOptions = (options: Options<PreviewTypeData>) => queryOptions<PreviewTypeResponse, PreviewTypeError, PreviewTypeResponse, ReturnType<typeof previewTypeQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await previewType({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: previewTypeQueryKey(options)
 });
 
 /**

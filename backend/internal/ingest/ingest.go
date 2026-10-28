@@ -323,6 +323,9 @@ func (s *Service) Poll(ctx context.Context, name string) error {
 		if before.Head != "" && before.Head != after.Head {
 			s.log.InfoContext(ctx, "polling found a new head", slog.String("repository", name), slog.String("head", after.Head))
 		}
+		if err := s.checkTrust(ctx, repo); err != nil {
+			s.log.WarnContext(ctx, "trust cannot be checked", slog.String("repository", name), slog.Any("error", err))
+		}
 		prs := repo.Connector.PullRequests()
 		if prs == nil {
 			return nil
@@ -338,6 +341,22 @@ func (s *Service) Poll(ctx context.Context, name string) error {
 		}
 		return nil
 	})
+}
+
+// checkTrust records whether the repository's definitions only change through review.
+func (s *Service) checkTrust(ctx context.Context, repo *repositories.Repo) error {
+	problems, err := repo.Trust(ctx)
+	if err != nil {
+		return err
+	}
+	if problems == nil {
+		problems = []string{}
+	}
+	b, err := json.Marshal(problems)
+	if err != nil {
+		return err
+	}
+	return s.store.RecordTrust(ctx, db.RecordTrustParams{Repository: repo.Name, TrustProblems: b})
 }
 
 type scheduleWorker struct {

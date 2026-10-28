@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { CancelRequestData, CancelRequestErrors, CancelRequestResponses, CreateTokenData, CreateTokenErrors, CreateTokenResponses, GetBlueprintData, GetBlueprintErrors, GetBlueprintResponses, GetInstanceData, GetInstanceErrors, GetInstanceResponses, GetMeData, GetMeErrors, GetMeResponses, GetMetaData, GetMetaErrors, GetMetaResponses, GetRequestData, GetRequestErrors, GetRequestResponses, GetResourceData, GetResourceErrors, GetResourceResponses, GetTypeData, GetTypeErrors, GetTypeResponses, ListCatalogData, ListCatalogErrors, ListCatalogResponses, ListEventsData, ListEventsErrors, ListEventsResponses, ListInstancesData, ListInstancesErrors, ListInstancesResponses, ListInventoryData, ListInventoryErrors, ListInventoryResponses, ListRepositoriesData, ListRepositoriesErrors, ListRepositoriesResponses, ListRequestsData, ListRequestsErrors, ListRequestsResponses, ListTokensData, ListTokensErrors, ListTokensResponses, PlanBlueprintData, PlanBlueprintErrors, PlanBlueprintResponses, PlanInstanceActionData, PlanInstanceActionErrors, PlanInstanceActionResponses, PlanTypeData, PlanTypeErrors, PlanTypeResponses, PublishBlueprintData, PublishBlueprintErrors, PublishBlueprintResponses, ReportRunData, ReportRunErrors, ReportRunResponses, RepositoryCommitData, RepositoryCommitErrors, RepositoryCommitResponses, RepositoryLogData, RepositoryLogErrors, RepositoryLogResponses, RequestBlueprintData, RequestBlueprintErrors, RequestBlueprintResponses, RequestInstanceActionData, RequestInstanceActionErrors, RequestInstanceActionResponses, RequestTypeData, RequestTypeErrors, RequestTypeResponses, RetryRequestData, RetryRequestErrors, RetryRequestResponses, ReviewRequestData, ReviewRequestErrors, ReviewRequestResponses, RevokeTokenData, RevokeTokenErrors, RevokeTokenResponses, SyncRepositoryData, SyncRepositoryErrors, SyncRepositoryResponses } from './types.gen';
+import type { CancelRequestData, CancelRequestErrors, CancelRequestResponses, CreateTokenData, CreateTokenErrors, CreateTokenResponses, GetBlueprintData, GetBlueprintErrors, GetBlueprintResponses, GetInstanceData, GetInstanceErrors, GetInstanceResponses, GetMeData, GetMeErrors, GetMeResponses, GetMetaData, GetMetaErrors, GetMetaResponses, GetRequestData, GetRequestErrors, GetRequestResponses, GetResourceData, GetResourceErrors, GetResourceResponses, GetTypeData, GetTypeErrors, GetTypeResponses, ListCatalogData, ListCatalogErrors, ListCatalogResponses, ListEventsData, ListEventsErrors, ListEventsResponses, ListInstancesData, ListInstancesErrors, ListInstancesResponses, ListInventoryData, ListInventoryErrors, ListInventoryResponses, ListRepositoriesData, ListRepositoriesErrors, ListRepositoriesResponses, ListRequestsData, ListRequestsErrors, ListRequestsResponses, ListTokensData, ListTokensErrors, ListTokensResponses, PlanBlueprintData, PlanBlueprintErrors, PlanBlueprintResponses, PlanInstanceActionData, PlanInstanceActionErrors, PlanInstanceActionResponses, PlanTypeData, PlanTypeErrors, PlanTypeResponses, PreviewBlueprintData, PreviewBlueprintErrors, PreviewBlueprintResponses, PreviewDefinitionsData, PreviewDefinitionsErrors, PreviewDefinitionsResponses, PreviewTypeData, PreviewTypeErrors, PreviewTypeResponses, PublishBlueprintData, PublishBlueprintErrors, PublishBlueprintResponses, ReportRunData, ReportRunErrors, ReportRunResponses, RepositoryCommitData, RepositoryCommitErrors, RepositoryCommitResponses, RepositoryLogData, RepositoryLogErrors, RepositoryLogResponses, RequestBlueprintData, RequestBlueprintErrors, RequestBlueprintResponses, RequestInstanceActionData, RequestInstanceActionErrors, RequestInstanceActionResponses, RequestTypeData, RequestTypeErrors, RequestTypeResponses, RetryRequestData, RetryRequestErrors, RetryRequestResponses, ReviewRequestData, ReviewRequestErrors, ReviewRequestResponses, RevokeTokenData, RevokeTokenErrors, RevokeTokenResponses, SyncRepositoryData, SyncRepositoryErrors, SyncRepositoryResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -120,6 +120,23 @@ export const repositoryCommit = <ThrowOnError extends boolean = false>(options: 
  * List a repository's latest commits
  */
 export const repositoryLog = <ThrowOnError extends boolean = false>(options: Options<RepositoryLogData, ThrowOnError>): RequestResult<RepositoryLogResponses, RepositoryLogErrors, ThrowOnError> => (options.client ?? client).get<RepositoryLogResponses, RepositoryLogErrors, ThrowOnError>({ url: '/api/v1/repositories/{repository}/log', ...options });
+
+/**
+ * Preview the definitions of a branch or a pull request
+ *
+ * Catalog authors try types and blueprints before merging them. Nothing can be requested from a preview.
+ */
+export const previewDefinitions = <ThrowOnError extends boolean = false>(options: Options<PreviewDefinitionsData, ThrowOnError>): RequestResult<PreviewDefinitionsResponses, PreviewDefinitionsErrors, ThrowOnError> => (options.client ?? client).get<PreviewDefinitionsResponses, PreviewDefinitionsErrors, ThrowOnError>({ url: '/api/v1/repositories/{repository}/preview', ...options });
+
+/**
+ * Preview a blueprint from a branch or a pull request
+ */
+export const previewBlueprint = <ThrowOnError extends boolean = false>(options: Options<PreviewBlueprintData, ThrowOnError>): RequestResult<PreviewBlueprintResponses, PreviewBlueprintErrors, ThrowOnError> => (options.client ?? client).get<PreviewBlueprintResponses, PreviewBlueprintErrors, ThrowOnError>({ url: '/api/v1/repositories/{repository}/preview/blueprints/{name}', ...options });
+
+/**
+ * Preview a resource type from a branch or a pull request
+ */
+export const previewType = <ThrowOnError extends boolean = false>(options: Options<PreviewTypeData, ThrowOnError>): RequestResult<PreviewTypeResponses, PreviewTypeErrors, ThrowOnError> => (options.client ?? client).get<PreviewTypeResponses, PreviewTypeErrors, ThrowOnError>({ url: '/api/v1/repositories/{repository}/preview/types/{name}', ...options });
 
 /**
  * Fetch a repository now

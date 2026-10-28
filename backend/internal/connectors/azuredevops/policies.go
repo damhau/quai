@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -188,10 +189,28 @@ func (o *owners) Rules(ctx context.Context, branch string) ([]connectors.OwnerRu
 			patterns = []string{"*"}
 		}
 		for _, pattern := range patterns {
-			rules = append(rules, connectors.OwnerRule{Pattern: pattern, Owners: owners})
+			rules = append(rules, connectors.OwnerRule{Pattern: pattern, Owners: owners, Match: pathFilter(pattern)})
 		}
 	}
 	return rules, nil
+}
+
+// pathFilter matches a path as Azure DevOps reads a policy's path filter: a pattern from the
+// root (/.quai/*) or anywhere (*.tf), where * crosses folders; an exclusion (!) covers nothing.
+func pathFilter(pattern string) func(string) bool {
+	if strings.HasPrefix(pattern, "!") {
+		return func(string) bool { return false }
+	}
+	expr := regexp.QuoteMeta(pattern)
+	expr = strings.ReplaceAll(expr, `\*`, ".*")
+	if !strings.HasPrefix(pattern, "/") {
+		expr = "(?:.*/)?" + expr
+	}
+	re, err := regexp.Compile("^" + expr + "$")
+	if err != nil {
+		return func(string) bool { return false }
+	}
+	return func(p string) bool { return re.MatchString("/" + strings.TrimPrefix(p, "/")) }
 }
 
 // identityClient returns the client of the identities service: the collection on Server, the

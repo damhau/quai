@@ -69,6 +69,7 @@ type Repo struct {
 	mu          sync.Mutex
 	lastFetch   time.Time
 	snap        *Snapshot
+	previews    map[string]*Snapshot // by commit
 }
 
 // Snapshot is a repository at one commit: its files and the definitions read from them.

@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -569,6 +570,16 @@ func (o *owners) Rules(ctx context.Context, branch string) ([]connectors.OwnerRu
 	return nil, nil
 }
 
+// codeOwnersMatch matches a path as Gitea reads a CODEOWNERS pattern: a regular expression
+// anchored at both ends; a negated (!) rule covers nothing.
+func codeOwnersMatch(pattern string) func(string) bool {
+	re, err := regexp.Compile("^(?:" + pattern + ")$")
+	if err != nil || strings.HasPrefix(pattern, "!") {
+		return func(string) bool { return false }
+	}
+	return re.MatchString
+}
+
 func parseCodeOwners(src string) []connectors.OwnerRule {
 	var rules []connectors.OwnerRule
 	for _, line := range strings.Split(src, "\n") {
@@ -579,7 +590,7 @@ func parseCodeOwners(src string) []connectors.OwnerRule {
 		if len(fields) < 2 {
 			continue
 		}
-		rule := connectors.OwnerRule{Pattern: fields[0]}
+		rule := connectors.OwnerRule{Pattern: fields[0], Match: codeOwnersMatch(fields[0])}
 		for _, f := range fields[1:] {
 			if name, ok := strings.CutPrefix(f, "@"); ok && name != "" {
 				rule.Owners = append(rule.Owners, name)

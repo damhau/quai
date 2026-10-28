@@ -212,6 +212,14 @@ type Policies interface {
 type OwnerRule struct {
 	Pattern string   // as the platform writes it: gitignore-style, or a regular expression on Gitea
 	Owners  []string // users or groups, as the platform names them
+	// Match reports whether the rule covers a repository path (no leading slash), as the
+	// platform reads its pattern.
+	Match func(path string) bool `json:"-"`
+}
+
+// Covered reports whether a rule with owners covers path.
+func Covered(rules []OwnerRule, path string) bool {
+	return slices.ContainsFunc(rules, func(r OwnerRule) bool { return len(r.Owners) > 0 && r.Match != nil && r.Match(path) })
 }
 
 // Owners reads ownership rules: a CODEOWNERS file, or path-filtered reviewer policies.

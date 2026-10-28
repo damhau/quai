@@ -9,10 +9,12 @@ import (
 	"log/slog"
 	"maps"
 	"slices"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/damhau/quai/backend/internal/connectors"
 	"github.com/damhau/quai/backend/internal/engine/definitions"
 	"github.com/damhau/quai/backend/internal/store"
 	"github.com/damhau/quai/backend/internal/store/db"
@@ -256,4 +258,119 @@ func problemsOf(all definitions.Problems, path string) []string {
 		}
 	}
 	return out
+}
+
+// Ref names what to preview: a branch, or a pull request (its head).
+type Ref struct {
+	Branch      string
+	PullRequest string
+}
+
+// ErrNoRef is returned by Preview when the ref names neither a branch nor a pull request.
+var ErrNoRef = errors.New("name a branch or a pull request to preview")
+
+// previewCache is how many previews a repository keeps, by commit.
+const previewCache = 8
+
+// Preview returns the definitions at the head of a branch or of a pull request, read from the
+// mirror's objects: authors try a type or blueprint before merging it
+// (docs/design/01-repository-connections.md#definitions). Nothing is ever planned or submitted
+// from a preview; it only shows what the catalog would.
+func (repo *Repo) Preview(ctx context.Context, ref Ref) (*Snapshot, error) {
+	var commit string
+	switch {
+	case ref.PullRequest != "":
+		prs := repo.Connector.PullRequests()
+		if prs == nil {
+			return nil, fmt.Errorf("%w: the %s connector has no pull requests", connectors.ErrUnsupported, repo.Connector.Info().Platform)
+		}
+		pr, err := prs.Get(ctx, ref.PullRequest)
+		if err != nil {
+			return nil, err
+		}
+		commit = pr.Head
+	case ref.Branch != "":
+		if err := repo.fetch(ctx); err != nil {
+			return nil, err
+		}
+		head, err := repo.Mirror.Head(ctx, ref.Branch)
+		if err != nil {
+			return nil, err
+		}
+		commit = head
+	default:
+		return nil, ErrNoRef
+	}
+	repo.mu.Lock()
+	cached := repo.previews[commit]
+	repo.mu.Unlock()
+	if cached != nil {
+		return cached, nil
+	}
+	// A pull request's head may be newer than the mirror.
+	if _, err := repo.Mirror.Parents(ctx, commit); err != nil {
+		if err := repo.fetch(ctx); err != nil {
+			return nil, err
+		}
+	}
+	// The files outlive the request: the preview is kept for the next ones.
+	fsys, err := repo.Mirror.Files(context.WithoutCancel(ctx), commit)
+	if err != nil {
+		return nil, err
+	}
+	defs, problems := definitions.Load(fsys)
+	snap := &Snapshot{Repository: repo.Name, Commit: commit, Definitions: defs, Problems: problems, FS: fsys}
+	repo.mu.Lock()
+	if repo.previews == nil || len(repo.previews) >= previewCache {
+		repo.previews = map[string]*Snapshot{}
+	}
+	repo.previews[commit] = snap
+	repo.mu.Unlock()
+	return snap, nil
+}
+
+// fetch brings the mirror up to date, one fetch at a time with the snapshots'.
+func (repo *Repo) fetch(ctx context.Context) error {
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if err := repo.Mirror.Fetch(ctx); err != nil {
+		return err
+	}
+	repo.lastFetch = time.Now()
+	return nil
+}
+
+// Trust checks that the repository's definitions only change through review
+// (docs/design/01-repository-connections.md#trust): the definitions branch is protected, and
+// required reviewers cover the definitions folder. It returns what is missing; none when trusted.
+func (repo *Repo) Trust(ctx context.Context) ([]string, error) {
+	spec := repo.Document.Spec
+	c, dir := repo.Connector, spec.Definitions.Path
+	pol, own := c.Policies(), c.Owners()
+	if pol == nil || own == nil {
+		return []string{fmt.Sprintf("the %s connector cannot check branch protection and owners: the definitions in %s/ may change without review", c.Info().Platform, dir)}, nil
+	}
+	var problems []string
+	p, err := pol.Protection(ctx, spec.Definitions.Branch)
+	if err != nil {
+		return nil, fmt.Errorf("branch protection of %s: %w", spec.Definitions.Branch, err)
+	}
+	if !p.Protected {
+		problems = append(problems, fmt.Sprintf("the branch %s is not protected: the definitions in %s/ can change without a pull request", spec.Definitions.Branch, dir))
+	}
+	rules, err := own.Rules(ctx, spec.Definitions.Branch)
+	if err != nil {
+		return nil, fmt.Errorf("owners of %s: %w", spec.Definitions.Branch, err)
+	}
+	for _, probe := range []string{dir + "/types/x.yaml", dir + "/blueprints/x.yaml"} {
+		if !connectors.Covered(rules, probe) {
+			how := "a CODEOWNERS rule"
+			if c.Info().Platform == "azure-devops" {
+				how = "an \"Automatically included reviewers\" branch policy with the path filter /" + dir + "/*"
+			}
+			problems = append(problems, fmt.Sprintf("no required reviewers cover %s/: add %s", dir, how))
+			break
+		}
+	}
+	return problems, nil
 }

@@ -163,6 +163,22 @@ export const catalogHandlers = [
     ]),
   ),
   http.get("*/api/v1/repositories/infra-live/types/vm", () => HttpResponse.json(vm)),
+  // Previews: the branch vm-v2 renames the type, the branch broken has a problem.
+  http.get("*/api/v1/repositories/infra-live/preview", ({ request }) => {
+    const q = new URL(request.url).searchParams
+    const branch = q.get("branch") ?? undefined
+    if (!branch && !q.get("pullRequest")) return HttpResponse.json({ title: "Bad Request", status: 400, detail: "name a branch or a pull request to preview" }, { status: 400 })
+    if (branch === "nope") return HttpResponse.json({ title: "Not Found", status: 404, detail: "nothing to preview: branch nope: file does not exist" }, { status: 404 })
+    return HttpResponse.json({
+      repository: "infra-live",
+      branch,
+      pullRequest: q.get("pullRequest") ?? undefined,
+      commit: "2a723df34bd8897cbad09682ec0d6cb63b684146",
+      items: [{ kind: "type", repository: "infra-live", name: "vm", title: "Virtual machine v2", category: "Compute", version: "1.1.0", tags: [] }],
+      problems: branch === "broken" ? [{ path: ".quai/blueprints/app-servers.yaml", field: "kind", message: "must be Blueprint" }] : [],
+    })
+  }),
+  http.get("*/api/v1/repositories/infra-live/preview/types/vm", () => HttpResponse.json({ ...vm, title: "Virtual machine v2" })),
   http.get("*/api/v1/repositories/infra-live/blueprints/app-servers", async () => HttpResponse.json({ ...appServers, definition: (await import("./git")).appServersDefinition })),
   http.post("*/api/v1/plans/type", async ({ request }) => {
     const b = (await request.json()) as Body

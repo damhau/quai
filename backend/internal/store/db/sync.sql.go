@@ -42,7 +42,7 @@ func (q *Queries) DeleteWebhookDeliveriesBefore(ctx context.Context, receivedAt 
 }
 
 const getRepositorySync = `-- name: GetRepositorySync :one
-SELECT org_id, repository, last_webhook_at, last_fetch_at, last_poll_at, head FROM repository_sync WHERE repository = $1
+SELECT org_id, repository, last_webhook_at, last_fetch_at, last_poll_at, head, trust_problems, trust_checked_at FROM repository_sync WHERE repository = $1
 `
 
 func (q *Queries) GetRepositorySync(ctx context.Context, repository string) (RepositorySync, error) {
@@ -55,12 +55,14 @@ func (q *Queries) GetRepositorySync(ctx context.Context, repository string) (Rep
 		&i.LastFetchAt,
 		&i.LastPollAt,
 		&i.Head,
+		&i.TrustProblems,
+		&i.TrustCheckedAt,
 	)
 	return i, err
 }
 
 const listRepositorySync = `-- name: ListRepositorySync :many
-SELECT org_id, repository, last_webhook_at, last_fetch_at, last_poll_at, head FROM repository_sync ORDER BY repository
+SELECT org_id, repository, last_webhook_at, last_fetch_at, last_poll_at, head, trust_problems, trust_checked_at FROM repository_sync ORDER BY repository
 `
 
 func (q *Queries) ListRepositorySync(ctx context.Context) ([]RepositorySync, error) {
@@ -79,6 +81,8 @@ func (q *Queries) ListRepositorySync(ctx context.Context) ([]RepositorySync, err
 			&i.LastFetchAt,
 			&i.LastPollAt,
 			&i.Head,
+			&i.TrustProblems,
+			&i.TrustCheckedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -112,6 +116,21 @@ ON CONFLICT (org_id, repository) DO UPDATE SET last_poll_at = now()
 
 func (q *Queries) RecordPoll(ctx context.Context, repository string) error {
 	_, err := q.db.Exec(ctx, recordPoll, repository)
+	return err
+}
+
+const recordTrust = `-- name: RecordTrust :exec
+INSERT INTO repository_sync (repository, trust_problems, trust_checked_at) VALUES ($1, $2, now())
+ON CONFLICT (org_id, repository) DO UPDATE SET trust_problems = EXCLUDED.trust_problems, trust_checked_at = now()
+`
+
+type RecordTrustParams struct {
+	Repository    string
+	TrustProblems []byte
+}
+
+func (q *Queries) RecordTrust(ctx context.Context, arg RecordTrustParams) error {
+	_, err := q.db.Exec(ctx, recordTrust, arg.Repository, arg.TrustProblems)
 	return err
 }
 

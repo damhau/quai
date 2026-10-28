@@ -135,3 +135,20 @@ func TestReplay(t *testing.T) {
 		t.Error("a request without content")
 	}
 }
+
+func TestPathFilter(t *testing.T) {
+	for pattern, cases := range map[string]map[string]bool{
+		"/.quai/*":   {".quai/types/vm.yaml": true, ".quai/x": true, "envs/.quai/x": false, "README.md": false},
+		"*.tf":       {"main.tf": true, "envs/prod/main.tf": true, "main.tfvars": false},
+		"*":          {"anything/at/all": true},
+		"!/.quai/*":  {".quai/types/vm.yaml": false},
+		"/docs/a.md": {"docs/a.md": true, "docs/b.md": false},
+	} {
+		match := pathFilter(pattern)
+		for path, want := range cases {
+			if match(path) != want {
+				t.Errorf("%s matching %s = %v", pattern, path, !want)
+			}
+		}
+	}
+}

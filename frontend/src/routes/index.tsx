@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react"
 import { createFileRoute, Link } from "@tanstack/react-router"
 import { useQuery } from "@tanstack/react-query"
-import { Search } from "lucide-react"
+import { Search, ShieldAlert } from "lucide-react"
 import { listCatalogOptions } from "@/api/generated/@tanstack/react-query.gen"
 import type { CatalogItem } from "@/api/generated/types.gen"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -68,6 +68,11 @@ function Catalog() {
               <CardHeader className="flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge variant="secondary">{category(item)}</Badge>
+                  {(item.trust ?? []).length > 0 && (
+                    <Badge variant="destructive" title={(item.trust ?? []).join("\n")}>
+                      <ShieldAlert aria-hidden /> Unreviewed definitions
+                    </Badge>
+                  )}
                   <span className="text-muted-foreground text-xs">
                     {item.kind === "type" ? "Resource type" : "Blueprint"}
                     {item.version && ` · v${item.version}`}

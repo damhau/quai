@@ -72,6 +72,10 @@ export type BlueprintView = {
     schema: unknown;
     tags: Array<string> | null;
     title: string;
+    /**
+     * Why the item's definitions may change without review, shown as a warning: its repository's trust problems
+     */
+    trust?: Array<string> | null;
     ui: UiView;
     version?: string;
 };
@@ -85,6 +89,10 @@ export type CatalogItem = {
     repository: string;
     tags: Array<string> | null;
     title: string;
+    /**
+     * Why the item's definitions may change without review, shown as a warning: its repository's trust problems
+     */
+    trust?: Array<string> | null;
     version?: string;
 };
 
@@ -345,6 +353,25 @@ export type PlanView = {
     type?: string;
 };
 
+export type PreviewView = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    branch?: string;
+    /**
+     * The commit previewed: the branch's or the pull request's head
+     */
+    commit: string;
+    items: Array<CatalogItem> | null;
+    /**
+     * What is wrong with the definitions at that commit
+     */
+    problems: Array<ProblemView> | null;
+    pullRequest?: string;
+    repository: string;
+};
+
 export type ProblemView = {
     field?: string;
     message: string;
@@ -381,6 +408,7 @@ export type RepositoryView = {
     name: string;
     problems: Array<ProblemView> | null;
     title: string;
+    trust: TrustView;
     types: number;
 };
 
@@ -569,6 +597,18 @@ export type TokenView = {
     scopes: Array<string> | null;
 };
 
+export type TrustView = {
+    /**
+     * False until the first check, every poll interval
+     */
+    checked: boolean;
+    checkedAt?: string;
+    /**
+     * What lets definitions change without review: the definitions branch unprotected, or no required reviewers on the definitions folder
+     */
+    problems: Array<string> | null;
+};
+
 export type TypeInput = {
     /**
      * A URL to the JSON Schema for this object.
@@ -659,6 +699,10 @@ export type TypeView = {
     stack?: string;
     tags: Array<string> | null;
     title: string;
+    /**
+     * Why the item's definitions may change without review, shown as a warning: its repository's trust problems
+     */
+    trust?: Array<string> | null;
     ui: UiView;
     version?: string;
 };
@@ -714,6 +758,10 @@ export type BlueprintViewWritable = {
     schema: unknown;
     tags: Array<string> | null;
     title: string;
+    /**
+     * Why the item's definitions may change without review, shown as a warning: its repository's trust problems
+     */
+    trust?: Array<string> | null;
     ui: UiView;
     version?: string;
 };
@@ -856,6 +904,21 @@ export type PlanViewWritable = {
     type?: string;
 };
 
+export type PreviewViewWritable = {
+    branch?: string;
+    /**
+     * The commit previewed: the branch's or the pull request's head
+     */
+    commit: string;
+    items: Array<CatalogItem> | null;
+    /**
+     * What is wrong with the definitions at that commit
+     */
+    problems: Array<ProblemView> | null;
+    pullRequest?: string;
+    repository: string;
+};
+
 export type PublishInputBodyWritable = {
     /**
      * The blueprint definition (quai.dev/v1beta1)
@@ -878,6 +941,7 @@ export type RepositoryViewWritable = {
     name: string;
     problems: Array<ProblemView> | null;
     title: string;
+    trust: TrustView;
     types: number;
 };
 
@@ -1076,6 +1140,10 @@ export type TypeViewWritable = {
     stack?: string;
     tags: Array<string> | null;
     title: string;
+    /**
+     * Why the item's definitions may change without review, shown as a warning: its repository's trust problems
+     */
+    trust?: Array<string> | null;
     ui: UiView;
     version?: string;
 };
@@ -1477,6 +1545,116 @@ export type RepositoryLogResponses = {
 };
 
 export type RepositoryLogResponse = RepositoryLogResponses[keyof RepositoryLogResponses];
+
+export type PreviewDefinitionsData = {
+    body?: never;
+    path: {
+        repository: string;
+    };
+    query?: {
+        /**
+         * The branch to preview
+         */
+        branch?: string;
+        /**
+         * The pull request to preview (its head), by its ID on the platform
+         */
+        pullRequest?: string;
+    };
+    url: '/api/v1/repositories/{repository}/preview';
+};
+
+export type PreviewDefinitionsErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type PreviewDefinitionsError = PreviewDefinitionsErrors[keyof PreviewDefinitionsErrors];
+
+export type PreviewDefinitionsResponses = {
+    /**
+     * OK
+     */
+    200: PreviewView;
+};
+
+export type PreviewDefinitionsResponse = PreviewDefinitionsResponses[keyof PreviewDefinitionsResponses];
+
+export type PreviewBlueprintData = {
+    body?: never;
+    path: {
+        repository: string;
+        name: string;
+    };
+    query?: {
+        /**
+         * The branch to preview
+         */
+        branch?: string;
+        /**
+         * The pull request to preview (its head), by its ID on the platform
+         */
+        pullRequest?: string;
+    };
+    url: '/api/v1/repositories/{repository}/preview/blueprints/{name}';
+};
+
+export type PreviewBlueprintErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type PreviewBlueprintError = PreviewBlueprintErrors[keyof PreviewBlueprintErrors];
+
+export type PreviewBlueprintResponses = {
+    /**
+     * OK
+     */
+    200: BlueprintView;
+};
+
+export type PreviewBlueprintResponse = PreviewBlueprintResponses[keyof PreviewBlueprintResponses];
+
+export type PreviewTypeData = {
+    body?: never;
+    path: {
+        repository: string;
+        name: string;
+    };
+    query?: {
+        /**
+         * The branch to preview
+         */
+        branch?: string;
+        /**
+         * The pull request to preview (its head), by its ID on the platform
+         */
+        pullRequest?: string;
+    };
+    url: '/api/v1/repositories/{repository}/preview/types/{name}';
+};
+
+export type PreviewTypeErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type PreviewTypeError = PreviewTypeErrors[keyof PreviewTypeErrors];
+
+export type PreviewTypeResponses = {
+    /**
+     * OK
+     */
+    200: TypeView;
+};
+
+export type PreviewTypeResponse = PreviewTypeResponses[keyof PreviewTypeResponses];
 
 export type SyncRepositoryData = {
     body?: never;

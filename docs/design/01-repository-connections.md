@@ -215,6 +215,19 @@ what gets written and which approval rules apply. Quai therefore:
 - records in the audit log every change to definitions, with the commit and its author;
 - never runs code from the repository except WASM plugins pinned by digest, in a sandbox with no file system or network access ([ADR 0004](../adr/0004-structured-generators-no-text-templates.md)).
 
+
+How this is implemented: every poll checks that the definitions branch is protected (on Azure
+DevOps, any branch policy) and that required reviewers cover the definitions folder (a `CODEOWNERS`
+rule on Gitea, read as Gitea reads it: an anchored regular expression; an "Automatically included
+reviewers" policy with a path filter such as `/.quai/*` on Azure DevOps), and records what is
+missing. The catalog cards, the request pages and the repository views show it in red. A
+connector that cannot read branch protection or owners (generic Git) is reported the same way.
+
+Previews (item 4 of loading, above) are at `/preview/<repository>` in the UI and
+`GET /api/v1/repositories/{repository}/preview?branch=…|pullRequest=…` in the API, with the
+type and blueprint forms under it, for catalog authors and repository admins. The definitions are
+read from the branch's or the pull request's head in the mirror; the forms show, but nothing is
+planned or submitted from them.
 ## Binding catalog items to repositories
 
 A type belongs to exactly one repository, so a type-backed catalog item needs

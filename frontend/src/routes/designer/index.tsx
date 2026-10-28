@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router"
 import { useQuery } from "@tanstack/react-query"
-import { Pencil, Plus } from "lucide-react"
+import { Eye, Pencil, Plus } from "lucide-react"
 import { listCatalogOptions, listRepositoriesOptions } from "@/api/generated/@tanstack/react-query.gen"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { buttonVariants } from "@/components/ui/button"
@@ -35,9 +35,14 @@ function DesignerIndex() {
           <Card key={repo.name}>
             <CardHeader className="flex flex-row items-center justify-between gap-4">
               <CardTitle>{repo.title || repo.name}</CardTitle>
-              <Link to="/designer/$repository" params={{ repository: repo.name }} className={buttonVariants({ size: "sm", variant: "outline" })}>
-                <Plus /> New blueprint
-              </Link>
+              <div className="flex gap-2">
+                <Link to="/preview/$repository" params={{ repository: repo.name }} className={buttonVariants({ size: "sm", variant: "ghost" })} aria-label={`Preview a branch of ${repo.title || repo.name}`}>
+                  <Eye /> Preview a branch
+                </Link>
+                <Link to="/designer/$repository" params={{ repository: repo.name }} className={buttonVariants({ size: "sm", variant: "outline" })}>
+                  <Plus /> New blueprint
+                </Link>
+              </div>
             </CardHeader>
             <CardContent>
               {blueprints.length ? (
