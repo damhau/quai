@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/jackc/pgx/v5/pgconn"
 
@@ -52,6 +53,45 @@ func (r *Registry) Connection(ctx context.Context, name string) (Connection, err
 		c.Err = f.err
 	}
 	return c, nil
+}
+
+// Connections returns every stored connection, connected or not, by name.
+func (r *Registry) Connections(ctx context.Context) ([]Connection, error) {
+	stored, err := r.src(ctx)
+	if err != nil {
+		return nil, err
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := make([]Connection, len(stored))
+	for i, s := range stored {
+		out[i] = Connection{Stored: s}
+		name := s.Document.Metadata.Name
+		if repo := r.repos[name]; repo != nil && repo.Generation == s.Generation {
+			out[i].Repo = repo
+		}
+		if f, ok := r.failed[name]; ok && f.generation == s.Generation {
+			out[i].Err = f.err
+		}
+	}
+	slices.SortFunc(out, func(a, b Connection) int { return strings.Compare(a.Document.Metadata.Name, b.Document.Metadata.Name) })
+	return out, nil
+}
+
+// VerifyEnforcementOf verifies what document d's target branch requires, saved or not, without
+// recording it: what is missing (none when enforced or not required).
+func (r *Registry) VerifyEnforcementOf(ctx context.Context, d Document) ([]string, error) {
+	d.ApplyDefaults()
+	if err := d.Validate(); err != nil {
+		return nil, err
+	}
+	repo := &Repo{Name: d.Metadata.Name, Branch: d.Spec.DefaultBranch, Document: d, secrets: r.secrets, log: r.log}
+	conn, err := r.connectors.New(d.Spec.Connector, connectors.Config{URL: d.Spec.URL, Credentials: repo.Credentials, KnownHosts: d.Spec.Credentials.KnownHosts})
+	if err != nil {
+		return nil, err
+	}
+	repo.Connector = conn
+	return repo.VerifyEnforcement(ctx)
 }
 
 // Create stores a new connection, managed through the API, and connects it. A connection that

@@ -128,6 +128,48 @@ func registerRepositories(a huma.API, opts Options) {
 	tags := []string{"Repositories"}
 
 	huma.Register(a, huma.Operation{
+		OperationID: "list-repository-connections", Method: http.MethodGet, Path: Prefix + "/repository-connections",
+		Summary: "List the stored repository connections the caller administers, connected or not", Tags: tags,
+	}, func(ctx context.Context, _ *struct{}) (*out[[]ConnectionView], error) {
+		all, err := reg.Connections(ctx)
+		if err != nil {
+			return nil, err
+		}
+		views := []ConnectionView{}
+		for _, c := range all {
+			if _, err := authorize(ctx, authz.ManageRepository, authz.Object{Repository: c.Document.Metadata.Name}); err == nil {
+				views = append(views, connectionView(c))
+			}
+		}
+		if len(views) == 0 {
+			if _, err := authorize(ctx, authz.ManageRepository, authz.Object{}); err != nil {
+				return nil, err
+			}
+		}
+		return &out[[]ConnectionView]{Body: views}, nil
+	})
+
+	huma.Register(a, huma.Operation{
+		OperationID: "check-repository-enforcement", Method: http.MethodPost, Path: Prefix + "/repository-enforcement-checks",
+		Summary: "Verify that a connection's target branch requires the check as Quai needs it, saved or not", Tags: tags,
+	}, func(ctx context.Context, in *documentInput) (*out[EnforcementView], error) {
+		if _, err := authorize(ctx, authz.ManageRepository, authz.Object{Repository: in.Body.Metadata.Name}); err != nil {
+			return nil, err
+		}
+		problems, err := reg.VerifyEnforcementOf(ctx, in.Body)
+		if err != nil {
+			return nil, repositoryProblem(err)
+		}
+		if problems == nil {
+			problems = []string{}
+		}
+		d := in.Body
+		d.ApplyDefaults()
+		now := time.Now()
+		return &out[EnforcementView]{Body: EnforcementView{Required: d.Spec.Delivery.Mode == "pull-request", Checked: true, Problems: problems, CheckedAt: &now}}, nil
+	})
+
+	huma.Register(a, huma.Operation{
 		OperationID: "get-repository", Method: http.MethodGet, Path: Prefix + "/repositories/{repository}",
 		Summary: "Read a repository connection", Tags: tags,
 	}, func(ctx context.Context, in *repositoryInput) (*out[ConnectionView], error) {

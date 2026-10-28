@@ -266,6 +266,10 @@ export type Enforcement = {
 
 export type EnforcementView = {
     /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
      * False until the first verification: at registration, hourly, and when a branch policy changes
      */
     checked: boolean;
@@ -1068,6 +1072,22 @@ export type DocumentWritable = {
     spec: Spec;
 };
 
+export type EnforcementViewWritable = {
+    /**
+     * False until the first verification: at registration, hourly, and when a branch policy changes
+     */
+    checked: boolean;
+    checkedAt?: string;
+    /**
+     * What is missing; none when enforced
+     */
+    problems: Array<string> | null;
+    /**
+     * Pull-request delivery: the target branch must require the check, or Quai opens no pull request
+     */
+    required: boolean;
+};
+
 export type ErrorModelWritable = {
     /**
      * A human-readable explanation specific to this occurrence of the problem.
@@ -1099,7 +1119,7 @@ export type HealthViewWritable = {
     connected: boolean;
     credentials: CredentialsHealth;
     definitions: DefinitionsHealth;
-    enforcement: EnforcementView;
+    enforcement: EnforcementViewWritable;
     error?: string;
     pullRequests: PullRequestsHealthView;
     sync: SyncHealth;
@@ -1222,7 +1242,7 @@ export type RepositoryViewWritable = {
     commit: string;
     connector: string;
     delivery: string;
-    enforcement: EnforcementView;
+    enforcement: EnforcementViewWritable;
     /**
      * config: declared in Quai's configuration and read-only through the API; api: managed through the API
      */
@@ -2235,6 +2255,56 @@ export type TestRepositoryAccessResponses = {
 };
 
 export type TestRepositoryAccessResponse = TestRepositoryAccessResponses[keyof TestRepositoryAccessResponses];
+
+export type ListRepositoryConnectionsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/repository-connections';
+};
+
+export type ListRepositoryConnectionsErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ListRepositoryConnectionsError = ListRepositoryConnectionsErrors[keyof ListRepositoryConnectionsErrors];
+
+export type ListRepositoryConnectionsResponses = {
+    /**
+     * OK
+     */
+    200: Array<ConnectionView> | null;
+};
+
+export type ListRepositoryConnectionsResponse = ListRepositoryConnectionsResponses[keyof ListRepositoryConnectionsResponses];
+
+export type CheckRepositoryEnforcementData = {
+    body: DocumentWritable;
+    path?: never;
+    query?: never;
+    url: '/api/v1/repository-enforcement-checks';
+};
+
+export type CheckRepositoryEnforcementErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type CheckRepositoryEnforcementError = CheckRepositoryEnforcementErrors[keyof CheckRepositoryEnforcementErrors];
+
+export type CheckRepositoryEnforcementResponses = {
+    /**
+     * OK
+     */
+    200: EnforcementView;
+};
+
+export type CheckRepositoryEnforcementResponse = CheckRepositoryEnforcementResponses[keyof CheckRepositoryEnforcementResponses];
 
 export type ListRequestsData = {
     body?: never;

@@ -3,8 +3,8 @@
 import { queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { cancelRequest, createRepository, createToken, deleteRepository, generateRunToken, getBlueprint, getInstance, getMe, getMeta, getRepository, getRequest, getResource, getType, installRepositoryWebhook, listCatalog, listEvents, listInstances, listInventory, listRepositories, listRequests, listTokens, type Options, planBlueprint, planInstanceAction, planType, previewBlueprint, previewDefinitions, previewType, publishBlueprint, reportRun, repositoryCommit, repositoryHealth, repositoryLog, requestBlueprint, requestInstanceAction, requestType, retryRequest, reviewRequest, revokeToken, syncRepository, testRepositoryAccess, updateRepository } from '../sdk.gen';
-import type { CancelRequestData, CancelRequestError, CancelRequestResponse, CreateRepositoryData, CreateRepositoryError, CreateRepositoryResponse, CreateTokenData, CreateTokenError, CreateTokenResponse, DeleteRepositoryData, DeleteRepositoryError, DeleteRepositoryResponse, GenerateRunTokenData, GenerateRunTokenError, GenerateRunTokenResponse, GetBlueprintData, GetBlueprintError, GetBlueprintResponse, GetInstanceData, GetInstanceError, GetInstanceResponse, GetMeData, GetMeError, GetMeResponse, GetMetaData, GetMetaError, GetMetaResponse, GetRepositoryData, GetRepositoryError, GetRepositoryResponse, GetRequestData, GetRequestError, GetRequestResponse, GetResourceData, GetResourceError, GetResourceResponse, GetTypeData, GetTypeError, GetTypeResponse, InstallRepositoryWebhookData, InstallRepositoryWebhookError, InstallRepositoryWebhookResponse, ListCatalogData, ListCatalogError, ListCatalogResponse, ListEventsData, ListEventsError, ListEventsResponse, ListInstancesData, ListInstancesError, ListInstancesResponse, ListInventoryData, ListInventoryError, ListInventoryResponse, ListRepositoriesData, ListRepositoriesError, ListRepositoriesResponse, ListRequestsData, ListRequestsError, ListRequestsResponse, ListTokensData, ListTokensError, ListTokensResponse, PlanBlueprintData, PlanBlueprintError, PlanBlueprintResponse, PlanInstanceActionData, PlanInstanceActionError, PlanInstanceActionResponse, PlanTypeData, PlanTypeError, PlanTypeResponse, PreviewBlueprintData, PreviewBlueprintError, PreviewBlueprintResponse, PreviewDefinitionsData, PreviewDefinitionsError, PreviewDefinitionsResponse, PreviewTypeData, PreviewTypeError, PreviewTypeResponse, PublishBlueprintData, PublishBlueprintError, PublishBlueprintResponse, ReportRunData, ReportRunError, ReportRunResponse, RepositoryCommitData, RepositoryCommitError, RepositoryCommitResponse, RepositoryHealthData, RepositoryHealthError, RepositoryHealthResponse, RepositoryLogData, RepositoryLogError, RepositoryLogResponse, RequestBlueprintData, RequestBlueprintError, RequestBlueprintResponse, RequestInstanceActionData, RequestInstanceActionError, RequestInstanceActionResponse, RequestTypeData, RequestTypeError, RequestTypeResponse, RetryRequestData, RetryRequestError, RetryRequestResponse, ReviewRequestData, ReviewRequestError, ReviewRequestResponse, RevokeTokenData, RevokeTokenError, RevokeTokenResponse, SyncRepositoryData, SyncRepositoryError, SyncRepositoryResponse, TestRepositoryAccessData, TestRepositoryAccessError, TestRepositoryAccessResponse, UpdateRepositoryData, UpdateRepositoryError, UpdateRepositoryResponse } from '../types.gen';
+import { cancelRequest, checkRepositoryEnforcement, createRepository, createToken, deleteRepository, generateRunToken, getBlueprint, getInstance, getMe, getMeta, getRepository, getRequest, getResource, getType, installRepositoryWebhook, listCatalog, listEvents, listInstances, listInventory, listRepositories, listRepositoryConnections, listRequests, listTokens, type Options, planBlueprint, planInstanceAction, planType, previewBlueprint, previewDefinitions, previewType, publishBlueprint, reportRun, repositoryCommit, repositoryHealth, repositoryLog, requestBlueprint, requestInstanceAction, requestType, retryRequest, reviewRequest, revokeToken, syncRepository, testRepositoryAccess, updateRepository } from '../sdk.gen';
+import type { CancelRequestData, CancelRequestError, CancelRequestResponse, CheckRepositoryEnforcementData, CheckRepositoryEnforcementError, CheckRepositoryEnforcementResponse, CreateRepositoryData, CreateRepositoryError, CreateRepositoryResponse, CreateTokenData, CreateTokenError, CreateTokenResponse, DeleteRepositoryData, DeleteRepositoryError, DeleteRepositoryResponse, GenerateRunTokenData, GenerateRunTokenError, GenerateRunTokenResponse, GetBlueprintData, GetBlueprintError, GetBlueprintResponse, GetInstanceData, GetInstanceError, GetInstanceResponse, GetMeData, GetMeError, GetMeResponse, GetMetaData, GetMetaError, GetMetaResponse, GetRepositoryData, GetRepositoryError, GetRepositoryResponse, GetRequestData, GetRequestError, GetRequestResponse, GetResourceData, GetResourceError, GetResourceResponse, GetTypeData, GetTypeError, GetTypeResponse, InstallRepositoryWebhookData, InstallRepositoryWebhookError, InstallRepositoryWebhookResponse, ListCatalogData, ListCatalogError, ListCatalogResponse, ListEventsData, ListEventsError, ListEventsResponse, ListInstancesData, ListInstancesError, ListInstancesResponse, ListInventoryData, ListInventoryError, ListInventoryResponse, ListRepositoriesData, ListRepositoriesError, ListRepositoriesResponse, ListRepositoryConnectionsData, ListRepositoryConnectionsError, ListRepositoryConnectionsResponse, ListRequestsData, ListRequestsError, ListRequestsResponse, ListTokensData, ListTokensError, ListTokensResponse, PlanBlueprintData, PlanBlueprintError, PlanBlueprintResponse, PlanInstanceActionData, PlanInstanceActionError, PlanInstanceActionResponse, PlanTypeData, PlanTypeError, PlanTypeResponse, PreviewBlueprintData, PreviewBlueprintError, PreviewBlueprintResponse, PreviewDefinitionsData, PreviewDefinitionsError, PreviewDefinitionsResponse, PreviewTypeData, PreviewTypeError, PreviewTypeResponse, PublishBlueprintData, PublishBlueprintError, PublishBlueprintResponse, ReportRunData, ReportRunError, ReportRunResponse, RepositoryCommitData, RepositoryCommitError, RepositoryCommitResponse, RepositoryHealthData, RepositoryHealthError, RepositoryHealthResponse, RepositoryLogData, RepositoryLogError, RepositoryLogResponse, RequestBlueprintData, RequestBlueprintError, RequestBlueprintResponse, RequestInstanceActionData, RequestInstanceActionError, RequestInstanceActionResponse, RequestTypeData, RequestTypeError, RequestTypeResponse, RetryRequestData, RetryRequestError, RetryRequestResponse, ReviewRequestData, ReviewRequestError, ReviewRequestResponse, RevokeTokenData, RevokeTokenError, RevokeTokenResponse, SyncRepositoryData, SyncRepositoryError, SyncRepositoryResponse, TestRepositoryAccessData, TestRepositoryAccessError, TestRepositoryAccessResponse, UpdateRepositoryData, UpdateRepositoryError, UpdateRepositoryResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -528,6 +528,41 @@ export const testRepositoryAccessMutation = (options?: Partial<Options<TestRepos
     const mutationOptions: UseMutationOptions<TestRepositoryAccessResponse, TestRepositoryAccessError, Options<TestRepositoryAccessData>> = {
         mutationFn: async (fnOptions) => {
             const { data } = await testRepositoryAccess({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const listRepositoryConnectionsQueryKey = (options?: Options<ListRepositoryConnectionsData>) => createQueryKey('listRepositoryConnections', options);
+
+/**
+ * List the stored repository connections the caller administers, connected or not
+ */
+export const listRepositoryConnectionsOptions = (options?: Options<ListRepositoryConnectionsData>) => queryOptions<ListRepositoryConnectionsResponse, ListRepositoryConnectionsError, ListRepositoryConnectionsResponse, ReturnType<typeof listRepositoryConnectionsQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await listRepositoryConnections({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: listRepositoryConnectionsQueryKey(options)
+});
+
+/**
+ * Verify that a connection's target branch requires the check as Quai needs it, saved or not
+ */
+export const checkRepositoryEnforcementMutation = (options?: Partial<Options<CheckRepositoryEnforcementData>>): UseMutationOptions<CheckRepositoryEnforcementResponse, CheckRepositoryEnforcementError, Options<CheckRepositoryEnforcementData>> => {
+    const mutationOptions: UseMutationOptions<CheckRepositoryEnforcementResponse, CheckRepositoryEnforcementError, Options<CheckRepositoryEnforcementData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await checkRepositoryEnforcement({
                 ...options,
                 ...fnOptions,
                 throwOnError: true

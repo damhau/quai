@@ -291,10 +291,18 @@ The API behind it (repository admins, `repositories.manage` on the connection's 
 | Operation | What it does |
 | --- | --- |
 | `POST /api/v1/repository-access-tests` | Runs the access test with a `Repository` document, saved or not: `credentials` (the reference resolves), `connector`, `read` (a clone), `push` (a branch `<branchPrefix>access-test-<random>` with one file), `pull-request` (a draft, closed at once), `status` (`quai/access-test` on it), `delete-branch`, `branch-protection`; a failed check gives the permission it needs, and the checks after a failed `credentials`, `connector`, `read` or `push` are skipped. Then the scan: whether the default branch has `.quai/`, its types, blueprints and problems. Nothing is left behind. |
+| `POST /api/v1/repository-enforcement-checks` | Verifies, with a `Repository` document saved or not, that its target branch requires the check as Quai needs it (the wizard's delivery and enforcement step), without recording it. |
+| `GET /api/v1/repository-connections` | The stored connections the caller administers, connected or not, with why one could not be opened. |
 | `POST`, `PUT`, `DELETE /api/v1/repositories[/{name}]`, `GET /api/v1/repositories/{name}` | Connections managed through the API. The name never changes; those declared in configuration are read-only (409). A connection whose remote cannot be opened is stored with the reason, and retried. |
 | `POST /api/v1/repositories/{name}/webhook` | Installs the webhook, at `https://<webhooks.host>/webhooks/<name>`, or `<server.publicURL>/webhooks/<name>`, with `spec.webhooks.secret`; when the connector cannot, says how to set it up by hand. |
 | `POST /api/v1/repositories/{name}/run-token` | A new run token, shown once, and its SHA-256: the hash goes in the secret `spec.runner.reportToken.ref` names, the token in the pipeline. Quai keeps neither. |
 | `GET /api/v1/repositories/{name}/health` | The health below. |
+
+In the UI, repository and platform admins find these under **Repositories**
+(`/admin/repositories`): the connections with their health at a glance, the wizard
+(`/admin/repositories/new`), each repository's health page, red while approvals are not
+enforced, with the branch protection to set, and its edit page, read-only for connections
+declared in configuration.
 
 ### Health
 

@@ -29,7 +29,8 @@ export const appServersDefinition = {
 
 export const gitHandlers = [
   http.get("*/api/v1/repositories", () =>
-    HttpResponse.json([{ name: "infra-live", title: "Infrastructure", connector: "gitea", managedBy: "config", branch: "main", delivery: "direct", commit: commits[0]!.sha, types: 1, blueprints: 1, problems: [] }]),
+    HttpResponse.json([{ name: "infra-live", title: "Infrastructure", connector: "gitea", managedBy: "config", branch: "main", delivery: "direct", commit: commits[0]!.sha, types: 1, blueprints: 1, problems: [],
+        trust: { checked: true, problems: [] }, enforcement: { required: false, checked: false, problems: [] } }]),
   ),
   http.get("*/api/v1/repositories/infra-live/log", () => HttpResponse.json(commits)),
   http.get("*/api/v1/repositories/infra-live/commits/:sha", ({ params }) =>

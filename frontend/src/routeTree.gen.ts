@@ -17,9 +17,13 @@ import { Route as DesignerIndexRouteImport } from './routes/designer/index'
 import { Route as InventoryIndexRouteImport } from './routes/inventory/index'
 import { Route as RequestsIndexRouteImport } from './routes/requests/index'
 import { Route as RequestsIdRouteImport } from './routes/requests/$id'
+import { Route as AdminRepositoriesIndexRouteImport } from './routes/admin/repositories/index'
+import { Route as AdminRepositoriesNewRouteImport } from './routes/admin/repositories/new'
 import { Route as DesignerRepositoryIndexRouteImport } from './routes/designer/$repository/index'
 import { Route as DesignerRepositoryNameRouteImport } from './routes/designer/$repository/$name'
 import { Route as PreviewRepositoryIndexRouteImport } from './routes/preview/$repository/index'
+import { Route as AdminRepositoriesNameIndexRouteImport } from './routes/admin/repositories/$name/index'
+import { Route as AdminRepositoriesNameEditRouteImport } from './routes/admin/repositories/$name/edit'
 import { Route as DeploymentsRepositoryBlueprintNameRouteImport } from './routes/deployments/$repository/$blueprint/$name'
 import { Route as PreviewRepositoryBlueprintsNameRouteImport } from './routes/preview/$repository/blueprints/$name'
 import { Route as PreviewRepositoryTypesNameRouteImport } from './routes/preview/$repository/types/$name'
@@ -67,6 +71,16 @@ const RequestsIdRoute = RequestsIdRouteImport.update({
   path: '/requests/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminRepositoriesIndexRoute = AdminRepositoriesIndexRouteImport.update({
+  id: '/admin/repositories/',
+  path: '/admin/repositories/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminRepositoriesNewRoute = AdminRepositoriesNewRouteImport.update({
+  id: '/admin/repositories/new',
+  path: '/admin/repositories/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DesignerRepositoryIndexRoute = DesignerRepositoryIndexRouteImport.update({
   id: '/designer/$repository/',
   path: '/designer/$repository/',
@@ -82,6 +96,18 @@ const PreviewRepositoryIndexRoute = PreviewRepositoryIndexRouteImport.update({
   path: '/preview/$repository/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminRepositoriesNameIndexRoute =
+  AdminRepositoriesNameIndexRouteImport.update({
+    id: '/admin/repositories/$name/',
+    path: '/admin/repositories/$name/',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const AdminRepositoriesNameEditRoute =
+  AdminRepositoriesNameEditRouteImport.update({
+    id: '/admin/repositories/$name/edit',
+    path: '/admin/repositories/$name/edit',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const DeploymentsRepositoryBlueprintNameRoute =
   DeploymentsRepositoryBlueprintNameRouteImport.update({
     id: '/deployments/$repository/$blueprint/$name',
@@ -128,15 +154,19 @@ export interface FileRoutesByFullPath {
   '/designer/': typeof DesignerIndexRoute
   '/inventory/': typeof InventoryIndexRoute
   '/requests/': typeof RequestsIndexRoute
+  '/admin/repositories/new': typeof AdminRepositoriesNewRoute
   '/designer/$repository/$name': typeof DesignerRepositoryNameRoute
+  '/admin/repositories/': typeof AdminRepositoriesIndexRoute
   '/designer/$repository/': typeof DesignerRepositoryIndexRoute
   '/preview/$repository/': typeof PreviewRepositoryIndexRoute
+  '/admin/repositories/$name/edit': typeof AdminRepositoriesNameEditRoute
   '/deployments/$repository/$blueprint/$name': typeof DeploymentsRepositoryBlueprintNameRoute
   '/preview/$repository/blueprints/$name': typeof PreviewRepositoryBlueprintsNameRoute
   '/preview/$repository/types/$name': typeof PreviewRepositoryTypesNameRoute
   '/request/$repository/blueprints/$name': typeof RequestRepositoryBlueprintsNameRoute
   '/request/$repository/types/$name': typeof RequestRepositoryTypesNameRoute
   '/resources/$repository/$type/$': typeof ResourcesRepositoryTypeSplatRoute
+  '/admin/repositories/$name/': typeof AdminRepositoriesNameIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -147,15 +177,19 @@ export interface FileRoutesByTo {
   '/designer': typeof DesignerIndexRoute
   '/inventory': typeof InventoryIndexRoute
   '/requests': typeof RequestsIndexRoute
+  '/admin/repositories/new': typeof AdminRepositoriesNewRoute
   '/designer/$repository/$name': typeof DesignerRepositoryNameRoute
+  '/admin/repositories': typeof AdminRepositoriesIndexRoute
   '/designer/$repository': typeof DesignerRepositoryIndexRoute
   '/preview/$repository': typeof PreviewRepositoryIndexRoute
+  '/admin/repositories/$name/edit': typeof AdminRepositoriesNameEditRoute
   '/deployments/$repository/$blueprint/$name': typeof DeploymentsRepositoryBlueprintNameRoute
   '/preview/$repository/blueprints/$name': typeof PreviewRepositoryBlueprintsNameRoute
   '/preview/$repository/types/$name': typeof PreviewRepositoryTypesNameRoute
   '/request/$repository/blueprints/$name': typeof RequestRepositoryBlueprintsNameRoute
   '/request/$repository/types/$name': typeof RequestRepositoryTypesNameRoute
   '/resources/$repository/$type/$': typeof ResourcesRepositoryTypeSplatRoute
+  '/admin/repositories/$name': typeof AdminRepositoriesNameIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -167,15 +201,19 @@ export interface FileRoutesById {
   '/designer/': typeof DesignerIndexRoute
   '/inventory/': typeof InventoryIndexRoute
   '/requests/': typeof RequestsIndexRoute
+  '/admin/repositories/new': typeof AdminRepositoriesNewRoute
   '/designer/$repository/$name': typeof DesignerRepositoryNameRoute
+  '/admin/repositories/': typeof AdminRepositoriesIndexRoute
   '/designer/$repository/': typeof DesignerRepositoryIndexRoute
   '/preview/$repository/': typeof PreviewRepositoryIndexRoute
+  '/admin/repositories/$name/edit': typeof AdminRepositoriesNameEditRoute
   '/deployments/$repository/$blueprint/$name': typeof DeploymentsRepositoryBlueprintNameRoute
   '/preview/$repository/blueprints/$name': typeof PreviewRepositoryBlueprintsNameRoute
   '/preview/$repository/types/$name': typeof PreviewRepositoryTypesNameRoute
   '/request/$repository/blueprints/$name': typeof RequestRepositoryBlueprintsNameRoute
   '/request/$repository/types/$name': typeof RequestRepositoryTypesNameRoute
   '/resources/$repository/$type/$': typeof ResourcesRepositoryTypeSplatRoute
+  '/admin/repositories/$name/': typeof AdminRepositoriesNameIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -188,15 +226,19 @@ export interface FileRouteTypes {
     | '/designer/'
     | '/inventory/'
     | '/requests/'
+    | '/admin/repositories/new'
     | '/designer/$repository/$name'
+    | '/admin/repositories/'
     | '/designer/$repository/'
     | '/preview/$repository/'
+    | '/admin/repositories/$name/edit'
     | '/deployments/$repository/$blueprint/$name'
     | '/preview/$repository/blueprints/$name'
     | '/preview/$repository/types/$name'
     | '/request/$repository/blueprints/$name'
     | '/request/$repository/types/$name'
     | '/resources/$repository/$type/$'
+    | '/admin/repositories/$name/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -207,15 +249,19 @@ export interface FileRouteTypes {
     | '/designer'
     | '/inventory'
     | '/requests'
+    | '/admin/repositories/new'
     | '/designer/$repository/$name'
+    | '/admin/repositories'
     | '/designer/$repository'
     | '/preview/$repository'
+    | '/admin/repositories/$name/edit'
     | '/deployments/$repository/$blueprint/$name'
     | '/preview/$repository/blueprints/$name'
     | '/preview/$repository/types/$name'
     | '/request/$repository/blueprints/$name'
     | '/request/$repository/types/$name'
     | '/resources/$repository/$type/$'
+    | '/admin/repositories/$name'
   id:
     | '__root__'
     | '/'
@@ -226,15 +272,19 @@ export interface FileRouteTypes {
     | '/designer/'
     | '/inventory/'
     | '/requests/'
+    | '/admin/repositories/new'
     | '/designer/$repository/$name'
+    | '/admin/repositories/'
     | '/designer/$repository/'
     | '/preview/$repository/'
+    | '/admin/repositories/$name/edit'
     | '/deployments/$repository/$blueprint/$name'
     | '/preview/$repository/blueprints/$name'
     | '/preview/$repository/types/$name'
     | '/request/$repository/blueprints/$name'
     | '/request/$repository/types/$name'
     | '/resources/$repository/$type/$'
+    | '/admin/repositories/$name/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -246,15 +296,19 @@ export interface RootRouteChildren {
   DesignerIndexRoute: typeof DesignerIndexRoute
   InventoryIndexRoute: typeof InventoryIndexRoute
   RequestsIndexRoute: typeof RequestsIndexRoute
+  AdminRepositoriesNewRoute: typeof AdminRepositoriesNewRoute
   DesignerRepositoryNameRoute: typeof DesignerRepositoryNameRoute
+  AdminRepositoriesIndexRoute: typeof AdminRepositoriesIndexRoute
   DesignerRepositoryIndexRoute: typeof DesignerRepositoryIndexRoute
   PreviewRepositoryIndexRoute: typeof PreviewRepositoryIndexRoute
+  AdminRepositoriesNameEditRoute: typeof AdminRepositoriesNameEditRoute
   DeploymentsRepositoryBlueprintNameRoute: typeof DeploymentsRepositoryBlueprintNameRoute
   PreviewRepositoryBlueprintsNameRoute: typeof PreviewRepositoryBlueprintsNameRoute
   PreviewRepositoryTypesNameRoute: typeof PreviewRepositoryTypesNameRoute
   RequestRepositoryBlueprintsNameRoute: typeof RequestRepositoryBlueprintsNameRoute
   RequestRepositoryTypesNameRoute: typeof RequestRepositoryTypesNameRoute
   ResourcesRepositoryTypeSplatRoute: typeof ResourcesRepositoryTypeSplatRoute
+  AdminRepositoriesNameIndexRoute: typeof AdminRepositoriesNameIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -315,6 +369,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RequestsIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/repositories/': {
+      id: '/admin/repositories/'
+      path: '/admin/repositories'
+      fullPath: '/admin/repositories/'
+      preLoaderRoute: typeof AdminRepositoriesIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/repositories/new': {
+      id: '/admin/repositories/new'
+      path: '/admin/repositories/new'
+      fullPath: '/admin/repositories/new'
+      preLoaderRoute: typeof AdminRepositoriesNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/designer/$repository/': {
       id: '/designer/$repository/'
       path: '/designer/$repository'
@@ -334,6 +402,20 @@ declare module '@tanstack/react-router' {
       path: '/preview/$repository'
       fullPath: '/preview/$repository/'
       preLoaderRoute: typeof PreviewRepositoryIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/repositories/$name/': {
+      id: '/admin/repositories/$name/'
+      path: '/admin/repositories/$name'
+      fullPath: '/admin/repositories/$name/'
+      preLoaderRoute: typeof AdminRepositoriesNameIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/repositories/$name/edit': {
+      id: '/admin/repositories/$name/edit'
+      path: '/admin/repositories/$name/edit'
+      fullPath: '/admin/repositories/$name/edit'
+      preLoaderRoute: typeof AdminRepositoriesNameEditRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/deployments/$repository/$blueprint/$name': {
@@ -390,9 +472,12 @@ const rootRouteChildren: RootRouteChildren = {
   DesignerIndexRoute: DesignerIndexRoute,
   InventoryIndexRoute: InventoryIndexRoute,
   RequestsIndexRoute: RequestsIndexRoute,
+  AdminRepositoriesNewRoute: AdminRepositoriesNewRoute,
   DesignerRepositoryNameRoute: DesignerRepositoryNameRoute,
+  AdminRepositoriesIndexRoute: AdminRepositoriesIndexRoute,
   DesignerRepositoryIndexRoute: DesignerRepositoryIndexRoute,
   PreviewRepositoryIndexRoute: PreviewRepositoryIndexRoute,
+  AdminRepositoriesNameEditRoute: AdminRepositoriesNameEditRoute,
   DeploymentsRepositoryBlueprintNameRoute:
     DeploymentsRepositoryBlueprintNameRoute,
   PreviewRepositoryBlueprintsNameRoute: PreviewRepositoryBlueprintsNameRoute,
@@ -400,6 +485,7 @@ const rootRouteChildren: RootRouteChildren = {
   RequestRepositoryBlueprintsNameRoute: RequestRepositoryBlueprintsNameRoute,
   RequestRepositoryTypesNameRoute: RequestRepositoryTypesNameRoute,
   ResourcesRepositoryTypeSplatRoute: ResourcesRepositoryTypeSplatRoute,
+  AdminRepositoriesNameIndexRoute: AdminRepositoriesNameIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

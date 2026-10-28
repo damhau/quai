@@ -832,6 +832,15 @@
       "EnforcementView": {
         "additionalProperties": false,
         "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/api/v1/schemas/EnforcementView.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
           "checked": {
             "description": "False until the first verification: at registration, hourly, and when a branch policy changes",
             "type": "boolean"
@@ -4157,6 +4166,84 @@
           }
         },
         "summary": "Test what a connection's credential can do, saved or not",
+        "tags": [
+          "Repositories"
+        ]
+      }
+    },
+    "/api/v1/repository-connections": {
+      "get": {
+        "operationId": "list-repository-connections",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ConnectionView"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List the stored repository connections the caller administers, connected or not",
+        "tags": [
+          "Repositories"
+        ]
+      }
+    },
+    "/api/v1/repository-enforcement-checks": {
+      "post": {
+        "operationId": "check-repository-enforcement",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Document"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnforcementView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Verify that a connection's target branch requires the check as Quai needs it, saved or not",
         "tags": [
           "Repositories"
         ]

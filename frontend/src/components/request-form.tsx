@@ -36,6 +36,8 @@ export function TextField({
   error,
   onChange,
   onBlur,
+  disabled,
+  placeholder,
 }: {
   id: string
   label: string
@@ -45,6 +47,8 @@ export function TextField({
   error?: string
   onChange: (v: string) => void
   onBlur?: () => void
+  disabled?: boolean
+  placeholder?: string
 }) {
   const describedBy = [description && `${id}-desc`, error && `${id}-error`].filter(Boolean).join(" ") || undefined
   return (
@@ -64,6 +68,8 @@ export function TextField({
         spellCheck={false}
         aria-invalid={error ? true : undefined}
         aria-describedby={describedBy}
+        disabled={disabled}
+        placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
         onBlur={onBlur}
       />

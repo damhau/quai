@@ -96,6 +96,24 @@ func TestManageRepositories(t *testing.T) {
 	}
 }
 
+// TestListConnections: the connections, connected or not, as their admins see them.
+func TestListConnections(t *testing.T) {
+	h := newHarness(t)
+	alice := h.as("alice")
+	gone := document("gone", map[string]any{"connector": "generic", "url": filepath.Join(t.TempDir(), "nowhere.git"), "delivery": map[string]any{"mode": "direct"}})
+	if status, body := alice.do(http.MethodPost, Prefix+"/repositories", gone, nil); status != http.StatusCreated {
+		t.Fatalf("connect = %d %s", status, body)
+	}
+	var list []ConnectionView
+	if status, body := alice.do(http.MethodGet, Prefix+"/repository-connections", nil, &list); status != http.StatusOK || len(list) != 2 ||
+		list[0].Name != "gone" || list[0].Connected || list[0].Error == "" || list[1].Name != "infra-live" || !list[1].Connected || list[1].ManagedBy != "config" {
+		t.Errorf("connections = %d %s", status, body)
+	}
+	if status, _ := h.as("bob").do(http.MethodGet, Prefix+"/repository-connections", nil, nil); status != http.StatusForbidden {
+		t.Errorf("bob lists connections = %d", status)
+	}
+}
+
 // TestHealthAndRunToken: a repository's health says what Quai knows of it; a run token is new
 // each time, with its SHA-256 for the secret.
 func TestHealthAndRunToken(t *testing.T) {
@@ -198,6 +216,22 @@ func TestRepositoryAccess(t *testing.T) {
 	}
 	if status, _ := h.as("bob").do(http.MethodPost, Prefix+"/repository-access-tests", document("infra-two", spec), nil); status != http.StatusForbidden {
 		t.Errorf("bob tests access = %d", status)
+	}
+
+	// Enforcement, verified before saving: the protection requires quai/approval.
+	var e EnforcementView
+	if status, body := alice.do(http.MethodPost, Prefix+"/repository-enforcement-checks", document("infra-two", map[string]any{"connector": "gitea", "url": r.CloneURL,
+		"credentials": map[string]any{"ref": "env:GITEA_TOKEN"}}), &e); status != http.StatusOK || !e.Required || len(e.Problems) != 0 {
+		t.Errorf("enforcement = %d %s", status, body)
+	}
+	if err := r.Unprotect("main"); err != nil {
+		t.Fatal(err)
+	}
+	e = EnforcementView{}
+	alice.do(http.MethodPost, Prefix+"/repository-enforcement-checks", document("infra-two", map[string]any{"connector": "gitea", "url": r.CloneURL,
+		"credentials": map[string]any{"ref": "env:GITEA_TOKEN"}}), &e)
+	if len(e.Problems) != 1 || !strings.Contains(e.Problems[0], "not protected") {
+		t.Errorf("enforcement, unprotected = %+v", e)
 	}
 
 	// The webhook, once there is a secret.

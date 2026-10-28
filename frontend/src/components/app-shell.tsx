@@ -1,10 +1,11 @@
 import type { ReactNode } from "react"
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { Boxes, ClipboardCheck, GitCommitHorizontal, LayoutGrid, ListChecks, LogOut, Workflow } from "lucide-react"
+import { Boxes, ClipboardCheck, FolderGit2, GitCommitHorizontal, LayoutGrid, ListChecks, LogOut, Workflow } from "lucide-react"
 import { getMeOptions, listRequestsOptions } from "@/api/generated/@tanstack/react-query.gen"
 import { Badge } from "@/components/ui/badge"
 import { logout } from "@/lib/auth"
+import { isAdmin } from "@/lib/repositories"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -24,9 +25,14 @@ const nav = [
   { to: "/git", label: "Git log", icon: GitCommitHorizontal },
 ] as const
 
+// For repository and platform admins.
+const admin = [{ to: "/admin/repositories", label: "Repositories", icon: FolderGit2 }] as const
+
 export function AppShell({ children }: { children: ReactNode }) {
   const path = useRouterState({ select: (s) => s.location.pathname })
+  const { data: me } = useQuery({ ...getMeOptions(), enabled: path !== "/login" })
   if (path === "/login") return <main className="min-h-svh">{children}</main>
+  const links = isAdmin(me) ? [...nav, ...admin] : nav
   return (
     <div className="flex min-h-svh flex-col">
       <header className="border-b">
@@ -35,7 +41,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             Quai
           </Link>
           <nav aria-label="Main" className="flex items-center gap-1">
-            {nav.map(({ to, label, icon: Icon }) => (
+            {links.map(({ to, label, icon: Icon }) => (
               <Link
                 key={to}
                 to={to}
