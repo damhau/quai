@@ -272,23 +272,35 @@ func binary() (string, error) {
 		return "", err
 	}
 	url := fmt.Sprintf("https://dl.gitea.com/gitea/%s/gitea-%s-%s", Version, Version, platform)
+	// A download can break off (a reset connection on CI): it is tried three times.
+	for attempt := 1; ; attempt++ {
+		err = download(url, want, dir, path)
+		if err == nil || attempt == 3 {
+			return path, err
+		}
+		time.Sleep(time.Duration(attempt) * 2 * time.Second)
+	}
+}
+
+// download saves url as path, through a temporary file in dir, once its SHA-256 is want.
+func download(url, want, dir, path string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return "", err
+		return err
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return "", err
+		return err
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("download %s: %s", url, resp.Status)
+		return fmt.Errorf("download %s: %s", url, resp.Status)
 	}
 	f, err := os.CreateTemp(dir, "partial-")
 	if err != nil {
-		return "", err
+		return err
 	}
 	h := sha256.New()
 	_, err = io.Copy(io.MultiWriter(f, h), resp.Body)
@@ -306,9 +318,8 @@ func binary() (string, error) {
 	}
 	if err != nil {
 		_ = os.Remove(f.Name())
-		return "", err
 	}
-	return path, nil
+	return err
 }
 
 func fileSHA256(path string) (string, error) {

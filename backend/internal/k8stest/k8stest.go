@@ -95,9 +95,16 @@ func binaries() (string, error) {
 		return dir, nil
 	}
 	url := fmt.Sprintf("https://github.com/kubernetes-sigs/controller-tools/releases/download/envtest-%s/envtest-%s-%s.tar.gz", Version, Version, platform)
-	archive, err := download(url, want)
-	if err != nil {
-		return "", err
+	// A download can break off (a reset connection on CI): it is tried three times.
+	var archive string
+	for attempt := 1; ; attempt++ {
+		if archive, err = download(url, want); err == nil {
+			break
+		}
+		if attempt == 3 {
+			return "", err
+		}
+		time.Sleep(time.Duration(attempt) * 2 * time.Second)
 	}
 	defer func() { _ = os.Remove(archive) }()
 	if err := os.MkdirAll(filepath.Dir(dir), 0o750); err != nil {
