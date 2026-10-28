@@ -40,6 +40,7 @@ single pod with both roles.
   | (file) | `QUAI_CONFIG`, or `quai server --config` | none: environment and defaults only |
   | `env` | `QUAI_ENV` | `development`; `production` refuses development-only features |
   | `server.addr` | `QUAI_SERVER_ADDR` | `:8080` |
+  | `server.publicURL` | `QUAI_SERVER_PUBLIC_URL` | none: where people reach Quai, for the links to requests in pull requests and statuses; without it, pull requests name the request without a link |
   | `server.shutdownTimeout` | `QUAI_SERVER_SHUTDOWN_TIMEOUT` | `20s` for requests in flight to finish |
   | `database.url` | `QUAI_DATABASE_URL` | none; `quai migrate` applies the migrations |
   | `auth.mode` | `QUAI_AUTH_MODE` | `oidc`, or `dev` (the user switcher) in development only |

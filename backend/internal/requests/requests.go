@@ -64,10 +64,11 @@ var (
 
 // Service runs requests.
 type Service struct {
-	store *store.Store
-	reg   *repositories.Registry
-	jobs  *jobs.Client
-	log   *slog.Logger
+	store     *store.Store
+	reg       *repositories.Registry
+	jobs      *jobs.Client
+	log       *slog.Logger
+	publicURL string // for the links in pull requests; "" leaves them out
 }
 
 // New returns the request service. jobsClient inserts the delivery jobs.
@@ -361,6 +362,10 @@ func (s *Service) Submit(ctx context.Context, who auth.Identity, p *Plan, reason
 	if outcome.State == policy.Approved {
 		state = Approved
 	}
+	prMode, prefix := false, ""
+	if repo, err := s.reg.Get(p.Repository); err == nil && repo.Document.Spec.Delivery.Mode == PullRequestMode {
+		prMode, prefix = true, repo.Document.Spec.Delivery.BranchPrefix
+	}
 	var created db.Request
 	err := s.store.Tx(ctx, func(tx pgx.Tx, q *db.Queries) error {
 		r, err := q.CreateRequest(ctx, db.CreateRequestParams{
@@ -392,6 +397,18 @@ func (s *Service) Submit(ctx context.Context, who auth.Identity, p *Plan, reason
 			if err := event(ctx, q, r, "approved", "", map[string]any{"reason": "no approval rule applies"}); err != nil {
 				return err
 			}
+		}
+		switch {
+		case prMode:
+			// The pull request opens now, so that CI can plan while approvals are pending; the
+			// opening job delivers an approved request next.
+			if _, err := q.PutDelivery(ctx, db.PutDeliveryParams{RequestID: r.ID, Repository: p.Repository, Branch: branch(prefix, r)}); err != nil {
+				return err
+			}
+			if err := jobs.InsertTx(ctx, s.jobs, tx, OpenArgs{RequestID: r.ID}, nil); err != nil {
+				return err
+			}
+		case state == Approved:
 			if err := jobs.InsertTx(ctx, s.jobs, tx, DeliverArgs{RequestID: r.ID}, nil); err != nil {
 				return err
 			}
@@ -490,7 +507,10 @@ func (s *Service) Review(ctx context.Context, who auth.Identity, id uuid.UUID, d
 			if next, err = q.TransitionRequest(ctx, db.TransitionRequestParams{ID: r.ID, FromState: PendingApproval, ToState: Rejected}); err != nil {
 				return err
 			}
-			return event(ctx, q, r, "rejected", who.Principal.Name, nil)
+			if err := event(ctx, q, r, "rejected", who.Principal.Name, nil); err != nil {
+				return err
+			}
+			return s.statusJob(ctx, tx, q, r)
 		}
 		return nil
 	})
@@ -582,16 +602,52 @@ func (s *Service) get(ctx context.Context, id uuid.UUID) (db.Request, error) {
 	return r, err
 }
 
+// transition moves a request from a state to another and records the event; in pull-request
+// mode, quai/approval then follows (statusJob).
 func (s *Service) transition(ctx context.Context, r db.Request, from, to, kind string, data map[string]any) (db.Request, error) {
 	var next db.Request
-	err := s.store.Tx(ctx, func(_ pgx.Tx, q *db.Queries) error {
+	err := s.store.Tx(ctx, func(tx pgx.Tx, q *db.Queries) error {
 		var err error
 		if next, err = q.TransitionRequest(ctx, db.TransitionRequestParams{ID: r.ID, FromState: from, ToState: to}); err != nil {
 			return conflict(err, r)
 		}
-		return event(ctx, q, r, kind, "", data)
+		if err := event(ctx, q, r, kind, "", data); err != nil {
+			return err
+		}
+		if to == Stale || to == Cancelled || to == Rejected || to == Failed {
+			return s.statusJob(ctx, tx, q, r)
+		}
+		return nil
 	})
 	return next, err
+}
+
+// statusJob queues the publishing of quai/approval for a request delivered by pull request.
+func (s *Service) statusJob(ctx context.Context, tx pgx.Tx, q *db.Queries, r db.Request) error {
+	if s.jobs == nil {
+		return nil
+	}
+	if _, err := q.GetDelivery(ctx, r.ID); errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	return jobs.InsertTx(ctx, s.jobs, tx, StatusArgs{RequestID: r.ID}, nil)
+}
+
+// commit is a request's commit, with the fingerprints its regions had when it was planned.
+func (s *Service) commit(ctx context.Context, r db.Request, cs db.ChangeSet, repo *repositories.Repo) (gitx.Commit, error) {
+	changes, err := s.store.ListChanges(ctx, cs.ID)
+	if err != nil {
+		return gitx.Commit{}, err
+	}
+	var fps map[string]string
+	_ = json.Unmarshal(cs.Fingerprints, &fps)
+	c := gitx.Commit{Branch: repo.Branch, Message: message(r, cs), Author: author(r), Fingerprints: fps}
+	for _, ch := range changes {
+		c.Changes = append(c.Changes, plan.Change{Path: ch.Path, Op: ch.Op, Before: ch.Before, After: ch.After})
+	}
+	return c, nil
 }
 
 func conflict(err error, r db.Request) error {
@@ -710,6 +766,18 @@ func (w *Worker) Work(ctx context.Context, job *river.Job[DeliverArgs]) error {
 	if err != nil {
 		return err
 	}
+	if d, err := s.store.GetDelivery(ctx, r.ID); err == nil {
+		// A request is delivered with the definitions it was planned with.
+		if changed, err := s.definitionsChanged(ctx, r, sets); err != nil {
+			return err
+		} else if changed != "" {
+			_, err = s.transition(ctx, r, r.State, Stale, "stale", map[string]any{"definitions": changed})
+			return err
+		}
+		return s.deliverPR(ctx, job, r, d, repo)
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return err
+	}
 	return jobs.WithRepositoryLock(ctx, s.store.Pool, repo.Name, 5*time.Second, func(ctx context.Context) error {
 		if r.State == Approved {
 			if r, err = s.transition(ctx, r, Approved, Merging, "merging", nil); err != nil {
@@ -724,15 +792,9 @@ func (w *Worker) Work(ctx context.Context, job *river.Job[DeliverArgs]) error {
 			_, err = s.transition(ctx, r, Merging, Stale, "stale", map[string]any{"definitions": changed})
 			return err
 		}
-		changes, err := s.store.ListChanges(ctx, cs.ID)
+		commit, err := s.commit(ctx, r, cs, repo)
 		if err != nil {
 			return err
-		}
-		var fps map[string]string
-		_ = json.Unmarshal(cs.Fingerprints, &fps)
-		commit := gitx.Commit{Branch: repo.Branch, Message: message(r, cs), Author: author(r), Fingerprints: fps}
-		for _, c := range changes {
-			commit.Changes = append(commit.Changes, plan.Change{Path: c.Path, Op: c.Op, Before: c.Before, After: c.After})
 		}
 		sha, err := repo.Mirror.CommitAndPush(ctx, commit)
 		switch {

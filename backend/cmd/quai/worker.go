@@ -68,9 +68,11 @@ func work(ctx context.Context, cfg *config.Config, log *slog.Logger, s *store.St
 	if reg != nil {
 		defer reg.Close()
 		svc = requests.New(s, reg, nil, log)
+		svc.UsePublicURL(cfg.Server.PublicURL)
 		hooks = ingest.New(s, reg, log)
+		hooks.UseHandler(svc)
 		opts.Workers = func(w *river.Workers) {
-			river.AddWorker(w, requests.NewWorker(svc))
+			svc.Workers(w)
 			hooks.Workers(w)
 		}
 		opts.Periodic = append(opts.Periodic, ingest.Periodic())

@@ -44,7 +44,9 @@ type Config struct {
 
 // Server configures the HTTP server.
 type Server struct {
-	Addr            string        `yaml:"addr"`            // listen address, such as :8080
+	Addr string `yaml:"addr"` // listen address, such as :8080
+	// PublicURL is where people reach Quai, for the links in pull requests; empty: no links.
+	PublicURL       string        `yaml:"publicURL"`
 	ShutdownTimeout time.Duration `yaml:"shutdownTimeout"` // how long requests in flight may finish
 }
 
@@ -197,6 +199,7 @@ var variables = []struct {
 	{"QUAI_REPOSITORIES_PATH", func(c *Config, v string) error { c.Repositories.Path = v; return nil }},
 	{"QUAI_SECRETS_KUBECONFIG", func(c *Config, v string) error { c.Secrets.Kubernetes.Kubeconfig = v; return nil }},
 	{"QUAI_NETWORK_CA_FILE", func(c *Config, v string) error { c.Network.CAFile = v; return nil }},
+	{"QUAI_SERVER_PUBLIC_URL", func(c *Config, v string) error { c.Server.PublicURL = v; return nil }},
 	{"QUAI_WEBHOOKS_HOST", func(c *Config, v string) error { c.Webhooks.Host = v; return nil }},
 }
 

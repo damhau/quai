@@ -46,6 +46,8 @@ func (r *recorder) PullRequest(_ context.Context, _ *repositories.Repo, pr conne
 	return nil
 }
 
+func (r *recorder) Awaited(context.Context, *repositories.Repo) ([]string, error) { return nil, nil }
+
 func (r *recorder) seen(id string, state connectors.PullRequestState) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()

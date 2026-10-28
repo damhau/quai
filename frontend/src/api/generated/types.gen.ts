@@ -148,6 +148,16 @@ export type CreatedTokenOutputBody = {
     token: string;
 };
 
+export type DeliveryView = {
+    branch: string;
+    mergeCommit?: string;
+    /**
+     * Its ID on the platform, once opened
+     */
+    pullRequest?: string;
+    url?: string;
+};
+
 export type DiffLine = {
     op: ' ' | '-' | '+';
     text: string;
@@ -434,6 +444,10 @@ export type RequestView = {
     canReview: boolean;
     changes?: Array<ChangeView> | null;
     createdAt: string;
+    /**
+     * The pull request the change goes through; absent in direct mode
+     */
+    delivery?: DeliveryView;
     events?: Array<EventView> | null;
     id: string;
     inputs: {
@@ -953,6 +967,10 @@ export type RequestViewWritable = {
     canReview: boolean;
     changes?: Array<ChangeView> | null;
     createdAt: string;
+    /**
+     * The pull request the change goes through; absent in direct mode
+     */
+    delivery?: DeliveryView;
     events?: Array<EventView> | null;
     id: string;
     inputs: {

@@ -109,7 +109,7 @@ spec:
 `)
 	s := d.Spec
 	if d.Metadata.Title != "infra-live" || s.DefaultBranch != "main" || s.Definitions != (Definitions{Path: ".quai", Branch: "main"}) ||
-		s.Delivery.Mode != "direct" || s.Delivery.BranchPrefix != "quai/" || s.Delivery.Merge != "auto" || s.Delivery.MergeMethod != "squash" ||
+		s.Delivery.Mode != "pull-request" || s.Delivery.BranchPrefix != "quai/" || s.Delivery.Merge != "auto" || s.Delivery.MergeMethod != "squash" ||
 		!*s.Delivery.DeleteBranch || s.Enforcement.RequiredCheck != "quai/approval" || s.Sync.PollInterval != Duration(time.Minute) ||
 		s.Sync.MinInterval != Duration(10*time.Second) {
 		t.Errorf("defaults = %+v", d)
@@ -129,7 +129,7 @@ spec:
 		"connector":     {"apiVersion: quai.dev/v1beta1\nkind: Repository\nmetadata: { name: a }\nspec: { connector: svn, url: x }\n", "spec.connector must be one of"},
 		"url":           {"apiVersion: quai.dev/v1beta1\nkind: Repository\nmetadata: { name: a }\nspec: { connector: gitea }\n", "spec.url is required"},
 		"secret":        {"apiVersion: quai.dev/v1beta1\nkind: Repository\nmetadata: { name: a }\nspec: { connector: gitea, url: x, credentials: { ref: hunter2 } }\n", "spec.credentials.ref must be a secret reference"},
-		"delivery":      {"apiVersion: quai.dev/v1beta1\nkind: Repository\nmetadata: { name: a }\nspec: { connector: gitea, url: x, delivery: { mode: pull-request } }\n", "until pull-request delivery exists"},
+		"delivery":      {"apiVersion: quai.dev/v1beta1\nkind: Repository\nmetadata: { name: a }\nspec: { connector: generic, url: x, delivery: { mode: pull-request } }\n", "generic Git has no pull requests"},
 		"floor":         {"apiVersion: quai.dev/v1beta1\nkind: Repository\nmetadata: { name: a }\nspec: { connector: gitea, url: x, enforcement: { floorRules: [{ name: f, when: \"params.env ==\", approvers: [owners] }] } }\n", "floorRules[0].when"},
 		"run token":     {"apiVersion: quai.dev/v1beta1\nkind: Repository\nmetadata: { name: a }\nspec: { connector: gitea, url: x, runner: { reportToken: { ref: token123 } } }\n", "spec.runner.reportToken.ref must be a secret reference"},
 		"duration":      {"apiVersion: quai.dev/v1beta1\nkind: Repository\nmetadata: { name: a }\nspec: { connector: gitea, url: x, sync: { pollInterval: often } }\n", "is not a duration"},

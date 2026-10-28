@@ -20,6 +20,8 @@ import (
 
 	"github.com/damhau/quai/backend/internal/auth"
 	"github.com/damhau/quai/backend/internal/config"
+	"github.com/damhau/quai/backend/internal/giteatest"
+	"github.com/damhau/quai/backend/internal/ingest"
 	"github.com/damhau/quai/backend/internal/jobs"
 	"github.com/damhau/quai/backend/internal/pgtest"
 	"github.com/damhau/quai/backend/internal/repositories"
@@ -28,19 +30,20 @@ import (
 	"github.com/damhau/quai/backend/internal/store"
 )
 
-func TestMain(m *testing.M) { os.Exit(pgtest.Main(m)) }
+func TestMain(m *testing.M) { os.Exit(pgtest.Around(func() int { return giteatest.Main(m) })()) }
 
 // harness runs the API on a repository seeded with examples/gitops-repo, a real database, and
 // the dev users: alice (platform admin), bob and carol (developers in team shop), fiona
 // (finops).
 type harness struct {
-	t     *testing.T
-	srv   *httptest.Server
-	bare  string // the repository's bare remote
-	work  string // a clone people push to
-	store *store.Store
-	reg   *repositories.Registry
-	log   *bytes.Buffer
+	t      *testing.T
+	srv    *httptest.Server
+	bare   string // the repository's bare remote
+	work   string // a clone people push to
+	store  *store.Store
+	reg    *repositories.Registry
+	ingest *ingest.Service
+	log    *bytes.Buffer
 }
 
 func git(t *testing.T, dir string, args ...string) string {
@@ -72,22 +75,28 @@ func newHarness(t *testing.T) *harness {
 	git(t, work, "commit", "--quiet", "-m", "the existing infrastructure")
 	git(t, work, "push", "--quiet", "origin", "HEAD:main")
 
+	h := start(t, dir, `connector: generic
+  url: `+bare+`
+  enforcement:
+    floorRules: [{ name: production-floor, when: "params.env == 'prod'", approvers: [group:platform-admins] }]
+  runner: { reportToken: { ref: env:INFRA_LIVE_RUN_TOKEN } }
+  sync: { minInterval: 1ns }`, repositories.Options{Secrets: secrets.New(map[string]secrets.Backend{"env": secrets.Env{Lookup: func(name string) (string, bool) {
+		return runToken, name == "INFRA_LIVE_RUN_TOKEN"
+	}}})})
+	h.bare, h.work = bare, work
+	return h
+}
+
+// start serves Quai with one repository, infra-live, whose spec is given, and a job worker.
+// Webhooks and polls are processed by h.ingest.
+func start(t *testing.T, dir, spec string, opts repositories.Options) *harness {
+	t.Helper()
 	cfg, err := config.Load("", func(string) (string, bool) { return "", false })
 	if err != nil {
 		t.Fatal(err)
 	}
 	cfg.Git.CacheDir = filepath.Join(dir, "mirrors")
-	docs, err := repositories.Parse([]byte(`apiVersion: quai.dev/v1beta1
-kind: Repository
-metadata: { name: infra-live, title: Infrastructure }
-spec:
-  connector: generic
-  url: ` + bare + `
-  enforcement:
-    floorRules: [{ name: production-floor, when: "params.env == 'prod'", approvers: [group:platform-admins] }]
-  runner: { reportToken: { ref: env:INFRA_LIVE_RUN_TOKEN } }
-  sync: { minInterval: 1ns }
-`))
+	docs, err := repositories.Parse([]byte("apiVersion: quai.dev/v1beta1\nkind: Repository\nmetadata: { name: infra-live, title: Infrastructure }\nspec:\n  " + spec + "\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,20 +106,22 @@ spec:
 	if err := repositories.Reconcile(context.Background(), s, docs); err != nil {
 		t.Fatal(err)
 	}
-	store := secrets.New(map[string]secrets.Backend{"env": secrets.Env{Lookup: func(name string) (string, bool) {
-		return runToken, name == "INFRA_LIVE_RUN_TOKEN"
-	}}})
-	reg, err := repositories.Open(context.Background(), cfg, repositories.FromStore(s), repositories.Options{Secrets: store, Store: s, Log: log})
+	opts.Store, opts.Log = s, log
+	reg, err := repositories.Open(context.Background(), cfg, repositories.FromStore(s), opts)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(reg.Close)
 	svc := requests.New(s, reg, nil, log)
-	worker, err := jobs.NewWorker(s.Pool, jobs.Options{Logger: log, Workers: func(w *river.Workers) { river.AddWorker(w, requests.NewWorker(svc)) }})
+	svc.UsePublicURL("https://quai.example.com")
+	hooks := ingest.New(s, reg, log)
+	hooks.UseHandler(svc)
+	worker, err := jobs.NewWorker(s.Pool, jobs.Options{Logger: log, Workers: func(w *river.Workers) { svc.Workers(w); hooks.Workers(w) }})
 	if err != nil {
 		t.Fatal(err)
 	}
 	svc.UseJobs(worker)
+	hooks.UseJobs(worker)
 	if err := worker.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +132,7 @@ spec:
 	})
 	srv := httptest.NewServer(New(Options{Version: "test", Env: cfg.Env, Logger: log, Store: s, Auth: auth.New(cfg, s, nil, log), Repositories: reg, Requests: svc}))
 	t.Cleanup(srv.Close)
-	return &harness{t: t, srv: srv, bare: bare, work: work, store: s, reg: reg, log: &logs}
+	return &harness{t: t, srv: srv, store: s, reg: reg, ingest: hooks, log: &logs}
 }
 
 // push commits a change to the repository as a person would.

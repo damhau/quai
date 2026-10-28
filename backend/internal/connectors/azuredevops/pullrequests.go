@@ -126,10 +126,32 @@ func (p *pullRequests) get(ctx context.Context, id string) (pr, Repository, erro
 	return out, repo, err
 }
 
+// Get reads a pull request, with its labels, which Azure DevOps serves apart.
 func (p *pullRequests) Get(ctx context.Context, id string) (connectors.PullRequest, error) {
 	out, repo, err := p.get(ctx, id)
 	if err != nil {
 		return connectors.PullRequest{}, err
+	}
+	if len(out.Labels) == 0 {
+		at, _, err := (*Connector)(p).api(ctx, "pullRequests", id, "labels")
+		if err != nil {
+			return connectors.PullRequest{}, err
+		}
+		var labels struct {
+			Value []struct {
+				Name   string `json:"name"`
+				Active bool   `json:"active"`
+			} `json:"value"`
+		}
+		if err := (*Connector)(p).client.Do(ctx, http.MethodGet, at, previewVersion, nil, nil, &labels); err != nil {
+			return connectors.PullRequest{}, err
+		}
+		for _, l := range labels.Value {
+			out.Labels = append(out.Labels, struct {
+				Name   string `json:"name"`
+				Active bool   `json:"active"`
+			}{l.Name, l.Active})
+		}
 	}
 	return out.convert(repo.WebURL), nil
 }

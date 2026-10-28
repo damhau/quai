@@ -75,7 +75,7 @@ type Definitions struct {
 
 // Delivery says how changes reach the repository.
 type Delivery struct {
-	Mode          string   `json:"mode" yaml:"mode"` // direct, or pull-request (P1-13)
+	Mode          string   `json:"mode" yaml:"mode"` // pull-request (the default where the platform has them) or direct
 	BranchPrefix  string   `json:"branchPrefix" yaml:"branchPrefix"`
 	Merge         string   `json:"merge" yaml:"merge"`             // auto or manual
 	MergeMethod   string   `json:"mergeMethod" yaml:"mergeMethod"` // merge, squash or rebase
@@ -166,7 +166,11 @@ func (d *Document) ApplyDefaults() {
 	}
 	dl := &s.Delivery
 	if dl.Mode == "" {
-		dl.Mode = "direct" // pull-request becomes the default with P1-13 (ADR 0008)
+		// Pull requests by default (ADR 0008); generic Git has none.
+		dl.Mode = "pull-request"
+		if s.Connector == "generic" {
+			dl.Mode = "direct"
+		}
 	}
 	if dl.BranchPrefix == "" {
 		dl.BranchPrefix = "quai/"
@@ -224,7 +228,9 @@ func (d *Document) Validate() error {
 	switch s.Delivery.Mode {
 	case "direct":
 	case "pull-request":
-		add("spec.delivery.mode must be direct until pull-request delivery exists (P1-13)")
+		if s.Connector == "generic" {
+			add("spec.delivery.mode: generic Git has no pull requests; use direct")
+		}
 	default:
 		add("spec.delivery.mode must be direct or pull-request")
 	}

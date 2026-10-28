@@ -98,6 +98,15 @@ type RequestView struct {
 	Reviews    []ReviewView   `json:"reviews,omitempty"`
 	Changes    []ChangeView   `json:"changes,omitempty"`
 	Events     []EventView    `json:"events,omitempty"`
+	Delivery   *DeliveryView  `json:"delivery,omitempty" doc:"The pull request the change goes through; absent in direct mode"`
+}
+
+// DeliveryView is a request's pull request.
+type DeliveryView struct {
+	Branch      string `json:"branch"`
+	PullRequest string `json:"pullRequest,omitempty" doc:"Its ID on the platform, once opened"`
+	URL         string `json:"url,omitempty"`
+	MergeCommit string `json:"mergeCommit,omitempty"`
 }
 
 type typeRequestInput struct {
@@ -398,6 +407,9 @@ func requestView(ctx context.Context, svc *requests.Service, s *store.Store, r d
 		reviews = nil
 	}
 	v.Rules = ruleViews(rules, outcome.Rules)
+	if d, err := s.GetDelivery(ctx, r.ID); err == nil {
+		v.Delivery = &DeliveryView{Branch: d.Branch, PullRequest: d.PullRequest, URL: d.Url, MergeCommit: d.MergeCommit}
+	}
 	if !detail {
 		return v
 	}

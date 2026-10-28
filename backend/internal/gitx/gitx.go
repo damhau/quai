@@ -413,6 +413,18 @@ func (m *Mirror) Log(ctx context.Context, branch, file string, limit int) ([]Log
 	return entries, nil
 }
 
+// DeleteBranch deletes a branch on the remote, and in the mirror. A branch already gone is no error.
+func (m *Mirror) DeleteBranch(ctx context.Context, branch string) error {
+	if err := checkRef(branch); err != nil {
+		return err
+	}
+	if _, err := m.command(ctx, "", nil, true, "push", "--quiet", "origin", "--delete", "refs/heads/"+branch); err != nil && !strings.Contains(err.Error(), "remote ref does not exist") {
+		return fmt.Errorf("delete %s on %s: %w", branch, redact(m.remote), err)
+	}
+	_, _ = m.git(ctx, "", "update-ref", "-d", "refs/heads/"+branch)
+	return nil
+}
+
 // Parents returns a commit's parents: one for a squash or a rebase, two for a merge commit.
 func (m *Mirror) Parents(ctx context.Context, commit string) ([]string, error) {
 	if err := checkCommit(commit); err != nil {

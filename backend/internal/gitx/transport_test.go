@@ -513,6 +513,15 @@ func TestNewBranch(t *testing.T) {
 	if _, err := m.Parents(ctx, "zzz"); err == nil {
 		t.Error("Parents of an invalid commit")
 	}
+	if err := m.DeleteBranch(ctx, "quai/r-1-web01"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Head(ctx, "quai/r-1-web01"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("the branch is still there: %v", err)
+	}
+	if err := m.DeleteBranch(ctx, "quai/r-1-web01"); err != nil {
+		t.Errorf("deleting it again: %v", err)
+	}
 }
 
 // TestFiles reads a commit's files without a checkout, as fs.FS.

@@ -508,6 +508,28 @@
         ],
         "type": "object"
       },
+      "DeliveryView": {
+        "additionalProperties": false,
+        "properties": {
+          "branch": {
+            "type": "string"
+          },
+          "mergeCommit": {
+            "type": "string"
+          },
+          "pullRequest": {
+            "description": "Its ID on the platform, once opened",
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "branch"
+        ],
+        "type": "object"
+      },
       "DiffLine": {
         "additionalProperties": false,
         "properties": {
@@ -1303,6 +1325,10 @@
           "createdAt": {
             "format": "date-time",
             "type": "string"
+          },
+          "delivery": {
+            "$ref": "#/components/schemas/DeliveryView",
+            "description": "The pull request the change goes through; absent in direct mode"
           },
           "events": {
             "items": {

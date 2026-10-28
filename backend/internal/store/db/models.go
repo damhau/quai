@@ -51,6 +51,19 @@ type DefinitionSet struct {
 	CreatedAt  pgtype.Timestamptz
 }
 
+type Delivery struct {
+	RequestID   uuid.UUID
+	OrgID       string
+	Repository  string
+	Branch      string
+	PullRequest string
+	Url         string
+	Head        string
+	MergeCommit string
+	CreatedAt   pgtype.Timestamptz
+	UpdatedAt   pgtype.Timestamptz
+}
+
 type Event struct {
 	ID        int64
 	OrgID     string

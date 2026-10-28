@@ -30,9 +30,12 @@ import (
 )
 
 // Handler acts on a pull request of a repository, as re-read from the platform after a webhook
-// or found by polling. Pull-request delivery (P1-13) implements it.
+// or found by polling. Pull-request delivery (requests.Service) implements it.
 type Handler interface {
 	PullRequest(ctx context.Context, repo *repositories.Repo, pr connectors.PullRequest) error
+	// Awaited returns the pull requests of the repository Quai waits on: a poll re-reads them
+	// whatever their state, so a merge or a close without a webhook is seen.
+	Awaited(ctx context.Context, repo *repositories.Repo) ([]string, error)
 }
 
 // Service ingests webhooks and polls repositories.
@@ -334,9 +337,25 @@ func (s *Service) Poll(ctx context.Context, name string) error {
 		if err != nil {
 			return fmt.Errorf("pull requests of %s: %w", name, err)
 		}
+		seen := map[string]bool{}
 		for _, pr := range open {
+			seen[pr.ID] = true
 			if err := s.handle(ctx, repo, pr); err != nil {
 				return err
+			}
+		}
+		if s.handler == nil {
+			return nil
+		}
+		awaited, err := s.handler.Awaited(ctx, repo)
+		if err != nil {
+			return err
+		}
+		for _, id := range awaited {
+			if !seen[id] {
+				if err := s.reread(ctx, repo, id); err != nil {
+					return err
+				}
 			}
 		}
 		return nil

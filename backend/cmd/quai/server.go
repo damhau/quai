@@ -100,6 +100,7 @@ func serve(ctx context.Context, cfg *config.Config, log *slog.Logger, ln net.Lis
 				return err
 			}
 			opts.Requests = requests.New(s, reg, ins, log)
+			opts.Requests.UsePublicURL(cfg.Server.PublicURL)
 			hooks := ingest.New(s, reg, log)
 			hooks.UseJobs(ins)
 			opts.Webhooks, opts.WebhookHost = hooks.Webhooks(), cfg.Webhooks.Host

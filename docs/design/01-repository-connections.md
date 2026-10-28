@@ -107,7 +107,7 @@ spec:
 | `spec.credentials.ref` | A reference, never the secret itself. Resolved at use time; never logged or returned by the API. |
 | `spec.credentials.knownHosts` | For an SSH deploy key (generic Git): the server's host keys, as `known_hosts` lines. Public, so written in the document; the host key is always verified, and a key without them is refused. |
 | `spec.definitions` | One repository can host types for itself only. A type cannot point its locator into another repository. |
-| `spec.delivery.mode` | `direct` exists for sandboxes and demos. Production repositories should use pull requests ([ADR 0008](../adr/0008-pull-requests-by-default.md)). |
+| `spec.delivery.mode` | `pull-request` by default ([ADR 0008](../adr/0008-pull-requests-by-default.md)); `direct` exists for sandboxes and demos, and is the only mode of generic Git, which has no pull requests. |
 | `spec.enforcement.floorRules` | Lets admins guarantee, for example, that nothing reaches `prod` without platform approval, whatever a type's author writes. Types can add rules, never remove floor rules. |
 | `spec.runner` | Where plan and apply results come from. Optional: without it, resources show *In repo* after merge. |
 

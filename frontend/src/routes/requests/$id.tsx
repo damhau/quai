@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import { createFileRoute, Link } from "@tanstack/react-router"
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query"
-import { AlertCircle, Check, RotateCcw, X } from "lucide-react"
+import { AlertCircle, Check, GitPullRequest, RotateCcw, X } from "lucide-react"
 import {
   cancelRequestMutation,
   getMeOptions,
@@ -11,7 +11,7 @@ import {
   retryRequestMutation,
   reviewRequestMutation,
 } from "@/api/generated/@tanstack/react-query.gen"
-import type { RequestView } from "@/api/generated/types.gen"
+import type { DeliveryView, RequestView } from "@/api/generated/types.gen"
 import { ApprovalChain } from "@/components/approval/approval-chain"
 import { ChangesView } from "@/components/diff/changes-view"
 import { StateBadge } from "@/components/requests/state-badge"
@@ -66,6 +66,7 @@ function RequestPage() {
             </>
           )}
         </p>
+        {r.delivery && <DeliveryLine delivery={r.delivery} />}
       </header>
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <div className="grid gap-6">
@@ -215,5 +216,28 @@ function Actions({ request }: { request: RequestView }) {
         )}
       </div>
     </div>
+  )
+}
+
+/** DeliveryLine links the request's pull request, or says it is being opened. */
+function DeliveryLine({ delivery }: { delivery: DeliveryView }) {
+  return (
+    <p className="text-muted-foreground flex flex-wrap items-center gap-1 text-sm">
+      <GitPullRequest className="size-4" aria-hidden />
+      {delivery.url ? (
+        <a href={delivery.url} target="_blank" rel="noreferrer" className="text-foreground underline-offset-4 hover:underline">
+          Pull request #{delivery.pullRequest}
+        </a>
+      ) : (
+        <span>Opening the pull request</span>
+      )}{" "}
+      from <code className="font-mono">{delivery.branch}</code>
+      {delivery.mergeCommit && (
+        <>
+          {" "}
+          · merged as <code className="font-mono">{delivery.mergeCommit.slice(0, 12)}</code>
+        </>
+      )}
+    </p>
   )
 }
