@@ -148,10 +148,11 @@ new through `net/http`. Verifying this against a Server 2022 instance is the fir
 | Edition | Recommended | Alternatives |
 | --- | --- | --- |
 | **Server (first)** | **PAT of a dedicated service account** (an Active Directory account used only by Quai), with expiry and rotation reminders | SSH key for Git transport only (API calls still need a PAT). Windows authentication (NTLM or Kerberos) is not supported in the first release: it is awkward from Linux containers and rarely needed when PATs are enabled. |
-| Services | **Microsoft Entra service principal** added to the organization, using workload identity federation from the cluster (no secret), or a certificate | Managed identity (when Quai runs on Azure); client secret; PAT as a last resort |
+| Services | **PAT**, as on Server (decided 2026-10-28: the sandbox and the first customers use it) | **Microsoft Entra service principal** added to the organization, with workload identity federation from the cluster (no secret), a certificate or a client secret; managed identity when Quai runs on Azure. For customers who forbid PATs; planned before GA (#97) |
 
 - **Server, PAT:** API calls use basic authentication with an empty user name and the PAT as password; Git over HTTPS uses the same as an `http.extraHeader` (`Authorization: Basic …`). PAT scopes: Code (read and write), Code (status), and Build (read and execute) only if pipeline features are used. Quai shows the PAT's expiry on the repository health page and warns 30 days ahead.
-- **Services, Entra:** tokens are requested with `azidentity` for the Azure DevOps resource (`499b84ac-1321-427f-aa17-267ca6975798/.default`) and refreshed before expiry. Git over HTTPS uses the same token as a bearer header, so Git and API calls share one identity.
+- **Services, PAT:** the same as on Server.
+- **Services, Entra (before GA):** tokens are requested with `azidentity` for the Azure DevOps resource (`499b84ac-1321-427f-aa17-267ca6975798/.default`) and refreshed before expiry. Git over HTTPS uses the same token as a bearer header, so Git and API calls share one identity.
 
 ### Network (Server)
 

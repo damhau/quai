@@ -140,7 +140,7 @@ webhook subscription.
 | Platform | Recommended | Why |
 | --- | --- | --- |
 | Azure DevOps Server | PAT of a dedicated Active Directory service account, with expiry and rotation | Entra service principals are not available on-premises; Quai warns before the PAT expires. |
-| Azure DevOps Services | Microsoft Entra service principal with workload identity federation (no secret), or a certificate | No long-lived secret; Entra conditional access and audit apply. Managed identity when Quai runs on Azure; PAT only as a last resort. |
+| Azure DevOps Services | PAT, as on Server; a Microsoft Entra service principal (workload identity federation, certificate or client secret) for customers who forbid PATs, before GA | The PAT works on both editions with one code path. A service principal has no personal account behind it and Entra's conditional access and audit apply. |
 | GitHub | GitHub App installed on the selected repositories | Short-lived installation tokens, fine-grained permissions, verified commits, no user seat. |
 | GitLab | Project or group access token for a bot, with `api` and `write_repository` | Scoped to the project or group; rotate with expiry. |
 | Generic | SSH deploy key with write access | The only option without an API. |

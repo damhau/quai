@@ -53,12 +53,12 @@ The pilot runs Azure DevOps **Server** 2022, which is what the Phase 1 exit name
 instance is available yet. The connector is one package for both editions, written against REST
 API 7.0, which Services also serves: it is built and tested on the Services sandbox, with a PAT
 (the Server authentication) and Server's URL forms unit-tested. Running the suite on a real Server
-is P1-22, a STOP task waiting for an instance. Entra authentication for Services (P1-21) waits for
-an app registration from the owner.
+is P1-22, a STOP task waiting for an instance. Services uses the PAT as well; Entra
+authentication moved to GA (#97).
 
 ## STOP tasks
 
-- **P1-21 and P1-22** need something only the owner can provide (named in the issue). If the issue
+- **P1-22** needs something only the owner can provide (named in the issue). If the issue
   has no comment from the owner saying it is in place, comment what is missing and **stop**. When
   it is there, implement the task and close it like any other.
 - **P1-23** (Phase 1 review): write the report the issue describes, commit with `refs`, comment that
