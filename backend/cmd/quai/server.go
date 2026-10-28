@@ -103,7 +103,7 @@ func serve(ctx context.Context, cfg *config.Config, log *slog.Logger, ln net.Lis
 			opts.Requests.UsePublicURL(cfg.Server.PublicURL)
 			hooks := ingest.New(s, reg, log)
 			hooks.UseJobs(ins)
-			opts.Webhooks, opts.WebhookHost = hooks.Webhooks(), cfg.Webhooks.Host
+			opts.Webhooks, opts.WebhookHost, opts.PublicURL = hooks.Webhooks(), cfg.Webhooks.Host, cfg.Server.PublicURL
 		}
 	}
 	srv := &http.Server{

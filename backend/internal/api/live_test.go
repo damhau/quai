@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"net/http"
+	"net/url"
 	"slices"
 	"strconv"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/damhau/quai/backend/internal/adotest"
+	"github.com/damhau/quai/backend/internal/config"
 	"github.com/damhau/quai/backend/internal/connectors"
 	"github.com/damhau/quai/backend/internal/connectors/azuredevops"
 	"github.com/damhau/quai/backend/internal/engine/plan"
@@ -336,5 +338,80 @@ func TestAzureDevOpsEnforcement(t *testing.T) {
 	verified("the policy removed", "no status check policy on main requires quai/approval")
 	if got := h.timeline(t); !slices.Equal(got, []string{"alert_enforcement", "enforcement_restored", "alert_enforcement"}) {
 		t.Errorf("timeline = %v", got)
+	}
+}
+
+// sandboxSecrets resolves env:ADO_PAT to the sandbox's PAT, and the names of fixed to their value.
+type sandboxSecrets struct {
+	sb    *adotest.Sandbox
+	fixed map[string]string
+}
+
+func (s sandboxSecrets) Get(ctx context.Context, name string) (secrets.Secret, error) {
+	if v, ok := s.fixed[name]; ok {
+		return secrets.FromValue(v), nil
+	}
+	return sandboxPAT{s.sb}.Get(ctx, name)
+}
+
+// TestAzureDevOpsAccess: on the sandbox, the access test passes every check and leaves no branch
+// behind; a repository connected through the API gets its service hook subscription installed.
+// Skipped without the sandbox's PAT.
+func TestAzureDevOpsAccess(t *testing.T) {
+	sb := adotest.New(t)
+	ctx := context.Background()
+	name, _ := sb.Repository(t)
+	pushExample(t, sb.URL(name), func(ctx context.Context) (gitx.Credentials, error) {
+		pat, _, _ := sb.PAT(ctx)
+		return gitx.Credentials{Header: "Authorization: " + azuredevops.BasicAuth(pat.Reveal())}, nil
+	}, sb.Network.Proxy)
+	b := make([]byte, 4)
+	_, _ = rand.Read(b)
+	public := "https://quai-test-" + hex.EncodeToString(b) + ".example.com"
+	h := start(t, t.TempDir(), `connector: azure-devops
+  url: `+sb.URL(name)+`
+  credentials: { ref: env:ADO_PAT }
+  sync: { minInterval: 1ns }`, repositories.Options{
+		Secrets:    secrets.New(map[string]secrets.Backend{"env": sandboxSecrets{sb, map[string]string{"HOOK_SECRET": "a webhook secret"}}}),
+		Connectors: &connectors.Registry{Factories: map[string]connectors.Factory{"azure-devops": azuredevops.New}, HTTP: sb.HTTP},
+		Network:    sb.Network,
+	}, func(c *config.Config) { c.Server.PublicURL = public })
+	alice := h.as("alice")
+	spec := map[string]any{"connector": "azure-devops", "url": sb.URL(name), "credentials": map[string]any{"ref": "env:ADO_PAT"},
+		"webhooks": map[string]any{"secret": map[string]any{"ref": "env:HOOK_SECRET"}}}
+
+	var v AccessView
+	if status, body := alice.do(http.MethodPost, Prefix+"/repository-access-tests", document("infra-two", spec), &v); status != http.StatusOK {
+		t.Fatalf("access test = %d %s", status, body)
+	}
+	for _, c := range v.Checks {
+		if !c.OK {
+			t.Errorf("check %s: %+v", c.Name, c)
+		}
+	}
+	if !v.OK || len(v.Checks) != 8 || v.Scan == nil || !v.Scan.Found {
+		t.Errorf("access test = %+v", v)
+	}
+	var refs struct {
+		Count int `json:"count"`
+	}
+	if err := sb.Do(ctx, http.MethodGet, adotest.Path(sb.Project, "_apis", "git", "repositories", name, "refs"), url.Values{"filter": {"heads/quai/"}}, nil, &refs); err != nil || refs.Count != 0 {
+		t.Errorf("branches left behind: %d, %v", refs.Count, err)
+	}
+
+	hook := public + "/webhooks/infra-two"
+	sb.Unsubscribe(t, hook)
+	if status, body := alice.do(http.MethodPost, Prefix+"/repositories", document("infra-two", spec), nil); status != http.StatusCreated {
+		t.Fatalf("connect = %d %s", status, body)
+	}
+	var w WebhookView
+	if status, body := alice.do(http.MethodPost, Prefix+"/repositories/infra-two/webhook", nil, &w); status != http.StatusOK || !w.Installed || w.URL != hook {
+		t.Errorf("install the webhook = %d %s", status, body)
+	}
+	if subs, err := sb.Subscriptions(ctx, hook); err != nil || len(subs) == 0 {
+		t.Errorf("subscriptions = %v, %v", subs, err)
+	}
+	if status, body := alice.do(http.MethodDelete, Prefix+"/repositories/infra-two", nil, nil); status != http.StatusNoContent {
+		t.Errorf("disconnect = %d %s", status, body)
 	}
 }

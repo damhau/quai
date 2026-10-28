@@ -286,6 +286,16 @@ The admin flow, in the UI or API:
 5. **Runner.** Choose how plan and apply results come back and copy the generated report token.
 6. **Webhook.** Installed automatically through the platform API where the credential allows (on Azure DevOps, a service hook subscription), or shown for manual setup.
 
+The API behind it (repository admins, `repositories.manage` on the connection's name):
+
+| Operation | What it does |
+| --- | --- |
+| `POST /api/v1/repository-access-tests` | Runs the access test with a `Repository` document, saved or not: `credentials` (the reference resolves), `connector`, `read` (a clone), `push` (a branch `<branchPrefix>access-test-<random>` with one file), `pull-request` (a draft, closed at once), `status` (`quai/access-test` on it), `delete-branch`, `branch-protection`; a failed check gives the permission it needs, and the checks after a failed `credentials`, `connector`, `read` or `push` are skipped. Then the scan: whether the default branch has `.quai/`, its types, blueprints and problems. Nothing is left behind. |
+| `POST`, `PUT`, `DELETE /api/v1/repositories[/{name}]`, `GET /api/v1/repositories/{name}` | Connections managed through the API. The name never changes; those declared in configuration are read-only (409). A connection whose remote cannot be opened is stored with the reason, and retried. |
+| `POST /api/v1/repositories/{name}/webhook` | Installs the webhook, at `https://<webhooks.host>/webhooks/<name>`, or `<server.publicURL>/webhooks/<name>`, with `spec.webhooks.secret`; when the connector cannot, says how to set it up by hand. |
+| `POST /api/v1/repositories/{name}/run-token` | A new run token, shown once, and its SHA-256: the hash goes in the secret `spec.runner.reportToken.ref` names, the token in the pipeline. Quai keeps neither. |
+| `GET /api/v1/repositories/{name}/health` | The health below. |
+
 ### Health
 
 Each repository has a health page and metrics:
@@ -295,6 +305,11 @@ Each repository has a health page and metrics:
 - branch protection still requires `quai/approval` (checked hourly). If not, approvals are not enforced: Quai blocks new pull requests to that repository and alerts admins;
 - definitions valid at head, with errors per file;
 - open Quai pull requests, oldest age, stale count.
+
+Metrics, through OpenTelemetry: `quai.git.fetch.duration` (by repository and outcome),
+`quai.webhook.lag` (from a delivery's receipt to the end of its processing, by repository) and
+`quai.deliveries` (deliveries that ended, by repository, mode and outcome: `applied`, `failed`,
+`bypassed`).
 
 Enforcement, in pull-request mode: the connector verifies that the target
 branch requires the check (`spec.enforcement.requiredCheck`, `quai/approval`)

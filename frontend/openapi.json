@@ -1,6 +1,41 @@
 {
   "components": {
     "schemas": {
+      "AccessView": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/api/v1/schemas/AccessView.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/CheckView"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "scan": {
+            "$ref": "#/components/schemas/ScanView",
+            "description": "Absent when the repository could not be read"
+          }
+        },
+        "required": [
+          "ok",
+          "checks"
+        ],
+        "type": "object"
+      },
       "ActionView": {
         "additionalProperties": false,
         "properties": {
@@ -344,6 +379,43 @@
         ],
         "type": "object"
       },
+      "CheckView": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "name": {
+            "enum": [
+              "credentials",
+              "connector",
+              "read",
+              "push",
+              "pull-request",
+              "status",
+              "delete-branch",
+              "branch-protection"
+            ],
+            "type": "string"
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "permission": {
+            "description": "What the credential needs, when the check failed",
+            "type": "string"
+          },
+          "skipped": {
+            "description": "Why it did not run",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "ok"
+        ],
+        "type": "object"
+      },
       "CommitText": {
         "additionalProperties": false,
         "properties": {
@@ -398,6 +470,48 @@
           "email",
           "date",
           "subject"
+        ],
+        "type": "object"
+      },
+      "ConnectionView": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/api/v1/schemas/ConnectionView.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "connected": {
+            "type": "boolean"
+          },
+          "document": {
+            "$ref": "#/components/schemas/Document",
+            "description": "The Repository document; secrets appear as references only"
+          },
+          "error": {
+            "description": "Why the connection could not be opened; it is retried",
+            "type": "string"
+          },
+          "managedBy": {
+            "enum": [
+              "config",
+              "api"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "managedBy",
+          "document",
+          "connected"
         ],
         "type": "object"
       },
@@ -508,6 +622,119 @@
         ],
         "type": "object"
       },
+      "Credentials": {
+        "additionalProperties": false,
+        "properties": {
+          "knownHosts": {
+            "type": "string"
+          },
+          "ref": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "CredentialsHealth": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "description": "When the secret store says (a Kubernetes Secret's quai.dev/expires-at)",
+            "format": "date-time",
+            "type": "string"
+          },
+          "expiresSoon": {
+            "description": "Within 30 days",
+            "type": "boolean"
+          },
+          "readable": {
+            "type": "boolean"
+          },
+          "ref": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "readable",
+          "expiresSoon"
+        ],
+        "type": "object"
+      },
+      "Definitions": {
+        "additionalProperties": false,
+        "properties": {
+          "branch": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "DefinitionsHealth": {
+        "additionalProperties": false,
+        "properties": {
+          "blueprints": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "commit": {
+            "type": "string"
+          },
+          "problems": {
+            "items": {
+              "$ref": "#/components/schemas/ProblemView"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "types": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "types",
+          "blueprints",
+          "problems"
+        ],
+        "type": "object"
+      },
+      "Delivery": {
+        "additionalProperties": false,
+        "properties": {
+          "branchPrefix": {
+            "type": "string"
+          },
+          "deleteBranch": {
+            "type": "boolean"
+          },
+          "merge": {
+            "type": "string"
+          },
+          "mergeMethod": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "waitForChecks": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
       "DeliveryView": {
         "additionalProperties": false,
         "properties": {
@@ -549,6 +776,57 @@
           "op",
           "text"
         ],
+        "type": "object"
+      },
+      "Document": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/api/v1/schemas/Document.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "apiVersion": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/Metadata"
+          },
+          "spec": {
+            "$ref": "#/components/schemas/Spec"
+          }
+        },
+        "required": [
+          "apiVersion",
+          "kind",
+          "metadata",
+          "spec"
+        ],
+        "type": "object"
+      },
+      "Enforcement": {
+        "additionalProperties": false,
+        "properties": {
+          "floorRules": {
+            "items": {
+              "$ref": "#/components/schemas/FloorRule"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "requiredCheck": {
+            "type": "string"
+          }
+        },
         "type": "object"
       },
       "EnforcementView": {
@@ -684,6 +962,83 @@
           "kind",
           "data",
           "at"
+        ],
+        "type": "object"
+      },
+      "FloorRule": {
+        "additionalProperties": false,
+        "properties": {
+          "approvers": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "min": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "when": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "approvers"
+        ],
+        "type": "object"
+      },
+      "HealthView": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/api/v1/schemas/HealthView.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "connected": {
+            "type": "boolean"
+          },
+          "credentials": {
+            "$ref": "#/components/schemas/CredentialsHealth"
+          },
+          "definitions": {
+            "$ref": "#/components/schemas/DefinitionsHealth"
+          },
+          "enforcement": {
+            "$ref": "#/components/schemas/EnforcementView"
+          },
+          "error": {
+            "type": "string"
+          },
+          "pullRequests": {
+            "$ref": "#/components/schemas/PullRequestsHealthView"
+          },
+          "sync": {
+            "$ref": "#/components/schemas/SyncHealth"
+          },
+          "trust": {
+            "$ref": "#/components/schemas/TrustView"
+          }
+        },
+        "required": [
+          "connected",
+          "credentials",
+          "sync",
+          "enforcement",
+          "trust",
+          "definitions",
+          "pullRequests"
         ],
         "type": "object"
       },
@@ -1010,6 +1365,30 @@
         ],
         "type": "object"
       },
+      "Metadata": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "owners": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
       "ParamView": {
         "additionalProperties": false,
         "properties": {
@@ -1205,6 +1584,29 @@
         },
         "required": [
           "blueprint"
+        ],
+        "type": "object"
+      },
+      "PullRequestsHealthView": {
+        "additionalProperties": false,
+        "properties": {
+          "oldestOpenedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "open": {
+            "description": "Waiting for approval or merge",
+            "format": "int64",
+            "type": "integer"
+          },
+          "stale": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "open",
+          "stale"
         ],
         "type": "object"
       },
@@ -1810,6 +2212,33 @@
         ],
         "type": "object"
       },
+      "RunTokenView": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/api/v1/schemas/RunTokenView.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "sha256": {
+            "description": "For Quai: store it, in hex, in the secret spec.runner.reportToken.ref names",
+            "type": "string"
+          },
+          "token": {
+            "description": "For the runner: the pipeline sends it as a bearer token. Shown once; Quai does not keep it",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "sha256"
+        ],
+        "type": "object"
+      },
       "RunView": {
         "additionalProperties": false,
         "properties": {
@@ -1859,6 +2288,140 @@
           "summary",
           "startedAt"
         ],
+        "type": "object"
+      },
+      "Runner": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "reportToken": {
+            "$ref": "#/components/schemas/SecretRef"
+          }
+        },
+        "type": "object"
+      },
+      "ScanView": {
+        "additionalProperties": false,
+        "properties": {
+          "blueprints": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "commit": {
+            "type": "string"
+          },
+          "found": {
+            "description": "The branch has a .quai/ folder; without it, the onboarding assistant proposes types",
+            "type": "boolean"
+          },
+          "problems": {
+            "items": {
+              "$ref": "#/components/schemas/ProblemView"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "types": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "commit",
+          "found",
+          "types",
+          "blueprints",
+          "problems"
+        ],
+        "type": "object"
+      },
+      "SecretRef": {
+        "additionalProperties": false,
+        "properties": {
+          "ref": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "Spec": {
+        "additionalProperties": false,
+        "properties": {
+          "connector": {
+            "type": "string"
+          },
+          "credentials": {
+            "$ref": "#/components/schemas/Credentials"
+          },
+          "defaultBranch": {
+            "type": "string"
+          },
+          "definitions": {
+            "$ref": "#/components/schemas/Definitions"
+          },
+          "delivery": {
+            "$ref": "#/components/schemas/Delivery"
+          },
+          "enforcement": {
+            "$ref": "#/components/schemas/Enforcement"
+          },
+          "runner": {
+            "$ref": "#/components/schemas/Runner"
+          },
+          "sync": {
+            "$ref": "#/components/schemas/Sync"
+          },
+          "url": {
+            "type": "string"
+          },
+          "webhooks": {
+            "$ref": "#/components/schemas/Webhooks"
+          }
+        },
+        "required": [
+          "connector",
+          "url"
+        ],
+        "type": "object"
+      },
+      "Sync": {
+        "additionalProperties": false,
+        "properties": {
+          "minInterval": {
+            "type": "string"
+          },
+          "partialClone": {
+            "type": "boolean"
+          },
+          "pollInterval": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "SyncHealth": {
+        "additionalProperties": false,
+        "properties": {
+          "head": {
+            "type": "string"
+          },
+          "lastFetchAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "lastPollAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "lastWebhookAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
         "type": "object"
       },
       "TokenListOutputBody": {
@@ -2251,6 +2814,44 @@
           "order",
           "fields"
         ],
+        "type": "object"
+      },
+      "WebhookView": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/api/v1/schemas/WebhookView.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "installed": {
+            "type": "boolean"
+          },
+          "manual": {
+            "description": "How to set the webhook up by hand, when Quai could not",
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "installed"
+        ],
+        "type": "object"
+      },
+      "Webhooks": {
+        "additionalProperties": false,
+        "properties": {
+          "secret": {
+            "$ref": "#/components/schemas/SecretRef"
+          }
+        },
         "type": "object"
       }
     }
@@ -2719,6 +3320,167 @@
         "tags": [
           "Repositories"
         ]
+      },
+      "post": {
+        "operationId": "create-repository",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Document"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionView"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Connect a repository",
+        "tags": [
+          "Repositories"
+        ]
+      }
+    },
+    "/api/v1/repositories/{repository}": {
+      "delete": {
+        "operationId": "delete-repository",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "repository",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Disconnect a repository managed through the API; its requests and history stay",
+        "tags": [
+          "Repositories"
+        ]
+      },
+      "get": {
+        "operationId": "get-repository",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "repository",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Read a repository connection",
+        "tags": [
+          "Repositories"
+        ]
+      },
+      "put": {
+        "operationId": "update-repository",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "repository",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Document"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Change a repository connection managed through the API",
+        "tags": [
+          "Repositories"
+        ]
       }
     },
     "/api/v1/repositories/{repository}/blueprints/{name}": {
@@ -2872,6 +3634,47 @@
           }
         },
         "summary": "Show a commit",
+        "tags": [
+          "Repositories"
+        ]
+      }
+    },
+    "/api/v1/repositories/{repository}/health": {
+      "get": {
+        "operationId": "repository-health",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "repository",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Read a repository's health",
         "tags": [
           "Repositories"
         ]
@@ -3144,6 +3947,48 @@
         ]
       }
     },
+    "/api/v1/repositories/{repository}/run-token": {
+      "post": {
+        "description": "Returns a new token, once, and its SHA-256. Quai keeps neither: the hash goes in the secret spec.runner.reportToken.ref names, the token in the pipeline.",
+        "operationId": "generate-run-token",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "repository",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunTokenView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Generate a run token for the repository's runner",
+        "tags": [
+          "Repositories"
+        ]
+      }
+    },
     "/api/v1/repositories/{repository}/sync": {
       "post": {
         "operationId": "sync-repository",
@@ -3231,6 +4076,89 @@
         "summary": "Describe a resource type",
         "tags": [
           "Catalog"
+        ]
+      }
+    },
+    "/api/v1/repositories/{repository}/webhook": {
+      "post": {
+        "operationId": "install-repository-webhook",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "repository",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Install the repository's webhook through the platform",
+        "tags": [
+          "Repositories"
+        ]
+      }
+    },
+    "/api/v1/repository-access-tests": {
+      "post": {
+        "description": "Reads the repository, pushes a branch under the prefix and deletes it, opens and closes a draft pull request, posts a status on it, reads the branch protection, then scans the default branch for definitions.",
+        "operationId": "test-repository-access",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Document"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Test what a connection's credential can do, saved or not",
+        "tags": [
+          "Repositories"
         ]
       }
     },

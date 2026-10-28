@@ -107,7 +107,7 @@ snoozed and retried. Different repositories proceed in parallel.
 
 - **Logs:** structured JSON (`log/slog`), one line per request and per job with request ID, job ID, repository and duration. No bodies, tokens or credentials.
 - **Traces:** OpenTelemetry across HTTP handlers, database queries, jobs, `git` subprocesses and connector API calls; exported over OTLP.
-- **Metrics** (Prometheus):
+- **Metrics** (OpenTelemetry, exported over OTLP with the traces to `telemetry.otlpEndpoint`; a collector's Prometheus exporter serves them to Prometheus):
   - request lead time (submit → applied), approval wait time, PR open → merge time;
   - plan, submit and merge failures by reason;
   - job queue depth, job latency and failures by kind;

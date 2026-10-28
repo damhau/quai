@@ -22,3 +22,11 @@ WHERE d.repository = $1 AND d.pull_request <> '' AND r.state IN ('pending_approv
 SELECT d.* FROM deliveries d JOIN requests r ON r.id = d.request_id
 WHERE d.repository = $1 AND d.pull_request <> '' AND r.state IN ('pending_approval', 'approved', 'merging')
 ORDER BY d.created_at;
+
+-- name: PullRequestHealth :one
+-- A repository's pull requests waiting on Quai, the oldest one's opening, and the stale ones.
+SELECT count(*) FILTER (WHERE r.state IN ('pending_approval', 'approved', 'merging'))::bigint AS open,
+       min(d.created_at) FILTER (WHERE r.state IN ('pending_approval', 'approved', 'merging'))::timestamptz AS oldest,
+       count(*) FILTER (WHERE r.state = 'stale')::bigint AS stale
+FROM deliveries d JOIN requests r ON r.id = d.request_id
+WHERE d.repository = $1 AND d.pull_request <> '';

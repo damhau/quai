@@ -4,6 +4,19 @@ export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});
 };
 
+export type AccessView = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    checks: Array<CheckView> | null;
+    ok: boolean;
+    /**
+     * Absent when the repository could not be read
+     */
+    scan?: ScanView;
+};
+
 export type ActionView = {
     description?: string;
     icon?: string;
@@ -102,6 +115,20 @@ export type ChangeView = {
     path: string;
 };
 
+export type CheckView = {
+    error?: string;
+    name: 'credentials' | 'connector' | 'read' | 'push' | 'pull-request' | 'status' | 'delete-branch' | 'branch-protection';
+    ok: boolean;
+    /**
+     * What the credential needs, when the check failed
+     */
+    permission?: string;
+    /**
+     * Why it did not run
+     */
+    skipped?: string;
+};
+
 export type CommitText = {
     /**
      * A URL to the JSON Schema for this object.
@@ -118,6 +145,24 @@ export type CommitView = {
     email: string;
     sha: string;
     subject: string;
+};
+
+export type ConnectionView = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    connected: boolean;
+    /**
+     * The Repository document; secrets appear as references only
+     */
+    document: Document;
+    /**
+     * Why the connection could not be opened; it is retried
+     */
+    error?: string;
+    managedBy: 'config' | 'api';
+    name: string;
 };
 
 export type CreateTokenInputBody = {
@@ -148,6 +193,46 @@ export type CreatedTokenOutputBody = {
     token: string;
 };
 
+export type Credentials = {
+    knownHosts?: string;
+    ref?: string;
+};
+
+export type CredentialsHealth = {
+    error?: string;
+    /**
+     * When the secret store says (a Kubernetes Secret's quai.dev/expires-at)
+     */
+    expiresAt?: string;
+    /**
+     * Within 30 days
+     */
+    expiresSoon: boolean;
+    readable: boolean;
+    ref?: string;
+};
+
+export type Definitions = {
+    branch?: string;
+    path?: string;
+};
+
+export type DefinitionsHealth = {
+    blueprints: number;
+    commit?: string;
+    problems: Array<ProblemView> | null;
+    types: number;
+};
+
+export type Delivery = {
+    branchPrefix?: string;
+    deleteBranch?: boolean;
+    merge?: string;
+    mergeMethod?: string;
+    mode?: string;
+    waitForChecks?: Array<string> | null;
+};
+
 export type DeliveryView = {
     branch: string;
     mergeCommit?: string;
@@ -161,6 +246,22 @@ export type DeliveryView = {
 export type DiffLine = {
     op: ' ' | '-' | '+';
     text: string;
+};
+
+export type Document = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    apiVersion: string;
+    kind: string;
+    metadata: Metadata;
+    spec: Spec;
+};
+
+export type Enforcement = {
+    floorRules?: Array<FloorRule> | null;
+    requiredCheck?: string;
 };
 
 export type EnforcementView = {
@@ -230,6 +331,28 @@ export type EventView = {
     at: string;
     data: unknown;
     kind: string;
+};
+
+export type FloorRule = {
+    approvers: Array<string> | null;
+    min?: number;
+    name: string;
+    when?: string;
+};
+
+export type HealthView = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    connected: boolean;
+    credentials: CredentialsHealth;
+    definitions: DefinitionsHealth;
+    enforcement: EnforcementView;
+    error?: string;
+    pullRequests: PullRequestsHealthView;
+    sync: SyncHealth;
+    trust: TrustView;
 };
 
 export type Input = {
@@ -352,6 +475,12 @@ export type MetaOutputBody = {
     version: string;
 };
 
+export type Metadata = {
+    name: string;
+    owners?: Array<string> | null;
+    title?: string;
+};
+
 export type ParamView = {
     description?: string;
     name: string;
@@ -415,6 +544,15 @@ export type PublishInputBody = {
     blueprint: {
         [key: string]: unknown;
     };
+};
+
+export type PullRequestsHealthView = {
+    oldestOpenedAt?: string;
+    /**
+     * Waiting for approval or merge
+     */
+    open: number;
+    stale: number;
 };
 
 export type RepositoryView = {
@@ -594,6 +732,21 @@ export type RunInputBody = {
     url?: string;
 };
 
+export type RunTokenView = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * For Quai: store it, in hex, in the secret spec.runner.reportToken.ref names
+     */
+    sha256: string;
+    /**
+     * For the runner: the pipeline sends it as a bearer token. Shown once; Quai does not keep it
+     */
+    token: string;
+};
+
 export type RunView = {
     /**
      * A URL to the JSON Schema for this object.
@@ -608,6 +761,52 @@ export type RunView = {
     status: string;
     summary: unknown;
     url?: string;
+};
+
+export type Runner = {
+    kind?: string;
+    reportToken?: SecretRef;
+};
+
+export type ScanView = {
+    blueprints: number;
+    commit: string;
+    /**
+     * The branch has a .quai/ folder; without it, the onboarding assistant proposes types
+     */
+    found: boolean;
+    problems: Array<ProblemView> | null;
+    types: number;
+};
+
+export type SecretRef = {
+    ref?: string;
+};
+
+export type Spec = {
+    connector: string;
+    credentials?: Credentials;
+    defaultBranch?: string;
+    definitions?: Definitions;
+    delivery?: Delivery;
+    enforcement?: Enforcement;
+    runner?: Runner;
+    sync?: Sync;
+    url: string;
+    webhooks?: Webhooks;
+};
+
+export type Sync = {
+    minInterval?: string;
+    partialClone?: boolean;
+    pollInterval?: string;
+};
+
+export type SyncHealth = {
+    head?: string;
+    lastFetchAt?: string;
+    lastPollAt?: string;
+    lastWebhookAt?: string;
 };
 
 export type TokenListOutputBody = {
@@ -750,6 +949,32 @@ export type UiView = {
     order: Array<string> | null;
 };
 
+export type WebhookView = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    installed: boolean;
+    /**
+     * How to set the webhook up by hand, when Quai could not
+     */
+    manual?: string;
+    url: string;
+};
+
+export type Webhooks = {
+    secret?: SecretRef;
+};
+
+export type AccessViewWritable = {
+    checks: Array<CheckView> | null;
+    ok: boolean;
+    /**
+     * Absent when the repository could not be read
+     */
+    scan?: ScanView;
+};
+
 export type BlueprintInputWritable = {
     blueprint: string;
     inputs?: {
@@ -802,6 +1027,20 @@ export type CommitTextWritable = {
     text: string;
 };
 
+export type ConnectionViewWritable = {
+    connected: boolean;
+    /**
+     * The Repository document; secrets appear as references only
+     */
+    document: DocumentWritable;
+    /**
+     * Why the connection could not be opened; it is retried
+     */
+    error?: string;
+    managedBy: 'config' | 'api';
+    name: string;
+};
+
 export type CreateTokenInputBodyWritable = {
     expiresInDays?: number;
     name: string;
@@ -820,6 +1059,13 @@ export type CreatedTokenOutputBodyWritable = {
      * Shown once: Quai keeps only its hash
      */
     token: string;
+};
+
+export type DocumentWritable = {
+    apiVersion: string;
+    kind: string;
+    metadata: Metadata;
+    spec: Spec;
 };
 
 export type ErrorModelWritable = {
@@ -847,6 +1093,17 @@ export type ErrorModelWritable = {
      * A URI reference to human-readable documentation for the error.
      */
     type?: string;
+};
+
+export type HealthViewWritable = {
+    connected: boolean;
+    credentials: CredentialsHealth;
+    definitions: DefinitionsHealth;
+    enforcement: EnforcementView;
+    error?: string;
+    pullRequests: PullRequestsHealthView;
+    sync: SyncHealth;
+    trust: TrustView;
 };
 
 export type InstanceActionInputWritable = {
@@ -1082,6 +1339,17 @@ export type RunInputBodyWritable = {
     url?: string;
 };
 
+export type RunTokenViewWritable = {
+    /**
+     * For Quai: store it, in hex, in the secret spec.runner.reportToken.ref names
+     */
+    sha256: string;
+    /**
+     * For the runner: the pipeline sends it as a bearer token. Shown once; Quai does not keep it
+     */
+    token: string;
+};
+
 export type RunViewWritable = {
     commit: string;
     id: string;
@@ -1182,6 +1450,15 @@ export type TypeViewWritable = {
     trust?: Array<string> | null;
     ui: UiView;
     version?: string;
+};
+
+export type WebhookViewWritable = {
+    installed: boolean;
+    /**
+     * How to set the webhook up by hand, when Quai could not
+     */
+    manual?: string;
+    url: string;
 };
 
 export type ListCatalogData = {
@@ -1468,6 +1745,112 @@ export type ListRepositoriesResponses = {
 
 export type ListRepositoriesResponse = ListRepositoriesResponses[keyof ListRepositoriesResponses];
 
+export type CreateRepositoryData = {
+    body: DocumentWritable;
+    path?: never;
+    query?: never;
+    url: '/api/v1/repositories';
+};
+
+export type CreateRepositoryErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type CreateRepositoryError = CreateRepositoryErrors[keyof CreateRepositoryErrors];
+
+export type CreateRepositoryResponses = {
+    /**
+     * Created
+     */
+    201: ConnectionView;
+};
+
+export type CreateRepositoryResponse = CreateRepositoryResponses[keyof CreateRepositoryResponses];
+
+export type DeleteRepositoryData = {
+    body?: never;
+    path: {
+        repository: string;
+    };
+    query?: never;
+    url: '/api/v1/repositories/{repository}';
+};
+
+export type DeleteRepositoryErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type DeleteRepositoryError = DeleteRepositoryErrors[keyof DeleteRepositoryErrors];
+
+export type DeleteRepositoryResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type DeleteRepositoryResponse = DeleteRepositoryResponses[keyof DeleteRepositoryResponses];
+
+export type GetRepositoryData = {
+    body?: never;
+    path: {
+        repository: string;
+    };
+    query?: never;
+    url: '/api/v1/repositories/{repository}';
+};
+
+export type GetRepositoryErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type GetRepositoryError = GetRepositoryErrors[keyof GetRepositoryErrors];
+
+export type GetRepositoryResponses = {
+    /**
+     * OK
+     */
+    200: ConnectionView;
+};
+
+export type GetRepositoryResponse = GetRepositoryResponses[keyof GetRepositoryResponses];
+
+export type UpdateRepositoryData = {
+    body: DocumentWritable;
+    path: {
+        repository: string;
+    };
+    query?: never;
+    url: '/api/v1/repositories/{repository}';
+};
+
+export type UpdateRepositoryErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type UpdateRepositoryError = UpdateRepositoryErrors[keyof UpdateRepositoryErrors];
+
+export type UpdateRepositoryResponses = {
+    /**
+     * OK
+     */
+    200: ConnectionView;
+};
+
+export type UpdateRepositoryResponse = UpdateRepositoryResponses[keyof UpdateRepositoryResponses];
+
 export type GetBlueprintData = {
     body?: never;
     path: {
@@ -1551,6 +1934,33 @@ export type RepositoryCommitResponses = {
 };
 
 export type RepositoryCommitResponse = RepositoryCommitResponses[keyof RepositoryCommitResponses];
+
+export type RepositoryHealthData = {
+    body?: never;
+    path: {
+        repository: string;
+    };
+    query?: never;
+    url: '/api/v1/repositories/{repository}/health';
+};
+
+export type RepositoryHealthErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type RepositoryHealthError = RepositoryHealthErrors[keyof RepositoryHealthErrors];
+
+export type RepositoryHealthResponses = {
+    /**
+     * OK
+     */
+    200: HealthView;
+};
+
+export type RepositoryHealthResponse = RepositoryHealthResponses[keyof RepositoryHealthResponses];
 
 export type RepositoryLogData = {
     body?: never;
@@ -1692,6 +2102,33 @@ export type PreviewTypeResponses = {
 
 export type PreviewTypeResponse = PreviewTypeResponses[keyof PreviewTypeResponses];
 
+export type GenerateRunTokenData = {
+    body?: never;
+    path: {
+        repository: string;
+    };
+    query?: never;
+    url: '/api/v1/repositories/{repository}/run-token';
+};
+
+export type GenerateRunTokenErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type GenerateRunTokenError = GenerateRunTokenErrors[keyof GenerateRunTokenErrors];
+
+export type GenerateRunTokenResponses = {
+    /**
+     * OK
+     */
+    200: RunTokenView;
+};
+
+export type GenerateRunTokenResponse = GenerateRunTokenResponses[keyof GenerateRunTokenResponses];
+
 export type SyncRepositoryData = {
     body?: never;
     path: {
@@ -1746,6 +2183,58 @@ export type GetTypeResponses = {
 };
 
 export type GetTypeResponse = GetTypeResponses[keyof GetTypeResponses];
+
+export type InstallRepositoryWebhookData = {
+    body?: never;
+    path: {
+        repository: string;
+    };
+    query?: never;
+    url: '/api/v1/repositories/{repository}/webhook';
+};
+
+export type InstallRepositoryWebhookErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type InstallRepositoryWebhookError = InstallRepositoryWebhookErrors[keyof InstallRepositoryWebhookErrors];
+
+export type InstallRepositoryWebhookResponses = {
+    /**
+     * OK
+     */
+    200: WebhookView;
+};
+
+export type InstallRepositoryWebhookResponse = InstallRepositoryWebhookResponses[keyof InstallRepositoryWebhookResponses];
+
+export type TestRepositoryAccessData = {
+    body: DocumentWritable;
+    path?: never;
+    query?: never;
+    url: '/api/v1/repository-access-tests';
+};
+
+export type TestRepositoryAccessErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type TestRepositoryAccessError = TestRepositoryAccessErrors[keyof TestRepositoryAccessErrors];
+
+export type TestRepositoryAccessResponses = {
+    /**
+     * OK
+     */
+    200: AccessView;
+};
+
+export type TestRepositoryAccessResponse = TestRepositoryAccessResponses[keyof TestRepositoryAccessResponses];
 
 export type ListRequestsData = {
     body?: never;

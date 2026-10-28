@@ -90,7 +90,7 @@ default), but a current local install is preferred.
 | Kubernetes | `k8s.io/client-go` (dynamic client) | Executors and observers without pulling every CRD's typed client |
 | Git transport | `git` CLI through `os/exec` | Full protocol support: SSH, partial clone, sparse checkout, worktrees, signing |
 | Logging | `log/slog` | JSON handler in production, text in development |
-| Telemetry | OpenTelemetry Go SDK, `prometheus/client_golang` | Traces, metrics |
+| Telemetry | OpenTelemetry Go SDK, OTLP/HTTP exporters | Traces and metrics, to a collector (which can serve Prometheus) |
 | CLI | `spf13/cobra` | Sub-commands for every role |
 | Config | YAML file + environment, validated at start-up | One typed `Config` struct; nothing else reads the environment |
 

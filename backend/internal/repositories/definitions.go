@@ -18,6 +18,7 @@ import (
 	"github.com/damhau/quai/backend/internal/engine/definitions"
 	"github.com/damhau/quai/backend/internal/store"
 	"github.com/damhau/quai/backend/internal/store/db"
+	"github.com/damhau/quai/backend/internal/telemetry"
 )
 
 // Version is a definition as it is active at a commit.
@@ -333,11 +334,19 @@ func (repo *Repo) Preview(ctx context.Context, ref Ref) (*Snapshot, error) {
 func (repo *Repo) fetch(ctx context.Context) error {
 	repo.mu.Lock()
 	defer repo.mu.Unlock()
-	if err := repo.Mirror.Fetch(ctx); err != nil {
+	if err := repo.fetchMirror(ctx); err != nil {
 		return err
 	}
 	repo.lastFetch = time.Now()
 	return nil
+}
+
+// fetchMirror fetches the mirror, timing it for the metrics.
+func (repo *Repo) fetchMirror(ctx context.Context) error {
+	start := time.Now()
+	err := repo.Mirror.Fetch(ctx)
+	telemetry.Fetched(ctx, repo.Name, time.Since(start), err)
+	return err
 }
 
 // Trust checks that the repository's definitions only change through review

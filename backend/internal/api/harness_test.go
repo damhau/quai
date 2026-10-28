@@ -3,6 +3,8 @@ package api
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -73,7 +75,8 @@ func newHarness(t *testing.T) *harness {
     floorRules: [{ name: production-floor, when: "params.env == 'prod'", approvers: [group:platform-admins] }]
   runner: { reportToken: { ref: env:INFRA_LIVE_RUN_TOKEN } }
   sync: { minInterval: 1ns }`, repositories.Options{Secrets: secrets.New(map[string]secrets.Backend{"env": secrets.Env{Lookup: func(name string) (string, bool) {
-		return runToken, name == "INFRA_LIVE_RUN_TOKEN"
+		sum := sha256.Sum256([]byte(runToken))
+		return hex.EncodeToString(sum[:]), name == "INFRA_LIVE_RUN_TOKEN"
 	}}})})
 	h.bare, h.work = bare, work
 	return h
@@ -123,8 +126,12 @@ func start(t *testing.T, dir, spec string, opts repositories.Options, configure 
 		t.Fatal(err)
 	}
 	t.Cleanup(reg.Close)
+	public := cfg.Server.PublicURL
+	if public == "" {
+		public = "https://quai.example.com"
+	}
 	svc := requests.New(s, reg, nil, log)
-	svc.UsePublicURL("https://quai.example.com")
+	svc.UsePublicURL(public)
 	hooks := ingest.New(s, reg, log)
 	hooks.UseHandler(svc)
 	worker, err := jobs.NewWorker(s.Pool, jobs.Options{Logger: log, Workers: func(w *river.Workers) { svc.Workers(w); hooks.Workers(w) }})
@@ -141,7 +148,7 @@ func start(t *testing.T, dir, spec string, opts repositories.Options, configure 
 		defer cancel()
 		_ = worker.StopAndCancel(ctx)
 	})
-	srv := httptest.NewServer(New(Options{Version: "test", Env: cfg.Env, Logger: log, Store: s, Auth: auth.New(cfg, s, nil, log), Repositories: reg, Requests: svc}))
+	srv := httptest.NewServer(New(Options{Version: "test", Env: cfg.Env, Logger: log, Store: s, Auth: auth.New(cfg, s, nil, log), Repositories: reg, Requests: svc, PublicURL: public}))
 	t.Cleanup(srv.Close)
 	return &harness{t: t, srv: srv, store: s, reg: reg, ingest: hooks, log: &logs}
 }

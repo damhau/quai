@@ -45,14 +45,14 @@ type Metadata struct {
 type Spec struct {
 	Connector     string      `json:"connector" yaml:"connector"`
 	URL           string      `json:"url" yaml:"url"`
-	DefaultBranch string      `json:"defaultBranch" yaml:"defaultBranch"`
+	DefaultBranch string      `json:"defaultBranch,omitempty" yaml:"defaultBranch"`
 	Credentials   Credentials `json:"credentials,omitzero" yaml:"credentials"`
-	Definitions   Definitions `json:"definitions" yaml:"definitions"`
-	Delivery      Delivery    `json:"delivery" yaml:"delivery"`
-	Enforcement   Enforcement `json:"enforcement" yaml:"enforcement"`
+	Definitions   Definitions `json:"definitions,omitzero" yaml:"definitions"`
+	Delivery      Delivery    `json:"delivery,omitzero" yaml:"delivery"`
+	Enforcement   Enforcement `json:"enforcement,omitzero" yaml:"enforcement"`
 	Runner        Runner      `json:"runner,omitzero" yaml:"runner"`
 	Webhooks      Webhooks    `json:"webhooks,omitzero" yaml:"webhooks"`
-	Sync          Sync        `json:"sync" yaml:"sync"`
+	Sync          Sync        `json:"sync,omitzero" yaml:"sync"`
 }
 
 // Credentials name the secret Quai authenticates to the platform with. KnownHosts holds the
@@ -69,23 +69,23 @@ type SecretRef struct {
 
 // Definitions says where the repository's types and blueprints live.
 type Definitions struct {
-	Path   string `json:"path" yaml:"path"`
-	Branch string `json:"branch" yaml:"branch"`
+	Path   string `json:"path,omitempty" yaml:"path"`
+	Branch string `json:"branch,omitempty" yaml:"branch"`
 }
 
 // Delivery says how changes reach the repository.
 type Delivery struct {
-	Mode          string   `json:"mode" yaml:"mode"` // pull-request (the default where the platform has them) or direct
-	BranchPrefix  string   `json:"branchPrefix" yaml:"branchPrefix"`
-	Merge         string   `json:"merge" yaml:"merge"`             // auto or manual
-	MergeMethod   string   `json:"mergeMethod" yaml:"mergeMethod"` // merge, squash or rebase
+	Mode          string   `json:"mode,omitempty" yaml:"mode"` // pull-request (the default where the platform has them) or direct
+	BranchPrefix  string   `json:"branchPrefix,omitempty" yaml:"branchPrefix"`
+	Merge         string   `json:"merge,omitempty" yaml:"merge"`             // auto or manual
+	MergeMethod   string   `json:"mergeMethod,omitempty" yaml:"mergeMethod"` // merge, squash or rebase
 	WaitForChecks []string `json:"waitForChecks,omitempty" yaml:"waitForChecks"`
-	DeleteBranch  *bool    `json:"deleteBranch" yaml:"deleteBranch"`
+	DeleteBranch  *bool    `json:"deleteBranch,omitempty" yaml:"deleteBranch"`
 }
 
 // Enforcement says what Quai verifies on the target branch, and the rules every type inherits.
 type Enforcement struct {
-	RequiredCheck string      `json:"requiredCheck" yaml:"requiredCheck"`
+	RequiredCheck string      `json:"requiredCheck,omitempty" yaml:"requiredCheck"`
 	FloorRules    []FloorRule `json:"floorRules,omitempty" yaml:"floorRules"`
 }
 
@@ -110,8 +110,8 @@ type Webhooks struct {
 
 // Sync bounds how often Quai fetches the repository, and what.
 type Sync struct {
-	PollInterval Duration `json:"pollInterval" yaml:"pollInterval"` // the safety net for lost webhooks
-	MinInterval  Duration `json:"minInterval" yaml:"minInterval"`   // at most one fetch per interval on reads
+	PollInterval Duration `json:"pollInterval,omitempty" yaml:"pollInterval"` // the safety net for lost webhooks
+	MinInterval  Duration `json:"minInterval,omitempty" yaml:"minInterval"`   // at most one fetch per interval on reads
 	// PartialClone mirrors the history without file contents, fetched when needed: for large
 	// repositories. It applies when the mirror is first cloned.
 	PartialClone bool `json:"partialClone,omitempty" yaml:"partialClone"`
@@ -261,9 +261,19 @@ func (d *Document) Validate() error {
 		}
 	}
 	if len(errs) > 0 {
-		return fmt.Errorf("repository %q: %s", d.Metadata.Name, strings.Join(errs, "; "))
+		return &InvalidError{Name: d.Metadata.Name, Problems: errs}
 	}
 	return nil
+}
+
+// InvalidError lists what is wrong with a Repository document.
+type InvalidError struct {
+	Name     string
+	Problems []string
+}
+
+func (e *InvalidError) Error() string {
+	return fmt.Sprintf("repository %q: %s", e.Name, strings.Join(e.Problems, "; "))
 }
 
 // checkKnownHosts checks known_hosts lines.

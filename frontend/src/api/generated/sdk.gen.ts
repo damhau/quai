@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { CancelRequestData, CancelRequestErrors, CancelRequestResponses, CreateTokenData, CreateTokenErrors, CreateTokenResponses, GetBlueprintData, GetBlueprintErrors, GetBlueprintResponses, GetInstanceData, GetInstanceErrors, GetInstanceResponses, GetMeData, GetMeErrors, GetMeResponses, GetMetaData, GetMetaErrors, GetMetaResponses, GetRequestData, GetRequestErrors, GetRequestResponses, GetResourceData, GetResourceErrors, GetResourceResponses, GetTypeData, GetTypeErrors, GetTypeResponses, ListCatalogData, ListCatalogErrors, ListCatalogResponses, ListEventsData, ListEventsErrors, ListEventsResponses, ListInstancesData, ListInstancesErrors, ListInstancesResponses, ListInventoryData, ListInventoryErrors, ListInventoryResponses, ListRepositoriesData, ListRepositoriesErrors, ListRepositoriesResponses, ListRequestsData, ListRequestsErrors, ListRequestsResponses, ListTokensData, ListTokensErrors, ListTokensResponses, PlanBlueprintData, PlanBlueprintErrors, PlanBlueprintResponses, PlanInstanceActionData, PlanInstanceActionErrors, PlanInstanceActionResponses, PlanTypeData, PlanTypeErrors, PlanTypeResponses, PreviewBlueprintData, PreviewBlueprintErrors, PreviewBlueprintResponses, PreviewDefinitionsData, PreviewDefinitionsErrors, PreviewDefinitionsResponses, PreviewTypeData, PreviewTypeErrors, PreviewTypeResponses, PublishBlueprintData, PublishBlueprintErrors, PublishBlueprintResponses, ReportRunData, ReportRunErrors, ReportRunResponses, RepositoryCommitData, RepositoryCommitErrors, RepositoryCommitResponses, RepositoryLogData, RepositoryLogErrors, RepositoryLogResponses, RequestBlueprintData, RequestBlueprintErrors, RequestBlueprintResponses, RequestInstanceActionData, RequestInstanceActionErrors, RequestInstanceActionResponses, RequestTypeData, RequestTypeErrors, RequestTypeResponses, RetryRequestData, RetryRequestErrors, RetryRequestResponses, ReviewRequestData, ReviewRequestErrors, ReviewRequestResponses, RevokeTokenData, RevokeTokenErrors, RevokeTokenResponses, SyncRepositoryData, SyncRepositoryErrors, SyncRepositoryResponses } from './types.gen';
+import type { CancelRequestData, CancelRequestErrors, CancelRequestResponses, CreateRepositoryData, CreateRepositoryErrors, CreateRepositoryResponses, CreateTokenData, CreateTokenErrors, CreateTokenResponses, DeleteRepositoryData, DeleteRepositoryErrors, DeleteRepositoryResponses, GenerateRunTokenData, GenerateRunTokenErrors, GenerateRunTokenResponses, GetBlueprintData, GetBlueprintErrors, GetBlueprintResponses, GetInstanceData, GetInstanceErrors, GetInstanceResponses, GetMeData, GetMeErrors, GetMeResponses, GetMetaData, GetMetaErrors, GetMetaResponses, GetRepositoryData, GetRepositoryErrors, GetRepositoryResponses, GetRequestData, GetRequestErrors, GetRequestResponses, GetResourceData, GetResourceErrors, GetResourceResponses, GetTypeData, GetTypeErrors, GetTypeResponses, InstallRepositoryWebhookData, InstallRepositoryWebhookErrors, InstallRepositoryWebhookResponses, ListCatalogData, ListCatalogErrors, ListCatalogResponses, ListEventsData, ListEventsErrors, ListEventsResponses, ListInstancesData, ListInstancesErrors, ListInstancesResponses, ListInventoryData, ListInventoryErrors, ListInventoryResponses, ListRepositoriesData, ListRepositoriesErrors, ListRepositoriesResponses, ListRequestsData, ListRequestsErrors, ListRequestsResponses, ListTokensData, ListTokensErrors, ListTokensResponses, PlanBlueprintData, PlanBlueprintErrors, PlanBlueprintResponses, PlanInstanceActionData, PlanInstanceActionErrors, PlanInstanceActionResponses, PlanTypeData, PlanTypeErrors, PlanTypeResponses, PreviewBlueprintData, PreviewBlueprintErrors, PreviewBlueprintResponses, PreviewDefinitionsData, PreviewDefinitionsErrors, PreviewDefinitionsResponses, PreviewTypeData, PreviewTypeErrors, PreviewTypeResponses, PublishBlueprintData, PublishBlueprintErrors, PublishBlueprintResponses, ReportRunData, ReportRunErrors, ReportRunResponses, RepositoryCommitData, RepositoryCommitErrors, RepositoryCommitResponses, RepositoryHealthData, RepositoryHealthErrors, RepositoryHealthResponses, RepositoryLogData, RepositoryLogErrors, RepositoryLogResponses, RequestBlueprintData, RequestBlueprintErrors, RequestBlueprintResponses, RequestInstanceActionData, RequestInstanceActionErrors, RequestInstanceActionResponses, RequestTypeData, RequestTypeErrors, RequestTypeResponses, RetryRequestData, RetryRequestErrors, RetryRequestResponses, ReviewRequestData, ReviewRequestErrors, ReviewRequestResponses, RevokeTokenData, RevokeTokenErrors, RevokeTokenResponses, SyncRepositoryData, SyncRepositoryErrors, SyncRepositoryResponses, TestRepositoryAccessData, TestRepositoryAccessErrors, TestRepositoryAccessResponses, UpdateRepositoryData, UpdateRepositoryErrors, UpdateRepositoryResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -95,6 +95,40 @@ export const planType = <ThrowOnError extends boolean = false>(options: Options<
 export const listRepositories = <ThrowOnError extends boolean = false>(options?: Options<ListRepositoriesData, ThrowOnError>): RequestResult<ListRepositoriesResponses, ListRepositoriesErrors, ThrowOnError> => (options?.client ?? client).get<ListRepositoriesResponses, ListRepositoriesErrors, ThrowOnError>({ url: '/api/v1/repositories', ...options });
 
 /**
+ * Connect a repository
+ */
+export const createRepository = <ThrowOnError extends boolean = false>(options: Options<CreateRepositoryData, ThrowOnError>): RequestResult<CreateRepositoryResponses, CreateRepositoryErrors, ThrowOnError> => (options.client ?? client).post<CreateRepositoryResponses, CreateRepositoryErrors, ThrowOnError>({
+    url: '/api/v1/repositories',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Disconnect a repository managed through the API; its requests and history stay
+ */
+export const deleteRepository = <ThrowOnError extends boolean = false>(options: Options<DeleteRepositoryData, ThrowOnError>): RequestResult<DeleteRepositoryResponses, DeleteRepositoryErrors, ThrowOnError> => (options.client ?? client).delete<DeleteRepositoryResponses, DeleteRepositoryErrors, ThrowOnError>({ url: '/api/v1/repositories/{repository}', ...options });
+
+/**
+ * Read a repository connection
+ */
+export const getRepository = <ThrowOnError extends boolean = false>(options: Options<GetRepositoryData, ThrowOnError>): RequestResult<GetRepositoryResponses, GetRepositoryErrors, ThrowOnError> => (options.client ?? client).get<GetRepositoryResponses, GetRepositoryErrors, ThrowOnError>({ url: '/api/v1/repositories/{repository}', ...options });
+
+/**
+ * Change a repository connection managed through the API
+ */
+export const updateRepository = <ThrowOnError extends boolean = false>(options: Options<UpdateRepositoryData, ThrowOnError>): RequestResult<UpdateRepositoryResponses, UpdateRepositoryErrors, ThrowOnError> => (options.client ?? client).put<UpdateRepositoryResponses, UpdateRepositoryErrors, ThrowOnError>({
+    url: '/api/v1/repositories/{repository}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
  * Describe a blueprint
  */
 export const getBlueprint = <ThrowOnError extends boolean = false>(options: Options<GetBlueprintData, ThrowOnError>): RequestResult<GetBlueprintResponses, GetBlueprintErrors, ThrowOnError> => (options.client ?? client).get<GetBlueprintResponses, GetBlueprintErrors, ThrowOnError>({ url: '/api/v1/repositories/{repository}/blueprints/{name}', ...options });
@@ -115,6 +149,11 @@ export const publishBlueprint = <ThrowOnError extends boolean = false>(options: 
  * Show a commit
  */
 export const repositoryCommit = <ThrowOnError extends boolean = false>(options: Options<RepositoryCommitData, ThrowOnError>): RequestResult<RepositoryCommitResponses, RepositoryCommitErrors, ThrowOnError> => (options.client ?? client).get<RepositoryCommitResponses, RepositoryCommitErrors, ThrowOnError>({ url: '/api/v1/repositories/{repository}/commits/{sha}', ...options });
+
+/**
+ * Read a repository's health
+ */
+export const repositoryHealth = <ThrowOnError extends boolean = false>(options: Options<RepositoryHealthData, ThrowOnError>): RequestResult<RepositoryHealthResponses, RepositoryHealthErrors, ThrowOnError> => (options.client ?? client).get<RepositoryHealthResponses, RepositoryHealthErrors, ThrowOnError>({ url: '/api/v1/repositories/{repository}/health', ...options });
 
 /**
  * List a repository's latest commits
@@ -139,6 +178,13 @@ export const previewBlueprint = <ThrowOnError extends boolean = false>(options: 
 export const previewType = <ThrowOnError extends boolean = false>(options: Options<PreviewTypeData, ThrowOnError>): RequestResult<PreviewTypeResponses, PreviewTypeErrors, ThrowOnError> => (options.client ?? client).get<PreviewTypeResponses, PreviewTypeErrors, ThrowOnError>({ url: '/api/v1/repositories/{repository}/preview/types/{name}', ...options });
 
 /**
+ * Generate a run token for the repository's runner
+ *
+ * Returns a new token, once, and its SHA-256. Quai keeps neither: the hash goes in the secret spec.runner.reportToken.ref names, the token in the pipeline.
+ */
+export const generateRunToken = <ThrowOnError extends boolean = false>(options: Options<GenerateRunTokenData, ThrowOnError>): RequestResult<GenerateRunTokenResponses, GenerateRunTokenErrors, ThrowOnError> => (options.client ?? client).post<GenerateRunTokenResponses, GenerateRunTokenErrors, ThrowOnError>({ url: '/api/v1/repositories/{repository}/run-token', ...options });
+
+/**
  * Fetch a repository now
  */
 export const syncRepository = <ThrowOnError extends boolean = false>(options: Options<SyncRepositoryData, ThrowOnError>): RequestResult<SyncRepositoryResponses, SyncRepositoryErrors, ThrowOnError> => (options.client ?? client).post<SyncRepositoryResponses, SyncRepositoryErrors, ThrowOnError>({ url: '/api/v1/repositories/{repository}/sync', ...options });
@@ -147,6 +193,25 @@ export const syncRepository = <ThrowOnError extends boolean = false>(options: Op
  * Describe a resource type
  */
 export const getType = <ThrowOnError extends boolean = false>(options: Options<GetTypeData, ThrowOnError>): RequestResult<GetTypeResponses, GetTypeErrors, ThrowOnError> => (options.client ?? client).get<GetTypeResponses, GetTypeErrors, ThrowOnError>({ url: '/api/v1/repositories/{repository}/types/{name}', ...options });
+
+/**
+ * Install the repository's webhook through the platform
+ */
+export const installRepositoryWebhook = <ThrowOnError extends boolean = false>(options: Options<InstallRepositoryWebhookData, ThrowOnError>): RequestResult<InstallRepositoryWebhookResponses, InstallRepositoryWebhookErrors, ThrowOnError> => (options.client ?? client).post<InstallRepositoryWebhookResponses, InstallRepositoryWebhookErrors, ThrowOnError>({ url: '/api/v1/repositories/{repository}/webhook', ...options });
+
+/**
+ * Test what a connection's credential can do, saved or not
+ *
+ * Reads the repository, pushes a branch under the prefix and deletes it, opens and closes a draft pull request, posts a status on it, reads the branch protection, then scans the default branch for definitions.
+ */
+export const testRepositoryAccess = <ThrowOnError extends boolean = false>(options: Options<TestRepositoryAccessData, ThrowOnError>): RequestResult<TestRepositoryAccessResponses, TestRepositoryAccessErrors, ThrowOnError> => (options.client ?? client).post<TestRepositoryAccessResponses, TestRepositoryAccessErrors, ThrowOnError>({
+    url: '/api/v1/repository-access-tests',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
 
 /**
  * List requests: yours, those waiting for your review, or all you can see

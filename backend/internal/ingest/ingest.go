@@ -27,6 +27,7 @@ import (
 	"github.com/damhau/quai/backend/internal/repositories"
 	"github.com/damhau/quai/backend/internal/store"
 	"github.com/damhau/quai/backend/internal/store/db"
+	"github.com/damhau/quai/backend/internal/telemetry"
 )
 
 // Handler acts on a pull request of a repository, as re-read from the platform after a webhook
@@ -133,7 +134,7 @@ func (s *Service) receive(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	args := WebhookArgs{Repository: name, Delivery: d.ID}
+	args := WebhookArgs{Repository: name, Delivery: d.ID, ReceivedAt: s.now()}
 	for _, e := range d.Events {
 		args.Events = append(args.Events, wrap(e))
 	}
@@ -175,9 +176,10 @@ func problem(w http.ResponseWriter, status int, detail string) {
 
 // WebhookArgs processes a webhook delivery's events.
 type WebhookArgs struct {
-	Repository string  `json:"repository"`
-	Delivery   string  `json:"delivery"`
-	Events     []Event `json:"events"`
+	Repository string    `json:"repository"`
+	Delivery   string    `json:"delivery"`
+	Events     []Event   `json:"events"`
+	ReceivedAt time.Time `json:"receivedAt,omitzero"` // for the webhook lag metric
 }
 
 // Kind names the job.
@@ -230,7 +232,13 @@ type webhookWorker struct {
 }
 
 func (w *webhookWorker) Work(ctx context.Context, job *river.Job[WebhookArgs]) error {
-	return w.s.Process(ctx, job.Args.Repository, job.Args.Events)
+	if err := w.s.Process(ctx, job.Args.Repository, job.Args.Events); err != nil {
+		return err
+	}
+	if !job.Args.ReceivedAt.IsZero() {
+		telemetry.WebhookProcessed(ctx, job.Args.Repository, w.s.now().Sub(job.Args.ReceivedAt))
+	}
+	return nil
 }
 
 // Process re-reads what events name: a push fetches the repository (its new head, its

@@ -15,6 +15,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"reflect"
 	"regexp"
 	"strings"
 	"time"
@@ -56,6 +57,9 @@ type Options struct {
 	// nothing but /webhooks/, the run reports and /healthz: it can be exposed to the platforms
 	// without exposing the rest.
 	WebhookHost string
+	// PublicURL is where people reach Quai (server.publicURL): webhooks are installed at it,
+	// unless WebhookHost names their host.
+	PublicURL string
 }
 
 // New returns the HTTP handler of the API.
@@ -113,6 +117,8 @@ func build(opts Options, all bool) (*chi.Mux, huma.API) {
 	cfg.OpenAPIPath = Prefix + "/openapi"
 	cfg.SchemasPath = Prefix + "/schemas"
 	cfg.DocsPath = "" // the docs page loads scripts from a CDN; the OpenAPI document is enough
+	// A repository document's durations are written as text ("5m").
+	cfg.Components.Schemas.RegisterTypeAlias(reflect.TypeFor[repositories.Duration](), reflect.TypeFor[string]())
 	a := humachi.New(r, cfg)
 	registerMeta(a, opts)
 	if all || opts.Store != nil {
@@ -121,6 +127,7 @@ func build(opts Options, all bool) (*chi.Mux, huma.API) {
 	if all || opts.Repositories != nil {
 		registerCatalog(a, opts.Repositories, opts.Store)
 		registerPreview(a, opts.Repositories)
+		registerRepositories(a, opts)
 	}
 	if all || opts.Requests != nil {
 		registerRequests(a, opts.Requests, opts.Store, opts.Logger)

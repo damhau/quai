@@ -445,6 +445,11 @@ func (s *Service) merged(ctx context.Context, r db.Request, d db.Delivery, pr co
 	if err != nil {
 		return err
 	}
+	if bypass {
+		s.delivered(ctx, d.Repository, "bypassed")
+	} else {
+		s.delivered(ctx, d.Repository, Applied)
+	}
 	if repo, err := s.reg.Get(d.Repository); err == nil {
 		if _, err := repo.Snapshot(ctx, true); err != nil {
 			s.log.WarnContext(ctx, "refresh after a merge", slog.Any("error", err))

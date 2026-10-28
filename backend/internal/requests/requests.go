@@ -38,6 +38,7 @@ import (
 	"github.com/damhau/quai/backend/internal/repositories"
 	"github.com/damhau/quai/backend/internal/store"
 	"github.com/damhau/quai/backend/internal/store/db"
+	"github.com/damhau/quai/backend/internal/telemetry"
 )
 
 // Request states (docs/architecture/domain-model.md#request).
@@ -623,7 +624,19 @@ func (s *Service) transition(ctx context.Context, r db.Request, from, to, kind s
 		}
 		return nil
 	})
+	if err == nil && (to == Applied || to == Failed) {
+		s.delivered(ctx, s.Repository(ctx, r), to)
+	}
 	return next, err
+}
+
+// delivered records a delivery that ended, for the metrics.
+func (s *Service) delivered(ctx context.Context, repository, outcome string) {
+	mode := ""
+	if repo, err := s.reg.Get(repository); err == nil {
+		mode = repo.Document.Spec.Delivery.Mode
+	}
+	telemetry.Delivered(ctx, repository, mode, outcome)
 }
 
 // statusJob queues the publishing of quai/approval for a request delivered by pull request.

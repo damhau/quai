@@ -170,9 +170,14 @@ type Registry struct {
 
 	mu    sync.RWMutex
 	repos map[string]*Repo
-	// failed holds the generations that could not be opened. They are retried on every reload,
-	// and logged as errors the first time only.
-	failed map[string]int64
+	// failed holds the generations that could not be opened, and why. They are retried on every
+	// reload, and logged as errors the first time only.
+	failed map[string]failure
+}
+
+type failure struct {
+	generation int64
+	err        error
 }
 
 // worktreeGrace is how long a replaced snapshot's files stay readable for requests still using
@@ -211,7 +216,7 @@ func Open(ctx context.Context, cfg *config.Config, src Source, opts Options) (*R
 		}
 		cache = filepath.Join(dir, "quai", "mirrors")
 	}
-	reg := &Registry{src: src, connectors: conns, secrets: store, db: opts.Store, cache: cache, log: log, repos: map[string]*Repo{}, failed: map[string]int64{},
+	reg := &Registry{src: src, connectors: conns, secrets: store, db: opts.Store, cache: cache, log: log, repos: map[string]*Repo{}, failed: map[string]failure{},
 		committer: gitx.Signature{Name: cfg.Git.Committer.Name, Email: cfg.Git.Committer.Email}}
 	if ref := cfg.Git.SigningKey.Ref; ref != "" && store != nil {
 		reg.signing = func(ctx context.Context) ([]byte, error) {
@@ -269,7 +274,7 @@ func (r *Registry) Reload(ctx context.Context) error {
 	current, failed := maps.Clone(r.repos), maps.Clone(r.failed)
 	r.mu.RUnlock()
 
-	next, nextFailed := map[string]*Repo{}, map[string]int64{}
+	next, nextFailed := map[string]*Repo{}, map[string]failure{}
 	for _, s := range stored {
 		name := s.Document.Metadata.Name
 		prev := current[name]
@@ -280,11 +285,11 @@ func (r *Registry) Reload(ctx context.Context) error {
 		repo, err := r.open(ctx, s, prev)
 		if err != nil {
 			level := slog.LevelError
-			if g, ok := failed[name]; ok && g == s.Generation {
+			if f, ok := failed[name]; ok && f.generation == s.Generation {
 				level = slog.LevelDebug
 			}
 			r.log.Log(ctx, level, "repository not connected", slog.String("repository", name), slog.Any("error", err))
-			nextFailed[name] = s.Generation
+			nextFailed[name] = failure{generation: s.Generation, err: err}
 			if prev != nil {
 				next[name] = prev
 			}
@@ -478,7 +483,7 @@ func (repo *Repo) Snapshot(ctx context.Context, sync bool) (*Snapshot, error) {
 	repo.mu.Lock()
 	defer repo.mu.Unlock()
 	if sync || time.Since(repo.lastFetch) >= repo.minInterval {
-		if err := repo.Mirror.Fetch(ctx); err != nil {
+		if err := repo.fetchMirror(ctx); err != nil {
 			if repo.snap == nil {
 				return nil, err
 			}
