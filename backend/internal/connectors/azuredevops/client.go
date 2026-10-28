@@ -53,8 +53,9 @@ type Instance struct {
 
 // User is an Azure DevOps identity.
 type User struct {
-	ID   string
-	Name string
+	ID    string
+	Name  string
+	Email string // or UPN: the account name
 }
 
 // NewClient returns a client of the collection or organization at collection. Its calls go
@@ -233,6 +234,11 @@ func (c *Client) Detect(ctx context.Context) (Instance, error) {
 		AuthenticatedUser struct {
 			ID                  string `json:"id"`
 			ProviderDisplayName string `json:"providerDisplayName"`
+			Properties          struct {
+				Account struct {
+					Value string `json:"$value"`
+				} `json:"Account"`
+			} `json:"properties"`
 		} `json:"authenticatedUser"`
 	}
 	if err := c.Do(ctx, http.MethodGet, "/_apis/connectionData", "", nil, nil, &data); err != nil {
@@ -244,7 +250,8 @@ func (c *Client) Detect(ctx context.Context) (Instance, error) {
 	if err := c.Do(ctx, http.MethodOptions, "/_apis", "", nil, nil, &locations); err != nil {
 		return Instance{}, fmt.Errorf("azure devops %s: the location service: %w", c.collection, err)
 	}
-	in := Instance{Services: data.DeploymentType == "hosted", User: User{ID: data.AuthenticatedUser.ID, Name: data.AuthenticatedUser.ProviderDisplayName}}
+	in := Instance{Services: data.DeploymentType == "hosted", User: User{ID: data.AuthenticatedUser.ID, Name: data.AuthenticatedUser.ProviderDisplayName,
+		Email: data.AuthenticatedUser.Properties.Account.Value}}
 	for _, l := range locations.Value {
 		if l.Id != nil && *l.Id == gitRepositories && l.MaxVersion != nil {
 			in.MaxVersion = *l.MaxVersion

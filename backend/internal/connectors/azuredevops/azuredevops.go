@@ -9,6 +9,8 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
+	"strings"
 	"sync"
 
 	"github.com/damhau/quai/backend/internal/connectors"
@@ -100,7 +102,9 @@ func (c *Connector) Info() connectors.Info {
 	if c.resolved != nil && c.instance.MaxVersion != "" {
 		edition += " (API " + c.instance.MaxVersion + ")"
 	}
-	return connectors.Info{Platform: "azure-devops", Edition: edition, APIVersion: APIVersion}
+	return connectors.Info{Platform: "azure-devops", Edition: edition, APIVersion: APIVersion,
+		Capabilities: []connectors.Capability{connectors.CapPullRequests, connectors.CapAutoComplete, connectors.CapEnforcedStatus},
+		MergeMethods: []connectors.MergeMethod{connectors.MergeCommit, connectors.Squash, connectors.Rebase}}
 }
 
 // GitAuth sends the PAT as git's Authorization header, as the API calls do.
@@ -112,12 +116,54 @@ func (c *Connector) GitAuth(ctx context.Context) (gitx.Credentials, error) {
 	return gitx.Credentials{Header: "Authorization: " + BasicAuth(pat.Reveal())}, nil
 }
 
-// The capabilities come with the next tasks: pull requests and statuses (P1-08), policies and
-// service hooks (P1-09).
-func (c *Connector) PullRequests() connectors.PullRequests { return nil }
-func (c *Connector) Statuses() connectors.Statuses         { return nil }
-func (c *Connector) Policies() connectors.Policies         { return nil }
-func (c *Connector) Owners() connectors.Owners             { return nil }
-func (c *Connector) Webhooks() connectors.Webhooks         { return nil }
-func (c *Connector) Pipelines() connectors.Pipelines       { return nil }
-func (c *Connector) Identities() connectors.Identities     { return nil }
+func (c *Connector) PullRequests() connectors.PullRequests { return (*pullRequests)(c) }
+func (c *Connector) Statuses() connectors.Statuses         { return (*statuses)(c) }
+func (c *Connector) Identities() connectors.Identities     { return (*identities)(c) }
+
+// Policies, owners and service hooks come with P1-09.
+func (c *Connector) Policies() connectors.Policies   { return nil }
+func (c *Connector) Owners() connectors.Owners       { return nil }
+func (c *Connector) Webhooks() connectors.Webhooks   { return nil }
+func (c *Connector) Pipelines() connectors.Pipelines { return nil }
+
+type identities Connector
+
+// ByEmail finds the Azure DevOps identity with email (or UPN), as commit authors and PR
+// reviewers are linked. On Services, identities live in the organization's vssps service.
+func (i *identities) ByEmail(ctx context.Context, email string) (connectors.User, error) {
+	c := (*Connector)(i)
+	client := c.client
+	if c.loc.Services {
+		u, err := url.Parse(c.loc.Collection)
+		if err != nil {
+			return connectors.User{}, err
+		}
+		if u.Host == "dev.azure.com" {
+			u.Host = "vssps.dev.azure.com"
+		} else {
+			u.Host = strings.Replace(u.Host, ".visualstudio.com", ".vssps.visualstudio.com", 1)
+		}
+		client = NewClient(u.String(), c.cfg.HTTP, c.cfg.Credentials)
+	}
+	var list struct {
+		Value []struct {
+			ID                  string `json:"id"`
+			ProviderDisplayName string `json:"providerDisplayName"`
+			Properties          map[string]struct {
+				Value any `json:"$value"`
+			} `json:"properties"`
+		} `json:"value"`
+	}
+	q := url.Values{"searchFilter": {"General"}, "filterValue": {email}, "queryMembership": {"None"}}
+	if err := client.Do(ctx, http.MethodGet, "/_apis/identities", APIVersion, q, nil, &list); err != nil {
+		return connectors.User{}, err
+	}
+	for _, id := range list.Value {
+		for _, key := range []string{"Mail", "Account"} {
+			if v, ok := id.Properties[key].Value.(string); ok && strings.EqualFold(v, email) {
+				return connectors.User{ID: id.ID, Name: id.ProviderDisplayName, Email: v}, nil
+			}
+		}
+	}
+	return connectors.User{}, fmt.Errorf("%w: no identity with the email %s", connectors.ErrNotFound, email)
+}

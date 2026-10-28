@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"net/http"
 	"net/url"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/damhau/quai/backend/internal/connectors"
+	"github.com/damhau/quai/backend/internal/connectors/conformance"
 	"github.com/damhau/quai/backend/internal/engine/plan"
 	"github.com/damhau/quai/backend/internal/gitx"
 	"github.com/damhau/quai/backend/internal/netx"
@@ -142,5 +144,104 @@ func TestLive(t *testing.T) {
 	}
 	if len(refs.Value) != 1 || refs.Value[0].Name != "refs/heads/quai/test-push" || refs.Value[0].ObjectID != sha {
 		t.Errorf("refs = %+v, pushed %s", refs.Value, sha)
+	}
+}
+
+// liveHarness gives the conformance suite repositories of the sandbox. Policies and service hooks
+// come with P1-09: until then, the steps that need them are skipped.
+type liveHarness struct{ s *sandbox }
+
+func (h liveHarness) Setup(t *testing.T, client *http.Client) *conformance.Repository {
+	name, _ := h.s.repository(t)
+	c, err := New(connectors.Config{URL: h.s.url(name), HTTP: client, Credentials: h.s.pat})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &conformance.Repository{Connector: c, URL: h.s.url(name), DefaultBranch: "main"}
+}
+
+func TestLiveConformance(t *testing.T) { conformance.Run(t, liveHarness{newSandbox(t)}) }
+
+// TestLiveIdentities finds the PAT's own identity by its email.
+func TestLiveIdentities(t *testing.T) {
+	s := newSandbox(t)
+	ctx := context.Background()
+	name, _ := s.repository(t)
+	c, err := New(connectors.Config{URL: s.url(name), HTTP: s.http, Credentials: s.pat})
+	if err != nil {
+		t.Fatal(err)
+	}
+	in, err := c.(*Connector).Client().Detect(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Identities().ByEmail(ctx, "nobody-"+name+"@example.com"); !errors.Is(err, connectors.ErrNotFound) {
+		t.Errorf("an unknown email: %v", err)
+	}
+	if in.User.Email == "" {
+		t.Fatal("connectionData gave no email for the token's identity")
+	}
+	if u, err := c.Identities().ByEmail(ctx, strings.ToUpper(in.User.Email)); err != nil || u.ID != in.User.ID {
+		t.Errorf("the token's own identity: %+v, %v (want %s)", u, err, in.User.ID)
+	}
+}
+
+// TestLiveAutoComplete opens a draft with labels and the marker, then sets auto-complete, which
+// Azure DevOps acts on as soon as the policies pass (none, here).
+func TestLiveAutoComplete(t *testing.T) {
+	s := newSandbox(t)
+	ctx := context.Background()
+	name, _ := s.repository(t)
+	c, err := New(connectors.Config{URL: s.url(name), HTTP: s.http, Credentials: s.pat})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := gitx.OpenMirror(ctx, s.url(name), filepath.Join(t.TempDir(), "m.git"),
+		gitx.Options{Committer: gitx.Signature{Name: "Quai", Email: "quai@example.com"}, Auth: c.GitAuth, Proxy: s.network.Proxy})
+	if err != nil {
+		t.Fatal(err)
+	}
+	head, err := m.CommitAndPush(ctx, gitx.Commit{Branch: "quai/r-1-web01", Base: "main", Message: "Resize web01\n",
+		Author:  gitx.Signature{Name: "Bob", Email: "bob@example.com"},
+		Changes: []plan.Change{{Op: plan.OpCreate, Path: "web01.yaml", After: []byte("cpu: 8\n")}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	desc := strings.Repeat("Black Friday. ", 400) + "\n\n" + connectors.Marker("3b6f2a8c-0d4e-4f5a-9b1c-2d3e4f5a6b7c")
+	pr, err := c.PullRequests().Open(ctx, connectors.NewPullRequest{Source: "quai/r-1-web01", Target: "main", Title: "Resize web01",
+		Description: desc, Labels: []string{"quai", "env:prod"}, Draft: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !pr.Draft || strings.Join(pr.Labels, ",") != "quai,env:prod" || !strings.Contains(pr.URL, "/pullrequest/"+pr.ID) {
+		t.Errorf("opened %+v", pr)
+	}
+	if id, ok := connectors.RequestOf(pr.Description); !ok || id != "3b6f2a8c-0d4e-4f5a-9b1c-2d3e4f5a6b7c" || len(pr.Description) > maxDescription {
+		t.Errorf("the marker did not survive the 4000-character limit: %v, %d", ok, len(pr.Description))
+	}
+	if err := c.PullRequests().AutoComplete(ctx, pr.ID, connectors.MergeOptions{Head: head, Method: connectors.Squash, Message: "Resize web01\n", DeleteBranch: true}); err != nil {
+		t.Fatal(err)
+	}
+	// A draft does not complete: publishing it lets auto-complete act.
+	if got, _ := c.PullRequests().Get(ctx, pr.ID); !got.AutoComplete || got.State != connectors.PROpen {
+		t.Errorf("auto-complete on a draft: %+v", got)
+	}
+	at, _, err := c.(*Connector).api(ctx, "pullrequests", pr.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.(*Connector).client.Do(ctx, http.MethodPatch, at, APIVersion, nil, map[string]any{"isDraft": false}, nil); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(CompletionTimeout)
+	for {
+		got, err := c.PullRequests().Get(ctx, pr.ID)
+		if err == nil && got.State == connectors.PRMerged && got.MergeCommit != "" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("not completed: %+v, %v", got, err)
+		}
+		time.Sleep(time.Second)
 	}
 }

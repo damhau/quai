@@ -26,6 +26,7 @@ import (
 	"github.com/damhau/quai/backend/internal/connectors"
 	"github.com/damhau/quai/backend/internal/engine/plan"
 	"github.com/damhau/quai/backend/internal/gitx"
+	"github.com/damhau/quai/backend/internal/netx"
 	"github.com/damhau/quai/backend/internal/secrets"
 )
 
@@ -74,13 +75,18 @@ var Timeout = 30 * time.Second
 // Run runs the suite.
 func Run(t *testing.T, h Harness) {
 	ctx := t.Context()
-	inject := &injector{base: http.DefaultTransport}
+	// The platform is reached as Quai reaches it: through the environment's proxy, if any.
+	network, err := netx.New("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	inject := &injector{base: network.Transport()}
 	client := &http.Client{Transport: connectors.NewTransport(inject, slog.New(slog.DiscardHandler)), Timeout: connectors.Timeout}
 	repo := h.Setup(t, client)
 	c := repo.Connector
 	info := c.Info()
 	mirror, err := gitx.OpenMirror(ctx, repo.URL, filepath.Join(t.TempDir(), "mirror.git"),
-		gitx.Options{Committer: gitx.Signature{Name: "Quai", Email: "quai@example.com"}, Auth: c.GitAuth})
+		gitx.Options{Committer: gitx.Signature{Name: "Quai", Email: "quai@example.com"}, Auth: c.GitAuth, Proxy: network.Proxy})
 	if err != nil {
 		t.Fatal(err)
 	}

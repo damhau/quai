@@ -195,10 +195,10 @@ detected edition.
 
 | Quai | Azure DevOps |
 | --- | --- |
-| Pull request | Pull request. Each push creates a new *iteration*. |
+| Pull request | Pull request. Each push creates a new *iteration*. The description is limited to 4000 characters: Quai cuts the text, never the request marker. A draft does not complete, even with auto-complete set. |
 | `quai/approval` check | **PR status** with context `{genre: "quai", name: "approval"}`, posted on the latest iteration. States used: `pending`, `succeeded`, `failed`, `notApplicable` (stale). |
 | Enforcement | **Branch policy "Status check"** on the target branch requiring `quai/approval`, with **authorized identity** set to Quai's identity and **"reset status whenever there are new changes"** enabled. A push to the PR branch then invalidates the status, which matches Quai's content-bound approvals. |
-| `waitForChecks` | The other branch policies on the target branch: build validation, required reviewers, comment resolution, work item linking. Quai reads their state with the **policy evaluations** API for the PR. |
+| `waitForChecks` | The other branch policies on the target branch: build validation, required reviewers, comment resolution, work item linking. Quai reads their state with the **policy evaluations** API for the PR, and lists them among the PR's checks as `policy:<name>` (the policy's display name, or "Status check: genre/name"). Completing a PR checks that every blocking policy is approved first. |
 | Auto merge | **Auto-complete**: Quai sets auto-complete with its completion options once its status is succeeded; Azure DevOps completes the PR when every policy passes. With `merge: manual`, Quai only sets the status. |
 | Merge methods | `squash`, `noFastForward` (merge commit), `rebase`, `rebaseMerge`; `deleteSourceBranch: true`; the merge commit message carries the `Approved-by:` trailers. |
 | Labels | PR labels (`quai`, `env:prod`, `stack:envs/prod`). |
@@ -208,7 +208,7 @@ detected edition.
 | Webhook authentication | Azure DevOps does **not sign** service hook payloads. Quai uses a per-subscription secret in a custom HTTP header (or basic auth) over TLS, accepts hooks only on the dedicated webhook host name, and **re-reads every object from the API** before acting. |
 | Pipelines | Build validation results come through policy evaluations; drift checks are triggered with the Pipelines **runs** API; run results arrive through service hooks or `quai report` (see [runs](06-runs-status-and-drift.md)). |
 | Commit signing | Quai signs commits with its SSH or GPG key so history can be verified offline; Azure Repos does not display signature verification in its UI at the time of writing. |
-| Identities | Commit author is the requester's email; Azure DevOps links it to the user when the email matches their account. PR "created by" is Quai's identity; the PR description names the requester. |
+| Identities | Commit author is the requester's email; Azure DevOps links it to the user when the email matches their account. PR "created by" is Quai's identity; the PR description names the requester. Quai finds identities by email through the identities API (on Services, the organization's `vssps` host). |
 | Work items (optional) | Link the PR to a work item given by the requester or created per request, for organizations that track changes in Azure Boards. |
 
 ### Delivery sequence on Azure DevOps
@@ -236,6 +236,7 @@ sequenceDiagram
 
 ### Azure DevOps specifics to handle
 
+- **Completion is asynchronous:** a PR's merge is computed in the background, and a completion asked for before it is done can be dropped. Quai waits for the merge (`mergeStatus: succeeded`, or stops at `conflicts`), asks for completion pinned to the approved head (`lastMergeSourceCommit`), asks again if it was not queued, and waits for `completed`.
 - **Throttling:** Azure DevOps throttles by resource usage and returns `Retry-After` and `X-RateLimit-*` headers. The client honours them and spreads polling.
 - **Server versions:** API versions and some features (for example PR labels, auto-complete details) differ between Server releases. The connector records the detected version, and the conformance suite runs against every supported Server release before it is listed as supported.
 - **Collections:** a Server can host several collections; one Quai installation can connect repositories from any of them, each with its own credentials if the service account differs.
