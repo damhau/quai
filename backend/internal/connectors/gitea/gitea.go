@@ -399,6 +399,21 @@ func (p *pullRequests) Abandon(ctx context.Context, id string) error {
 	return check(resp, err)
 }
 
+// Comment adds a comment to the pull request, as Gitea keeps them: on its issue.
+func (p *pullRequests) Comment(ctx context.Context, id, body string) error {
+	c := (*Connector)(p)
+	n, err := index(id)
+	if err != nil {
+		return err
+	}
+	cl, err := c.client(ctx)
+	if err != nil {
+		return err
+	}
+	_, resp, err := cl.CreateIssueComment(c.owner, c.repo, n, sdk.CreateIssueCommentOption{Body: body})
+	return check(resp, err)
+}
+
 func convert(pr *sdk.PullRequest) connectors.PullRequest {
 	out := connectors.PullRequest{ID: strconv.FormatInt(pr.Index, 10), URL: pr.HTMLURL, Title: pr.Title, Description: pr.Body,
 		Draft: pr.Draft, State: connectors.PROpen}

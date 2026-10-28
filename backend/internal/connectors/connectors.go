@@ -147,6 +147,8 @@ type PullRequests interface {
 	// AutoComplete asks the platform to merge once every policy passes (CapAutoComplete).
 	AutoComplete(ctx context.Context, id string, o MergeOptions) error
 	Abandon(ctx context.Context, id string) error
+	// Comment adds a comment to the pull request (markdown).
+	Comment(ctx context.Context, id, body string) error
 }
 
 // StatusState is the state of a status or check.

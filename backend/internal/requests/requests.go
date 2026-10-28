@@ -643,7 +643,15 @@ func (s *Service) commit(ctx context.Context, r db.Request, cs db.ChangeSet, rep
 	}
 	var fps map[string]string
 	_ = json.Unmarshal(cs.Fingerprints, &fps)
-	c := gitx.Commit{Branch: repo.Branch, Message: message(r, cs), Author: author(r), Fingerprints: fps}
+	// In direct mode the commit comes after the approvals, and carries them; a pull request's
+	// commit comes before (its merge carries them).
+	var approved []gitx.Trailer
+	if r.State == Merging {
+		if approved, err = s.approvals(ctx, r); err != nil {
+			return gitx.Commit{}, err
+		}
+	}
+	c := gitx.Commit{Branch: repo.Branch, Message: message(r, cs, approved...), Author: author(r), Fingerprints: fps}
 	for _, ch := range changes {
 		c.Changes = append(c.Changes, plan.Change{Path: ch.Path, Op: ch.Op, Before: ch.Before, After: ch.After})
 	}
@@ -819,8 +827,8 @@ func (w *Worker) Work(ctx context.Context, job *river.Job[DeliverArgs]) error {
 	})
 }
 
-// message is the commit message of docs/design/05.
-func message(r db.Request, cs db.ChangeSet) string {
+// message is the commit message of docs/design/05, with the extra trailers (Approved-by).
+func message(r db.Request, cs db.ChangeSet, extra ...gitx.Trailer) string {
 	verb := r.Kind
 	if r.Kind == generate.Action {
 		verb = r.Action
@@ -834,7 +842,22 @@ func message(r db.Request, cs db.ChangeSet) string {
 	}
 	a := author(r)
 	trailers = append(trailers, gitx.Trailer{Key: "Requested-by", Value: a.Name + " <" + a.Email + ">"})
-	return gitx.Message("quai: "+verb+" "+r.Target, r.Reason, trailers...)
+	return gitx.Message("quai: "+verb+" "+r.Target, r.Reason, append(trailers, extra...)...)
+}
+
+// approvals are the request's Approved-by trailers, in the order of the approvals.
+func (s *Service) approvals(ctx context.Context, r db.Request) ([]gitx.Trailer, error) {
+	reviews, err := s.store.ListReviews(ctx, r.ID)
+	if err != nil {
+		return nil, err
+	}
+	var out []gitx.Trailer
+	for _, v := range reviews {
+		if v.Decision == policy.Approve {
+			out = append(out, gitx.Trailer{Key: "Approved-by", Value: v.Reviewer})
+		}
+	}
+	return out, nil
 }
 
 func author(r db.Request) gitx.Signature {

@@ -315,6 +315,21 @@ func (p *pullRequests) Abandon(ctx context.Context, id string) error {
 	return err
 }
 
+// Comment adds a comment to the pull request, in a thread of its own, closed: it informs, it asks
+// nothing.
+func (p *pullRequests) Comment(ctx context.Context, id, body string) error {
+	c := (*Connector)(p)
+	if _, err := strconv.Atoi(id); err != nil {
+		return fmt.Errorf("%w: pull request %q", connectors.ErrNotFound, id)
+	}
+	at, _, err := c.api(ctx, "pullRequests", id, "threads")
+	if err != nil {
+		return err
+	}
+	thread := map[string]any{"status": "closed", "comments": []map[string]any{{"parentCommentId": 0, "content": body, "commentType": "text"}}}
+	return c.client.Do(ctx, http.MethodPost, at, APIVersion, nil, thread, nil)
+}
+
 func sleep(ctx context.Context, d time.Duration) error {
 	t := time.NewTimer(d)
 	defer t.Stop()

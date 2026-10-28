@@ -142,6 +142,11 @@ func TestPullRequestDelivery(t *testing.T) {
 	if r.Delivery.MergeCommit == "" {
 		t.Errorf("no merge commit: %+v", r.Delivery)
 	}
+	// The squash commit carries the approvals.
+	if c, _, err := g.Client.GetSingleCommit(remote.Owner, remote.Name, r.Delivery.MergeCommit); err != nil || !strings.Contains(c.RepoCommit.Message, "Approved-by: alice") ||
+		!strings.Contains(c.RepoCommit.Message, "Quai-Request: #1") {
+		t.Errorf("the squash commit: %v, %v", c, err)
+	}
 	content, _, err := g.Client.GetFile(remote.Owner, remote.Name, "main", "envs/prod/vms/web01.yaml")
 	if err != nil || !strings.Contains(string(content), "cpu: 6") {
 		t.Errorf("main after the merge: %q, %v", content, err)
@@ -203,5 +208,10 @@ func TestManualMerge(t *testing.T) {
 	r = bob.awaitDelivery(r.ID, "applied by the merge", func(v RequestView) bool { return v.State == "applied" })
 	if r.Delivery.MergeCommit == "" {
 		t.Errorf("delivery = %+v", r.Delivery)
+	}
+	// A person merged: the approvals are a final comment on the pull request.
+	comments, _, err := g.Client.ListIssueComments(remote.Owner, remote.Name, 1, gitea.ListIssueCommentOptions{})
+	if err != nil || len(comments) != 1 || !strings.Contains(comments[0].Body, "Approved-by: alice") {
+		t.Errorf("comments = %+v, %v", comments, err)
 	}
 }

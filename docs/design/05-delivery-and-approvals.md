@@ -107,7 +107,22 @@ policy evaluations on Azure DevOps), then asks the platform to merge when its ow
 with `merge: manual` it stops at the status. The merge, seen by the job, a webhook or a poll (a
 poll re-reads every pull request Quai waits on), applies the request; one merged before Quai's
 approval is recorded as such (`merged_without_approval`). A pull request closed outside Quai
-cancels its request. The `Approved-by:` trailers come with P1-14.
+cancels its request.
+
+Approvals are recorded in Git (P1-14): a commit in direct mode, made after the approvals, carries
+them as `Approved-by:` trailers; in pull-request mode, the merge or squash commit's message does.
+When the merge keeps Quai's commit as it is (`mergeMethod: rebase`), or a person merges
+(`merge: manual`), Quai adds them to the pull request as a final comment instead.
+
+Signing: with `git.signingKey.ref` (an SSH private key in a secret store), every commit Quai
+makes is signed with it (`gpg.format=ssh`); the platform's own merge commits are the platform's.
+To verify them, put Quai's committer email and public key (`ssh-keygen -y -f <key>`) in an allowed
+signers file, then:
+
+```bash
+git config gpg.ssh.allowedSignersFile ~/.config/git/allowed_signers   # quai@acme.ch ssh-ed25519 AAAA…
+git verify-commit <commit>        # or: git log --show-signature
+```
 
 ## Approvals bound to content
 

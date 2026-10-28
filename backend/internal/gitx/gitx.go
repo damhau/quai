@@ -71,6 +71,9 @@ type Options struct {
 	// PartialClone clones without file contents (--filter=blob:none), which git then fetches
 	// when a command needs them. It applies when the mirror is first cloned.
 	PartialClone bool
+	// SigningKey returns the SSH private key Quai signs its commits with (gpg.format=ssh), read
+	// before each commit; nil, or no key, leaves them unsigned.
+	SigningKey func(context.Context) ([]byte, error)
 }
 
 // Mirror is the bare mirror of one remote repository.
@@ -356,7 +359,13 @@ func (m *Mirror) commitOnce(ctx context.Context, c Commit, attempt int) (string,
 		"GIT_AUTHOR_NAME=" + c.Author.Name, "GIT_AUTHOR_EMAIL=" + c.Author.Email,
 		"GIT_COMMITTER_NAME=" + m.committer.Name, "GIT_COMMITTER_EMAIL=" + m.committer.Email,
 	}
-	if _, err := m.command(ctx, wt.dir, env, m.opts.PartialClone, "commit", "--quiet", "--no-verify", "--cleanup=verbatim", "-F", "-", withStdin(c.Message)); err != nil {
+	args := []string{"commit", "--quiet", "--no-verify", "--cleanup=verbatim", "-F", "-", withStdin(c.Message)}
+	signing, cleanup, err := m.signing(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer cleanup()
+	if _, err := m.command(ctx, wt.dir, env, m.opts.PartialClone, append(signing, args...)...); err != nil {
 		return "", err
 	}
 	sha, err := m.git(ctx, wt.dir, "rev-parse", "HEAD")
@@ -373,6 +382,34 @@ func (m *Mirror) commitOnce(ctx context.Context, c Commit, attempt int) (string,
 		return "", fmt.Errorf("push to %s: %w", redact(m.remote), err)
 	}
 	return strings.TrimSpace(sha), nil
+}
+
+// signing returns the options that sign a commit with the signing key, written to a file only
+// the user can read, and what removes it; none without a key.
+func (m *Mirror) signing(ctx context.Context) ([]string, func(), error) {
+	none := func() {}
+	if m.opts.SigningKey == nil {
+		return nil, none, nil
+	}
+	key, err := m.opts.SigningKey(ctx)
+	if err != nil {
+		return nil, none, fmt.Errorf("signing key: %w", err)
+	}
+	if len(bytes.TrimSpace(key)) == 0 {
+		return nil, none, nil
+	}
+	dir, err := os.MkdirTemp("", "quai-signing-")
+	if err != nil {
+		return nil, none, err
+	}
+	cleanup := func() { _ = os.RemoveAll(dir) }
+	file := filepath.Join(dir, "key")
+	// ssh-keygen refuses a key without its final newline.
+	if err := os.WriteFile(file, append(bytes.TrimSpace(key), '\n'), 0o600); err != nil {
+		cleanup()
+		return nil, none, err
+	}
+	return []string{"-c", "gpg.format=ssh", "-c", "user.signingKey=" + file, "-c", "commit.gpgSign=true"}, cleanup, nil
 }
 
 // LogEntry is a commit, as the Git log page shows it.
@@ -626,6 +663,19 @@ func (t *transport) ssh(c Credentials) (string, error) {
 
 func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 
+// subcommand names the git command args run, past the options before it.
+func subcommand(args []string) string {
+	for i := 0; i < len(args); i++ {
+		switch {
+		case args[i] == "-c" || args[i] == "--git-dir":
+			i++
+		case !strings.HasPrefix(args[i], "-"):
+			return args[i]
+		}
+	}
+	return "command"
+}
+
 // withStdin marks the last argument of run as standard input.
 func withStdin(s string) string { return "\x00stdin:" + s }
 
@@ -647,13 +697,13 @@ func runScrubbed(ctx context.Context, dir string, env, secrets []string, args ..
 	cmd.Dir = dir
 	cmd.Env = append([]string{
 		"GIT_TERMINAL_PROMPT=0", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null",
-		"HOME=" + os.TempDir(), "PATH=" + os.Getenv("PATH"), "LC_ALL=C",
+		"HOME=" + os.TempDir(), "TMPDIR=" + os.TempDir(), "PATH=" + os.Getenv("PATH"), "LC_ALL=C",
 	}, env...)
 	cmd.Stdin = strings.NewReader(input)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("git %s: %w: %s", args[0], err, scrub(strings.TrimSpace(stderr.String()), secrets))
+		return "", fmt.Errorf("git %s: %w: %s", subcommand(args), err, scrub(strings.TrimSpace(stderr.String()), secrets))
 	}
 	return stdout.String(), nil
 }

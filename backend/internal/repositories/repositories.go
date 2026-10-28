@@ -163,7 +163,8 @@ type Registry struct {
 	db         *store.Store
 	cache      string
 	committer  gitx.Signature
-	caFile     string // the CA bundle git verifies servers with; empty: git's own
+	signing    func(context.Context) ([]byte, error) // the commits' signing key; nil: unsigned
+	caFile     string                                // the CA bundle git verifies servers with; empty: git's own
 	proxy      func(*url.URL) (*url.URL, error)
 	log        *slog.Logger
 
@@ -212,6 +213,12 @@ func Open(ctx context.Context, cfg *config.Config, src Source, opts Options) (*R
 	}
 	reg := &Registry{src: src, connectors: conns, secrets: store, db: opts.Store, cache: cache, log: log, repos: map[string]*Repo{}, failed: map[string]int64{},
 		committer: gitx.Signature{Name: cfg.Git.Committer.Name, Email: cfg.Git.Committer.Email}}
+	if ref := cfg.Git.SigningKey.Ref; ref != "" && store != nil {
+		reg.signing = func(ctx context.Context) ([]byte, error) {
+			key, err := store.Resolve(ctx, ref)
+			return []byte(key.Reveal()), err
+		}
+	}
 	if network != nil {
 		reg.proxy = network.Proxy
 		if bundle := network.GitBundle(); bundle != nil {
@@ -337,7 +344,8 @@ func (r *Registry) open(ctx context.Context, s Stored, prev *Repo) (*Repo, error
 		prev.mu.Unlock()
 		return repo, nil
 	}
-	opts := gitx.Options{Committer: r.committer, Auth: repo.Connector.GitAuth, CAFile: r.caFile, Proxy: r.proxy, PartialClone: d.Spec.Sync.PartialClone}
+	opts := gitx.Options{Committer: r.committer, Auth: repo.Connector.GitAuth, CAFile: r.caFile, Proxy: r.proxy,
+		PartialClone: d.Spec.Sync.PartialClone, SigningKey: r.signing}
 	if repo.Mirror, err = gitx.OpenMirror(ctx, d.Spec.URL, filepath.Join(r.cache, repo.Name+".git"), opts); err != nil {
 		return nil, err
 	}

@@ -24,7 +24,7 @@ RUN go build -ldflags "-s -w -X main.version=${VERSION}" -o /out/quai ./cmd/quai
 
 FROM alpine:3.24.3@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a
 # The group is root so that OpenShift's arbitrary user ids, which run in it, can write the cache.
-RUN apk add --no-cache git openssh-client ca-certificates tzdata \
+RUN apk add --no-cache git openssh-client openssh-keygen ca-certificates tzdata \
  && adduser -D -H -u 10001 -G root -s /sbin/nologin quai \
  && mkdir -p /var/cache/quai \
  && chown 10001:0 /var/cache/quai \

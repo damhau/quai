@@ -82,4 +82,14 @@ func TestAzureDevOpsDelivery(t *testing.T) {
 	if r.Delivery.MergeCommit == "" {
 		t.Errorf("delivery = %+v", r.Delivery)
 	}
+	// The squash commit carries the approvals; comments reach the pull request.
+	if err := repo.Mirror.Fetch(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if log, err := repo.Mirror.Log(ctx, "main", "", 1); err != nil || len(log) == 0 || !strings.Contains(log[0].Body, "Approved-by: alice") {
+		t.Errorf("the squash commit: %+v, %v", log, err)
+	}
+	if err := repo.Connector.PullRequests().Comment(ctx, pr.ID, "Approved-by: alice"); err != nil {
+		t.Errorf("comment: %v", err)
+	}
 }

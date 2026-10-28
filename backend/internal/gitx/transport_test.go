@@ -1,6 +1,7 @@
 package gitx
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/ed25519"
@@ -565,5 +566,62 @@ func TestFiles(t *testing.T) {
 	}
 	if _, err := m.Files(ctx, "main"); err == nil {
 		t.Error("a branch name instead of a commit")
+	}
+}
+
+// TestSigning signs commits with an SSH key, which git verify-commit checks against the key's
+// allowed signers.
+func TestSigning(t *testing.T) {
+	if _, err := exec.LookPath("ssh-keygen"); err != nil {
+		t.Skip("no ssh-keygen")
+	}
+	bare, _ := remote(t)
+	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+	block, err := ssh.MarshalPrivateKey(priv, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := pem.EncodeToMemory(block)
+	m, err := OpenMirror(ctx, bare, filepath.Join(t.TempDir(), "m.git"), Options{Committer: quai,
+		SigningKey: func(context.Context) ([]byte, error) { return bytes.TrimSpace(key), nil }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sha, err := m.CommitAndPush(ctx, Commit{Branch: "main", Message: "Resize web01\n", Author: bob,
+		Changes: []plan.Change{{Op: plan.OpUpdate, Path: "envs/prod/vms/web01.yaml", After: []byte("cpu: 8\n")}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sshPub, _ := ssh.NewPublicKey(pub)
+	signers := filepath.Join(t.TempDir(), "allowed_signers")
+	write(t, signers, quai.Email+" "+string(ssh.MarshalAuthorizedKey(sshPub)))
+	verify := func(file string) error {
+		_, err := run(ctx, "", nil, "--git-dir", bare, "-c", "gpg.ssh.allowedSignersFile="+file, "verify-commit", sha)
+		return err
+	}
+	if err := verify(signers); err != nil {
+		t.Errorf("verify-commit: %v", err)
+	}
+	// Another key does not verify it.
+	otherPub, _, _ := ed25519.GenerateKey(rand.Reader)
+	other, _ := ssh.NewPublicKey(otherPub)
+	wrong := filepath.Join(t.TempDir(), "allowed_signers")
+	write(t, wrong, quai.Email+" "+string(ssh.MarshalAuthorizedKey(other)))
+	if err := verify(wrong); err == nil {
+		t.Error("verified with another key")
+	}
+	if matches, _ := filepath.Glob(filepath.Join(os.TempDir(), "quai-signing-*")); len(matches) > 0 {
+		t.Errorf("the key was left in %v", matches)
+	}
+	// Without a key, commits are unsigned.
+	unsigned := mirror(t, bare)
+	sha2, err := unsigned.CommitAndPush(ctx, Commit{Branch: "main", Message: "Resize web01 again\n", Author: bob,
+		Changes: []plan.Change{{Op: plan.OpUpdate, Path: "envs/prod/vms/web01.yaml", After: []byte("cpu: 12\n")}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sha = sha2
+	if err := verify(signers); err == nil {
+		t.Error("an unsigned commit verified")
 	}
 }

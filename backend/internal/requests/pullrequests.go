@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/riverqueue/river"
 
 	"github.com/damhau/quai/backend/internal/connectors"
@@ -289,6 +290,13 @@ func (s *Service) deliverPR(ctx context.Context, job *river.Job[DeliverArgs], r 
 		if err := s.publish(ctx, repo, r, d); err != nil {
 			return err
 		}
+		// When the merge keeps Quai's commit (a rebase), or a person merges, the approvals are a
+		// final comment on the pull request; otherwise the merge's message carries them.
+		if spec.Merge == "manual" || spec.MergeMethod == string(connectors.Rebase) {
+			if err := s.commentApprovals(ctx, prs, r, d); err != nil {
+				return err
+			}
+		}
 		if spec.Merge == "manual" {
 			return nil // a person merges; the merge applies the request
 		}
@@ -307,7 +315,11 @@ func (s *Service) deliverPR(ctx context.Context, job *river.Job[DeliverArgs], r 
 	if r.State != Merging {
 		return nil
 	}
-	opts := connectors.MergeOptions{Head: d.Head, Method: connectors.MergeMethod(spec.MergeMethod), Message: pr.Title + "\n", DeleteBranch: *spec.DeleteBranch}
+	msg, err := s.mergeMessage(ctx, r)
+	if err != nil {
+		return err
+	}
+	opts := connectors.MergeOptions{Head: d.Head, Method: connectors.MergeMethod(spec.MergeMethod), Message: msg, DeleteBranch: *spec.DeleteBranch}
 	if repo.Connector.Info().Has(connectors.CapAutoComplete) {
 		err = prs.AutoComplete(ctx, d.PullRequest, opts)
 	} else {
@@ -326,6 +338,51 @@ func (s *Service) deliverPR(ctx context.Context, job *river.Job[DeliverArgs], r 
 		return s.merged(ctx, r, d, pr)
 	}
 	return nil // the platform merges once its policies pass; webhooks or the poll tell
+}
+
+// mergeMessage is the message of the merge or squash commit: the request's, with its
+// Approved-by trailers.
+func (s *Service) mergeMessage(ctx context.Context, r db.Request) (string, error) {
+	sets, err := s.store.ListChangeSets(ctx, r.ID)
+	if err != nil || len(sets) == 0 {
+		return "", fmt.Errorf("request %s has no change set: %w", r.ID, err)
+	}
+	approved, err := s.approvals(ctx, r)
+	if err != nil {
+		return "", err
+	}
+	return message(r, sets[0], approved...), nil
+}
+
+// commentApprovals records the approvals on the pull request, once.
+func (s *Service) commentApprovals(ctx context.Context, prs connectors.PullRequests, r db.Request, d db.Delivery) error {
+	events, err := s.store.ListRequestEvents(ctx, pgtype.UUID{Bytes: r.ID, Valid: true})
+	if err != nil {
+		return err
+	}
+	for _, e := range events {
+		if e.Kind == "approvals_commented" {
+			return nil
+		}
+	}
+	approved, err := s.approvals(ctx, r)
+	if err != nil {
+		return err
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "Approved in Quai (request #%d).\n\n", r.Number)
+	for _, t := range approved {
+		b.WriteString(t.Key + ": " + t.Value + "\n")
+	}
+	if l := s.link(r); l != "" {
+		b.WriteString("\n" + l + "\n")
+	}
+	if err := prs.Comment(ctx, d.PullRequest, b.String()); err != nil {
+		return fmt.Errorf("comment on pull request %s: %w", d.PullRequest, err)
+	}
+	return s.store.Tx(ctx, func(_ pgx.Tx, q *db.Queries) error {
+		return event(ctx, q, r, "approvals_commented", "", map[string]any{"pullRequest": d.PullRequest})
+	})
 }
 
 // pending returns the checks of names that have not succeeded.

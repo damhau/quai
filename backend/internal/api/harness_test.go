@@ -65,15 +65,7 @@ const runToken = "run-token-for-infra-live"
 func newHarness(t *testing.T) *harness {
 	t.Helper()
 	dir := t.TempDir()
-	bare, work := filepath.Join(dir, "infra-live.git"), filepath.Join(dir, "work")
-	git(t, "", "init", "--quiet", "--bare", "--initial-branch=main", bare)
-	git(t, "", "clone", "--quiet", bare, work)
-	if err := os.CopyFS(work, os.DirFS("../../../examples/gitops-repo")); err != nil {
-		t.Fatal(err)
-	}
-	git(t, work, "add", "--all")
-	git(t, work, "commit", "--quiet", "-m", "the existing infrastructure")
-	git(t, work, "push", "--quiet", "origin", "HEAD:main")
+	bare, work := localRemote(t, dir)
 
 	h := start(t, dir, `connector: generic
   url: `+bare+`
@@ -87,13 +79,32 @@ func newHarness(t *testing.T) *harness {
 	return h
 }
 
+// localRemote makes a bare repository in dir holding the example GitOps repository on main, and
+// a clone of it people push to.
+func localRemote(t *testing.T, dir string) (bare, work string) {
+	t.Helper()
+	bare, work = filepath.Join(dir, "infra-live.git"), filepath.Join(dir, "work")
+	git(t, "", "init", "--quiet", "--bare", "--initial-branch=main", bare)
+	git(t, "", "clone", "--quiet", bare, work)
+	if err := os.CopyFS(work, os.DirFS("../../../examples/gitops-repo")); err != nil {
+		t.Fatal(err)
+	}
+	git(t, work, "add", "--all")
+	git(t, work, "commit", "--quiet", "-m", "the existing infrastructure")
+	git(t, work, "push", "--quiet", "origin", "HEAD:main")
+	return bare, work
+}
+
 // start serves Quai with one repository, infra-live, whose spec is given, and a job worker.
-// Webhooks and polls are processed by h.ingest.
-func start(t *testing.T, dir, spec string, opts repositories.Options) *harness {
+// Webhooks and polls are processed by h.ingest. configure changes Quai's configuration.
+func start(t *testing.T, dir, spec string, opts repositories.Options, configure ...func(*config.Config)) *harness {
 	t.Helper()
 	cfg, err := config.Load("", func(string) (string, bool) { return "", false })
 	if err != nil {
 		t.Fatal(err)
+	}
+	for _, c := range configure {
+		c(cfg)
 	}
 	cfg.Git.CacheDir = filepath.Join(dir, "mirrors")
 	docs, err := repositories.Parse([]byte("apiVersion: quai.dev/v1beta1\nkind: Repository\nmetadata: { name: infra-live, title: Infrastructure }\nspec:\n  " + spec + "\n"))

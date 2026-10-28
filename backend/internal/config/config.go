@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -59,6 +60,11 @@ type Database struct {
 type Git struct {
 	CacheDir  string    `yaml:"cacheDir"` // where repository mirrors live; the user cache directory by default
 	Committer Committer `yaml:"committer"`
+	// SigningKey names the SSH private key Quai signs its commits with, in a secret store
+	// (k8s:quai/signing-key#ssh-privatekey, env:NAME); none: commits are unsigned.
+	SigningKey struct {
+		Ref string `yaml:"ref"`
+	} `yaml:"signingKey"`
 }
 
 // Committer is the identity Quai commits as; authors are the requesters.
@@ -192,6 +198,7 @@ var variables = []struct {
 	{"QUAI_AUTH_OIDC_CLIENT_SECRET", func(c *Config, v string) error { c.Auth.OIDC.ClientSecret = v; return nil }},
 	{"QUAI_AUTH_OIDC_REDIRECT_URL", func(c *Config, v string) error { c.Auth.OIDC.RedirectURL = v; return nil }},
 	{"QUAI_GIT_CACHE_DIR", func(c *Config, v string) error { c.Git.CacheDir = v; return nil }},
+	{"QUAI_GIT_SIGNING_KEY_REF", func(c *Config, v string) error { c.Git.SigningKey.Ref = v; return nil }},
 	{"QUAI_LOG_LEVEL", func(c *Config, v string) error { c.Log.Level = v; return nil }},
 	{"QUAI_LOG_FORMAT", func(c *Config, v string) error { c.Log.Format = v; return nil }},
 	{"QUAI_TELEMETRY_OTLP_ENDPOINT", func(c *Config, v string) error { c.Telemetry.OTLPEndpoint = v; return nil }},
@@ -304,6 +311,9 @@ func (c *Config) defaults() {
 
 func (c *Config) validate() error {
 	var errs []error
+	if ref := c.Git.SigningKey.Ref; ref != "" && !signingRefRe.MatchString(ref) {
+		errs = append(errs, fmt.Errorf("git.signingKey.ref must be a secret reference such as k8s:namespace/name#key or env:NAME, not %q", ref))
+	}
 	if c.Env != Development && c.Env != Production {
 		errs = append(errs, fmt.Errorf("env must be %s or %s, not %q", Development, Production, c.Env))
 	}
@@ -335,6 +345,8 @@ func (c *Config) validate() error {
 }
 
 // roles are the role names of docs/design/08; internal/authz defines them.
+var signingRefRe = regexp.MustCompile(`^(env|k8s|vault|azkv):\S+$`)
+
 var roles = []string{"viewer", "requester", "operator", "catalog-author", "repository-admin", "platform-admin", "auditor", "break-glass"}
 
 func (a *Auth) validate(env string) error {
