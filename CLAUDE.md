@@ -6,10 +6,10 @@ every request becomes a reviewed change in their Git repositories. Start with
 
 ## Current state
 
-- **Prototype** (TypeScript): `packages/core`, `server/`, `web/`, `examples/`. Reference only:
-  port behaviour and tests from it, do not extend it. It is deleted at the end of Phase 0 (P0-29).
-- **Target**: Go backend in `backend/`, React frontend in `frontend/`
-  ([ADR 0006](docs/adr/0006-go-backend-react-frontend.md)).
+- Go backend in `backend/`, React frontend in `frontend/`
+  ([ADR 0006](docs/adr/0006-go-backend-react-frontend.md)), Playwright scenarios in `e2e/`, the demo
+  repository in `examples/gitops-repo`. The TypeScript prototype was removed in P0-29; it is in the
+  history up to commit `70dfce6`.
 - **Tasks are GitHub issues** in [damhau/quai](https://github.com/damhau/quai/issues), grouped in
   milestones M1–M3 and labelled `phase:N`, `type:task` / `type:epic`, `area:*`. GitHub is the only
   task list. Phase 0 tasks are issues #1–#29 (`P0-NN` is `#NN`); how an iteration works and when to
@@ -55,9 +55,6 @@ docker compose up --build --wait            # Quai on :8080 (QUAI_PORT), Gitea o
 docker compose --profile e2e run --rm e2e   # the Playwright scenarios in e2e/, against that stack
 docker compose down -v
 ```
-
-Prototype (reference, from the repository root): `npm test` runs its unit and API tests (Node 22+,
-for `node:sqlite`). It reads its own frozen examples in `examples/prototype-gitops-repo`.
 
 ## Conventions
 

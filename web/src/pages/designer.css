@@ -1,4 +1,0 @@
-.react-flow__handle { width: 10px; height: 10px; background: var(--panel); border: 2px solid var(--brand); }
-.react-flow__edge-path { stroke: var(--brand); stroke-width: 2; }
-.react-flow__edge-text { fill: var(--muted); font-size: 10px; }
-.react-flow__controls button, .react-flow__minimap { background: var(--panel); color: var(--text); border-color: var(--border); }

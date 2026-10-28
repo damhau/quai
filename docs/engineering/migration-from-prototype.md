@@ -2,9 +2,11 @@
 
 Status: Draft · 2026-10-26
 
-The prototype (`packages/core`, `server/`, `web/`, TypeScript) stays runnable
-until the Go backend reaches parity, then it is removed. Nothing is migrated
-in place.
+The prototype (`packages/core`, `server/`, `web/`, TypeScript) stayed runnable
+until the Go backend reached parity, and was removed in P0-29 once the owner
+accepted the [parity review](#parity-review-p0-28). Nothing was migrated in
+place. It is in the history up to commit `70dfce6`
+(`git show 70dfce6:packages/core/src/yamlpatch.ts`, for instance).
 
 ## What carries over
 
@@ -19,7 +21,7 @@ in place.
 | `server/src/service.ts`, `resources.ts` | `requests`, `approvals`, `inventory`, `catalog` | Re-designed for PostgreSQL, jobs and providers |
 | `server/src/store.ts` (SQLite) | `store` + `migrations` (PostgreSQL) | New schema; no data migration (prototype data is demo data) |
 | `web/` | `frontend/` | Rebuilt on TanStack Router/Query, Tailwind and shadcn, page by page, reusing component logic (schema form, diff folding, designer) |
-| `examples/gitops-repo` | `examples/gitops-repo` | Kept as the demo and end-to-end fixture, VM-first: the Terraform VM files, the `vm` type and two blueprints built from it, written by hand in `v1beta1` (P0-08). The four Kubernetes blueprints are not carried over. Until the prototype is removed, it reads a frozen `v1alpha1` copy in `examples/prototype-gitops-repo` |
+| `examples/gitops-repo` | `examples/gitops-repo` | Kept as the demo and end-to-end fixture, VM-first: the Terraform VM files, the `vm` type and two blueprints built from it, written by hand in `v1beta1` (P0-08). The four Kubernetes blueprints are not carried over. The prototype read a frozen `v1alpha1` copy, `examples/prototype-gitops-repo`, removed with it |
 | `docker-compose.yml` | `docker-compose.yml` | Quai (Go), PostgreSQL, Gitea, a fake runner |
 
 ## Steps
@@ -69,7 +71,7 @@ the Go backend and the new frontend, on the VM-first examples.
 | Simulated "Synced / Healthy" after each commit, sync webhook per deployment | Run reports per stack (`POST /api/v1/runs`), shown as the last apply | Design 06 |
 | SQLite, one process | PostgreSQL, server and worker processes | ADR 0006 |
 | Designer: YAML view | Definition as JSON; the file is written in the repository's key order on publish | Fewer dependencies; publish writes YAML |
-| `docker compose up` ran the prototype | It runs the Go stack; the prototype runs with `npm start` | P0-25 |
+| `docker compose up` ran the prototype | It runs the Go stack | P0-25 |
 
 **Not there yet.** Prototype features with no equivalent, for the owner to schedule or drop:
 

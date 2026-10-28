@@ -4,7 +4,7 @@ Status: Draft · 2026-10-26 · Decision: [ADR 0006](../adr/0006-go-backend-react
 
 ## Stack
 
-| Concern | Choice | Prototype today |
+| Concern | Choice | In the prototype (removed) |
 | --- | --- | --- |
 | Build | Vite | Vite ✅ |
 | UI | React 19, TypeScript strict | Same ✅ |

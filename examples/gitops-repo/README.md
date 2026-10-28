@@ -1,8 +1,8 @@
 # Example repository
 
-An existing Terraform repository with Quai definitions added: the demo and the
-end-to-end fixture of the Go backend. The prototype reads its own copy,
-`examples/prototype-gitops-repo`, until it is removed.
+An existing Terraform repository with Quai definitions added: the demo (the
+compose stack seeds it into Gitea) and the fixture of the backend's tests and the
+end-to-end scenarios.
 
 - `envs/<env>/vms/*.yaml`: one file per VM. Each environment is a Terraform
   stack (`envs/<env>/main.tf`) that reads them with `fileset()` and
