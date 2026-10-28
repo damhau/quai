@@ -137,6 +137,11 @@ func (w *openWorker) Work(ctx context.Context, job *river.Job[OpenArgs]) error {
 		_, err := s.transition(ctx, r, r.State, Failed, "failed", map[string]any{"error": "the " + repo.Connector.Info().Platform + " connector has no pull requests"})
 		return err
 	}
+	if err := s.deliverable(ctx, repo); err != nil {
+		// Enforcement was lost since the request was submitted: its pull request waits.
+		s.log.WarnContext(ctx, "not opening a pull request", slog.String("request", r.ID.String()), slog.Any("error", err))
+		return river.JobSnooze(time.Minute)
+	}
 	changes, err := s.store.ListChanges(ctx, cs.ID)
 	if err != nil {
 		return err

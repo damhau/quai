@@ -163,6 +163,22 @@ export type DiffLine = {
     text: string;
 };
 
+export type EnforcementView = {
+    /**
+     * False until the first verification: at registration, hourly, and when a branch policy changes
+     */
+    checked: boolean;
+    checkedAt?: string;
+    /**
+     * What is missing; none when enforced
+     */
+    problems: Array<string> | null;
+    /**
+     * Pull-request delivery: the target branch must require the check, or Quai opens no pull request
+     */
+    required: boolean;
+};
+
 export type ErrorDetail = {
     /**
      * Where the error occurred, e.g. 'body.items[3].tags' or 'path.thing-id'
@@ -411,6 +427,7 @@ export type RepositoryView = {
     commit: string;
     connector: string;
     delivery: string;
+    enforcement: EnforcementView;
     /**
      * config: declared in Quai's configuration and read-only through the API; api: managed through the API
      */
@@ -948,6 +965,7 @@ export type RepositoryViewWritable = {
     commit: string;
     connector: string;
     delivery: string;
+    enforcement: EnforcementView;
     /**
      * config: declared in Quai's configuration and read-only through the API; api: managed through the API
      */

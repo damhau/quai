@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -27,6 +28,7 @@ import (
 	"github.com/damhau/quai/backend/internal/repositories"
 	"github.com/damhau/quai/backend/internal/secrets"
 	"github.com/damhau/quai/backend/internal/store"
+	"github.com/damhau/quai/backend/internal/store/db"
 )
 
 func TestMain(m *testing.M) { os.Exit(pgtest.Around(func() int { return giteatest.Main(m) })()) }
@@ -336,5 +338,94 @@ func TestTrust(t *testing.T) {
 	}
 	if problems, ok := e.trust(); !ok || len(problems) != 0 {
 		t.Errorf("protected and owned: %v", problems)
+	}
+}
+
+// enforcement returns the enforcement problems last recorded, and when.
+func (e *env) enforcement() ([]string, time.Time, bool) {
+	e.t.Helper()
+	row, err := e.store.GetRepositorySync(context.Background(), e.name)
+	if err != nil || !row.EnforcementCheckedAt.Valid {
+		return nil, time.Time{}, false
+	}
+	var problems []string
+	if err := json.Unmarshal(row.EnforcementProblems, &problems); err != nil {
+		e.t.Fatal(err)
+	}
+	return problems, row.EnforcementCheckedAt.Time, true
+}
+
+// events returns the kinds of the repository's timeline, oldest first.
+func (e *env) events() []string {
+	e.t.Helper()
+	list, err := e.store.ListTargetEvents(context.Background(), db.ListTargetEventsParams{Target: "repository:" + e.name, MaxRows: 100})
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	var kinds []string
+	for i := len(list) - 1; i >= 0; i-- {
+		kinds = append(kinds, list[i].Kind)
+	}
+	return kinds
+}
+
+// TestEnforcementChecks: the schedule verifies a repository's enforcement when it never was, and
+// again after an hour; a policy change verifies it at once. Losing it is an alert on the
+// repository's timeline, getting it back an event.
+func TestEnforcementChecks(t *testing.T) {
+	ctx := context.Background()
+	e := setup(t)
+	if _, err := e.svc.jobs.Insert(ctx, ScheduleArgs{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	e.eventually("the schedule verified the new repository", func() bool { _, _, ok := e.enforcement(); return ok })
+	if problems, _, _ := e.enforcement(); len(problems) != 1 || !strings.Contains(problems[0], "branch main is not protected") {
+		t.Fatalf("an unprotected branch: %v", problems)
+	}
+	if got := e.events(); !slices.Equal(got, []string{"alert_enforcement"}) {
+		t.Errorf("events = %v", got)
+	}
+
+	// Protected as Quai needs: within the hour the schedule leaves it; a policy change verifies.
+	if err := e.remote.Protect("main", "quai/approval"); err != nil {
+		t.Fatal(err)
+	}
+	_, checked, _ := e.enforcement()
+	if _, err := e.svc.jobs.Insert(ctx, ScheduleArgs{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(2 * time.Second)
+	if problems, at, _ := e.enforcement(); !at.Equal(checked) || len(problems) == 0 {
+		t.Errorf("verified again within the hour: %v at %v", problems, at)
+	}
+	if err := e.svc.Process(ctx, e.name, []Event{{Policy: &connectors.PolicyChanged{Branch: "main"}}}); err != nil {
+		t.Fatal(err)
+	}
+	if problems, _, _ := e.enforcement(); len(problems) != 0 {
+		t.Errorf("after the policy change: %v", problems)
+	}
+	if got := e.events(); !slices.Equal(got, []string{"alert_enforcement", "enforcement_restored"}) {
+		t.Errorf("events = %v", got)
+	}
+
+	// An hour later, the schedule verifies again: the check is no longer required.
+	if err := e.remote.Unprotect("main"); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.remote.Protect("main"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.store.Pool.Exec(ctx, "UPDATE repository_sync SET enforcement_checked_at = now() - interval '61 minutes' WHERE repository = $1", e.name); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.svc.jobs.Insert(ctx, ScheduleArgs{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	e.eventually("verified after an hour", func() bool {
+		problems, _, _ := e.enforcement()
+		return len(problems) == 1 && strings.Contains(problems[0], "does not require the status check quai/approval")
+	})
+	if got := e.events(); !slices.Equal(got, []string{"alert_enforcement", "enforcement_restored", "alert_enforcement"}) {
+		t.Errorf("events = %v", got)
 	}
 }

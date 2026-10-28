@@ -34,17 +34,27 @@ type ProblemView struct {
 
 // RepositoryView describes a connected repository at its head.
 type RepositoryView struct {
-	Name       string        `json:"name"`
-	Title      string        `json:"title"`
-	Connector  string        `json:"connector"`
-	ManagedBy  string        `json:"managedBy" enum:"config,api" doc:"config: declared in Quai's configuration and read-only through the API; api: managed through the API"`
-	Branch     string        `json:"branch"`
-	Delivery   string        `json:"delivery"`
-	Commit     string        `json:"commit"`
-	Types      int           `json:"types"`
-	Blueprints int           `json:"blueprints"`
-	Problems   []ProblemView `json:"problems"`
-	Trust      TrustView     `json:"trust"`
+	Name        string          `json:"name"`
+	Title       string          `json:"title"`
+	Connector   string          `json:"connector"`
+	ManagedBy   string          `json:"managedBy" enum:"config,api" doc:"config: declared in Quai's configuration and read-only through the API; api: managed through the API"`
+	Branch      string          `json:"branch"`
+	Delivery    string          `json:"delivery"`
+	Commit      string          `json:"commit"`
+	Types       int             `json:"types"`
+	Blueprints  int             `json:"blueprints"`
+	Problems    []ProblemView   `json:"problems"`
+	Trust       TrustView       `json:"trust"`
+	Enforcement EnforcementView `json:"enforcement"`
+}
+
+// EnforcementView is whether the platform enforces Quai's approvals on the target branch, as last
+// verified.
+type EnforcementView struct {
+	Required  bool       `json:"required" doc:"Pull-request delivery: the target branch must require the check, or Quai opens no pull request"`
+	Checked   bool       `json:"checked" doc:"False until the first verification: at registration, hourly, and when a branch policy changes"`
+	Problems  []string   `json:"problems" doc:"What is missing; none when enforced"`
+	CheckedAt *time.Time `json:"checkedAt,omitempty"`
 }
 
 // TrustView is whether a repository's definitions only change through review, as last checked.
@@ -224,7 +234,7 @@ func registerCatalog(a huma.API, reg *repositories.Registry, s *store.Store) {
 				return nil, err
 			}
 			v := repositoryView(repo, snap)
-			v.Trust = trustOf(ctx, s, repo.Name)
+			v.Trust, v.Enforcement = trustOf(ctx, s, repo.Name), enforcementOf(ctx, s, repo)
 			views = append(views, v)
 		}
 		if len(views) == 0 {
@@ -251,7 +261,7 @@ func registerCatalog(a huma.API, reg *repositories.Registry, s *store.Store) {
 			return nil, err
 		}
 		v := repositoryView(repo, snap)
-		v.Trust = trustOf(ctx, s, repo.Name)
+		v.Trust, v.Enforcement = trustOf(ctx, s, repo.Name), enforcementOf(ctx, s, repo)
 		return &out[RepositoryView]{Body: v}, nil
 	})
 
@@ -434,6 +444,25 @@ func snapshot(ctx context.Context, reg *repositories.Registry, name string) (*re
 		return nil, huma.Error404NotFound(err.Error())
 	}
 	return repo.Snapshot(ctx, false)
+}
+
+// enforcementOf returns the repository's last enforcement verification; unchecked before the
+// first, or without a database.
+func enforcementOf(ctx context.Context, s *store.Store, repo *repositories.Repo) EnforcementView {
+	v := EnforcementView{Required: repo.Document.Spec.Delivery.Mode == "pull-request", Problems: []string{}}
+	if s == nil {
+		return v
+	}
+	row, err := s.GetRepositorySync(ctx, repo.Name)
+	if err != nil || !row.EnforcementCheckedAt.Valid {
+		return v
+	}
+	_ = json.Unmarshal(row.EnforcementProblems, &v.Problems)
+	if v.Problems == nil {
+		v.Problems = []string{}
+	}
+	v.Checked, v.CheckedAt = true, &row.EnforcementCheckedAt.Time
+	return v
 }
 
 // trustOf returns the repository's last trust check; unchecked before the first poll, or without a

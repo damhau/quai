@@ -45,7 +45,7 @@ func Problem(err error, prefix string) huma.StatusError {
 		return huma.Error422UnprocessableEntity("some fields need attention", details...)
 	case errors.Is(err, plan.ErrNotFound), errors.Is(err, requests.ErrNotFound), errors.Is(err, repositories.ErrNotFound):
 		return huma.Error404NotFound(err.Error())
-	case errors.Is(err, requests.ErrConflict):
+	case errors.Is(err, requests.ErrConflict), errors.Is(err, repositories.ErrNotEnforced):
 		return huma.Error409Conflict(err.Error())
 	case errors.Is(err, requests.ErrNotApprover):
 		return huma.Error403Forbidden(err.Error())

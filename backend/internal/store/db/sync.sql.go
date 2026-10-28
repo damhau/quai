@@ -42,7 +42,7 @@ func (q *Queries) DeleteWebhookDeliveriesBefore(ctx context.Context, receivedAt 
 }
 
 const getRepositorySync = `-- name: GetRepositorySync :one
-SELECT org_id, repository, last_webhook_at, last_fetch_at, last_poll_at, head, trust_problems, trust_checked_at FROM repository_sync WHERE repository = $1
+SELECT org_id, repository, last_webhook_at, last_fetch_at, last_poll_at, head, trust_problems, trust_checked_at, enforcement_problems, enforcement_checked_at FROM repository_sync WHERE repository = $1
 `
 
 func (q *Queries) GetRepositorySync(ctx context.Context, repository string) (RepositorySync, error) {
@@ -57,12 +57,14 @@ func (q *Queries) GetRepositorySync(ctx context.Context, repository string) (Rep
 		&i.Head,
 		&i.TrustProblems,
 		&i.TrustCheckedAt,
+		&i.EnforcementProblems,
+		&i.EnforcementCheckedAt,
 	)
 	return i, err
 }
 
 const listRepositorySync = `-- name: ListRepositorySync :many
-SELECT org_id, repository, last_webhook_at, last_fetch_at, last_poll_at, head, trust_problems, trust_checked_at FROM repository_sync ORDER BY repository
+SELECT org_id, repository, last_webhook_at, last_fetch_at, last_poll_at, head, trust_problems, trust_checked_at, enforcement_problems, enforcement_checked_at FROM repository_sync ORDER BY repository
 `
 
 func (q *Queries) ListRepositorySync(ctx context.Context) ([]RepositorySync, error) {
@@ -83,6 +85,8 @@ func (q *Queries) ListRepositorySync(ctx context.Context) ([]RepositorySync, err
 			&i.Head,
 			&i.TrustProblems,
 			&i.TrustCheckedAt,
+			&i.EnforcementProblems,
+			&i.EnforcementCheckedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -92,6 +96,21 @@ func (q *Queries) ListRepositorySync(ctx context.Context) ([]RepositorySync, err
 		return nil, err
 	}
 	return items, nil
+}
+
+const recordEnforcement = `-- name: RecordEnforcement :exec
+INSERT INTO repository_sync (repository, enforcement_problems, enforcement_checked_at) VALUES ($1, $2, now())
+ON CONFLICT (org_id, repository) DO UPDATE SET enforcement_problems = EXCLUDED.enforcement_problems, enforcement_checked_at = now()
+`
+
+type RecordEnforcementParams struct {
+	Repository          string
+	EnforcementProblems []byte
+}
+
+func (q *Queries) RecordEnforcement(ctx context.Context, arg RecordEnforcementParams) error {
+	_, err := q.db.Exec(ctx, recordEnforcement, arg.Repository, arg.EnforcementProblems)
+	return err
 }
 
 const recordFetch = `-- name: RecordFetch :exec

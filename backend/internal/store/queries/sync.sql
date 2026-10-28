@@ -26,3 +26,7 @@ DELETE FROM webhook_deliveries WHERE received_at < $1;
 -- name: RecordTrust :exec
 INSERT INTO repository_sync (repository, trust_problems, trust_checked_at) VALUES ($1, $2, now())
 ON CONFLICT (org_id, repository) DO UPDATE SET trust_problems = EXCLUDED.trust_problems, trust_checked_at = now();
+
+-- name: RecordEnforcement :exec
+INSERT INTO repository_sync (repository, enforcement_problems, enforcement_checked_at) VALUES ($1, $2, now())
+ON CONFLICT (org_id, repository) DO UPDATE SET enforcement_problems = EXCLUDED.enforcement_problems, enforcement_checked_at = now();

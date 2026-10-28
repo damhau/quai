@@ -231,7 +231,7 @@ func (s *Service) PlanType(ctx context.Context, who auth.Identity, in TypeInput)
 		slices.Sort(approvers)
 		p.Rules = []policy.Rule{{Names: []string{"type/deletion"}, Approvers: slices.Compact(approvers), Min: 1, Distinct: true}}
 	}
-	return p, nil
+	return p, s.deliverable(ctx, repo)
 }
 
 // PlanBlueprint plans a new instance of a blueprint.
@@ -274,7 +274,7 @@ func (s *Service) PlanBlueprint(ctx context.Context, who auth.Identity, in Bluep
 		Kind: generate.Create, Target: b.Metadata.Name + "/" + in.Name, Repository: repo.Name, Blueprint: b.Metadata.Name,
 		Commit: snap.Commit, ChangeSet: cs, Rules: rules, Owners: []string{who.Principal.Name}, Inputs: inputs,
 		Authorize: authz.CreateRequest, Object: authz.Object{Repository: repo.Name, CatalogItem: b.Metadata.Name},
-	}, nil
+	}, s.deliverable(ctx, repo)
 }
 
 // Submit records a planned request. Without rules to satisfy it is approved at once and its
@@ -344,7 +344,7 @@ func (s *Service) PlanInstanceAction(ctx context.Context, who auth.Identity, in 
 	if p.Rules, err = policy.Match(sets...); err != nil {
 		return p, err
 	}
-	return p, nil
+	return p, s.deliverable(ctx, repo)
 }
 
 func (s *Service) Submit(ctx context.Context, who auth.Identity, p *Plan, reason string) (db.Request, error) {
@@ -365,6 +365,9 @@ func (s *Service) Submit(ctx context.Context, who auth.Identity, p *Plan, reason
 	prMode, prefix := false, ""
 	if repo, err := s.reg.Get(p.Repository); err == nil && repo.Document.Spec.Delivery.Mode == PullRequestMode {
 		prMode, prefix = true, repo.Document.Spec.Delivery.BranchPrefix
+		if err := s.deliverable(ctx, repo); err != nil {
+			return db.Request{}, err
+		}
 	}
 	var created db.Request
 	err := s.store.Tx(ctx, func(tx pgx.Tx, q *db.Queries) error {
@@ -634,6 +637,17 @@ func (s *Service) statusJob(ctx context.Context, tx pgx.Tx, q *db.Queries, r db.
 		return err
 	}
 	return jobs.InsertTx(ctx, s.jobs, tx, StatusArgs{RequestID: r.ID}, nil)
+}
+
+// deliverable returns repositories.ErrNotEnforced, with what is missing, when Quai must not open
+// pull requests on the repository: in pull-request mode, its target branch does not require
+// quai/approval as Quai needs it (docs/design/01-repository-connections.md#health).
+func (s *Service) deliverable(ctx context.Context, repo *repositories.Repo) error {
+	e, err := repositories.EnforcementOf(ctx, s.store, repo)
+	if err != nil {
+		return fmt.Errorf("%w on %s: it cannot be verified (%v)", repositories.ErrNotEnforced, repo.Name, err)
+	}
+	return e.Err(repo.Name)
 }
 
 // commit is a request's commit, with the fingerprints its regions had when it was planned; with

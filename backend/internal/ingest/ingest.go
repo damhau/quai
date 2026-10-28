@@ -191,7 +191,16 @@ type PollArgs struct {
 // Kind names the job.
 func (PollArgs) Kind() string { return "poll_repository" }
 
-// ScheduleArgs queues the polls that are due, and forgets old deliveries. It runs every minute.
+// VerifyArgs verifies one repository's enforcement.
+type VerifyArgs struct {
+	Repository string `json:"repository"`
+}
+
+// Kind names the job.
+func (VerifyArgs) Kind() string { return "verify_enforcement" }
+
+// ScheduleArgs queues the polls and the enforcement checks that are due, and forgets old
+// deliveries. It runs every minute.
 type ScheduleArgs struct{}
 
 // Kind names the job.
@@ -202,6 +211,7 @@ func (s *Service) Workers(w *river.Workers) {
 	river.AddWorker(w, &webhookWorker{s: s})
 	river.AddWorker(w, &pollWorker{s: s})
 	river.AddWorker(w, &scheduleWorker{s: s})
+	river.AddWorker(w, &verifyWorker{s: s})
 }
 
 // Periodic is the job that schedules the polls, for jobs.Options.
@@ -245,6 +255,9 @@ func (s *Service) Process(ctx context.Context, name string, events []Event) erro
 				prs[e.Status.PullRequest] = true
 			case e.Policy != nil:
 				s.log.InfoContext(ctx, "branch policy changed", slog.String("repository", name), slog.String("branch", e.Policy.Branch))
+				if err := s.Verify(ctx, name); err != nil {
+					return err
+				}
 			}
 		}
 		if fetch {
@@ -371,6 +384,32 @@ func (s *Service) Poll(ctx context.Context, name string) error {
 	})
 }
 
+type verifyWorker struct {
+	river.WorkerDefaults[VerifyArgs]
+	s *Service
+}
+
+func (w *verifyWorker) Work(ctx context.Context, job *river.Job[VerifyArgs]) error {
+	return w.s.Verify(ctx, job.Args.Repository)
+}
+
+// Verify verifies the repository's enforcement and records it
+// (repositories.CheckEnforcement).
+func (s *Service) Verify(ctx context.Context, name string) error {
+	repo, err := s.reg.Get(name)
+	if err != nil {
+		return nil
+	}
+	e, err := repositories.CheckEnforcement(ctx, s.store, repo)
+	if err != nil {
+		return err
+	}
+	if len(e.Problems) > 0 {
+		s.log.WarnContext(ctx, "approvals are not enforced", slog.String("repository", name), slog.Any("problems", e.Problems))
+	}
+	return nil
+}
+
 // checkTrust records whether the repository's definitions only change through review.
 func (s *Service) checkTrust(ctx context.Context, repo *repositories.Repo) error {
 	problems, err := repo.Trust(ctx)
@@ -408,14 +447,22 @@ func (w *scheduleWorker) Work(ctx context.Context, _ *river.Job[ScheduleArgs]) e
 	if err != nil {
 		return err
 	}
-	last := map[string]time.Time{}
+	last, verified := map[string]time.Time{}, map[string]time.Time{}
 	for _, r := range syncs {
 		if r.LastPollAt.Valid {
 			last[r.Repository] = r.LastPollAt.Time
 		}
+		if r.EnforcementCheckedAt.Valid {
+			verified[r.Repository] = r.EnforcementCheckedAt.Time
+		}
 	}
 	client := river.ClientFromContext[pgx.Tx](ctx)
 	for _, repo := range s.reg.List() {
+		if t, ok := verified[repo.Name]; repo.Document.Spec.Delivery.Mode == "pull-request" && (!ok || s.now().Sub(t) >= repositories.EnforcementInterval) {
+			if _, err := client.Insert(ctx, VerifyArgs{Repository: repo.Name}, &river.InsertOpts{UniqueOpts: river.UniqueOpts{ByArgs: true, ByState: pending}}); err != nil {
+				return err
+			}
+		}
 		interval := time.Duration(repo.Document.Spec.Sync.PollInterval)
 		if t, ok := last[repo.Name]; ok && s.now().Sub(t) < interval {
 			continue

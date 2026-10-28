@@ -86,14 +86,16 @@ type Repository struct {
 }
 
 type RepositorySync struct {
-	OrgID          string
-	Repository     string
-	LastWebhookAt  pgtype.Timestamptz
-	LastFetchAt    pgtype.Timestamptz
-	LastPollAt     pgtype.Timestamptz
-	Head           string
-	TrustProblems  []byte
-	TrustCheckedAt pgtype.Timestamptz
+	OrgID                string
+	Repository           string
+	LastWebhookAt        pgtype.Timestamptz
+	LastFetchAt          pgtype.Timestamptz
+	LastPollAt           pgtype.Timestamptz
+	Head                 string
+	TrustProblems        []byte
+	TrustCheckedAt       pgtype.Timestamptz
+	EnforcementProblems  []byte
+	EnforcementCheckedAt pgtype.Timestamptz
 }
 
 type Request struct {

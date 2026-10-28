@@ -551,6 +551,39 @@
         ],
         "type": "object"
       },
+      "EnforcementView": {
+        "additionalProperties": false,
+        "properties": {
+          "checked": {
+            "description": "False until the first verification: at registration, hourly, and when a branch policy changes",
+            "type": "boolean"
+          },
+          "checkedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "problems": {
+            "description": "What is missing; none when enforced",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "required": {
+            "description": "Pull-request delivery: the target branch must require the check, or Quai opens no pull request",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "required",
+          "checked",
+          "problems"
+        ],
+        "type": "object"
+      },
       "ErrorDetail": {
         "additionalProperties": false,
         "properties": {
@@ -1203,6 +1236,9 @@
           "delivery": {
             "type": "string"
           },
+          "enforcement": {
+            "$ref": "#/components/schemas/EnforcementView"
+          },
           "managedBy": {
             "description": "config: declared in Quai's configuration and read-only through the API; api: managed through the API",
             "enum": [
@@ -1245,7 +1281,8 @@
           "types",
           "blueprints",
           "problems",
-          "trust"
+          "trust",
+          "enforcement"
         ],
         "type": "object"
       },

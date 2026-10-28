@@ -295,3 +295,24 @@ Each repository has a health page and metrics:
 - branch protection still requires `quai/approval` (checked hourly). If not, approvals are not enforced: Quai blocks new pull requests to that repository and alerts admins;
 - definitions valid at head, with errors per file;
 - open Quai pull requests, oldest age, stale count.
+
+Enforcement, in pull-request mode: the connector verifies that the target
+branch requires the check (`spec.enforcement.requiredCheck`, `quai/approval`)
+as Quai needs it; on Azure DevOps, with Quai's identity as the policy's
+authorized identity, reset on new changes, applying by default and without a
+path filter. It is verified at registration (the first time Quai needs it),
+hourly, and on a `PolicyChanged` event; the result and its time are recorded
+with the repository's health (`enforcement` on the repository API). While it
+is missing:
+
+- planning and submitting a request on the repository fail with a conflict
+  that names what is missing ("approvals are not enforced on infra-live: …");
+- a request submitted before, whose pull request is not open yet, waits; its
+  pull request opens once enforcement is back. Pull requests already open stay
+  and can still be approved, rejected or cancelled;
+- losing it, or a change in what is missing, is an `alert_enforcement` event on
+  the repository's timeline (`repository:<name>`); getting it back is
+  `enforcement_restored`.
+
+Direct delivery opens no pull requests, so this verification does not apply to
+it.
