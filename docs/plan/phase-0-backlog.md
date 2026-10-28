@@ -1,6 +1,6 @@
 # Phase 0: how autonomous sessions work
 
-Status: Active · 2026-10-27
+Status: Done · 2026-10-28 (Phase 1: [Phase 1 backlog](phase-1-backlog.md))
 
 The tasks for [Phase 0](roadmap.md#phase-0-foundations-and-port-6-weeks) are GitHub issues
 **#1–#29** in milestone [M1 Pilot](https://github.com/damhau/quai/milestones), labelled `phase:0`

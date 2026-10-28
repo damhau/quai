@@ -18,6 +18,7 @@ Decisions still needed, with the default the plan assumes until they are answere
 
 | Question | Decision | Date | Consequences |
 | --- | --- | --- | --- |
+| Where Phase 1 develops and tests the Azure DevOps connector | **On the owner's throwaway Azure DevOps Services organization** (`dh-consulting`, project `quai-sandbox`, PAT), and Gitea; a Server 2022 instance when available | 2026-10-28 | The connector targets API 7.0 and is tested on Services with PAT authentication; Server is verified in P1-22, Entra authentication in P1-21, both waiting for the owner ([Phase 1 backlog](phase-1-backlog.md)). Questions 1 and 2 stay open until then |
 | The prototype's Kubernetes blueprints | **Not carried over; the examples are VM-first** | 2026-10-27 | The examples keep the `vm` type and add blueprints built from it; the `component` generator leaves Phase 0 (#10); the walkthroughs of #27 use VM blueprints |
 | YAML editing library | **`go.yaml.in/yaml/v3` alone**, no second decoder; goccy dropped | 2026-10-27 | [Spike report](../engineering/spike-yaml-editing.md); definitions (P0-08) are read with the same conversion |
 | Product name | **Keep "Quai"** | 2026-10-27 | Revisit only if a domain or trademark check (Swissreg, EUIPO, class 42) shows a conflict |

@@ -63,7 +63,7 @@ Goal: Quai works against real repositories through pull requests, and its
 approval is enforced. See [repository connections](../design/01-repository-connections.md)
 and [delivery and approvals](../design/05-delivery-and-approvals.md).
 
-Epics: [GitHub issues labelled `phase:1`](https://github.com/damhau/quai/issues?q=is%3Aissue%20label%3Aphase%3A1). Each epic is broken into task issues when the phase starts.
+Epics: [GitHub issues labelled `phase:1`](https://github.com/damhau/quai/issues?q=is%3Aissue%20label%3Aphase%3A1). Tasks: issues #77–#99 (`P1-01` to `P1-23`); the loop procedure and the test infrastructure are in the [Phase 1 backlog](phase-1-backlog.md).
 
 **Exit:** the pilot's Azure DevOps **Server** repository is connected; a request opens a PR, the build validation pipeline plans, approvals in Quai flip the `quai/approval` status, auto-complete merges once every policy passes; removing the status-check policy (or its authorized identity) is detected within an hour and blocks delivery. The conformance suite also passes on Azure DevOps Services (at the latest by the end of Phase 2).
 
