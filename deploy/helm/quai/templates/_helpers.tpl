@@ -47,11 +47,29 @@ env:
   - name: QUAI_AUTH_OIDC_CLIENT_SECRET
     valueFrom: { secretKeyRef: { name: {{ .root.Values.oidc.secretName }}, key: {{ .root.Values.oidc.secretKey }} } }
   {{- end }}
+  {{- with .root.Values.network.caBundle.configMap }}
+  - name: QUAI_NETWORK_CA_FILE
+    value: /etc/quai-ca/{{ $.root.Values.network.caBundle.key }}
+  {{- end }}
+  {{- with .root.Values.network.proxy }}
+  {{- if .https }}
+  - { name: HTTPS_PROXY, value: {{ .https | quote }} }
+  {{- end }}
+  {{- if .http }}
+  - { name: HTTP_PROXY, value: {{ .http | quote }} }
+  {{- end }}
+  {{- if .noProxy }}
+  - { name: NO_PROXY, value: {{ .noProxy | quote }} }
+  {{- end }}
+  {{- end }}
 securityContext: {{- toYaml .root.Values.securityContext | nindent 2 }}
 volumeMounts:
   - { name: config, mountPath: /etc/quai, readOnly: true }
   - { name: tmp, mountPath: /tmp }
   - { name: cache, mountPath: /var/cache/quai }
+  {{- if .root.Values.network.caBundle.configMap }}
+  - { name: ca, mountPath: /etc/quai-ca, readOnly: true }
+  {{- end }}
 {{- end -}}
 
 {{- define "quai.volumes" -}}
@@ -63,6 +81,10 @@ volumeMounts:
   {{- end }}
 - name: tmp
   emptyDir: {}
+{{- with .root.Values.network.caBundle.configMap }}
+- name: ca
+  configMap: { name: {{ . }} }
+{{- end }}
 - name: cache
   emptyDir: {{ if .sizeLimit }}{ sizeLimit: {{ .sizeLimit }} }{{ else }}{}{{ end }}
 {{- end -}}

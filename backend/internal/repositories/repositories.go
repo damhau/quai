@@ -14,6 +14,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"maps"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -27,6 +28,7 @@ import (
 	"github.com/damhau/quai/backend/internal/engine/definitions"
 	"github.com/damhau/quai/backend/internal/engine/expr"
 	"github.com/damhau/quai/backend/internal/gitx"
+	"github.com/damhau/quai/backend/internal/netx"
 	"github.com/damhau/quai/backend/internal/secrets"
 	"github.com/damhau/quai/backend/internal/store"
 	"github.com/damhau/quai/backend/internal/store/db"
@@ -153,6 +155,8 @@ type Registry struct {
 	secrets   *secrets.Store
 	cache     string
 	committer gitx.Signature
+	caFile    string // the CA bundle git verifies servers with; empty: git's own
+	proxy     func(*url.URL) (*url.URL, error)
 	log       *slog.Logger
 
 	mu    sync.RWMutex
@@ -167,9 +171,11 @@ type Registry struct {
 const worktreeGrace = 2 * time.Minute
 
 // Open loads the connections of src: it clones or fetches their mirrors and compiles their floor
-// rules. Their secret references resolve through store. A connection that cannot be opened (an
-// unreachable remote, say) is logged and left out until a reload opens it.
-func Open(ctx context.Context, cfg *config.Config, src Source, store *secrets.Store, log *slog.Logger) (*Registry, error) {
+// rules. Their secret references resolve through store, and git reaches them through network
+// (nil: git's defaults, no proxy). A connection that cannot be opened (an unreachable remote,
+// say) is logged and left out until a reload opens it.
+func Open(ctx context.Context, cfg *config.Config, src Source, store *secrets.Store, network *netx.Network, log *slog.Logger) (*Registry, error) {
+	var err error
 	cache := cfg.Git.CacheDir
 	if cache == "" {
 		dir, err := os.UserCacheDir()
@@ -180,10 +186,42 @@ func Open(ctx context.Context, cfg *config.Config, src Source, store *secrets.St
 	}
 	reg := &Registry{src: src, secrets: store, cache: cache, log: log, repos: map[string]*Repo{}, failed: map[string]int64{},
 		committer: gitx.Signature{Name: cfg.Git.Committer.Name, Email: cfg.Git.Committer.Email}}
+	if network != nil {
+		reg.proxy = network.Proxy
+		if bundle := network.GitBundle(); bundle != nil {
+			if reg.caFile, err = writeBundle(cache, bundle); err != nil {
+				return nil, err
+			}
+		}
+	}
 	if err := reg.Reload(ctx); err != nil {
 		return nil, err
 	}
 	return reg, nil
+}
+
+// writeBundle writes the CA bundle git uses into the cache directory, replacing it whole.
+func writeBundle(cache string, bundle []byte) (string, error) {
+	if err := os.MkdirAll(cache, 0o750); err != nil {
+		return "", err
+	}
+	f, err := os.CreateTemp(cache, "ca-bundle-*.pem")
+	if err != nil {
+		return "", err
+	}
+	_, err = f.Write(bundle)
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	path := filepath.Join(cache, "ca-bundle.pem")
+	if err == nil {
+		err = os.Rename(f.Name(), path)
+	}
+	if err != nil {
+		_ = os.Remove(f.Name())
+		return "", fmt.Errorf("CA bundle for git: %w", err)
+	}
+	return path, nil
 }
 
 // Reload brings the registry in line with its source: it opens new connections, reopens those
@@ -267,7 +305,8 @@ func (r *Registry) open(ctx context.Context, s Stored, prev *Repo) (*Repo, error
 		prev.mu.Unlock()
 		return repo, nil
 	}
-	if repo.Mirror, err = gitx.OpenMirror(ctx, d.Spec.URL, filepath.Join(r.cache, repo.Name+".git"), r.committer); err != nil {
+	opts := gitx.Options{Committer: r.committer, CAFile: r.caFile, Proxy: r.proxy, PartialClone: d.Spec.Sync.PartialClone}
+	if repo.Mirror, err = gitx.OpenMirror(ctx, d.Spec.URL, filepath.Join(r.cache, repo.Name+".git"), opts); err != nil {
 		return nil, err
 	}
 	if prev != nil {

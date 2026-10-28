@@ -100,10 +100,13 @@ type Webhooks struct {
 	Secret SecretRef `json:"secret,omitzero" yaml:"secret"`
 }
 
-// Sync bounds how often Quai fetches the repository.
+// Sync bounds how often Quai fetches the repository, and what.
 type Sync struct {
 	PollInterval Duration `json:"pollInterval" yaml:"pollInterval"` // the safety net for lost webhooks
 	MinInterval  Duration `json:"minInterval" yaml:"minInterval"`   // at most one fetch per interval on reads
+	// PartialClone mirrors the history without file contents, fetched when needed: for large
+	// repositories. It applies when the mirror is first cloned.
+	PartialClone bool `json:"partialClone,omitempty" yaml:"partialClone"`
 }
 
 // Duration is a time.Duration written as text: "5m", "10s".

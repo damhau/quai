@@ -18,11 +18,13 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 
 	"github.com/damhau/quai/backend/internal/config"
+	"github.com/damhau/quai/backend/internal/netx"
 )
 
-// Setup installs the propagator and, with an endpoint, an exporting tracer provider. The
-// returned function flushes and stops it.
-func Setup(ctx context.Context, cfg config.Telemetry, version string) (shutdown func(context.Context) error, err error) {
+// Setup installs the propagator and, with an endpoint, an exporting tracer provider, which
+// reaches the collector through network (nil: the defaults). The returned function flushes and
+// stops it.
+func Setup(ctx context.Context, cfg config.Telemetry, version string, network *netx.Network) (shutdown func(context.Context) error, err error) {
 	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
 	if cfg.OTLPEndpoint == "" {
 		return func(context.Context) error { return nil }, nil
@@ -34,7 +36,11 @@ func Setup(ctx context.Context, cfg config.Telemetry, version string) (shutdown 
 		u.Path = "/v1/traces"
 		endpoint = u.String()
 	}
-	exp, err := otlptracehttp.New(ctx, otlptracehttp.WithEndpointURL(endpoint))
+	opts := []otlptracehttp.Option{otlptracehttp.WithEndpointURL(endpoint)}
+	if network != nil {
+		opts = append(opts, otlptracehttp.WithTLSClientConfig(network.TLSConfig()), otlptracehttp.WithProxy(network.ProxyRequest))
+	}
+	exp, err := otlptracehttp.New(ctx, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("telemetry: %w", err)
 	}

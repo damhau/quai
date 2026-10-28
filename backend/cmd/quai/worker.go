@@ -13,6 +13,7 @@ import (
 
 	"github.com/damhau/quai/backend/internal/config"
 	"github.com/damhau/quai/backend/internal/jobs"
+	"github.com/damhau/quai/backend/internal/netx"
 	"github.com/damhau/quai/backend/internal/requests"
 	"github.com/damhau/quai/backend/internal/store"
 )
@@ -41,7 +42,11 @@ func newWorkerCmd() *cobra.Command {
 				return err
 			}
 			defer s.Close()
-			return work(ctx, cfg, log, s)
+			network, err := netx.New(cfg.Network.CAFile)
+			if err != nil {
+				return err
+			}
+			return work(ctx, cfg, log, s, network)
 		},
 	}
 	cmd.Flags().StringVar(&configPath, "config", "", "configuration file (YAML)")
@@ -49,11 +54,12 @@ func newWorkerCmd() *cobra.Command {
 }
 
 // work runs the job queue until ctx ends, then lets jobs in flight finish within the shutdown
-// timeout before cancelling them; cancelled jobs run again later.
-func work(ctx context.Context, cfg *config.Config, log *slog.Logger, s *store.Store) error {
+// timeout before cancelling them; cancelled jobs run again later. Outgoing connections go
+// through network (nil: the defaults).
+func work(ctx context.Context, cfg *config.Config, log *slog.Logger, s *store.Store, network *netx.Network) error {
 	opts := jobs.Options{Logger: log}
 	var svc *requests.Service
-	reg, err := openRepositories(ctx, cfg, s, log)
+	reg, err := openRepositories(ctx, cfg, s, network, log)
 	if err != nil {
 		return err
 	}

@@ -54,6 +54,22 @@ secretStore:
     enabled: true
     secretNames: []
 
+# Outgoing connections: Git, the platforms' APIs, the identity provider, traces. Certificate
+# verification is never turned off.
+network:
+  # CA certificates trusted in addition to the image's (an internal CA, typically), in PEM, from
+  # an existing ConfigMap.
+  caBundle:
+    configMap: ""
+    key: ca.crt
+  # The HTTP proxy, as HTTPS_PROXY, HTTP_PROXY and NO_PROXY. With a proxy, noProxy must cover the
+  # Kubernetes API when the secret store reads Kubernetes Secrets: .svc,.cluster.local and the
+  # service network, such as 10.96.0.0/12.
+  proxy:
+    https: ""
+    http: ""
+    noProxy: ""
+
 serviceAccount:
   create: true
   name: ""

@@ -100,7 +100,7 @@ spec:
 	store := secrets.New(map[string]secrets.Backend{"env": secrets.Env{Lookup: func(name string) (string, bool) {
 		return runToken, name == "INFRA_LIVE_RUN_TOKEN"
 	}}})
-	reg, err := repositories.Open(context.Background(), cfg, repositories.FromStore(s), store, log)
+	reg, err := repositories.Open(context.Background(), cfg, repositories.FromStore(s), store, nil, log)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +119,7 @@ spec:
 		defer cancel()
 		_ = worker.StopAndCancel(ctx)
 	})
-	srv := httptest.NewServer(New(Options{Version: "test", Env: cfg.Env, Logger: log, Store: s, Auth: auth.New(cfg, s, log), Repositories: reg, Requests: svc}))
+	srv := httptest.NewServer(New(Options{Version: "test", Env: cfg.Env, Logger: log, Store: s, Auth: auth.New(cfg, s, nil, log), Repositories: reg, Requests: svc}))
 	t.Cleanup(srv.Close)
 	return &harness{t: t, srv: srv, bare: bare, work: work, store: s, reg: reg, log: &logs}
 }

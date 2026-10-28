@@ -157,8 +157,8 @@ new through `net/http`. Verifying this against a Server 2022 instance is the fir
 ### Network (Server)
 
 - Quai runs on-premises next to the Server. No internet access is needed for the connector.
-- **Corporate TLS:** Server usually presents a certificate from an internal CA. The CA bundle configured for Quai applies to API calls and to `git`; certificate verification is never disabled.
-- **HTTP proxy:** honoured for both API and Git if configured; Server is usually reached directly.
+- **Corporate TLS:** Server usually presents a certificate from an internal CA. The CA bundle configured for Quai (`network.caFile`, trusted in addition to the system's certificates) applies to API calls and to `git` (`http.sslCAInfo`, given the system's certificates and the extra ones); certificate verification is never disabled.
+- **HTTP proxy:** honoured for both API and Git if configured, from `HTTPS_PROXY`, `HTTP_PROXY` and `NO_PROXY`: Quai decides the proxy for each URL and gives `git` the same answer (`http.proxy`). Server is usually reached directly. SSH remotes do not go through the proxy.
 - **Service hooks need a path from the Server to Quai's webhook endpoint.** If firewalls do not allow it, the connection runs in **polling mode** (pull requests and refs polled every minute, policies every few minutes) with no loss of function, only latency.
 
 ### Permissions

@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"io"
 	"log/slog"
 	"net/http"
@@ -15,6 +16,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -26,6 +28,7 @@ import (
 	"github.com/damhau/quai/backend/internal/api"
 	"github.com/damhau/quai/backend/internal/auth"
 	"github.com/damhau/quai/backend/internal/config"
+	"github.com/damhau/quai/backend/internal/netx"
 	"github.com/damhau/quai/backend/internal/pgtest"
 )
 
@@ -110,7 +113,9 @@ func newIDP(t *testing.T) *idp {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "at", "token_type": "Bearer", "expires_in": 3600, "id_token": idToken})
 	})
-	p.srv = httptest.NewServer(mux)
+	// Over HTTPS with a CA of its own, which Quai trusts through network.caFile, as an
+	// internal identity provider would be.
+	p.srv = httptest.NewTLSServer(mux)
 	t.Cleanup(p.srv.Close)
 	return p
 }
@@ -132,11 +137,24 @@ func quai(t *testing.T, p *idp) (*httptest.Server, *http.Client) {
 	cfg.Auth.Session = config.Session{Lifetime: time.Hour, IdleTimeout: time.Hour}
 	s := pgtest.Store(t)
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	srv.Config.Handler = api.New(api.Options{Version: "test", Env: cfg.Env, Logger: log, Store: s, Auth: auth.New(cfg, s, log)})
+	var client *http.Client
+	browser := http.DefaultTransport
+	if p != nil {
+		ca := filepath.Join(t.TempDir(), "ca.pem")
+		if err := os.WriteFile(ca, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: p.srv.Certificate().Raw}), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		network, err := netx.New(ca)
+		if err != nil {
+			t.Fatal(err)
+		}
+		client, browser = network.Client(), p.srv.Client().Transport
+	}
+	srv.Config.Handler = api.New(api.Options{Version: "test", Env: cfg.Env, Logger: log, Store: s, Auth: auth.New(cfg, s, client, log)})
 	srv.Start()
 	t.Cleanup(srv.Close)
 	jar, _ := cookiejar.New(nil)
-	return srv, &http.Client{Jar: jar}
+	return srv, &http.Client{Jar: jar, Transport: browser}
 }
 
 type me struct {
@@ -239,7 +257,7 @@ func TestOIDCRefusals(t *testing.T) {
 	p := newIDP(t)
 	p.claims = map[string]any{"preferred_username": "bob"}
 	srv, c := quai(t, p)
-	noRedirect := &http.Client{Jar: c.Jar, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	noRedirect := &http.Client{Jar: c.Jar, Transport: c.Transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 
 	// A callback without a login started here.
 	if resp := send(t, c, http.MethodGet, srv.URL+"/auth/callback?code=x&state=forged", nil); resp.StatusCode != http.StatusBadRequest {

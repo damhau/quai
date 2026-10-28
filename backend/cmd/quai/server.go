@@ -18,6 +18,7 @@ import (
 	"github.com/damhau/quai/backend/internal/auth"
 	"github.com/damhau/quai/backend/internal/config"
 	"github.com/damhau/quai/backend/internal/jobs"
+	"github.com/damhau/quai/backend/internal/netx"
 	"github.com/damhau/quai/backend/internal/requests"
 	"github.com/damhau/quai/backend/internal/store"
 	"github.com/damhau/quai/backend/internal/telemetry"
@@ -40,7 +41,11 @@ func newServerCmd() *cobra.Command {
 			log := cfg.Logger(cmd.ErrOrStderr())
 			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
-			shutdown, err := telemetry.Setup(ctx, cfg.Telemetry, version)
+			network, err := netx.New(cfg.Network.CAFile)
+			if err != nil {
+				return err
+			}
+			shutdown, err := telemetry.Setup(ctx, cfg.Telemetry, version, network)
 			if err != nil {
 				return err
 			}
@@ -62,7 +67,7 @@ func newServerCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return serve(ctx, cfg, log, ln, s)
+			return serve(ctx, cfg, log, ln, s, network)
 		},
 	}
 	cmd.Flags().StringVar(&configPath, "config", "", "configuration file (YAML)")
@@ -70,13 +75,18 @@ func newServerCmd() *cobra.Command {
 }
 
 // serve runs the HTTP server on ln until ctx ends, then lets requests in flight finish within
-// the shutdown timeout. Without a store, nobody can sign in.
-func serve(ctx context.Context, cfg *config.Config, log *slog.Logger, ln net.Listener, s *store.Store) error {
+// the shutdown timeout. Without a store, nobody can sign in. Outgoing connections go through
+// network (nil: the defaults).
+func serve(ctx context.Context, cfg *config.Config, log *slog.Logger, ln net.Listener, s *store.Store, network *netx.Network) error {
 	opts := api.Options{Version: version, Env: cfg.Env, Logger: log, UI: web.Files()}
 	if s != nil {
-		opts.Store, opts.Auth = s, auth.New(cfg, s, log)
+		var client *http.Client
+		if network != nil {
+			client = network.Client()
+		}
+		opts.Store, opts.Auth = s, auth.New(cfg, s, client, log)
 	}
-	reg, err := openRepositories(ctx, cfg, s, log)
+	reg, err := openRepositories(ctx, cfg, s, network, log)
 	if err != nil {
 		return err
 	}

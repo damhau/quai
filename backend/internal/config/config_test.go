@@ -165,6 +165,9 @@ func TestRepositories(t *testing.T) {
 	if c.Repositories.Path != "/etc/quai/repositories.d" || c.Git.CacheDir != "/var/cache/quai" || c.Git.Committer.Name != "Quai" {
 		t.Errorf("repositories = %+v, git = %+v", c.Repositories, c.Git)
 	}
+	if c, err := Load(p, env(map[string]string{"QUAI_NETWORK_CA_FILE": "/etc/quai/ca/ca.crt"})); err != nil || c.Network.CAFile != "/etc/quai/ca/ca.crt" {
+		t.Errorf("QUAI_NETWORK_CA_FILE = %+v, %v", c.Network, err)
+	}
 	if c, err := Load(p, env(map[string]string{"QUAI_REPOSITORIES_PATH": "/run/quai/repositories.yaml"})); err != nil || c.Repositories.Path != "/run/quai/repositories.yaml" {
 		t.Errorf("QUAI_REPOSITORIES_PATH = %+v, %v", c.Repositories, err)
 	}

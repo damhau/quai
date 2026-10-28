@@ -29,7 +29,7 @@ func TestServe(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	sw := &syncWriter{w: &logs}
-	go func() { done <- serve(ctx, cfg, slog.New(slog.NewTextHandler(sw, nil)), ln, pgtest.Store(t)) }()
+	go func() { done <- serve(ctx, cfg, slog.New(slog.NewTextHandler(sw, nil)), ln, pgtest.Store(t), nil) }()
 
 	resp, err := http.Get("http://" + ln.Addr().String() + "/healthz")
 	if err != nil {
@@ -58,7 +58,7 @@ func TestServe(t *testing.T) {
 	// A listener that fails ends serve with an error.
 	ln2, _ := net.Listen("tcp", "127.0.0.1:0")
 	_ = ln2.Close()
-	if err := serve(context.Background(), cfg, slog.New(slog.NewTextHandler(io.Discard, nil)), ln2, nil); err == nil {
+	if err := serve(context.Background(), cfg, slog.New(slog.NewTextHandler(io.Discard, nil)), ln2, nil, nil); err == nil {
 		t.Error("serve on a closed listener succeeded")
 	}
 }

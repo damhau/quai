@@ -76,7 +76,7 @@ func write(t *testing.T, p, content string) {
 
 func mirror(t *testing.T, bare string) *Mirror {
 	t.Helper()
-	m, err := OpenMirror(ctx, bare, filepath.Join(t.TempDir(), "mirrors", "infra-live.git"), quai)
+	m, err := OpenMirror(ctx, bare, filepath.Join(t.TempDir(), "mirrors", "infra-live.git"), Options{Committer: quai})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +132,7 @@ func TestMirrorReads(t *testing.T) {
 
 	// A second open fetches what was pushed since.
 	push("envs/dev/vms/new.yaml", "cpu: 2\n")
-	m2, err := OpenMirror(ctx, bare, m.dir, quai)
+	m2, err := OpenMirror(ctx, bare, m.dir, Options{Committer: quai})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -282,7 +282,7 @@ func TestRefusals(t *testing.T) {
 	if _, err := m.CommitAndPush(ctx, Commit{Branch: "missing", Message: "m\n"}); !errors.Is(err, ErrNotFound) {
 		t.Errorf("a missing branch: %v", err)
 	}
-	if _, err := OpenMirror(ctx, filepath.Join(t.TempDir(), "nothing.git"), filepath.Join(t.TempDir(), "m.git"), quai); err == nil {
+	if _, err := OpenMirror(ctx, filepath.Join(t.TempDir(), "nothing.git"), filepath.Join(t.TempDir(), "m.git"), Options{Committer: quai}); err == nil {
 		t.Error("a mirror of nothing")
 	}
 	if got := redact("https://user:secret@dev.azure.com/org/p/_git/r"); got != "https://***@dev.azure.com/org/p/_git/r" {

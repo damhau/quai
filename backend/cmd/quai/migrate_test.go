@@ -51,7 +51,7 @@ func TestWorker(t *testing.T) {
 	sw := &syncWriter{w: &logs}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { done <- work(ctx, cfg, slog.New(slog.NewTextHandler(sw, nil)), s) }()
+	go func() { done <- work(ctx, cfg, slog.New(slog.NewTextHandler(sw, nil)), s, nil) }()
 	deadline := time.Now().Add(30 * time.Second)
 	for {
 		sw.mu.Lock()

@@ -6,16 +6,20 @@
 // the request is stale. A push that loses a race with another push is retried on the new head.
 //
 // Git runs without a terminal prompt, without system or global configuration and without hooks,
-// so nothing from the machine or the repository runs with it.
+// so nothing from the machine or the repository runs with it. What it needs to reach the remote
+// (credentials, the CA bundle, the proxy) comes through the environment, never the command line,
+// and is removed from the errors it reports (docs/design/12-git-connectors.md#network-server).
 package gitx
 
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io/fs"
 	"maps"
+	"net/url"
 	"os"
 	"os/exec"
 	"path"
@@ -45,11 +49,36 @@ type Signature struct {
 	Email string
 }
 
+// Credentials authenticate git with the remote: an HTTP header, or an SSH key.
+type Credentials struct {
+	// Header is an HTTP header ("Authorization: Basic …") sent to the remote's host only.
+	Header string
+	// SSHKey is a private key in OpenSSH format. KnownHosts holds the remote's host keys, in
+	// known_hosts format: the host key is always verified.
+	SSHKey     []byte
+	KnownHosts []byte
+}
+
+// Options say how a mirror reaches its remote and commits.
+type Options struct {
+	Committer Signature // the identity Quai commits as
+	// Auth returns the credentials, before each command that may reach the remote (nil: none).
+	Auth func(context.Context) (Credentials, error)
+	// CAFile is the PEM bundle git verifies HTTPS servers with (http.sslCAInfo); empty: git's.
+	CAFile string
+	// Proxy returns the proxy to reach an HTTP(S) remote through, or nil (nil: no proxy).
+	Proxy func(*url.URL) (*url.URL, error)
+	// PartialClone clones without file contents (--filter=blob:none), which git then fetches
+	// when a command needs them. It applies when the mirror is first cloned.
+	PartialClone bool
+}
+
 // Mirror is the bare mirror of one remote repository.
 type Mirror struct {
 	remote    string
 	dir       string
 	committer Signature
+	opts      Options
 	mu        sync.Mutex // one commit at a time per mirror in this process
 
 	// beforePush runs before each push; tests use it to lose a race.
@@ -57,14 +86,18 @@ type Mirror struct {
 }
 
 // OpenMirror returns the mirror of remote in dir, cloning it the first time and fetching it
-// afterwards. committer is the identity Quai commits as.
-func OpenMirror(ctx context.Context, remote, dir string, committer Signature) (*Mirror, error) {
-	m := &Mirror{remote: remote, dir: dir, committer: committer}
+// afterwards.
+func OpenMirror(ctx context.Context, remote, dir string, opts Options) (*Mirror, error) {
+	m := &Mirror{remote: remote, dir: dir, committer: opts.Committer, opts: opts}
 	if _, err := os.Stat(filepath.Join(dir, "HEAD")); errors.Is(err, fs.ErrNotExist) {
 		if err := os.MkdirAll(filepath.Dir(dir), 0o750); err != nil {
 			return nil, err
 		}
-		if _, err := run(ctx, "", nil, "clone", "--mirror", "--quiet", remote, dir); err != nil {
+		args := []string{"clone", "--mirror", "--quiet"}
+		if opts.PartialClone {
+			args = append(args, "--filter=blob:none")
+		}
+		if _, err := m.command(ctx, "", nil, true, append(args, "--", remote, dir)...); err != nil {
 			return nil, fmt.Errorf("mirror %s: %w", redact(remote), err)
 		}
 		// Fetch every ref like a mirror, but push one branch at a time, which a mirror remote
@@ -83,7 +116,7 @@ func OpenMirror(ctx context.Context, remote, dir string, committer Signature) (*
 
 // Fetch brings the mirror up to date with the remote, pruning deleted branches.
 func (m *Mirror) Fetch(ctx context.Context) error {
-	if _, err := m.git(ctx, "", "fetch", "--prune", "--quiet", "origin"); err != nil {
+	if _, err := m.command(ctx, "", nil, true, "fetch", "--prune", "--quiet", "origin"); err != nil {
 		return fmt.Errorf("fetch %s: %w", redact(m.remote), err)
 	}
 	return nil
@@ -122,21 +155,54 @@ type Worktree struct {
 	dir string
 }
 
-// Worktree checks out commit in a new temporary directory. Close removes it.
-func (m *Mirror) Worktree(ctx context.Context, commit string) (*Worktree, error) {
+// Worktree checks out commit in a new temporary directory. Given paths, it is sparse: only those
+// files and directories, with everything below them, are checked out (and, from a partial clone,
+// fetched). Close removes it.
+func (m *Mirror) Worktree(ctx context.Context, commit string, paths ...string) (*Worktree, error) {
 	if err := checkCommit(commit); err != nil {
 		return nil, err
+	}
+	for _, p := range paths {
+		if err := checkPath(p); err != nil {
+			return nil, err
+		}
 	}
 	dir, err := os.MkdirTemp("", "quai-worktree-")
 	if err != nil {
 		return nil, err
 	}
-	if _, err := m.git(ctx, "", "worktree", "add", "--detach", "--quiet", dir, commit); err != nil {
-		_ = os.RemoveAll(dir)
+	w := &Worktree{m: m, dir: dir}
+	if len(paths) == 0 {
+		_, err = m.git(ctx, "", "worktree", "add", "--detach", "--quiet", dir, commit)
+	} else {
+		err = w.sparse(ctx, commit, paths)
+	}
+	if err != nil {
+		_ = w.Close()
 		return nil, err
 	}
-	return &Worktree{m: m, dir: dir}, nil
+	return w, nil
 }
+
+// sparse checks out the paths of commit only. The patterns are anchored and escaped, so that a
+// path matches itself and nothing else.
+func (w *Worktree) sparse(ctx context.Context, commit string, paths []string) error {
+	if _, err := w.m.git(ctx, "", "worktree", "add", "--detach", "--no-checkout", "--quiet", w.dir, commit); err != nil {
+		return err
+	}
+	var patterns strings.Builder
+	for _, p := range paths {
+		patterns.WriteString("/" + globEscaper.Replace(p) + "\n")
+	}
+	if _, err := w.m.git(ctx, w.dir, "sparse-checkout", "set", "--no-cone", "--stdin", withStdin(patterns.String())); err != nil {
+		return err
+	}
+	_, err := w.m.git(ctx, w.dir, "checkout", "--quiet", "--detach", commit)
+	return err
+}
+
+// globEscaper escapes what sparse-checkout patterns (gitignore syntax) give a meaning to.
+var globEscaper = strings.NewReplacer(`\`, `\\`, `*`, `\*`, `?`, `\?`, `[`, `\[`, ` `, `\ `)
 
 // Dir is the worktree's directory.
 func (w *Worktree) Dir() string { return w.dir }
@@ -226,7 +292,13 @@ func (m *Mirror) commitOnce(ctx context.Context, c Commit, attempt int) (string,
 	if err != nil {
 		return "", err
 	}
-	wt, err := m.Worktree(ctx, head)
+	// Only the regions to check and the files to change are checked out.
+	sparse := slices.Collect(maps.Keys(c.Fingerprints))
+	for _, ch := range c.Changes {
+		sparse = append(sparse, ch.Path)
+	}
+	slices.Sort(sparse)
+	wt, err := m.Worktree(ctx, head, slices.Compact(sparse)...)
 	if err != nil {
 		return "", err
 	}
@@ -273,7 +345,7 @@ func (m *Mirror) commitOnce(ctx context.Context, c Commit, attempt int) (string,
 		"GIT_AUTHOR_NAME=" + c.Author.Name, "GIT_AUTHOR_EMAIL=" + c.Author.Email,
 		"GIT_COMMITTER_NAME=" + m.committer.Name, "GIT_COMMITTER_EMAIL=" + m.committer.Email,
 	}
-	if _, err := run(ctx, wt.dir, env, "commit", "--quiet", "--no-verify", "--cleanup=verbatim", "-F", "-", withStdin(c.Message)); err != nil {
+	if _, err := m.command(ctx, wt.dir, env, m.opts.PartialClone, "commit", "--quiet", "--no-verify", "--cleanup=verbatim", "-F", "-", withStdin(c.Message)); err != nil {
 		return "", err
 	}
 	sha, err := m.git(ctx, wt.dir, "rev-parse", "HEAD")
@@ -283,7 +355,7 @@ func (m *Mirror) commitOnce(ctx context.Context, c Commit, attempt int) (string,
 	if m.beforePush != nil {
 		m.beforePush(attempt)
 	}
-	if _, err := m.git(ctx, wt.dir, "push", "--quiet", "--no-verify", "origin", "HEAD:refs/heads/"+c.Branch); err != nil {
+	if _, err := m.command(ctx, wt.dir, nil, true, "push", "--quiet", "--no-verify", "origin", "HEAD:refs/heads/"+c.Branch); err != nil {
 		if strings.Contains(err.Error(), "rejected") || strings.Contains(err.Error(), "non-fast-forward") || strings.Contains(err.Error(), "fetch first") {
 			return "", fmt.Errorf("%w: %v", errRejected, err)
 		}
@@ -375,12 +447,139 @@ func redact(remote string) string {
 	return remote
 }
 
+// userinfoRe finds the credentials of URLs in a text.
+var userinfoRe = regexp.MustCompile(`([A-Za-z][A-Za-z0-9+.-]*://)[^/@\s]+@`)
+
+// scrub hides the credentials of URLs, and the secrets given, in a text.
+func scrub(text string, secrets []string) string {
+	text = userinfoRe.ReplaceAllString(text, "${1}***@")
+	for _, s := range secrets {
+		if s != "" {
+			text = strings.ReplaceAll(text, s, "***")
+		}
+	}
+	return text
+}
+
+// git runs a command in the mirror (dir empty) or in one of its worktrees. From a partial clone,
+// any command may fetch missing contents, so each can reach the remote.
 func (m *Mirror) git(ctx context.Context, dir string, args ...string) (string, error) {
-	if dir == "" {
+	return m.command(ctx, dir, nil, m.opts.PartialClone, args...)
+}
+
+// command runs git with env; when remote, with what it needs to reach the remote.
+func (m *Mirror) command(ctx context.Context, dir string, env []string, remote bool, args ...string) (string, error) {
+	if dir == "" && args[0] != "clone" {
 		args = append([]string{"--git-dir", m.dir}, args...)
 	}
-	return run(ctx, dir, nil, args...)
+	if !remote {
+		return run(ctx, dir, env, args...)
+	}
+	t, err := m.transport(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer t.close()
+	return runScrubbed(ctx, dir, append(env, t.env...), t.secrets, args...)
 }
+
+// transport is what git needs to reach the remote: configuration passed in the environment
+// (GIT_CONFIG_COUNT), the secrets to remove from its errors, and temporary files.
+type transport struct {
+	env     []string
+	secrets []string
+	tmp     string
+}
+
+func (t *transport) close() {
+	if t.tmp != "" {
+		_ = os.RemoveAll(t.tmp)
+	}
+}
+
+func (m *Mirror) transport(ctx context.Context) (*transport, error) {
+	t := &transport{}
+	var config [][2]string
+	u, err := url.Parse(m.remote)
+	web := err == nil && (u.Scheme == "https" || u.Scheme == "http")
+	if m.opts.CAFile != "" {
+		config = append(config, [2]string{"http.sslCAInfo", m.opts.CAFile})
+	}
+	if web && m.opts.Proxy != nil {
+		proxy, err := m.opts.Proxy(u)
+		if err != nil {
+			return nil, fmt.Errorf("proxy for %s: %w", redact(m.remote), err)
+		}
+		if proxy != nil {
+			config = append(config, [2]string{"http.proxy", proxy.String()})
+			if pw, ok := proxy.User.Password(); ok {
+				t.secrets = append(t.secrets, pw)
+			}
+		}
+	}
+	if m.opts.Auth != nil {
+		c, err := m.opts.Auth(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("credentials for %s: %w", redact(m.remote), err)
+		}
+		if c.Header != "" {
+			name, value, ok := strings.Cut(c.Header, ":")
+			if !web || !ok || strings.TrimSpace(name) == "" || strings.ContainsAny(c.Header, "\r\n") {
+				return nil, fmt.Errorf("credentials for %s: an HTTP header \"Name: value\" for an HTTP(S) remote", redact(m.remote))
+			}
+			// Scoped to the remote's host: the header goes nowhere else.
+			config = append(config, [2]string{"http." + u.Scheme + "://" + u.Host + "/.extraHeader", c.Header})
+			value = strings.TrimSpace(value)
+			t.secrets = append(t.secrets, value)
+			if scheme, cred, ok := strings.Cut(value, " "); ok {
+				t.secrets = append(t.secrets, cred)
+				// A Basic header carries the password readable once decoded.
+				if plain, err := base64.StdEncoding.DecodeString(cred); err == nil && strings.EqualFold(scheme, "basic") {
+					_, password, _ := strings.Cut(string(plain), ":")
+					t.secrets = append(t.secrets, string(plain), password)
+				}
+			}
+		}
+		if len(c.SSHKey) > 0 {
+			cmd, err := t.ssh(c)
+			if err != nil {
+				t.close()
+				return nil, err
+			}
+			config = append(config, [2]string{"core.sshCommand", cmd})
+		}
+	}
+	t.env = append(t.env, fmt.Sprintf("GIT_CONFIG_COUNT=%d", len(config)))
+	for i, kv := range config {
+		t.env = append(t.env, fmt.Sprintf("GIT_CONFIG_KEY_%d=%s", i, kv[0]), fmt.Sprintf("GIT_CONFIG_VALUE_%d=%s", i, kv[1]))
+	}
+	return t, nil
+}
+
+// ssh writes the key and the host keys to files only the user can read, and returns the ssh
+// command that uses them and nothing else: no configuration file, no agent, no prompt.
+func (t *transport) ssh(c Credentials) (string, error) {
+	if len(c.KnownHosts) == 0 {
+		return "", errors.New("an SSH key needs the remote's host keys (known_hosts): they are always verified")
+	}
+	dir, err := os.MkdirTemp("", "quai-ssh-")
+	if err != nil {
+		return "", err
+	}
+	t.tmp = dir
+	key, hosts := filepath.Join(dir, "key"), filepath.Join(dir, "known_hosts")
+	pem := append(bytes.TrimSpace(c.SSHKey), '\n') // ssh refuses a key without its final newline
+	if err := os.WriteFile(key, pem, 0o600); err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(hosts, c.KnownHosts, 0o600); err != nil {
+		return "", err
+	}
+	return "ssh -F /dev/null -i " + shellQuote(key) + " -o IdentitiesOnly=yes -o IdentityAgent=none -o BatchMode=yes" +
+		" -o StrictHostKeyChecking=yes -o UserKnownHostsFile=" + shellQuote(hosts) + " -o GlobalKnownHostsFile=/dev/null", nil
+}
+
+func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 
 // withStdin marks the last argument of run as standard input.
 func withStdin(s string) string { return "\x00stdin:" + s }
@@ -389,6 +588,11 @@ func withStdin(s string) string { return "\x00stdin:" + s }
 // hooks; only PATH is kept, for git to find its helpers. An argument made by withStdin is sent on
 // standard input instead.
 func run(ctx context.Context, dir string, env []string, args ...string) (string, error) {
+	return runScrubbed(ctx, dir, env, nil, args...)
+}
+
+// runScrubbed is run, with the credentials of URLs and the secrets removed from its errors.
+func runScrubbed(ctx context.Context, dir string, env, secrets []string, args ...string) (string, error) {
 	var input string
 	if n := len(args); n > 0 && strings.HasPrefix(args[n-1], "\x00stdin:") {
 		input, args = strings.TrimPrefix(args[n-1], "\x00stdin:"), args[:n-1]
@@ -404,7 +608,7 @@ func run(ctx context.Context, dir string, env []string, args ...string) (string,
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("git %s: %w: %s", args[0], err, strings.TrimSpace(stderr.String()))
+		return "", fmt.Errorf("git %s: %w: %s", args[0], err, scrub(strings.TrimSpace(stderr.String()), secrets))
 	}
 	return stdout.String(), nil
 }

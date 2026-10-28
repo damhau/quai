@@ -90,14 +90,16 @@ type Authenticator struct {
 	cfg      config.Auth
 	sessions *scs.SessionManager
 	store    *store.Store
+	client   *http.Client // reaches the identity provider; nil: the default
 	log      *slog.Logger
 
 	mu       sync.Mutex
 	provider *oidc.Provider
 }
 
-// New returns an authenticator keeping sessions in s's database.
-func New(cfg *config.Config, s *store.Store, log *slog.Logger) *Authenticator {
+// New returns an authenticator keeping sessions in s's database. It reaches the identity provider
+// with client (nil: the default client).
+func New(cfg *config.Config, s *store.Store, client *http.Client, log *slog.Logger) *Authenticator {
 	sm := scs.New()
 	// Expired sessions are deleted by a periodic job, not by a goroutine per process.
 	sm.Store = pgxstore.NewWithCleanupInterval(s.Pool, 0)
@@ -108,7 +110,7 @@ func New(cfg *config.Config, s *store.Store, log *slog.Logger) *Authenticator {
 	sm.Cookie.SameSite = http.SameSiteLaxMode
 	sm.Cookie.Secure = cfg.Env == config.Production
 	sm.Cookie.Path = "/"
-	return &Authenticator{cfg: cfg.Auth, sessions: sm, store: s, log: log}
+	return &Authenticator{cfg: cfg.Auth, sessions: sm, store: s, client: client, log: log}
 }
 
 // Mode returns how people sign in: oidc or dev.
@@ -224,7 +226,16 @@ func (a *Authenticator) logout(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// idpContext makes the identity provider's discovery, keys and token exchange use a's client.
+func (a *Authenticator) idpContext(ctx context.Context) context.Context {
+	if a.client == nil {
+		return ctx
+	}
+	return oidc.ClientContext(ctx, a.client)
+}
+
 func (a *Authenticator) oauth(ctx context.Context) (*oidc.Provider, *oauth2.Config, error) {
+	ctx = a.idpContext(ctx)
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.provider == nil {
@@ -281,14 +292,14 @@ func (a *Authenticator) callback(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, r, err)
 		return
 	}
-	tok, err := oc.Exchange(ctx, q.Get("code"), oauth2.VerifierOption(verifier))
+	tok, err := oc.Exchange(a.idpContext(ctx), q.Get("code"), oauth2.VerifierOption(verifier))
 	if err != nil {
 		a.log.WarnContext(ctx, "login: code exchange failed", slog.Any("error", err))
 		writeProblem(w, http.StatusUnauthorized, "the identity provider did not accept the login")
 		return
 	}
 	raw, _ := tok.Extra("id_token").(string)
-	idt, err := provider.Verifier(&oidc.Config{ClientID: a.cfg.OIDC.ClientID}).Verify(ctx, raw)
+	idt, err := provider.Verifier(&oidc.Config{ClientID: a.cfg.OIDC.ClientID}).Verify(a.idpContext(ctx), raw)
 	if err != nil {
 		a.log.WarnContext(ctx, "login: invalid ID token", slog.Any("error", err))
 		writeProblem(w, http.StatusUnauthorized, "the identity provider returned an invalid ID token")

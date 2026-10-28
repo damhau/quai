@@ -36,6 +36,7 @@ type Config struct {
 	Git          Git          `yaml:"git"`
 	Repositories Repositories `yaml:"repositories"`
 	Secrets      Secrets      `yaml:"secrets"`
+	Network      Network      `yaml:"network"`
 	Log          Log          `yaml:"log"`
 	Telemetry    Telemetry    `yaml:"telemetry"`
 }
@@ -78,6 +79,14 @@ type Secrets struct {
 		// the default kubeconfig (KUBECONFIG, ~/.kube/config) outside one.
 		Kubeconfig string `yaml:"kubeconfig"`
 	} `yaml:"kubernetes"`
+}
+
+// Network configures outgoing connections: Git, platform APIs, the identity provider, traces.
+// The proxy comes from the standard environment variables (HTTPS_PROXY, HTTP_PROXY, NO_PROXY).
+type Network struct {
+	// CAFile is a PEM file of CA certificates trusted in addition to the system's: an internal
+	// CA, typically.
+	CAFile string `yaml:"caFile"`
 }
 
 // UnmarshalYAML refuses the list of repositories of earlier versions with a pointer to where its
@@ -179,6 +188,7 @@ var variables = []struct {
 	{"QUAI_TELEMETRY_SERVICE_NAME", func(c *Config, v string) error { c.Telemetry.ServiceName = v; return nil }},
 	{"QUAI_REPOSITORIES_PATH", func(c *Config, v string) error { c.Repositories.Path = v; return nil }},
 	{"QUAI_SECRETS_KUBECONFIG", func(c *Config, v string) error { c.Secrets.Kubernetes.Kubeconfig = v; return nil }},
+	{"QUAI_NETWORK_CA_FILE", func(c *Config, v string) error { c.Network.CAFile = v; return nil }},
 }
 
 // Load reads the configuration file at path, or at QUAI_CONFIG when path is empty, applies the

@@ -1,9 +1,13 @@
 package repositories
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"encoding/pem"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,6 +16,7 @@ import (
 	"time"
 
 	"github.com/damhau/quai/backend/internal/config"
+	"github.com/damhau/quai/backend/internal/netx"
 	"github.com/damhau/quai/backend/internal/pgtest"
 	"github.com/damhau/quai/backend/internal/secrets"
 	"github.com/damhau/quai/backend/internal/store/db"
@@ -144,7 +149,7 @@ func TestRefresh(t *testing.T) {
 	r := newRemote(t, "infra")
 	d := doc(t, "apiVersion: quai.dev/v1beta1\nkind: Repository\nmetadata: { name: infra }\nspec: { connector: generic, url: "+r.url+", sync: { minInterval: 1h } }\n")
 	ctx := context.Background()
-	reg, err := Open(ctx, testConfig(t), Static([]Document{d}), nil, slog.New(slog.DiscardHandler))
+	reg, err := Open(ctx, testConfig(t), Static([]Document{d}), nil, nil, slog.New(slog.DiscardHandler))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,7 +201,7 @@ func TestReconcileAndReload(t *testing.T) {
 	if err := Reconcile(ctx, s, []Document{repoDoc("alpha", alpha.url, "Alpha"), repoDoc("beta", beta.url, "Beta")}); err != nil {
 		t.Fatal(err)
 	}
-	reg, err := Open(ctx, testConfig(t), FromStore(s), nil, slog.New(slog.DiscardHandler))
+	reg, err := Open(ctx, testConfig(t), FromStore(s), nil, nil, slog.New(slog.DiscardHandler))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -282,7 +287,7 @@ func TestSecretReferences(t *testing.T) {
 	env := map[string]string{"INFRA_PAT": "pat-value"}
 	store := secrets.New(map[string]secrets.Backend{"env": secrets.Env{Lookup: func(n string) (string, bool) { v, ok := env[n]; return v, ok }}})
 	var logs strings.Builder
-	reg, err := Open(ctx, testConfig(t), Static([]Document{d}), store, slog.New(slog.NewTextHandler(&logs, nil)))
+	reg, err := Open(ctx, testConfig(t), Static([]Document{d}), store, nil, slog.New(slog.NewTextHandler(&logs, nil)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -300,5 +305,38 @@ func TestSecretReferences(t *testing.T) {
 	}
 	if strings.Contains(logs.String(), "pat-value") {
 		t.Errorf("the logs show the secret: %s", logs.String())
+	}
+}
+
+// TestNetwork: git gets the CA bundle in the cache directory, and a partial clone when the
+// connection asks for one.
+func TestNetwork(t *testing.T) {
+	ctx := context.Background()
+	srv := httptest.NewTLSServer(http.NotFoundHandler())
+	srv.Close()
+	ca := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw})
+	file := filepath.Join(t.TempDir(), "ca.pem")
+	if err := os.WriteFile(file, ca, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	network, err := netx.New(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := newRemote(t, "infra")
+	git(t, filepath.Dir(r.url), "--git-dir", r.url, "config", "uploadpack.allowFilter", "true")
+	d := doc(t, "apiVersion: quai.dev/v1beta1\nkind: Repository\nmetadata: { name: infra }\nspec:\n  connector: generic\n  url: file://"+r.url+
+		"\n  sync: { partialClone: true }\n")
+	cfg := testConfig(t)
+	reg, err := Open(ctx, cfg, Static([]Document{d}), nil, network, slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reg.Close()
+	if b, err := os.ReadFile(filepath.Join(cfg.Git.CacheDir, "ca-bundle.pem")); err != nil || !bytes.HasSuffix(b, ca) {
+		t.Errorf("git's CA bundle: %v", err)
+	}
+	if got := git(t, cfg.Git.CacheDir, "--git-dir", filepath.Join(cfg.Git.CacheDir, "infra.git"), "config", "remote.origin.partialclonefilter"); strings.TrimSpace(got) != "blob:none" {
+		t.Errorf("partial clone filter = %q", got)
 	}
 }
