@@ -194,6 +194,15 @@ func TestProxy(t *testing.T) {
 	target := srv.Listener.Addr().String()
 	var connects atomic.Int32
 	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Like the agents' sandbox proxy: credentials required, and the connection closed after
+		// a 407 without saying so, so a client must send them with its first request.
+		if r.Header.Get("Proxy-Authorization") != "Basic "+base64.StdEncoding.EncodeToString([]byte("quai:proxy-password")) {
+			if conn, _, err := http.NewResponseController(w).Hijack(); err == nil {
+				_, _ = conn.Write([]byte("HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm=\"proxy\"\r\nContent-Length: 0\r\n\r\n"))
+				_ = conn.Close()
+			}
+			return
+		}
 		if r.Method != http.MethodConnect || !strings.HasPrefix(r.Host, "git.quai.test:") {
 			http.Error(w, "CONNECT to git.quai.test only", http.StatusForbidden)
 			return

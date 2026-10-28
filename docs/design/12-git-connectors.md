@@ -127,7 +127,8 @@ Entra authentication and running the conformance suite against a Services organi
 
 The connector reads the instance's version at registration (`_apis/connectionData` and the
 resource-area version lists), stores it on the connection, and pins every call to an API version
-the instance supports. Code is written against the **lowest supported version (7.0)**; features
+the instance supports. Until registration exists (P1-17), it reads them, and the repository's IDs,
+on first use and keeps them in memory; an instance whose Git API is older than 7.0 is refused. Code is written against the **lowest supported version (7.0)**; features
 only available in newer versions are capabilities, detected and reported, never assumed.
 
 ### URLs
@@ -149,6 +150,9 @@ Service Hooks clients, wrapped in Quai's own thin client. The SDK targets Servic
 versions per endpoint, some of them newer than Server 2022 accepts. The wrapper therefore controls
 the API version of every call, and calls endpoints the SDK lacks, models incorrectly or pins too
 new through `net/http`. Verifying this against a Server 2022 instance is the first task of Phase 1.
+The SDK's Git client pins its calls to 7.1 previews, so the wrapper sends every call itself: through
+the SDK's location service with its own version (the SDK puts it in the `Accept` header and only
+ever negotiates it down), or over HTTP with `api-version` in the query.
 
 ### Authentication
 
@@ -165,7 +169,7 @@ new through `net/http`. Verifying this against a Server 2022 instance is the fir
 
 - Quai runs on-premises next to the Server. No internet access is needed for the connector.
 - **Corporate TLS:** Server usually presents a certificate from an internal CA. The CA bundle configured for Quai (`network.caFile`, trusted in addition to the system's certificates) applies to API calls and to `git` (`http.sslCAInfo`, given the system's certificates and the extra ones); certificate verification is never disabled.
-- **HTTP proxy:** honoured for both API and Git if configured, from `HTTPS_PROXY`, `HTTP_PROXY` and `NO_PROXY`: Quai decides the proxy for each URL and gives `git` the same answer (`http.proxy`). Server is usually reached directly. SSH remotes do not go through the proxy.
+- **HTTP proxy:** honoured for both API and Git if configured, from `HTTPS_PROXY`, `HTTP_PROXY` and `NO_PROXY`: Quai decides the proxy for each URL and gives `git` the same answer (`http.proxy`). Credentials in the proxy URL are sent with Basic authentication on the first request, by Go's clients and by `git` alike. Server is usually reached directly. SSH remotes do not go through the proxy.
 - **Service hooks need a path from the Server to Quai's webhook endpoint.** If firewalls do not allow it, the connection runs in **polling mode** (pull requests and refs polled every minute, policies every few minutes) with no loss of function, only latency.
 
 ### Permissions

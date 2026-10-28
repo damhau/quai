@@ -542,6 +542,12 @@ func (m *Mirror) transport(ctx context.Context) (*transport, error) {
 			if pw, ok := proxy.User.Password(); ok {
 				t.secrets = append(t.secrets, pw)
 			}
+			// Credentials in the proxy URL go with the first request, as Go's clients send them:
+			// curl's default probes without them first, and a proxy that closes the connection
+			// after its 407 then fails the clone.
+			if proxy.User != nil {
+				config = append(config, [2]string{"http.proxyAuthMethod", "basic"})
+			}
 		}
 	}
 	if m.opts.Auth != nil {
