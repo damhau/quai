@@ -120,10 +120,9 @@ func (c *Connector) PullRequests() connectors.PullRequests { return (*pullReques
 func (c *Connector) Statuses() connectors.Statuses         { return (*statuses)(c) }
 func (c *Connector) Identities() connectors.Identities     { return (*identities)(c) }
 
-// Policies, owners and service hooks come with P1-09.
-func (c *Connector) Policies() connectors.Policies   { return nil }
-func (c *Connector) Owners() connectors.Owners       { return nil }
-func (c *Connector) Webhooks() connectors.Webhooks   { return nil }
+func (c *Connector) Policies() connectors.Policies   { return (*policies)(c) }
+func (c *Connector) Owners() connectors.Owners       { return (*owners)(c) }
+func (c *Connector) Webhooks() connectors.Webhooks   { return (*webhooks)(c) }
 func (c *Connector) Pipelines() connectors.Pipelines { return nil }
 
 type identities Connector
@@ -132,27 +131,12 @@ type identities Connector
 // reviewers are linked. On Services, identities live in the organization's vssps service.
 func (i *identities) ByEmail(ctx context.Context, email string) (connectors.User, error) {
 	c := (*Connector)(i)
-	client := c.client
-	if c.loc.Services {
-		u, err := url.Parse(c.loc.Collection)
-		if err != nil {
-			return connectors.User{}, err
-		}
-		if u.Host == "dev.azure.com" {
-			u.Host = "vssps.dev.azure.com"
-		} else {
-			u.Host = strings.Replace(u.Host, ".visualstudio.com", ".vssps.visualstudio.com", 1)
-		}
-		client = NewClient(u.String(), c.cfg.HTTP, c.cfg.Credentials)
+	client, err := c.identityClient()
+	if err != nil {
+		return connectors.User{}, err
 	}
 	var list struct {
-		Value []struct {
-			ID                  string `json:"id"`
-			ProviderDisplayName string `json:"providerDisplayName"`
-			Properties          map[string]struct {
-				Value any `json:"$value"`
-			} `json:"properties"`
-		} `json:"value"`
+		Value []identity `json:"value"`
 	}
 	q := url.Values{"searchFilter": {"General"}, "filterValue": {email}, "queryMembership": {"None"}}
 	if err := client.Do(ctx, http.MethodGet, "/_apis/identities", APIVersion, q, nil, &list); err != nil {
@@ -160,7 +144,7 @@ func (i *identities) ByEmail(ctx context.Context, email string) (connectors.User
 	}
 	for _, id := range list.Value {
 		for _, key := range []string{"Mail", "Account"} {
-			if v, ok := id.Properties[key].Value.(string); ok && strings.EqualFold(v, email) {
+			if v := id.property(key); v != "" && strings.EqualFold(v, email) {
 				return connectors.User{ID: id.ID, Name: id.ProviderDisplayName, Email: v}, nil
 			}
 		}

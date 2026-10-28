@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -147,17 +148,145 @@ func TestLive(t *testing.T) {
 	}
 }
 
-// liveHarness gives the conformance suite repositories of the sandbox. Policies and service hooks
-// come with P1-09: until then, the steps that need them are skipped.
+// liveHarness gives the conformance suite repositories of the sandbox, with the policies the
+// suite asks for and the service hook deliveries Azure DevOps recorded (it cannot reach this
+// machine). There is one PAT, so no second identity: step 4 is skipped.
 type liveHarness struct{ s *sandbox }
 
 func (h liveHarness) Setup(t *testing.T, client *http.Client) *conformance.Repository {
+	ctx := context.Background()
 	name, _ := h.s.repository(t)
 	c, err := New(connectors.Config{URL: h.s.url(name), HTTP: client, Credentials: h.s.pat})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &conformance.Repository{Connector: c, URL: h.s.url(name), DefaultBranch: "main"}
+	ado := c.(*Connector)
+	repo, err := ado.Resolve(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	in, err := ado.client.Detect(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Subscribed before the suite pushes anything, to an address that does not resolve: Azure
+	// DevOps keeps what it tried to send.
+	b := make([]byte, 8)
+	_, _ = rand.Read(b)
+	secret, hook := hex.EncodeToString(b), "https://quai-conformance.invalid/webhooks/"+name
+	if err := c.Webhooks().Subscribe(ctx, hook, secrets.FromValue(secret)); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := (*webhooks)(ado).Unsubscribe(context.Background(), hook); err != nil {
+			t.Errorf("unsubscribe: %v", err)
+		}
+	})
+	var statusPolicies []int
+	create := func(ctx context.Context, typ string, settings map[string]any) (int, error) {
+		settings["scope"] = []map[string]any{{"repositoryId": repo.ID, "refName": "refs/heads/main", "matchKind": "exact"}}
+		var p struct {
+			ID int `json:"id"`
+		}
+		err := ado.client.Do(ctx, http.MethodPost, path(repo.ProjectID, "_apis", "policy", "configurations"), APIVersion, nil,
+			map[string]any{"isEnabled": true, "isBlocking": true, "type": map[string]string{"id": typ}, "settings": settings}, &p)
+		return p.ID, err
+	}
+	return &conformance.Repository{
+		Connector:     c,
+		URL:           h.s.url(name),
+		DefaultBranch: "main",
+		RequireCheck: func(ctx context.Context, branch, check string) error {
+			genre, name, _ := strings.Cut(check, "/")
+			id, err := create(ctx, statusPolicy, map[string]any{"statusGenre": genre, "statusName": name, "authorId": in.User.ID, "invalidateOnSourceUpdate": true})
+			statusPolicies = append(statusPolicies, id)
+			return err
+		},
+		RemoveEnforcement: func(ctx context.Context, branch string) error {
+			for _, id := range statusPolicies {
+				if err := ado.client.Do(ctx, http.MethodDelete, path(repo.ProjectID, "_apis", "policy", "configurations", strconv.Itoa(id)), APIVersion, nil, nil, nil); err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+		AddOwner: func(ctx context.Context, pattern string) (string, error) {
+			_, err := create(ctx, reviewersPolicy, map[string]any{"requiredReviewerIds": []string{in.User.ID}, "minimumApproverCount": 1,
+				"creatorVoteCounts": true, "filenamePatterns": []string{strings.TrimSuffix(pattern, "/") + "/*"}})
+			return in.User.Email, err
+		},
+		Recorded: func(t *testing.T) []conformance.Recorded { return h.recorded(t, ado, hook, secret) },
+	}
+}
+
+// recorded returns what Azure DevOps tried to deliver to hook: each request's body as sent, and
+// its headers with the secret, which the history masks, put back.
+func (h liveHarness) recorded(t *testing.T, ado *Connector, hook, secret string) []conformance.Recorded {
+	t.Helper()
+	ctx := context.Background()
+	deadline := time.Now().Add(2 * time.Minute)
+	for {
+		subs, err := (*webhooks)(ado).subscriptions(ctx, hook)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out []conformance.Recorded
+		kinds := map[string]bool{}
+		for event, id := range subs {
+			var list struct {
+				Value []struct {
+					ID int `json:"id"`
+				} `json:"value"`
+			}
+			at := "/_apis/hooks/subscriptions/" + id + "/notifications"
+			if err := ado.client.Do(ctx, http.MethodGet, at, APIVersion, url.Values{"maxResults": {"20"}}, nil, &list); err != nil {
+				t.Fatal(err)
+			}
+			for _, n := range list.Value {
+				var one struct {
+					Details struct {
+						Request string `json:"request"`
+					} `json:"details"`
+				}
+				if err := ado.client.Do(ctx, http.MethodGet, at+"/"+strconv.Itoa(n.ID), APIVersion, nil, nil, &one); err != nil {
+					t.Fatal(err)
+				}
+				header, body, ok := replay(one.Details.Request, secret)
+				if !ok {
+					continue
+				}
+				out = append(out, conformance.Recorded{Header: header, Body: body, Secret: secret})
+				kinds[strings.TrimPrefix(event, "git.")] = true
+			}
+		}
+		if kinds["push"] && (kinds["pullrequest.created"] || kinds["pullrequest.updated"]) {
+			return out
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("Azure DevOps recorded no push and pull request deliveries in time: %v", kinds)
+		}
+		time.Sleep(5 * time.Second)
+	}
+}
+
+// replay reads a request as a subscription's history shows it: Method, URI, Headers { … },
+// Content: the body.
+func replay(request, secret string) (http.Header, []byte, bool) {
+	request = strings.ReplaceAll(request, "\r\n", "\n")
+	headers, body, ok := strings.Cut(request, "\nContent:\n")
+	if !ok {
+		return nil, nil, false
+	}
+	h := http.Header{}
+	if _, block, ok := strings.Cut(headers, "Headers:\n{"); ok {
+		for _, line := range strings.Split(strings.TrimSuffix(strings.TrimSpace(block), "}"), "\n") {
+			if k, v, ok := strings.Cut(strings.TrimSpace(line), ":"); ok {
+				h.Set(k, strings.TrimSpace(v))
+			}
+		}
+	}
+	h.Set(SecretHeader, secret)
+	return h, []byte(body), true
 }
 
 func TestLiveConformance(t *testing.T) { conformance.Run(t, liveHarness{newSandbox(t)}) }

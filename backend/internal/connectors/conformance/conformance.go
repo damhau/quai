@@ -57,9 +57,10 @@ type Repository struct {
 	// (step 6; nil skips the ownership check).
 	AddOwner func(ctx context.Context, pattern string) (owner string, err error)
 	// WebhooksReachable: the platform can deliver webhooks to a server on this machine (step 7).
-	// Otherwise Recorded holds deliveries captured from the platform, and their secret.
+	// Otherwise Recorded returns deliveries captured from the platform, with their secret, once
+	// the steps before caused them (pushes, pull requests).
 	WebhooksReachable bool
-	Recorded          []Recorded
+	Recorded          func(t *testing.T) []Recorded
 }
 
 // Recorded is a webhook delivery captured from the platform.
@@ -163,8 +164,11 @@ func Run(t *testing.T, h Harness) {
 
 	// 4. A status published by another identity does not satisfy the policy.
 	t.Run("4-status-identity", func(t *testing.T) {
-		if !enforced || repo.Other == nil || !info.Has(connectors.CapEnforcedStatus) {
-			t.Skip("the platform, or the harness, cannot restrict who sets the check")
+		switch {
+		case !info.Has(connectors.CapEnforcedStatus):
+			t.Skip("the platform cannot restrict who sets the check")
+		case !enforced || repo.Other == nil:
+			t.Skip("the harness has no enforcement or no second identity")
 		}
 		pr := s.openPR(t)
 		s.setStatus(t, repo.Other, pr, connectors.StatusSuccess)
@@ -239,10 +243,11 @@ func Run(t *testing.T, h Harness) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			rules, err := c.Owners().Rules(ctx, repo.DefaultBranch)
-			if err != nil || !slices.ContainsFunc(rules, func(r connectors.OwnerRule) bool { return slices.Contains(r.Owners, owner) }) {
-				t.Errorf("owner rules = %+v, %v; want %s", rules, err, owner)
-			}
+			// Some platforms show a new rule after a moment.
+			s.eventually(t, "the owner rules name "+owner, func() bool {
+				rules, err := c.Owners().Rules(ctx, repo.DefaultBranch)
+				return err == nil && slices.ContainsFunc(rules, func(r connectors.OwnerRule) bool { return slices.Contains(r.Owners, owner) })
+			})
 		}
 		if repo.RemoveEnforcement == nil {
 			return
@@ -251,9 +256,10 @@ func Run(t *testing.T, h Harness) {
 			t.Fatal(err)
 		}
 		enforced = false
-		if e, err := pol.Verify(ctx, repo.DefaultBranch, Check); err != nil || e.Enforced || len(e.Problems) == 0 {
-			t.Errorf("after removing it, verify = %+v, %v", e, err)
-		}
+		s.eventually(t, "the removed enforcement is detected", func() bool {
+			e, err := pol.Verify(ctx, repo.DefaultBranch, Check)
+			return err == nil && !e.Enforced && len(e.Problems) > 0
+		})
 	})
 
 	// 7. Receive and verify each event type; refuse a delivery with a wrong secret.
@@ -266,8 +272,8 @@ func Run(t *testing.T, h Harness) {
 		switch {
 		case repo.WebhooksReachable:
 			deliveries = s.receive(t)
-		case len(repo.Recorded) > 0:
-			deliveries = repo.Recorded
+		case repo.Recorded != nil:
+			deliveries = repo.Recorded(t)
 		default:
 			t.Skip("the platform cannot reach this machine, and the harness recorded no deliveries")
 		}

@@ -217,11 +217,21 @@ func (p *pullRequests) Merge(ctx context.Context, id string, o connectors.MergeO
 	if err != nil {
 		return connectors.PullRequest{}, err
 	}
-	blocking, err := (*statuses)(p).blocking(ctx, id)
-	if err != nil {
-		return connectors.PullRequest{}, err
+	// An evaluation follows a status within a second or so: one still queued or running gets a
+	// few seconds to settle; a rejected one blocks at once.
+	var pending, rejected []string
+	for attempt := 0; ; attempt++ {
+		if pending, rejected, err = (*statuses)(p).blocking(ctx, id); err != nil {
+			return connectors.PullRequest{}, err
+		}
+		if len(pending) == 0 || len(rejected) > 0 || attempt == 5 {
+			break
+		}
+		if err := sleep(ctx, time.Second); err != nil {
+			return connectors.PullRequest{}, err
+		}
 	}
-	if len(blocking) > 0 {
+	if blocking := append(rejected, pending...); len(blocking) > 0 {
 		return connectors.PullRequest{}, fmt.Errorf("%w: %s", connectors.ErrBlocked, strings.Join(blocking, ", "))
 	}
 	body := map[string]any{"status": "completed", "completionOptions": opts}
@@ -250,7 +260,7 @@ func (p *pullRequests) Merge(ctx context.Context, id string, o connectors.MergeO
 		case out.MergeStatus == "succeeded" && out.CompletionQueueTime == "" && time.Since(asked) > 10*time.Second:
 			if _, _, err := p.patch(ctx, id, body); err != nil {
 				var apiErr *Error
-				if errors.As(err, &apiErr) && (apiErr.Status == http.StatusBadRequest || apiErr.Status == http.StatusConflict) {
+				if errors.As(err, &apiErr) && (apiErr.Status == http.StatusBadRequest || apiErr.Status == http.StatusForbidden || apiErr.Status == http.StatusConflict) {
 					return connectors.PullRequest{}, fmt.Errorf("%w: %s", connectors.ErrBlocked, apiErr.Message)
 				}
 				return connectors.PullRequest{}, err
@@ -512,17 +522,23 @@ func (s *statuses) evaluations(ctx context.Context, id string) ([]evaluation, er
 	return out, nil
 }
 
-// blocking returns the blocking policies that are not approved yet.
-func (s *statuses) blocking(ctx context.Context, id string) ([]string, error) {
+// blocking returns the blocking policies not approved yet: pending (queued or running) and
+// rejected.
+func (s *statuses) blocking(ctx context.Context, id string) (pending, rejected []string, err error) {
 	evals, err := s.evaluations(ctx, id)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	var out []string
 	for _, e := range evals {
-		if e.blocking && e.state() != connectors.StatusSuccess {
-			out = append(out, e.name+" ("+e.status+")")
+		if !e.blocking {
+			continue
+		}
+		switch e.state() {
+		case connectors.StatusPending:
+			pending = append(pending, e.name+" ("+e.status+")")
+		case connectors.StatusFailure:
+			rejected = append(rejected, e.name+" ("+e.status+")")
 		}
 	}
-	return out, nil
+	return pending, rejected, nil
 }

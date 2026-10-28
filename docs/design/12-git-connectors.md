@@ -104,6 +104,10 @@ connector's capabilities or the harness do not cover are skipped, with the reaso
 7. Receive and verify each webhook event type; reject a payload with a wrong secret.
 8. Rate limiting: honour `Retry-After` and back off.
 
+On Azure DevOps, which cannot reach a test machine, step 7 replays what the platform tried to
+deliver: the harness subscribes to an address that does not resolve before the suite starts, and
+reads each request back, body as sent, from the subscription's notification history.
+
 A connector ships when the suite passes against the platform editions the customer runs. For
 Azure DevOps that means an **Azure DevOps Server 2022 instance** (a Windows Server VM in the lab, or
 a test project on the pilot's own Server) and, for Services, a sandbox organization.
@@ -197,15 +201,15 @@ detected edition.
 | --- | --- |
 | Pull request | Pull request. Each push creates a new *iteration*. The description is limited to 4000 characters: Quai cuts the text, never the request marker. A draft does not complete, even with auto-complete set. |
 | `quai/approval` check | **PR status** with context `{genre: "quai", name: "approval"}`, posted on the latest iteration. States used: `pending`, `succeeded`, `failed`, `notApplicable` (stale). |
-| Enforcement | **Branch policy "Status check"** on the target branch requiring `quai/approval`, with **authorized identity** set to Quai's identity and **"reset status whenever there are new changes"** enabled. A push to the PR branch then invalidates the status, which matches Quai's content-bound approvals. |
+| Enforcement | **Branch policy "Status check"** on the target branch requiring `quai/approval`, with **authorized identity** set to Quai's identity and **"reset status whenever there are new changes"** enabled. A push to the PR branch then invalidates the status, which matches Quai's content-bound approvals. Quai verifies that a blocking status check policy for `quai/approval` applies to the target branch, that its authorized identity is Quai's, that it resets on new changes, that it applies by default (not only when a status is posted) and that it has no path filter; each missing part is reported as a problem. |
 | `waitForChecks` | The other branch policies on the target branch: build validation, required reviewers, comment resolution, work item linking. Quai reads their state with the **policy evaluations** API for the PR, and lists them among the PR's checks as `policy:<name>` (the policy's display name, or "Status check: genre/name"). Completing a PR checks that every blocking policy is approved first. |
 | Auto merge | **Auto-complete**: Quai sets auto-complete with its completion options once its status is succeeded; Azure DevOps completes the PR when every policy passes. With `merge: manual`, Quai only sets the status. |
 | Merge methods | `squash`, `noFastForward` (merge commit), `rebase`, `rebaseMerge`; `deleteSourceBranch: true`; the merge commit message carries the `Approved-by:` trailers. |
 | Labels | PR labels (`quai`, `env:prod`, `stack:envs/prod`). |
 | CODEOWNERS | Azure Repos has **no CODEOWNERS file**. The equivalent is the **"Automatically included reviewers"** branch policy with path filters. The `codeowners` approver kind resolves to the reviewers of the policies whose path filters match the change. |
 | Protecting `.quai/` | A required-reviewer policy with path filter `/.quai/*` on the target branch. Quai checks that one exists and warns if not. |
-| Webhooks | **Service hook subscriptions** (Web Hooks consumer, available on Server and Services) for `git.push`, `git.pullrequest.created`, `git.pullrequest.updated` and `git.pullrequest.merged`, plus pipeline run state changes when runner features are used. |
-| Webhook authentication | Azure DevOps does **not sign** service hook payloads. Quai uses a per-subscription secret in a custom HTTP header (or basic auth) over TLS, accepts hooks only on the dedicated webhook host name, and **re-reads every object from the API** before acting. |
+| Webhooks | **Service hook subscriptions** (Web Hooks consumer, available on Server and Services) for `git.push`, `git.pullrequest.created`, `git.pullrequest.updated` and `git.pullrequest.merged`, plus pipeline run state changes when runner features are used. The connector creates one subscription per event type for the repository, or updates those already delivering to Quai's URL. |
+| Webhook authentication | Azure DevOps does **not sign** service hook payloads. Quai uses a per-subscription secret in a custom HTTP header (or basic auth) over TLS, accepts hooks only on the dedicated webhook host name, and **re-reads every object from the API** before acting. The header is `X-Quai-Webhook-Secret`, compared in constant time; events carry only IDs, which ingestion re-reads. |
 | Pipelines | Build validation results come through policy evaluations; drift checks are triggered with the Pipelines **runs** API; run results arrive through service hooks or `quai report` (see [runs](06-runs-status-and-drift.md)). |
 | Commit signing | Quai signs commits with its SSH or GPG key so history can be verified offline; Azure Repos does not display signature verification in its UI at the time of writing. |
 | Identities | Commit author is the requester's email; Azure DevOps links it to the user when the email matches their account. PR "created by" is Quai's identity; the PR description names the requester. Quai finds identities by email through the identities API (on Services, the organization's `vssps` host). |
