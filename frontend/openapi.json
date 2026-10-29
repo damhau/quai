@@ -457,6 +457,11 @@
           "email": {
             "type": "string"
           },
+          "request": {
+            "description": "The number of the Quai request the commit delivered (its Quai-Request trailer); none for a person's commit",
+            "format": "int64",
+            "type": "integer"
+          },
           "sha": {
             "type": "string"
           },
@@ -1193,6 +1198,10 @@
           },
           "resource": {
             "description": "The resource ID",
+            "type": "string"
+          },
+          "state": {
+            "description": "What the runs of its stack say since its last change (docs/design/06)",
             "type": "string"
           },
           "status": {
@@ -2097,6 +2106,23 @@
           "stack": {
             "type": "string"
           },
+          "state": {
+            "description": "What the runs of its stack say since its last change (docs/design/06)",
+            "enum": [
+              "in_repo",
+              "pending_change",
+              "planning",
+              "applying",
+              "applied",
+              "failed",
+              "drifted"
+            ],
+            "type": "string"
+          },
+          "stateRun": {
+            "$ref": "#/components/schemas/RunView",
+            "description": "The run the state comes from"
+          },
           "status": {
             "enum": [
               "conforming",
@@ -2165,6 +2191,23 @@
           },
           "stack": {
             "type": "string"
+          },
+          "state": {
+            "description": "What the runs of its stack say since its last change (docs/design/06)",
+            "enum": [
+              "in_repo",
+              "pending_change",
+              "planning",
+              "applying",
+              "applied",
+              "failed",
+              "drifted"
+            ],
+            "type": "string"
+          },
+          "stateRun": {
+            "$ref": "#/components/schemas/RunView",
+            "description": "The run the state comes from"
           },
           "status": {
             "enum": [

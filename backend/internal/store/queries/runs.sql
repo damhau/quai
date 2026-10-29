@@ -65,3 +65,11 @@ LIMIT sqlc.arg(max_rows);
 SELECT DISTINCT ON (stack) * FROM runs
 WHERE request_id = sqlc.arg(request_id) AND kind = sqlc.arg(kind) AND (sqlc.arg(status)::text = '' OR status = sqlc.arg(status)::text)
 ORDER BY stack, started_at DESC, id;
+
+-- name: StackRuns :many
+-- A stack's runs on the default branch (without a pull request), newest first: resource
+-- statuses follow from them.
+SELECT * FROM runs
+WHERE repository = sqlc.arg(repository) AND stack = sqlc.arg(stack) AND pull_request = ''
+ORDER BY started_at DESC, id
+LIMIT sqlc.arg(max_rows);

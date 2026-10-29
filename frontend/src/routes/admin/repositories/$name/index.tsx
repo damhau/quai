@@ -6,6 +6,7 @@ import { getRepositoryOptions, repositoryHealthOptions, testRepositoryAccessMuta
 import type { HealthView } from "@/api/generated/types.gen"
 import { AccessReport, EnforcementResult, InstallWebhook } from "@/components/repositories/checks"
 import { Problems } from "@/components/repositories/problems"
+import { StackRuns } from "@/components/runs/stack-runs"
 import { TrustWarning } from "@/components/trust-warning"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -97,6 +98,7 @@ function Health() {
           </CardContent>
         </Card>
       )}
+      {h?.connected && <StackRuns repository={name} />}
     </section>
   )
 }

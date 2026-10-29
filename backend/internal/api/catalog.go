@@ -7,7 +7,9 @@ import (
 	"io/fs"
 	"maps"
 	"net/http"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -161,6 +163,8 @@ type ResourceView struct {
 	Problems   map[string]string `json:"problems,omitempty"`
 	Error      string            `json:"error,omitempty"`
 	LastApply  *RunView          `json:"lastApply,omitempty" doc:"The latest apply reported for the resource's stack"`
+	State      string            `json:"state,omitempty" enum:"in_repo,pending_change,planning,applying,applied,failed,drifted" doc:"What the runs of its stack say since its last change (docs/design/06)"`
+	StateRun   *RunView          `json:"stateRun,omitempty" doc:"The run the state comes from"`
 }
 
 // CommitView is a commit in a history.
@@ -171,6 +175,19 @@ type CommitView struct {
 	Date    time.Time `json:"date"`
 	Subject string    `json:"subject"`
 	Body    string    `json:"body,omitempty"`
+	Request int64     `json:"request,omitempty" doc:"The number of the Quai request the commit delivered (its Quai-Request trailer); none for a person's commit"`
+}
+
+// quaiRequest is the trailer of the commits Quai makes (docs/design/05-delivery-and-approvals.md).
+var quaiRequest = regexp.MustCompile(`(?m)^Quai-Request: #([0-9]+)\b`)
+
+// requestOf returns the request a commit message names in its Quai-Request trailer.
+func requestOf(body string) int64 {
+	if m := quaiRequest.FindStringSubmatch(body); m != nil {
+		n, _ := strconv.ParseInt(m[1], 10, 64)
+		return n
+	}
+	return 0
 }
 
 // ResourceDetail is a resource with its content, history and actions.
@@ -355,6 +372,7 @@ func registerCatalog(a huma.API, reg *repositories.Registry, s *store.Store) {
 		// Each resource is checked: someone may see only what they own.
 		views := []ResourceView{}
 		applies := map[string]*RunView{} // by stack: resources share stacks
+		st := newStatuses(s)
 		for _, repo := range reg.List() {
 			if in.Repository != "" && repo.Name != in.Repository {
 				continue
@@ -378,6 +396,7 @@ func registerCatalog(a huma.API, reg *repositories.Registry, s *store.Store) {
 						applies[key] = runs.get(ctx, r.Repository, r.Stack)
 					}
 					v.LastApply = applies[key]
+					v.State, v.StateRun = st.of(ctx, repo, snap, r)
 					views = append(views, v)
 				}
 			}
@@ -415,6 +434,7 @@ func registerCatalog(a huma.API, reg *repositories.Registry, s *store.Store) {
 		repo, _ := reg.Get(repoName)
 		d := resourceDetail(ctx, repo, snap, r)
 		d.LastApply = runs.get(ctx, r.Repository, r.Stack)
+		d.State, d.StateRun = newStatuses(s).of(ctx, repo, snap, r)
 		d.CanOperate = allowed(ctx, authz.OperateResource, resourceObject(r))
 		if d.Requests, err = requestSummaries(ctx, s, r.Repository, r.ID); err != nil {
 			return nil, err
@@ -656,7 +676,7 @@ func resourceDetail(ctx context.Context, repo *repositories.Repo, snap *reposito
 	}
 	if entries, err := repo.Mirror.Log(ctx, repo.Branch, r.Path, 30); err == nil {
 		for _, e := range entries {
-			d.History = append(d.History, CommitView{SHA: e.SHA, Author: e.Author, Email: e.Email, Date: e.Date, Subject: e.Subject, Body: e.Body})
+			d.History = append(d.History, CommitView{SHA: e.SHA, Author: e.Author, Email: e.Email, Date: e.Date, Subject: e.Subject, Body: e.Body, Request: requestOf(e.Body)})
 		}
 	}
 	return d

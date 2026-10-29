@@ -33,6 +33,7 @@ type InstanceResource struct {
 	Resource string `json:"resource" doc:"The resource ID"`
 	Exists   bool   `json:"exists" doc:"False when someone removed it by hand"`
 	Status   string `json:"status,omitempty"`
+	State    string `json:"state,omitempty" doc:"What the runs of its stack say since its last change (docs/design/06)"`
 }
 
 // InstanceView is a blueprint instance, from its record in Git.
@@ -167,6 +168,8 @@ func registerHistory(a huma.API, reg *repositories.Registry, s *store.Store) {
 			if _, err := authorize(ctx, authz.ReadInventory, authz.Object{Repository: in.Repository, Owner: inst.Owner}); err != nil {
 				return nil, err
 			}
+			repo, _ := reg.Get(in.Repository)
+			st := newStatuses(s)
 			for i, r := range inst.Resources {
 				repoName, typeName, key, err := locate.ParseID(r.Resource)
 				if err != nil || repoName != snap.Repository {
@@ -174,6 +177,9 @@ func registerHistory(a huma.API, reg *repositories.Registry, s *store.Store) {
 				}
 				if res, err := inventory.Get(snap, typeName, key); err == nil {
 					inst.Resources[i].Exists, inst.Resources[i].Status = true, res.Status
+					if repo != nil {
+						inst.Resources[i].State, _ = st.of(ctx, repo, snap, res)
+					}
 				}
 			}
 			inst.CanOperate = allowed(ctx, authz.OperateResource, ownedObject(in.Repository, inst.Blueprint, inst.Owner))

@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query"
 import { Search } from "lucide-react"
 import { getMeOptions, listInstancesOptions, listInventoryOptions } from "@/api/generated/@tanstack/react-query.gen"
 import type { ResourceView } from "@/api/generated/types.gen"
-import { ResourceStatusBadge } from "@/components/requests/state-badge"
+import { ResourceStateBadge, ResourceStatusBadge } from "@/components/requests/state-badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -108,8 +108,8 @@ function Inventory() {
               <TableHead>Resource</TableHead>
               <TableHead>Type</TableHead>
               <TableHead>Owner</TableHead>
+              <TableHead>File</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Last apply</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -128,7 +128,10 @@ function Inventory() {
                 <TableCell>
                   <ResourceStatusBadge status={r.status} />
                 </TableCell>
-                <TableCell className="text-muted-foreground text-xs">{r.lastApply ? `${r.lastApply.status} ${ago(r.lastApply.startedAt)}` : "not reported"}</TableCell>
+                <TableCell>
+                  <ResourceStateBadge state={r.state ?? "in_repo"} />
+                  {r.stateRun && <p className="text-muted-foreground text-xs">{ago(r.stateRun.finishedAt ?? r.stateRun.startedAt)}</p>}
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>

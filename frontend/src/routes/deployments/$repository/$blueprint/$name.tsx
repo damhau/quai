@@ -5,7 +5,7 @@ import { Clock, Zap } from "lucide-react"
 import { getBlueprintOptions, getInstanceOptions } from "@/api/generated/@tanstack/react-query.gen"
 import type { ActionView } from "@/api/generated/types.gen"
 import { InstanceActionDialog } from "@/components/day2/instance-action-dialog"
-import { ResourceStatusBadge, StateBadge } from "@/components/requests/state-badge"
+import { ResourceStateBadge, ResourceStatusBadge, StateBadge } from "@/components/requests/state-badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -90,6 +90,7 @@ function DeploymentPage() {
                     <code className="font-mono text-xs">{r.resource}</code>
                   )}
                   {r.exists ? <ResourceStatusBadge status={r.status ?? "conforming"} /> : <Badge variant="destructive">missing</Badge>}
+                  {r.exists && r.state && <ResourceStateBadge state={r.state} />}
                 </li>
               ))}
             </ul>

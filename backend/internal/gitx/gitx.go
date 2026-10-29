@@ -485,6 +485,71 @@ func (m *Mirror) MergeBase(ctx context.Context, a, b string) (string, error) {
 	return strings.TrimSpace(out), nil
 }
 
+// IsAncestor reports whether a is b or one of its ancestors. A commit the mirror does not have
+// is no ancestor.
+func (m *Mirror) IsAncestor(ctx context.Context, a, b string) (bool, error) {
+	if err := checkCommit(a); err != nil {
+		return false, err
+	}
+	if err := checkCommit(b); err != nil {
+		return false, err
+	}
+	out, err := m.git(ctx, "", "rev-parse", a+"^{commit}", b+"^{commit}") // checked: hex SHAs, never options
+	if err != nil {
+		return false, nil // one of them is unknown here
+	}
+	shas := strings.Fields(out)
+	if len(shas) != 2 {
+		return false, nil
+	}
+	base, err := m.git(ctx, "", "merge-base", shas[0], shas[1])
+	if err != nil {
+		return false, nil // unrelated histories
+	}
+	return strings.TrimSpace(base) == shas[0], nil
+}
+
+// CommitFiles is a commit and the files it touched.
+type CommitFiles struct {
+	SHA   string
+	Files []string
+}
+
+// Changes returns the commits reachable from to and not from from (all of to's history when
+// from is empty), newest first, each with the files it touched; merges list none, the commits
+// they merge do.
+func (m *Mirror) Changes(ctx context.Context, from, to string) ([]CommitFiles, error) {
+	if err := checkCommit(to); err != nil {
+		return nil, err
+	}
+	rng := to
+	if from != "" {
+		if err := checkCommit(from); err != nil {
+			return nil, err
+		}
+		rng = from + ".." + to
+	}
+	out, err := m.git(ctx, "", "log", "--format=%x1e%H", "--name-only", "--no-renames", rng, "--")
+	if err != nil {
+		return nil, fmt.Errorf("changes in %s: %w", rng, err)
+	}
+	var commits []CommitFiles
+	for _, rec := range strings.Split(out, "\x1e") {
+		lines := strings.Split(strings.TrimSpace(rec), "\n")
+		if len(lines) == 0 || lines[0] == "" {
+			continue
+		}
+		c := CommitFiles{SHA: lines[0]}
+		for _, l := range lines[1:] {
+			if l = strings.TrimSpace(l); l != "" {
+				c.Files = append(c.Files, l)
+			}
+		}
+		commits = append(commits, c)
+	}
+	return commits, nil
+}
+
 // FileChange is a file a diff touches: Status is A (added), M (modified) or D (deleted).
 type FileChange struct {
 	Path   string

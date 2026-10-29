@@ -264,7 +264,7 @@ spec:
 | Webhooks (push, pull request, check/status, merge) | Primary signal. Verified with the per-repository secret, de-duplicated by delivery ID, processed as jobs. |
 | Polling | Safety net: fetch every `pollInterval`, compare heads, reconcile open PRs. Covers lost webhooks and platforms without webhooks. |
 | Mirror cache | One bare mirror per repository (`git clone --mirror`, partial clone with `--filter=blob:none` for large monorepos when `spec.sync.partialClone` is set, from the first clone). Each job gets a temporary `git worktree`, with sparse checkout limited to the paths it needs: a delivery checks out the files it changes and the regions it re-fingerprints. Git gets its credentials from the connector, as an HTTP header scoped to the remote's host or an SSH key checked against known host keys, through the environment, never the command line, and they are removed from anything it reports. |
-| Inventory index | On every new head, only the paths changed since the last indexed commit are re-read (`git diff --name-only`). A full re-index runs nightly and on demand. |
+| Inventory index | On every new head, only the paths changed since the last indexed commit are re-read (`git diff --name-only`). A full re-index runs nightly and on demand. The commit that last changed each file, from which resource statuses follow, is indexed the same way: a head that descends from the indexed one reads only the commits between (`git log --name-only`). |
 
 Webhooks arrive at `POST /webhooks/{repository}` (only on the `webhooks.host` name when one is
 configured). The repository's connector verifies the delivery with `spec.webhooks.secret`; its

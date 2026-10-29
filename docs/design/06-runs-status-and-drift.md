@@ -77,21 +77,28 @@ Content-Type: application/json
 ## Resource status
 
 For each resource, Quai knows the commit that last changed its region (from
-the inventory index). Status is derived from the runs of its stack:
+the inventory index: for a directory, the newest change under it). Status is derived from the
+runs of its stack on the default branch (runs without a pull request: a pull request's plans
+belong to its request), and only from those at or after that commit, its descendants in Git.
+The first row that holds decides:
 
 | Condition | Status |
 | --- | --- |
-| An open request touches the resource | Pending change |
-| Latest run for the stack at or after the resource's last-change commit is `plan` or `apply` and running | Planning / Applying |
-| Latest `apply` at or after the last-change commit succeeded | Applied |
-| Latest `apply` that includes the last-change commit failed | Failed |
-| Latest `drift-check` reports changes for the resource's address | Drifted |
-| No run reported since the last change | In repo |
+| An open request changes the resource's region | Pending change |
+| The latest `plan` or `apply` is running | Planning / Applying |
+| A finished `drift-check` reports changes to the resource, newer than the latest finished `apply` | Drifted |
+| The latest `apply` succeeded | Applied |
+| The latest `apply` failed | Failed |
+| No run reported since the last change, or no `spec.runner` | In repo |
+
+The status comes with the run it follows from, and one apply covers every change merged
+before its commit.
 
 Human commits are handled the same way: when a push changes resource files,
 the index records the new last-change commit, and the next apply for that stack
 updates the status. The resource page shows commits by people and by Quai on
-one timeline.
+one timeline, Quai's with the request each delivered (its `Quai-Request` trailer). The
+repository's page lists the latest runs of each stack.
 
 ## The request timeline
 

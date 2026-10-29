@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -290,5 +291,38 @@ func TestRefusals(t *testing.T) {
 	}
 	if got := Message("subject\nignored", ""); got != "subject\n" {
 		t.Errorf("Message = %q", got)
+	}
+}
+
+func TestAncestryAndChanges(t *testing.T) {
+	bare, push := remote(t)
+	m := mirror(t, bare)
+	first, _ := m.Head(ctx, "main")
+	push("envs/prod/vms/web01.yaml", "cpu: 8\n")
+	push("envs/dev/vms/app01.yaml", "cpu: 2\n")
+	if err := m.Fetch(ctx); err != nil {
+		t.Fatal(err)
+	}
+	last, _ := m.Head(ctx, "main")
+	for _, c := range []struct {
+		a, b string
+		want bool
+	}{{first, last, true}, {last, first, false}, {last, last, true}, {first, strings.Repeat("0", 40), false}} {
+		if got, err := m.IsAncestor(ctx, c.a, c.b); err != nil || got != c.want {
+			t.Errorf("IsAncestor(%.7s, %.7s) = %v, %v", c.a, c.b, got, err)
+		}
+	}
+	if _, err := m.IsAncestor(ctx, "HEAD", last); err == nil {
+		t.Error("a ref was taken for a commit")
+	}
+
+	all, err := m.Changes(ctx, "", last)
+	if err != nil || len(all) != 3 || all[0].SHA != last || !slices.Equal(all[0].Files, []string{"envs/dev/vms/app01.yaml"}) ||
+		!slices.Equal(all[1].Files, []string{"envs/prod/vms/web01.yaml"}) || all[2].SHA != first {
+		t.Errorf("all changes = %+v, %v", all, err)
+	}
+	since, err := m.Changes(ctx, first, last)
+	if err != nil || len(since) != 2 {
+		t.Errorf("changes since the first commit = %+v, %v", since, err)
 	}
 }

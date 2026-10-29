@@ -142,6 +142,34 @@ func (q *Queries) ListChanges(ctx context.Context, changeSetID uuid.UUID) ([]Cha
 	return items, nil
 }
 
+const openChangePaths = `-- name: OpenChangePaths :many
+SELECT DISTINCT c.path FROM changes c
+JOIN change_sets cs ON cs.id = c.change_set_id
+JOIN requests r ON r.id = cs.request_id
+WHERE cs.repository = $1 AND r.state IN ('planned', 'pending_approval', 'approved', 'stale', 'merging', 'applying')
+`
+
+// The paths open requests change in a repository: their resources have a pending change.
+func (q *Queries) OpenChangePaths(ctx context.Context, repository string) ([]string, error) {
+	rows, err := q.db.Query(ctx, openChangePaths, repository)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var path string
+		if err := rows.Scan(&path); err != nil {
+			return nil, err
+		}
+		items = append(items, path)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const requestAtCommit = `-- name: RequestAtCommit :one
 SELECT request_id FROM change_sets
 WHERE repository = $1 AND commit <> '' AND left(commit, length($2::text)) = $2::text

@@ -316,6 +316,58 @@ func (q *Queries) RunningRun(ctx context.Context, arg RunningRunParams) (Run, er
 	return i, err
 }
 
+const stackRuns = `-- name: StackRuns :many
+SELECT id, org_id, repository, stack, commit, kind, status, url, summary, started_at, finished_at, pull_request, request_id, policies, cost, plan FROM runs
+WHERE repository = $1 AND stack = $2 AND pull_request = ''
+ORDER BY started_at DESC, id
+LIMIT $3
+`
+
+type StackRunsParams struct {
+	Repository string
+	Stack      string
+	MaxRows    int32
+}
+
+// A stack's runs on the default branch (without a pull request), newest first: resource
+// statuses follow from them.
+func (q *Queries) StackRuns(ctx context.Context, arg StackRunsParams) ([]Run, error) {
+	rows, err := q.db.Query(ctx, stackRuns, arg.Repository, arg.Stack, arg.MaxRows)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Run{}
+	for rows.Next() {
+		var i Run
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.Repository,
+			&i.Stack,
+			&i.Commit,
+			&i.Kind,
+			&i.Status,
+			&i.Url,
+			&i.Summary,
+			&i.StartedAt,
+			&i.FinishedAt,
+			&i.PullRequest,
+			&i.RequestID,
+			&i.Policies,
+			&i.Cost,
+			&i.Plan,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const startRun = `-- name: StartRun :one
 INSERT INTO runs (id, repository, stack, commit, kind, status, url)
 VALUES ($1, $2, $3, $4, $5, 'running', $6)

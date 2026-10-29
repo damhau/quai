@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge"
 import { states } from "@/lib/requests"
-import { resourceStatus } from "@/lib/resources"
+import { resourceStates, resourceStatus } from "@/lib/resources"
 import { cn } from "@/lib/utils"
 
 const tones = {
@@ -12,6 +12,16 @@ const tones = {
 
 export function StateBadge({ state }: { state: string }) {
   const s = states[state] ?? { label: state, tone: "neutral" as const }
+  return (
+    <Badge variant="outline" className={cn(tones[s.tone])}>
+      {s.label}
+    </Badge>
+  )
+}
+
+/** ResourceStateBadge says what a resource's runs say since its last change. */
+export function ResourceStateBadge({ state }: { state: string }) {
+  const s = resourceStates[state] ?? { label: state, tone: "neutral" as const }
   return (
     <Badge variant="outline" className={cn(tones[s.tone])}>
       {s.label}

@@ -391,3 +391,60 @@ func TestNetwork(t *testing.T) {
 		t.Errorf("partial clone filter = %q", got)
 	}
 }
+
+// TestChanges: the change index says which commit last changed each file, and a directory's
+// newest; a later head adds only its new commits.
+func TestChanges(t *testing.T) {
+	r := newRemote(t, "infra")
+	write := func(file, content, msg string) {
+		p := filepath.Join(r.work, filepath.FromSlash(file))
+		if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		git(t, r.work, "add", "--all")
+		git(t, r.work, "commit", "--quiet", "-m", msg)
+		git(t, r.work, "push", "--quiet", "origin", "HEAD:main")
+	}
+	write("envs/prod/vms/web01.yaml", "cpu: 4\n", "web01")
+	write("apps/shop/values.yaml", "replicas: 2\n", "shop")
+	write("apps/shop/chart.yaml", "name: shop\n", "chart")
+	d := doc(t, "apiVersion: quai.dev/v1beta1\nkind: Repository\nmetadata: { name: infra }\nspec: { connector: generic, url: "+r.url+", sync: { minInterval: 1ns } }\n")
+	ctx := context.Background()
+	reg, err := Open(ctx, testConfig(t), Static([]Document{d}), Options{Log: slog.New(slog.DiscardHandler)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reg.Close()
+	repo, _ := reg.Get("infra")
+	snap, err := repo.Snapshot(ctx, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	log, _ := repo.Mirror.Log(ctx, "main", "", 3) // chart, shop, web01
+	ix, err := repo.Changes(ctx, snap.Commit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := ix.Of("envs/prod/vms/web01.yaml"); got != log[2].SHA {
+		t.Errorf("web01 = %s", got)
+	}
+	if got := ix.Of("apps/shop"); got != log[0].SHA {
+		t.Errorf("the shop directory = %s, want its newest change", got)
+	}
+	if ix.Of("nope.yaml") != "" {
+		t.Error("an unknown file has a change")
+	}
+
+	write("envs/prod/vms/web01.yaml", "cpu: 8\n", "web01 again")
+	snap, _ = repo.Snapshot(ctx, true)
+	next, err := repo.Changes(ctx, snap.Commit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next.Of("envs/prod/vms/web01.yaml") != snap.Commit || next.Of("apps/shop") != log[0].SHA || ix.Of("envs/prod/vms/web01.yaml") != log[2].SHA {
+		t.Errorf("after a new head: web01 %s, shop %s; the old index %s", next.Of("envs/prod/vms/web01.yaml"), next.Of("apps/shop"), ix.Of("envs/prod/vms/web01.yaml"))
+	}
+}

@@ -143,6 +143,10 @@ export type CommitView = {
     body?: string;
     date: string;
     email: string;
+    /**
+     * The number of the Quai request the commit delivered (its Quai-Request trailer); none for a person's commit
+     */
+    request?: number;
     sha: string;
     subject: string;
 };
@@ -413,6 +417,10 @@ export type InstanceResource = {
      * The resource ID
      */
     resource: string;
+    /**
+     * What the runs of its stack say since its last change (docs/design/06)
+     */
+    state?: string;
     status?: string;
 };
 
@@ -720,6 +728,14 @@ export type ResourceDetail = {
      */
     requests: Array<RequestSummary> | null;
     stack?: string;
+    /**
+     * What the runs of its stack say since its last change (docs/design/06)
+     */
+    state?: 'in_repo' | 'pending_change' | 'planning' | 'applying' | 'applied' | 'failed' | 'drifted';
+    /**
+     * The run the state comes from
+     */
+    stateRun?: RunView;
     status: 'conforming' | 'non-conforming' | 'unparseable';
     type: string;
 };
@@ -742,6 +758,14 @@ export type ResourceView = {
     };
     repository: string;
     stack?: string;
+    /**
+     * What the runs of its stack say since its last change (docs/design/06)
+     */
+    state?: 'in_repo' | 'pending_change' | 'planning' | 'applying' | 'applied' | 'failed' | 'drifted';
+    /**
+     * The run the state comes from
+     */
+    stateRun?: RunView;
     status: 'conforming' | 'non-conforming' | 'unparseable';
     type: string;
 };
@@ -1459,6 +1483,14 @@ export type ResourceDetailWritable = {
      */
     requests: Array<RequestSummary> | null;
     stack?: string;
+    /**
+     * What the runs of its stack say since its last change (docs/design/06)
+     */
+    state?: 'in_repo' | 'pending_change' | 'planning' | 'applying' | 'applied' | 'failed' | 'drifted';
+    /**
+     * The run the state comes from
+     */
+    stateRun?: RunViewWritable;
     status: 'conforming' | 'non-conforming' | 'unparseable';
     type: string;
 };
@@ -1481,6 +1513,14 @@ export type ResourceViewWritable = {
     };
     repository: string;
     stack?: string;
+    /**
+     * What the runs of its stack say since its last change (docs/design/06)
+     */
+    state?: 'in_repo' | 'pending_change' | 'planning' | 'applying' | 'applied' | 'failed' | 'drifted';
+    /**
+     * The run the state comes from
+     */
+    stateRun?: RunViewWritable;
     status: 'conforming' | 'non-conforming' | 'unparseable';
     type: string;
 };

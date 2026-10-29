@@ -4,7 +4,7 @@ import { useSuspenseQuery } from "@tanstack/react-query"
 import { AlertCircle, Clock, Pencil, ShieldAlert, Trash2, Zap } from "lucide-react"
 import { getResourceOptions, getTypeOptions } from "@/api/generated/@tanstack/react-query.gen"
 import { Day2Dialog, type Day2 } from "@/components/day2/day2-dialog"
-import { ResourceStatusBadge, StateBadge } from "@/components/requests/state-badge"
+import { ResourceStateBadge, ResourceStatusBadge, StateBadge } from "@/components/requests/state-badge"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -138,9 +138,19 @@ function ResourcePage() {
         <div className="grid gap-6">
           <Card>
             <CardHeader>
-              <CardTitle>Last apply</CardTitle>
+              <CardTitle>Status</CardTitle>
             </CardHeader>
-            <CardContent className="text-sm">
+            <CardContent className="grid gap-2 text-sm">
+              <p className="flex flex-wrap items-center gap-2">
+                <ResourceStateBadge state={r.state ?? "in_repo"} />
+                {r.stateRun ? (
+                  <span className="text-muted-foreground text-xs">
+                    {r.stateRun.kind} of {shortSha(r.stateRun.commit)}, {ago(r.stateRun.finishedAt ?? r.stateRun.startedAt)}
+                  </span>
+                ) : (
+                  r.state !== "pending_change" && <span className="text-muted-foreground text-xs">no run reported since its last change</span>
+                )}
+              </p>
               {r.lastApply ? (
                 <p>
                   <Badge variant="outline">{r.lastApply.status}</Badge> {r.lastApply.kind} of {shortSha(r.lastApply.commit)} {ago(r.lastApply.startedAt)}
@@ -155,7 +165,7 @@ function ResourcePage() {
                   )}
                 </p>
               ) : (
-                <p className="text-muted-foreground">No run reported for this stack yet.</p>
+                <p className="text-muted-foreground">No apply reported for this stack yet.</p>
               )}
             </CardContent>
           </Card>
@@ -193,6 +203,11 @@ function ResourcePage() {
                   <li key={c.sha}>
                     <code className="text-muted-foreground font-mono text-xs">{shortSha(c.sha)}</code> {c.subject}
                     <div className="text-muted-foreground text-xs">
+                      {c.request ? (
+                        <Badge variant="outline" className="mr-1">
+                          Quai #{c.request}
+                        </Badge>
+                      ) : null}
                       {c.author}, {ago(c.date)}
                     </div>
                   </li>
