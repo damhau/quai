@@ -111,7 +111,8 @@ Repository pages, health and OTLP metrics. The Helm chart installed and upgraded
    conformance suite), but only the definitions trust check uses them: nothing fills
    `policy.Context.Codeowners`. A rule whose approvers are `codeowners` can therefore never be
    satisfied, and `ownership.codeowners: true` ([design 02](../design/02-resource-types-and-generators.md))
-   is validated but not applied. Epic #34 lists it; open question 3 assumes it.
+   is validated but not applied. Epic #34 lists it; open question 3 assumes it. Scheduled in
+   Phase 2 as #100.
 2. **Build validation.** The exit's "the build validation pipeline plans" waits for Phase 2. Accept
    that, or add a pipeline to the sandbox as a Phase 2 task.
 3. **Nightly live tests.** They need the `AZURE_DEVOPS_PAT` repository secret. The workflow file
