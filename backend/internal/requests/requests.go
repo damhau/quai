@@ -358,17 +358,23 @@ func (s *Service) Submit(ctx context.Context, who auth.Identity, p *Plan, reason
 	if owners == nil {
 		owners = []string{}
 	}
-	outcome := policy.Evaluate(p.Rules, nil, policy.Context{Requester: who.Principal.Name, Owners: owners})
-	state := PendingApproval
-	if outcome.State == policy.Approved {
-		state = Approved
-	}
 	prMode, prefix := false, ""
 	if repo, err := s.reg.Get(p.Repository); err == nil && repo.Document.Spec.Delivery.Mode == PullRequestMode {
 		prMode, prefix = true, repo.Document.Spec.Delivery.BranchPrefix
 		if err := s.deliverable(ctx, repo); err != nil {
 			return db.Request{}, err
 		}
+	}
+	if !prMode {
+		// Delivered by a direct commit, a request has no plan before it is approved: a rule that
+		// reads the plan applies.
+		p.Rules = policy.WithoutPlan(p.Rules, "no plan comes before a direct commit")
+		rules, _ = json.Marshal(p.Rules)
+	}
+	outcome := policy.Evaluate(p.Rules, nil, policy.Context{Requester: who.Principal.Name, Owners: owners})
+	state := PendingApproval
+	if outcome.State == policy.Approved {
+		state = Approved
 	}
 	var created db.Request
 	err := s.store.Tx(ctx, func(tx pgx.Tx, q *db.Queries) error {

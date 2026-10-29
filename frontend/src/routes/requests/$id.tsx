@@ -14,6 +14,7 @@ import {
 import type { DeliveryView, RequestView } from "@/api/generated/types.gen"
 import { ApprovalChain } from "@/components/approval/approval-chain"
 import { ChangesView } from "@/components/diff/changes-view"
+import { Plans } from "@/components/requests/plans"
 import { StateBadge } from "@/components/requests/state-badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -84,6 +85,16 @@ function RequestPage() {
               <ChangesView changes={r.changes ?? []} />
             </CardContent>
           </Card>
+          {(r.plans ?? []).length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Plan</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Plans plans={r.plans ?? []} />
+              </CardContent>
+            </Card>
+          )}
         </div>
         <div className="grid gap-6">
           <Card>

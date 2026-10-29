@@ -2,6 +2,8 @@ package api
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"io/fs"
 	"net/http"
 	"net/url"
@@ -25,6 +27,12 @@ import (
 // pushExample commits the example GitOps repository to main through git, with auth.
 func pushExample(t *testing.T, url string, auth func(context.Context) (gitx.Credentials, error), proxy func(*url.URL) (*url.URL, error)) {
 	t.Helper()
+	pushEdited(t, url, auth, proxy, nil)
+}
+
+// pushEdited is pushExample with edit changing files first, by path.
+func pushEdited(t *testing.T, url string, auth func(context.Context) (gitx.Credentials, error), proxy func(*url.URL) (*url.URL, error), edit func(path string, b []byte) []byte) {
+	t.Helper()
 	ctx := context.Background()
 	m, err := gitx.OpenMirror(ctx, url, filepath.Join(t.TempDir(), "seed.git"), gitx.Options{Committer: gitx.Signature{Name: "Seed", Email: "seed@example.com"}, Auth: auth, Proxy: proxy})
 	if err != nil {
@@ -37,6 +45,9 @@ func pushExample(t *testing.T, url string, auth func(context.Context) (gitx.Cred
 			return err
 		}
 		b, err := fs.ReadFile(src, p)
+		if edit != nil {
+			b = edit(p, b)
+		}
 		changes = append(changes, plan.Change{Op: plan.OpCreate, Path: p, After: b})
 		return err
 	})
@@ -49,9 +60,15 @@ func pushExample(t *testing.T, url string, auth func(context.Context) (gitx.Cred
 // main protected by quai/approval.
 func giteaHarness(t *testing.T, merge string) (*harness, *giteatest.Repo) {
 	t.Helper()
+	return giteaHarnessWith(t, merge, "", nil)
+}
+
+// giteaHarnessWith is giteaHarness with more spec lines and the example's files edited.
+func giteaHarnessWith(t *testing.T, merge, spec string, edit func(path string, b []byte) []byte) (*harness, *giteatest.Repo) {
+	t.Helper()
 	g := giteatest.Get(t)
 	r := g.Repo(t, "infra")
-	pushExample(t, r.CloneURL, func(context.Context) (gitx.Credentials, error) { return gitx.Credentials{Header: g.GitHeader()}, nil }, nil)
+	pushEdited(t, r.CloneURL, func(context.Context) (gitx.Credentials, error) { return gitx.Credentials{Header: g.GitHeader()}, nil }, nil, edit)
 	if err := r.Protect("main", "quai/approval"); err != nil {
 		t.Fatal(err)
 	}
@@ -59,8 +76,14 @@ func giteaHarness(t *testing.T, merge string) (*harness, *giteatest.Repo) {
   url: `+r.CloneURL+`
   credentials: { ref: env:GITEA_TOKEN }
   delivery: { mode: pull-request, merge: `+merge+`, mergeMethod: squash }
-  sync: { minInterval: 1ns }`, repositories.Options{
-		Secrets:    secrets.New(map[string]secrets.Backend{"env": secrets.Env{Lookup: func(n string) (string, bool) { return g.Token, n == "GITEA_TOKEN" }}}),
+  sync: { minInterval: 1ns }`+spec, repositories.Options{
+		Secrets: secrets.New(map[string]secrets.Backend{"env": secrets.Env{Lookup: func(n string) (string, bool) {
+			if n == "INFRA_LIVE_RUN_TOKEN" {
+				sum := sha256.Sum256([]byte(runToken))
+				return hex.EncodeToString(sum[:]), true
+			}
+			return g.Token, n == "GITEA_TOKEN"
+		}}}),
 		Connectors: &connectors.Registry{Factories: map[string]connectors.Factory{"gitea": giteaconn.New}},
 	})
 	return h, r

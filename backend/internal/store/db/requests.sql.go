@@ -178,6 +178,21 @@ func (q *Queries) ListRequests(ctx context.Context, arg ListRequestsParams) ([]R
 	return items, nil
 }
 
+const setRequestRules = `-- name: SetRequestRules :exec
+UPDATE requests SET rules = $2, updated_at = now() WHERE id = $1
+`
+
+type SetRequestRulesParams struct {
+	ID    uuid.UUID
+	Rules json.RawMessage
+}
+
+// The rules of a request after a plan decided those that read it.
+func (q *Queries) SetRequestRules(ctx context.Context, arg SetRequestRulesParams) error {
+	_, err := q.db.Exec(ctx, setRequestRules, arg.ID, arg.Rules)
+	return err
+}
+
 const transitionRequest = `-- name: TransitionRequest :one
 UPDATE requests SET state = $1, updated_at = now()
 WHERE id = $2 AND state = $3

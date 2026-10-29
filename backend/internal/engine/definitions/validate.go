@@ -62,6 +62,15 @@ func (c *check) condition(field, src string) *expr.Program {
 	return p
 }
 
+// ruleCondition compiles an approval rule's condition, which may read the plan.
+func (c *check) ruleCondition(field, src string) *expr.Program {
+	p, err := c.l.rules.CompileCondition(src)
+	if err != nil {
+		c.add(field, "%v", err)
+	}
+	return p
+}
+
 func (c *check) value(field string, v map[string]any) *expr.Value {
 	if v == nil {
 		return nil
@@ -367,7 +376,7 @@ func (c *check) approval(at string, a *Approval) {
 			c.add(rat+".min", "must be at least 0")
 		}
 		if r.When != "" {
-			r.Condition = c.condition(rat+".when", r.When)
+			r.Condition = c.ruleCondition(rat+".when", r.When)
 		}
 	}
 	if a.Expiry != "" && !durationRe.MatchString(a.Expiry) {

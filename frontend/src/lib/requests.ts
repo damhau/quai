@@ -39,6 +39,12 @@ function str(data: unknown, key: string): string | undefined {
 }
 
 /** eventText says what an event of a request's timeline means. */
+/** planDecisions says which rules a plan made apply, from a plan_decided event. */
+function planDecisions(d: unknown): string {
+  const decisions = (d as { decisions?: { rules?: string[]; applies?: boolean }[] } | null)?.decisions ?? []
+  return decisions.map((x) => `${(x.rules ?? []).join(", ")} ${x.applies ? "applies" : "does not apply"}`).join("; ") || "none"
+}
+
 export function eventText(e: EventView): string {
   const d = e.data
   switch (e.kind) {
@@ -80,6 +86,10 @@ export function eventText(e: EventView): string {
       return "recorded the approvals on the pull request"
     case "retried":
       return "retried the delivery"
+    case "plan_decided":
+      return `the plan decided the rules that read it: ${planDecisions(d)}`
+    case "approval_needed":
+      return `needs approval again: ${str(d, "reason") ?? "the rules changed"}`
   }
   return e.kind
 }

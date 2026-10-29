@@ -1933,6 +1933,16 @@
             "format": "int64",
             "type": "integer"
           },
+          "plans": {
+            "description": "The latest plan of each stack the request's pull request was planned in",
+            "items": {
+              "$ref": "#/components/schemas/RunView"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "reason": {
             "type": "string"
           },
@@ -2286,8 +2296,24 @@
               "null"
             ]
           },
+          "notApplicable": {
+            "description": "The plan says the rule does not apply",
+            "type": "boolean"
+          },
+          "planError": {
+            "description": "Why the condition could not be evaluated on the plan: the rule applies",
+            "type": "string"
+          },
           "satisfied": {
             "type": "boolean"
+          },
+          "waitingForPlan": {
+            "description": "The rule waits for a plan to say whether it applies",
+            "type": "boolean"
+          },
+          "when": {
+            "description": "The condition of a rule that reads the plan",
+            "type": "string"
           }
         },
         "required": [

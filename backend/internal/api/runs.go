@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -20,6 +21,7 @@ import (
 	"github.com/damhau/quai/backend/internal/engine/locate"
 	"github.com/damhau/quai/backend/internal/engine/tfplan"
 	"github.com/damhau/quai/backend/internal/repositories"
+	"github.com/damhau/quai/backend/internal/requests"
 	"github.com/damhau/quai/backend/internal/store"
 	"github.com/damhau/quai/backend/internal/store/db"
 )
@@ -139,7 +141,7 @@ type runsInput struct {
 	Limit      int    `query:"limit" minimum:"1" maximum:"500" default:"100"`
 }
 
-func registerRuns(a huma.API, reg *repositories.Registry, s *store.Store) {
+func registerRuns(a huma.API, reg *repositories.Registry, s *store.Store, svc *requests.Service, log *slog.Logger) {
 	// authz: public — runners authenticate with the repository's run token, checked here.
 	// The path is auth.RunsPath.
 	huma.Register(a, huma.Operation{
@@ -170,6 +172,12 @@ func registerRuns(a huma.API, reg *repositories.Registry, s *store.Store) {
 		r, err := report(ctx, s, repo, in)
 		if err != nil {
 			return nil, err
+		}
+		// A plan decides the rules of its request that read it.
+		if r.RequestID.Valid && r.Kind == "plan" && r.Status == "succeeded" && svc != nil {
+			if err := svc.PlanReported(ctx, uuid.UUID(r.RequestID.Bytes)); err != nil && log != nil {
+				log.ErrorContext(ctx, "deciding the rules on the plan", slog.String("request", uuid.UUID(r.RequestID.Bytes).String()), slog.Any("error", err))
+			}
 		}
 		return &out[RunView]{Body: runView(r)}, nil
 	})

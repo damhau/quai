@@ -22,3 +22,7 @@ LIMIT sqlc.arg(max_rows);
 UPDATE requests SET state = sqlc.arg(to_state), updated_at = now()
 WHERE id = sqlc.arg(id) AND state = sqlc.arg(from_state)
 RETURNING *;
+
+-- name: SetRequestRules :exec
+-- The rules of a request after a plan decided those that read it.
+UPDATE requests SET rules = $2, updated_at = now() WHERE id = $1;

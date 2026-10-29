@@ -317,7 +317,7 @@ func (r *Registry) Reload(ctx context.Context) error {
 // when the URL does not change.
 func (r *Registry) open(ctx context.Context, s Stored, prev *Repo) (*Repo, error) {
 	d := s.Document
-	env, err := expr.NewEnv()
+	env, err := expr.NewEnv(expr.WithPlan()) // floor rules are approval rules
 	if err != nil {
 		return nil, err
 	}

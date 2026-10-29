@@ -209,3 +209,75 @@ func TestApproverKinds(t *testing.T) {
 		t.Errorf("anonymous and self reviews: %s", got)
 	}
 }
+
+// TestPlanRules: a rule whose condition reads the plan waits for one, apart from rules with the
+// same approvers; approvals count for it meanwhile; the plan decides it, and each new plan again
+// (docs/design/05-delivery-and-approvals.md#rules-on-the-plan).
+func TestPlanRules(t *testing.T) {
+	env, err := expr.NewEnv(expr.WithPlan())
+	if err != nil {
+		t.Fatal(err)
+	}
+	when := func(src string) func(*definitions.Rule) {
+		return func(r *definitions.Rule) {
+			r.When = src
+			if r.Condition, err = env.CompileCondition(src); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	rules, err := Match(RuleSet{Source: SourceType, Vars: expr.Vars{Params: map[string]any{"env": "prod"}}, Rules: []definitions.Rule{
+		rule("production", []string{"group:finops"}, 1, when("params.env == 'prod'")),
+		rule("cost", []string{"group:finops"}, 1, when("params.env == 'prod' && plan.cost.monthlyDelta > 500")),
+	}})
+	if err != nil || len(rules) != 2 || rules[0].Plan != nil || !rules[1].Undecided() || rules[1].Plan.Vars.Params["env"] != "prod" {
+		t.Fatalf("rules = %+v, %v", rules, err)
+	}
+	ctx := Context{Requester: "bob"}
+	fin := []Review{{Reviewer: "fiona", Groups: []string{"finops"}, Decision: Approve}}
+	// One approval fills the production rule; the cost rule waits for the plan whatever it gets.
+	if out := Evaluate(rules, fin, ctx); out.State != Pending || !out.Rules[0].Satisfied || out.Rules[1].Satisfied {
+		t.Errorf("before the plan = %+v", out)
+	}
+
+	cheap, changed, err := Decide(rules, map[string]any{"add": 1, "change": 0, "destroy": 0, "destroys": 0, "cost": map[string]any{"currency": "CHF", "monthlyDelta": 142.4}})
+	if err != nil || !changed || !cheap[1].NotApplicable() || rules[1].Plan.Applies != nil {
+		t.Fatalf("a cheap plan = %+v, %v, %v", cheap[1].Plan, changed, err)
+	}
+	if out := Evaluate(cheap, fin, ctx); out.State != Approved || !out.Rules[1].Satisfied {
+		t.Errorf("after a cheap plan = %+v", out)
+	}
+	if _, changed, _ := Decide(cheap, map[string]any{"cost": map[string]any{"currency": "CHF", "monthlyDelta": 100}}); changed {
+		t.Error("another cheap plan changed a decision")
+	}
+
+	// A new plan that costs more: the rule applies, and needs a second finops approver.
+	costly, changed, _ := Decide(cheap, map[string]any{"cost": map[string]any{"currency": "CHF", "monthlyDelta": 900}})
+	if !changed || costly[1].NotApplicable() || costly[1].Undecided() {
+		t.Fatalf("a costly plan = %+v", costly[1].Plan)
+	}
+	if out := Evaluate(costly, fin, ctx); out.State != Pending {
+		t.Errorf("one approver for two rules = %+v", out)
+	}
+	both := append(fin, Review{Reviewer: "frank", Groups: []string{"finops"}, Decision: Approve})
+	if out := Evaluate(costly, both, ctx); out.State != Approved {
+		t.Errorf("two approvers = %+v", out)
+	}
+
+	// No cost reported: the condition fails, and the rule applies.
+	unknown, _, _ := Decide(rules, map[string]any{"add": 1})
+	if unknown[1].NotApplicable() || unknown[1].Undecided() || unknown[1].Plan.Error == "" {
+		t.Errorf("no cost = %+v", unknown[1].Plan)
+	}
+	// A denial from a rule's approvers counts while it waits for the plan, and no longer once the
+	// plan says it does not apply.
+	destroys, _ := Match(RuleSet{Source: SourceType, Rules: []definitions.Rule{rule("destroys", []string{"group:security"}, 1, when("plan.destroys > 0"))}})
+	sam := []Review{{Reviewer: "sam", Groups: []string{"security"}, Decision: Deny}}
+	if out := Evaluate(destroys, sam, ctx); out.State != Denied {
+		t.Errorf("a denial before the plan = %+v", out)
+	}
+	none, _, _ := Decide(destroys, map[string]any{"destroys": 0})
+	if out := Evaluate(none, sam, ctx); out.State != Approved {
+		t.Errorf("a denial on a rule that does not apply = %+v", out)
+	}
+}

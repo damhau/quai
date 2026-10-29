@@ -667,6 +667,10 @@ export type RequestView = {
     };
     kind: string;
     number: number;
+    /**
+     * The latest plan of each stack the request's pull request was planned in
+     */
+    plans?: Array<RunView> | null;
     reason: string;
     repository: string;
     requester: string;
@@ -772,7 +776,23 @@ export type RuleView = {
     external?: string;
     min: number;
     names: Array<string> | null;
+    /**
+     * The plan says the rule does not apply
+     */
+    notApplicable?: boolean;
+    /**
+     * Why the condition could not be evaluated on the plan: the rule applies
+     */
+    planError?: string;
     satisfied: boolean;
+    /**
+     * The rule waits for a plan to say whether it applies
+     */
+    waitingForPlan?: boolean;
+    /**
+     * The condition of a rule that reads the plan
+     */
+    when?: string;
 };
 
 export type RunCost = {
@@ -1390,6 +1410,10 @@ export type RequestViewWritable = {
     };
     kind: string;
     number: number;
+    /**
+     * The latest plan of each stack the request's pull request was planned in
+     */
+    plans?: Array<RunViewWritable> | null;
     reason: string;
     repository: string;
     requester: string;

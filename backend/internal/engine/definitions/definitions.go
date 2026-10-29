@@ -119,6 +119,7 @@ func Load(fsys fs.FS) (*Repository, Problems) {
 type loader struct {
 	fsys     fs.FS
 	env      *expr.Env
+	rules    *expr.Env // env and plan, for the conditions of approval rules
 	schemas  *schema.Compiler
 	problems Problems
 }
@@ -128,7 +129,11 @@ func newLoader(fsys fs.FS) *loader {
 	if err != nil {
 		panic(err) // the default environment is fixed; failing to build it is a bug
 	}
-	l := &loader{fsys: fsys, env: env, schemas: schema.NewCompiler()}
+	rules, err := expr.NewEnv(expr.WithPlan())
+	if err != nil {
+		panic(err)
+	}
+	l := &loader{fsys: fsys, env: env, rules: rules, schemas: schema.NewCompiler()}
 	l.schemas.UseSource(func(p string) ([]byte, error) { return fs.ReadFile(fsys, p) })
 	return l
 }

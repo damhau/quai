@@ -75,6 +75,7 @@ stateDiagram-v2
   PendingApproval --> Expired: TTL reached
   PendingApproval --> Stale: owned region changed in Git
   Approved --> Stale: owned region changed before merge
+  Approved --> PendingApproval: a new plan makes a rule apply
   Approved --> Merging: window open, checks green
   Merging --> Applying: merged
   Merging --> Failed: merge refused

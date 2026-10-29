@@ -249,7 +249,7 @@ func (d *Document) Validate() error {
 	if s.Sync.PollInterval < Duration(time.Second) || s.Sync.MinInterval < 0 {
 		add("spec.sync.pollInterval must be at least 1s and spec.sync.minInterval not negative")
 	}
-	env, err := expr.NewEnv()
+	env, err := expr.NewEnv(expr.WithPlan()) // floor rules are approval rules
 	if err != nil {
 		return err
 	}

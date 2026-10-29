@@ -362,8 +362,8 @@ Quai resource. With it, Quai can map `terraform show -json` output (parsed with
 | `approval` (default) | Delete always needs at least one approval from the owners or the repository floor rules, even when other changes do not: when no rule applies, Quai adds one whose approvers are `owners` and every approver the repository's floor rules name. |
 | `forbidden` | No delete action. Removal is done by hand in Git. |
 
-The delete confirmation always shows what the plan will destroy when the runner
-has reported it.
+A delete's plan exists once its pull request does: the request page shows what the plan
+destroys, first, as soon as the runner has reported it, before anyone approves.
 
 ## Testing a type
 

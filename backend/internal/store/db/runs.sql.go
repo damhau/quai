@@ -117,6 +117,56 @@ func (q *Queries) InsertRun(ctx context.Context, arg InsertRunParams) (Run, erro
 	return i, err
 }
 
+const latestRequestRuns = `-- name: LatestRequestRuns :many
+SELECT DISTINCT ON (stack) id, org_id, repository, stack, commit, kind, status, url, summary, started_at, finished_at, pull_request, request_id, policies, cost, plan FROM runs
+WHERE request_id = $1 AND kind = $2 AND ($3::text = '' OR status = $3::text)
+ORDER BY stack, started_at DESC, id
+`
+
+type LatestRequestRunsParams struct {
+	RequestID pgtype.UUID
+	Kind      string
+	Status    string
+}
+
+// A request's latest run of a kind for each stack; with a status, only runs that ended so.
+func (q *Queries) LatestRequestRuns(ctx context.Context, arg LatestRequestRunsParams) ([]Run, error) {
+	rows, err := q.db.Query(ctx, latestRequestRuns, arg.RequestID, arg.Kind, arg.Status)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Run{}
+	for rows.Next() {
+		var i Run
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.Repository,
+			&i.Stack,
+			&i.Commit,
+			&i.Kind,
+			&i.Status,
+			&i.Url,
+			&i.Summary,
+			&i.StartedAt,
+			&i.FinishedAt,
+			&i.PullRequest,
+			&i.RequestID,
+			&i.Policies,
+			&i.Cost,
+			&i.Plan,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const latestRun = `-- name: LatestRun :one
 SELECT id, org_id, repository, stack, commit, kind, status, url, summary, started_at, finished_at, pull_request, request_id, policies, cost, plan FROM runs
 WHERE repository = $1 AND stack = $2 AND kind = $3

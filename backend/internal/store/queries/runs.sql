@@ -59,3 +59,9 @@ WHERE repository = sqlc.arg(repository)
   AND (sqlc.arg(kind)::text = '' OR kind = sqlc.arg(kind)::text)
 ORDER BY started_at DESC, id
 LIMIT sqlc.arg(max_rows);
+
+-- name: LatestRequestRuns :many
+-- A request's latest run of a kind for each stack; with a status, only runs that ended so.
+SELECT DISTINCT ON (stack) * FROM runs
+WHERE request_id = sqlc.arg(request_id) AND kind = sqlc.arg(kind) AND (sqlc.arg(status)::text = '' OR status = sqlc.arg(status)::text)
+ORDER BY stack, started_at DESC, id;

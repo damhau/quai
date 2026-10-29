@@ -41,6 +41,11 @@ type RuleView struct {
 	External  string   `json:"external,omitempty"`
 	Approvals []string `json:"approvals"`
 	Satisfied bool     `json:"satisfied"`
+	// A rule that reads the plan (docs/design/05#rules-on-the-plan).
+	When           string `json:"when,omitempty" doc:"The condition of a rule that reads the plan"`
+	WaitingForPlan bool   `json:"waitingForPlan,omitempty" doc:"The rule waits for a plan to say whether it applies"`
+	NotApplicable  bool   `json:"notApplicable,omitempty" doc:"The plan says the rule does not apply"`
+	PlanError      string `json:"planError,omitempty" doc:"Why the condition could not be evaluated on the plan: the rule applies"`
 }
 
 // PlanView is what a request would change.
@@ -98,6 +103,7 @@ type RequestView struct {
 	Reviews    []ReviewView   `json:"reviews,omitempty"`
 	Changes    []ChangeView   `json:"changes,omitempty"`
 	Events     []EventView    `json:"events,omitempty"`
+	Plans      []RunView      `json:"plans,omitempty" doc:"The latest plan of each stack the request's pull request was planned in"`
 	Delivery   *DeliveryView  `json:"delivery,omitempty" doc:"The pull request the change goes through; absent in direct mode"`
 }
 
@@ -372,7 +378,11 @@ func diffView(c plan.Change) []DiffLine {
 func ruleViews(rules []policy.Rule, statuses []policy.Status) []RuleView {
 	out := []RuleView{}
 	for i, r := range rules {
-		v := RuleView{Names: r.Names, Approvers: r.Approvers, Min: r.Min, External: r.External, Approvals: []string{}}
+		v := RuleView{Names: r.Names, Approvers: r.Approvers, Min: r.Min, External: r.External, Approvals: []string{},
+			WaitingForPlan: r.Undecided(), NotApplicable: r.NotApplicable()}
+		if r.Plan != nil {
+			v.When, v.PlanError = r.Plan.When, r.Plan.Error
+		}
 		if i < len(statuses) {
 			v.Approvals, v.Satisfied = statuses[i].Approvals, statuses[i].Satisfied
 			if v.Approvals == nil {
@@ -412,6 +422,11 @@ func requestView(ctx context.Context, svc *requests.Service, s *store.Store, r d
 	}
 	if !detail {
 		return v
+	}
+	if runs, err := s.LatestRequestRuns(ctx, db.LatestRequestRunsParams{RequestID: pgtype.UUID{Bytes: r.ID, Valid: true}, Kind: "plan"}); err == nil {
+		for _, run := range runs {
+			v.Plans = append(v.Plans, runView(run))
+		}
 	}
 	for _, rv := range reviews {
 		v.Reviews = append(v.Reviews, ReviewView{Reviewer: rv.Reviewer, Decision: rv.Decision, Comment: rv.Comment, At: rv.CreatedAt.Time})

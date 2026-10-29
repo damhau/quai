@@ -208,6 +208,29 @@ How rules combine and decide:
   someone who could approve for a rule that applies; an external rule is satisfied when its
   system approves and rejects the request when it refuses.
 
+### Rules on the plan
+
+A rule's `when` may read the Terraform plan of the request's pull request through `plan`, in the
+approval rules of types, blueprints and floor rules only. It holds the request's latest
+succeeded plan of each stack ([runs](06-runs-status-and-drift.md#run-report-protocol)), summed:
+`add`, `change` and `destroy` (a replace counts in both `add` and `destroy`), `destroys` (the same
+as `destroy`), `cost` (`currency` and `monthlyDelta`, only when every plan reported a cost in the
+same currency) and `policies` (each `name` and `result`). Until the owner decides otherwise
+([open question 7](../plan/open-questions.md)):
+
+- **Undecided until a plan reports.** Such a rule is kept apart, never merged with another, and
+  the request cannot reach *Approved* while it waits: approvals given in the meantime count for it
+  and stand, and a denial from its approvers rejects the request as for any rule.
+- **Decided by each plan.** When a plan reports, the rule applies or not; each new plan of the
+  same change set (after a rebuild on a moved base, say) decides it again. A rule that no longer
+  applies is satisfied. A request that is approved but not merged yet, which a new plan makes need
+  more approvals, goes back to *pending approval*, and `quai/approval` with it.
+- **When in doubt, it applies.** A condition the plan cannot decide (`plan.cost.monthlyDelta`
+  without a reported cost) makes the rule apply, and the request says why. With direct delivery,
+  where no plan comes before the commit, the rule applies from the start.
+- The request page shows the plans, what they change by resource and what they destroy first,
+  and for each such rule whether it waits for the plan, applies, or does not apply.
+
 ### Approver kinds
 
 | Approver | Resolved from |

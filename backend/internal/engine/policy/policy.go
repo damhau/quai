@@ -40,15 +40,36 @@ type Rule struct {
 	Min       int
 	External  string
 	Distinct  bool
+	// Plan is the condition of a rule that reads the plan, decided when a plan has reported. Such
+	// a rule is never merged with another.
+	Plan *PlanCondition `json:",omitempty"`
 }
 
+// PlanCondition is the condition of a rule that reads the plan (plan.*): undecided until a plan
+// has reported, and decided again with each new plan
+// (docs/design/05-delivery-and-approvals.md#rules-on-the-plan).
+type PlanCondition struct {
+	When    string
+	Vars    expr.Vars // what the condition sees besides the plan
+	Applies *bool     // nil until a plan has reported
+	Error   string    // why the condition could not be evaluated; the rule then applies
+}
+
+// Undecided reports whether a rule waits for a plan to say whether it applies.
+func (r Rule) Undecided() bool { return r.Plan != nil && r.Plan.Applies == nil }
+
+// NotApplicable reports whether the plan says the rule does not apply.
+func (r Rule) NotApplicable() bool { return r.Plan != nil && r.Plan.Applies != nil && !*r.Plan.Applies }
+
 // Match returns the rules that apply: those whose condition holds, merged when they have the
-// same approvers and external system, keeping the highest min.
+// same approvers and external system, keeping the highest min. A rule whose condition reads the
+// plan, when there is none yet, is kept undecided, apart.
 func Match(sets ...RuleSet) ([]Rule, error) {
 	var out []Rule
 	for _, set := range sets {
 		for _, r := range set.Rules {
-			if r.Condition != nil {
+			deferred := r.Condition != nil && r.Condition.Uses(expr.VarPlan) && set.Vars.Plan == nil
+			if r.Condition != nil && !deferred {
 				ok, err := r.Condition.Test(set.Vars)
 				if err != nil {
 					return nil, fmt.Errorf("approval rule %s/%s: %w", set.Source, r.Name, err)
@@ -65,8 +86,13 @@ func Match(sets ...RuleSet) ([]Rule, error) {
 			}
 			distinct := r.Distinct == nil || *r.Distinct
 			name := set.Source + "/" + r.Name
+			if deferred {
+				out = append(out, Rule{Names: []string{name}, Approvers: approvers, Min: min, External: r.External, Distinct: distinct,
+					Plan: &PlanCondition{When: r.When, Vars: set.Vars}})
+				continue
+			}
 			i := slices.IndexFunc(out, func(o Rule) bool {
-				return slices.Equal(o.Approvers, approvers) && o.External == r.External
+				return o.Plan == nil && slices.Equal(o.Approvers, approvers) && o.External == r.External
 			})
 			if i < 0 {
 				out = append(out, Rule{Names: []string{name}, Approvers: approvers, Min: min, External: r.External, Distinct: distinct})
@@ -78,6 +104,54 @@ func Match(sets ...RuleSet) ([]Rule, error) {
 		}
 	}
 	return out, nil
+}
+
+// Decide evaluates the conditions of the rules that read the plan, with plan the summary the
+// plan variable holds. It returns the rules and whether a decision changed. A condition that
+// cannot be evaluated, such as one reading a cost the runner did not report, makes its rule
+// apply.
+func Decide(rules []Rule, plan map[string]any) ([]Rule, bool, error) {
+	env, err := expr.NewEnv(expr.WithPlan())
+	if err != nil {
+		return nil, false, err
+	}
+	out, changed := slices.Clone(rules), false
+	for i, r := range out {
+		if r.Plan == nil {
+			continue
+		}
+		pc := *r.Plan
+		applies, msg := true, ""
+		prg, err := env.CompileCondition(pc.When)
+		if err == nil {
+			vars := pc.Vars
+			vars.Plan = plan
+			applies, err = prg.Test(vars)
+		}
+		if err != nil {
+			applies, msg = true, err.Error()
+		}
+		if pc.Applies == nil || *pc.Applies != applies || pc.Error != msg {
+			changed = true
+		}
+		pc.Applies, pc.Error = &applies, msg
+		out[i].Plan = &pc
+	}
+	return out, changed, nil
+}
+
+// WithoutPlan makes the rules that wait for a plan apply, for why: where no plan can come before
+// the decision, such as in direct delivery.
+func WithoutPlan(rules []Rule, why string) []Rule {
+	out := slices.Clone(rules)
+	for i, r := range out {
+		if r.Undecided() {
+			pc, applies := *r.Plan, true
+			pc.Applies, pc.Error = &applies, why
+			out[i].Plan = &pc
+		}
+	}
+	return out
 }
 
 // Review decisions.
@@ -113,7 +187,7 @@ const (
 type Status struct {
 	Rule      Rule
 	Approvals []string // the approvers counted for the rule, sorted
-	Satisfied bool
+	Satisfied bool     // a rule the plan says does not apply is satisfied
 }
 
 // Outcome is the decision on a request.
@@ -175,6 +249,9 @@ func Evaluate(rules []Rule, reviews []Review, ctx Context) Outcome {
 	}
 	denied := false
 	for _, r := range rules {
+		if r.NotApplicable() {
+			continue
+		}
 		if r.External != "" && ctx.External[r.External] == "rejected" {
 			denied = true
 		}
@@ -193,7 +270,7 @@ func Evaluate(rules []Rule, reviews []Review, ctx Context) Outcome {
 	// cannot leave a rule unsatisfied when an assignment exists.
 	var slots []int // the rule each slot belongs to
 	for i, r := range rules {
-		if r.Distinct && r.External == "" {
+		if r.Distinct && r.External == "" && !r.NotApplicable() {
 			for range r.Min {
 				slots = append(slots, i)
 			}
@@ -241,6 +318,8 @@ func Evaluate(rules []Rule, reviews []Review, ctx Context) Outcome {
 	for i, r := range rules {
 		st := &statuses[i]
 		switch {
+		case r.NotApplicable():
+			st.Satisfied = true
 		case r.External != "":
 			st.Satisfied = ctx.External[r.External] == "approved"
 		case !r.Distinct:
@@ -254,6 +333,10 @@ func Evaluate(rules []Rule, reviews []Review, ctx Context) Outcome {
 			st.Satisfied = len(st.Approvals) >= r.Min
 		}
 		slices.Sort(st.Approvals)
+		// Approvals count for a rule that waits for the plan, but it is not satisfied before.
+		if r.Undecided() {
+			st.Satisfied = false
+		}
 		if !st.Satisfied {
 			state = Pending
 		}

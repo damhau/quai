@@ -36,6 +36,10 @@ const (
 	VarAction   = "action"   // the action's own inputs
 	VarRequest  = "request"  // kind, action, reason
 	VarUser     = "user"     // name, groups
+	// VarPlan is a Terraform plan's summary (add, change, destroy, destroys, cost), declared only
+	// by WithPlan, for approval rules: such a rule is decided once a plan has reported
+	// (docs/design/05-delivery-and-approvals.md#rules-on-the-plan).
+	VarPlan = "plan"
 )
 
 // Limits on what an expression may cost. They protect the server from expensive definitions;
@@ -69,6 +73,14 @@ func defaultTypes() map[string]*cel.Type {
 		VarAction:   anyMap,
 		VarRequest:  stringMap,
 		VarUser:     anyMap,
+	}
+}
+
+// WithPlan declares plan, for the conditions of approval rules.
+func WithPlan() Option {
+	return func(types map[string]*cel.Type) error {
+		types[VarPlan] = anyMap
+		return nil
 	}
 }
 
@@ -112,8 +124,10 @@ func NewEnv(opts ...Option) (*Env, error) {
 		cel.CrossTypeNumericComparisons(true),
 		cel.ParserExpressionSizeLimit(MaxExpressionSize),
 	}
-	for _, name := range []string{VarInputs, VarParams, VarDoc, VarPrevious, VarAction, VarRequest, VarUser} {
-		envOpts = append(envOpts, cel.Variable(name, vars[name]))
+	for _, name := range []string{VarInputs, VarParams, VarDoc, VarPrevious, VarAction, VarRequest, VarUser, VarPlan} {
+		if t := vars[name]; t != nil {
+			envOpts = append(envOpts, cel.Variable(name, t))
+		}
 	}
 	env, err := cel.NewEnv(envOpts...)
 	if err != nil {
@@ -139,6 +153,7 @@ type Program struct {
 	src       string
 	prg       cel.Program // nil for an empty condition, which is true
 	condition bool
+	uses      map[string]bool // the variables it reads
 }
 
 // Compile type-checks an expression whose result may be of any type.
@@ -173,11 +188,18 @@ func (e *Env) compile(src string, condition bool) (*Program, error) {
 	if err != nil {
 		return nil, &Error{Expr: src, Err: err}
 	}
-	return &Program{src: src, prg: prg, condition: condition}, nil
+	uses := map[string]bool{}
+	for _, r := range ast.NativeRep().ReferenceMap() {
+		uses[r.Name] = true
+	}
+	return &Program{src: src, prg: prg, condition: condition, uses: uses}, nil
 }
 
 // String returns the expression's source.
 func (p *Program) String() string { return p.src }
+
+// Uses reports whether the expression reads the variable name.
+func (p *Program) Uses(name string) bool { return p.uses[name] }
 
 // Eval evaluates the expression. The result is in the JSON data model, or Absent when the
 // expression evaluates to `optional.none()`.
@@ -243,6 +265,7 @@ type Vars struct {
 	Action   map[string]any
 	Request  Request
 	User     User
+	Plan     map[string]any // nil until a plan has reported
 }
 
 // Request describes the request an expression is evaluated for.
@@ -260,12 +283,12 @@ type User struct {
 
 // activation converts the variables to the values CEL evaluates against.
 func (v Vars) activation() (map[string]any, error) {
-	act := make(map[string]any, 7)
+	act := make(map[string]any, 8)
 	maps := []struct {
 		name string
 		m    map[string]any
 	}{
-		{VarInputs, v.Inputs}, {VarParams, v.Params}, {VarPrevious, v.Previous}, {VarAction, v.Action},
+		{VarInputs, v.Inputs}, {VarParams, v.Params}, {VarPrevious, v.Previous}, {VarAction, v.Action}, {VarPlan, v.Plan},
 	}
 	for _, m := range maps {
 		n, err := normalize(m.m) // a nil map becomes an empty one
