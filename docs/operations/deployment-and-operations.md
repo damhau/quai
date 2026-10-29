@@ -90,6 +90,33 @@ kubectl apply -f deploy/kind/smoke.yaml && kubectl -n quai wait --for=condition=
 kind delete cluster --name quai
 ```
 
+### Runners
+
+Pipelines report their plans and applies with `quai report`, a step after `terraform plan` and
+after `terraform apply` ([runs](../design/06-runs-status-and-drift.md#run-report-protocol)). It
+needs three variables: `QUAI_URL`, `QUAI_REPOSITORY` (the repository's name in Quai) and
+`QUAI_RUN_TOKEN`, the repository's run token (`POST /api/v1/repositories/{name}/run-token`,
+shown once), kept as a secret variable; `QUAI_RUN_TOKEN_FILE` can name a file that holds it
+instead, and `QUAI_CA_FILE` a PEM file for an internal CA. The commit, the pull request and the
+run's page come from Azure Pipelines, GitHub Actions or GitLab CI (`--commit`, `--pull-request`
+and `--url` elsewhere). A report Quai refuses fails the step. The image runs it as a container
+step. In Azure Pipelines, after `terraform show -json tfplan > plan.json`:
+
+```yaml
+- bash: |
+    docker run --rm -v "$PWD:/work:ro" -w /work \
+      -e QUAI_URL -e QUAI_REPOSITORY -e QUAI_RUN_TOKEN -e TF_BUILD -e BUILD_SOURCEVERSION -e BUILD_BUILDID \
+      -e SYSTEM_COLLECTIONURI -e SYSTEM_TEAMPROJECT -e SYSTEM_PULLREQUEST_PULLREQUESTID \
+      ghcr.io/damhau/quai:main report --stack envs/prod --kind plan --status succeeded --plan plan.json
+  env:
+    QUAI_RUN_TOKEN: $(quaiRunToken) # a secret variable
+```
+
+The same with `-e GITHUB_ACTIONS -e GITHUB_SHA -e GITHUB_REF -e GITHUB_SERVER_URL -e
+GITHUB_REPOSITORY -e GITHUB_RUN_ID -e GITHUB_RUN_ATTEMPT` in GitHub Actions; in GitLab CI, a job
+with `image: { name: ghcr.io/damhau/quai:main, entrypoint: [""] }` runs `quai report …` directly.
+A step that runs when the plan or apply fails reports `--status failed`.
+
 ## Network
 
 Egress needed, all configurable through an HTTP proxy (`HTTPS_PROXY`, `NO_PROXY`), with an internal CA trusted through `network.caFile`:
