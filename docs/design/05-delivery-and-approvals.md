@@ -215,7 +215,7 @@ How rules combine and decide:
 | `group:<name>` | IdP group |
 | `user:<name>` | A named user |
 | `owners` | The resource's owner (user or team) |
-| `codeowners` | `CODEOWNERS` entries for the paths in the change set; on Azure DevOps, the reviewers of "Automatically included reviewers" policies whose path filters match |
+| `codeowners` | `CODEOWNERS` entries for the paths in the change set; on Azure DevOps, the reviewers of "Automatically included reviewers" policies whose path filters match. From Phase 4 ([#100](https://github.com/damhau/quai/issues/100)); until then it matches no one |
 | `manager` | The requester's manager, from the IdP attribute |
 | `external: <integration>` | An external system (ServiceNow change request, generic webhook) that returns approved or rejected |
 

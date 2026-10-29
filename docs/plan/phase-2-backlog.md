@@ -5,8 +5,9 @@ Status: Active · 2026-10-29
 The tasks for [Phase 2](roadmap.md#phase-2-runs-and-status-4-weeks) are GitHub issues in
 milestone [M1 Pilot](https://github.com/damhau/quai/milestones) labelled `phase:2` and
 `type:task`, titled `P2-NN: …`. Their order is their issue number. Each names the epic it belongs
-to (#41–#45). GitHub is the only task list: descriptions and done criteria live in the issues.
-Read [`CLAUDE.md`](../../CLAUDE.md) first; an iteration works as in
+to (#41–#45); P2-01 (#100, codeowners) moved to Phase 4. GitHub is the only task list:
+descriptions and done criteria live in the issues. Read [`CLAUDE.md`](../../CLAUDE.md) first; an
+iteration works as in
 [Phase 0](phase-0-backlog.md#one-iteration), with `phase:2` instead of `phase:0`:
 
 ```bash

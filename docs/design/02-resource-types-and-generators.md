@@ -315,7 +315,7 @@ The editors and their safety checks are specified in [03-file-editing.md](03-fil
 | Mode | Owner is | Use when |
 | --- | --- | --- |
 | `field: owner` | The value in the file (user or `team:x`) | The schema has an owner field |
-| `codeowners: true` | The `CODEOWNERS` entry for the resource's path | Ownership is already managed through CODEOWNERS |
+| `codeowners: true` | The `CODEOWNERS` entry for the resource's path | Ownership is already managed through CODEOWNERS. From Phase 4 ([#100](https://github.com/damhau/quai/issues/100)); until then it has no effect |
 | `team: platform` | A fixed team for every resource of the type | Shared infrastructure |
 
 Resources with no owner can be changed only by admins and the type's
