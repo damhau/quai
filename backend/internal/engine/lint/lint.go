@@ -19,6 +19,7 @@ import (
 	"github.com/damhau/quai/backend/internal/engine/generate"
 	"github.com/damhau/quai/backend/internal/engine/locate"
 	"github.com/damhau/quai/backend/internal/engine/schema"
+	"github.com/damhau/quai/backend/internal/engine/tfplan"
 )
 
 // Report is the result of a check.
@@ -41,6 +42,31 @@ func Run(fsys fs.FS) Report {
 	sortProblems(r.Problems)
 	sortProblems(r.Notes)
 	return r
+}
+
+// Plan checks a plan of stack, the output of terraform show -json read from file, against the
+// repository fsys: every Terraform resource it changes belongs to exactly one Quai resource,
+// through the types' stack and address patterns.
+func Plan(fsys fs.FS, plan []byte, file, stack string) definitions.Problems {
+	repo, _ := definitions.Load(fsys)
+	changes, err := tfplan.Parse(plan, tfplan.Options{})
+	if err != nil {
+		return definitions.Problems{{Path: file, Message: err.Error()}}
+	}
+	m := tfplan.Map(changes, stack, tfplan.Claims(repo.Types))
+	var problems definitions.Problems
+	for _, c := range m.Unmapped {
+		problems = append(problems, definitions.Problem{Path: file, Field: c.Address, Message: fmt.Sprintf("%s by no resource: no type's stack and address match it in %s", pastTense(c.Action), stack)})
+	}
+	for _, a := range m.Ambiguous {
+		problems = append(problems, definitions.Problem{Path: file, Field: a.Address, Message: "claimed by more than one resource: " + strings.Join(a.Resources, ", ")})
+	}
+	sortProblems(problems)
+	return problems
+}
+
+func pastTense(action string) string {
+	return map[string]string{tfplan.Create: "created", tfplan.Update: "updated", tfplan.Delete: "deleted", tfplan.Replace: "replaced"}[action]
 }
 
 func (r *Report) problem(file, field, format string, args ...any) {

@@ -17,6 +17,7 @@ require (
 	github.com/go-jose/go-jose/v4 v4.1.6
 	github.com/go-logr/logr v1.4.4
 	github.com/google/uuid v1.6.0
+	github.com/hashicorp/terraform-json v0.29.0
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/microsoft/azure-devops-go-api/azuredevops/v7 v7.1.0
 	github.com/pressly/goose/v3 v3.29.0
@@ -47,6 +48,7 @@ require (
 require (
 	github.com/42wim/httpsig v1.2.4 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
+	github.com/apparentlymart/go-textseg/v15 v15.0.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
@@ -100,6 +102,7 @@ require (
 	github.com/tidwall/sjson v1.2.5 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/xi2/xz v0.0.0-20171230120015-48954b6210f8 // indirect
+	github.com/zclconf/go-cty v1.16.4 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.47.0 // indirect
 	go.opentelemetry.io/otel/log v1.47.0 // indirect

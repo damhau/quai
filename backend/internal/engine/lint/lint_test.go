@@ -103,3 +103,27 @@ func TestChangedLines(t *testing.T) {
 		t.Errorf("changedLines = %q", got)
 	}
 }
+
+// TestPlan: every Terraform resource a plan changes belongs to exactly one resource; the plans
+// are tfplan's recorded ones.
+func TestPlan(t *testing.T) {
+	fsys := os.DirFS("../../../../examples/gitops-repo")
+	read := func(name string) []byte {
+		b, err := os.ReadFile("../tfplan/testdata/" + name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return b
+	}
+	if problems := Plan(fsys, read("prod.json"), "prod.json", "envs/prod"); len(problems) > 0 {
+		t.Errorf("the example stack's plan: %v", problems)
+	}
+	problems := Plan(fsys, read("nested.json"), "nested.json", "envs/prod")
+	if len(problems) != 3 || problems[0].Field != `module.app["shop"].module.vm["db"].terraform_data.vm` ||
+		problems[0].Message != "created by no resource: no type's stack and address match it in envs/prod" {
+		t.Errorf("a plan of resources no type claims: %v", problems)
+	}
+	if problems := Plan(fsys, []byte(`{}`), "plan.json", "envs/prod"); len(problems) != 1 || problems[0].Path != "plan.json" {
+		t.Errorf("not a plan: %v", problems)
+	}
+}

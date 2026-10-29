@@ -373,7 +373,7 @@ has reported it.
 - every file the locator matches parses and conforms to the file schema;
 - **round trip**: for every existing resource, `write(read(file))` produces zero diff. A type that cannot reproduce existing files would rewrite them on the first edit, so it is rejected;
 - golden examples under `.quai/tests/<type>/` (input values → expected files) still produce the same bytes;
-- with `--plan plan.json`, every changed Terraform address maps to exactly one resource.
+- with `--plan plan.json --stack envs/prod`, every Terraform resource the plan of that stack changes belongs to exactly one resource, through the types' `stack` and `address` patterns.
 
 It prints one line per problem (`file: field: message`) and exits with status 1 when there
 is any. Types whose locator or generator the running version does not implement are listed as

@@ -1,0 +1,907 @@
+{
+  "applyable": true,
+  "complete": true,
+  "configuration": {
+    "provider_config": {
+      "module.vm:terraform": {
+        "full_name": "terraform.io/builtin/terraform",
+        "module_address": "module.vm",
+        "name": "terraform"
+      }
+    },
+    "root_module": {
+      "module_calls": {
+        "vm": {
+          "expressions": {
+            "backup_policy": {
+              "references": [
+                "each.value.backup",
+                "each.value",
+                "each.value.backup_policy",
+                "each.value"
+              ]
+            },
+            "cpu": {
+              "references": [
+                "each.value.cpu",
+                "each.value"
+              ]
+            },
+            "disks": {
+              "references": [
+                "each.value.disks",
+                "each.value"
+              ]
+            },
+            "environment": {
+              "constant_value": "prod"
+            },
+            "ip": {
+              "references": [
+                "each.value.network.ip",
+                "each.value.network",
+                "each.value"
+              ]
+            },
+            "memory_gb": {
+              "references": [
+                "each.value.memory_gb",
+                "each.value"
+              ]
+            },
+            "name": {
+              "references": [
+                "each.key"
+              ]
+            },
+            "tags": {
+              "references": [
+                "each.value.tags",
+                "each.value",
+                "each.value.owner",
+                "each.value"
+              ]
+            },
+            "template": {
+              "references": [
+                "each.value.template",
+                "each.value"
+              ]
+            },
+            "vlan": {
+              "references": [
+                "each.value.network.vlan",
+                "each.value.network",
+                "each.value"
+              ]
+            }
+          },
+          "for_each_expression": {
+            "references": [
+              "local.vms"
+            ]
+          },
+          "module": {
+            "outputs": {
+              "id": {
+                "expression": {
+                  "references": [
+                    "terraform_data.vm.id",
+                    "terraform_data.vm"
+                  ]
+                }
+              }
+            },
+            "resources": [
+              {
+                "address": "terraform_data.vm",
+                "expressions": {
+                  "input": {
+                    "references": [
+                      "var.environment",
+                      "var.name",
+                      "var.template",
+                      "var.cpu",
+                      "var.memory_gb",
+                      "var.disks",
+                      "var.vlan",
+                      "var.ip",
+                      "var.backup_policy",
+                      "var.tags"
+                    ]
+                  }
+                },
+                "mode": "managed",
+                "name": "vm",
+                "provider_config_key": "module.vm:terraform",
+                "schema_version": 0,
+                "type": "terraform_data"
+              }
+            ],
+            "variables": {
+              "backup_policy": {
+                "default": null
+              },
+              "cpu": {},
+              "disks": {},
+              "environment": {},
+              "ip": {
+                "default": null
+              },
+              "memory_gb": {},
+              "name": {},
+              "tags": {
+                "default": {}
+              },
+              "template": {},
+              "vlan": {}
+            }
+          },
+          "source": "../../modules/vm"
+        }
+      }
+    }
+  },
+  "errored": false,
+  "format_version": "1.2",
+  "planned_values": {
+    "root_module": {
+      "child_modules": [
+        {
+          "address": "module.vm[\"api01\"]",
+          "resources": [
+            {
+              "address": "module.vm[\"api01\"].terraform_data.vm",
+              "mode": "managed",
+              "name": "vm",
+              "provider_name": "terraform.io/builtin/terraform",
+              "schema_version": 0,
+              "sensitive_values": {
+                "input": {
+                  "disks": [
+                    {}
+                  ],
+                  "tags": {}
+                },
+                "output": {}
+              },
+              "type": "terraform_data",
+              "values": {
+                "input": {
+                  "backup_policy": "daily",
+                  "cpu": 8,
+                  "disks": [
+                    {
+                      "size_gb": 80,
+                      "tier": "ssd"
+                    }
+                  ],
+                  "ip": "10.0.12.11",
+                  "memory_mb": 16384,
+                  "name": "prod-api01",
+                  "tags": {
+                    "app": "shop",
+                    "cost_center": "4711",
+                    "owner": "bob"
+                  },
+                  "template": "ubuntu-24.04",
+                  "vlan": 120
+                },
+                "store": null,
+                "triggers_replace": null
+              }
+            }
+          ]
+        },
+        {
+          "address": "module.vm[\"legacy-ftp\"]",
+          "resources": [
+            {
+              "address": "module.vm[\"legacy-ftp\"].terraform_data.vm",
+              "mode": "managed",
+              "name": "vm",
+              "provider_name": "terraform.io/builtin/terraform",
+              "schema_version": 0,
+              "sensitive_values": {
+                "input": {
+                  "disks": [
+                    {}
+                  ],
+                  "tags": {}
+                },
+                "output": {}
+              },
+              "type": "terraform_data",
+              "values": {
+                "input": {
+                  "backup_policy": null,
+                  "cpu": 2,
+                  "disks": [
+                    {
+                      "size_gb": 200,
+                      "tier": "standard"
+                    }
+                  ],
+                  "ip": null,
+                  "memory_mb": 4096,
+                  "name": "prod-legacy-ftp",
+                  "tags": {
+                    "owner": "unknown"
+                  },
+                  "template": "rhel-9",
+                  "vlan": 110
+                },
+                "store": null,
+                "triggers_replace": null
+              }
+            }
+          ]
+        },
+        {
+          "address": "module.vm[\"web01\"]",
+          "resources": [
+            {
+              "address": "module.vm[\"web01\"].terraform_data.vm",
+              "mode": "managed",
+              "name": "vm",
+              "provider_name": "terraform.io/builtin/terraform",
+              "schema_version": 0,
+              "sensitive_values": {
+                "input": {
+                  "disks": [
+                    {}
+                  ],
+                  "tags": {}
+                },
+                "output": {}
+              },
+              "type": "terraform_data",
+              "values": {
+                "id": "ab65b13b-4a96-e41f-408c-00420d01bacc",
+                "input": {
+                  "backup_policy": "daily",
+                  "cpu": 8,
+                  "disks": [
+                    {
+                      "size_gb": 80,
+                      "tier": "ssd"
+                    }
+                  ],
+                  "ip": "10.0.12.11",
+                  "memory_mb": 16384,
+                  "name": "prod-web01",
+                  "tags": {
+                    "app": "shop",
+                    "cost_center": "4711",
+                    "owner": "bob"
+                  },
+                  "template": "ubuntu-24.04",
+                  "vlan": 120
+                },
+                "store": null,
+                "triggers_replace": null
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "prior_state": {
+    "format_version": "1.0",
+    "terraform_version": "1.16.4",
+    "values": {
+      "root_module": {
+        "child_modules": [
+          {
+            "address": "module.vm[\"db01\"]",
+            "resources": [
+              {
+                "address": "module.vm[\"db01\"].terraform_data.vm",
+                "mode": "managed",
+                "name": "vm",
+                "provider_name": "terraform.io/builtin/terraform",
+                "schema_version": 0,
+                "sensitive_values": {
+                  "input": {
+                    "disks": [
+                      {},
+                      {}
+                    ],
+                    "tags": {}
+                  },
+                  "output": {
+                    "disks": [
+                      {},
+                      {}
+                    ],
+                    "tags": {}
+                  }
+                },
+                "type": "terraform_data",
+                "values": {
+                  "id": "ace462db-6e1e-53f8-5533-8effc2c7caf4",
+                  "input": {
+                    "backup_policy": "hourly",
+                    "cpu": 12,
+                    "disks": [
+                      {
+                        "size_gb": 100,
+                        "tier": "ssd"
+                      },
+                      {
+                        "size_gb": 1000,
+                        "tier": "ssd"
+                      }
+                    ],
+                    "ip": "10.0.13.20",
+                    "memory_mb": 65536,
+                    "name": "prod-db01",
+                    "tags": {
+                      "owner": "dana"
+                    },
+                    "template": "rhel-9",
+                    "vlan": 130
+                  },
+                  "output": {
+                    "backup_policy": "hourly",
+                    "cpu": 12,
+                    "disks": [
+                      {
+                        "size_gb": 100,
+                        "tier": "ssd"
+                      },
+                      {
+                        "size_gb": 1000,
+                        "tier": "ssd"
+                      }
+                    ],
+                    "ip": "10.0.13.20",
+                    "memory_mb": 65536,
+                    "name": "prod-db01",
+                    "tags": {
+                      "owner": "dana"
+                    },
+                    "template": "rhel-9",
+                    "vlan": 130
+                  },
+                  "store": null,
+                  "triggers_replace": null
+                }
+              }
+            ]
+          },
+          {
+            "address": "module.vm[\"legacy-ftp\"]",
+            "resources": [
+              {
+                "address": "module.vm[\"legacy-ftp\"].terraform_data.vm",
+                "mode": "managed",
+                "name": "vm",
+                "provider_name": "terraform.io/builtin/terraform",
+                "schema_version": 0,
+                "sensitive_values": {
+                  "input": {
+                    "disks": [
+                      {}
+                    ],
+                    "tags": {}
+                  },
+                  "output": {
+                    "disks": [
+                      {}
+                    ],
+                    "tags": {}
+                  }
+                },
+                "type": "terraform_data",
+                "values": {
+                  "id": "2df78a04-9bc9-44ff-5faf-a52e24ac46d5",
+                  "input": {
+                    "backup_policy": null,
+                    "cpu": 2,
+                    "disks": [
+                      {
+                        "size_gb": 200,
+                        "tier": "standard"
+                      }
+                    ],
+                    "ip": null,
+                    "memory_mb": 4096,
+                    "name": "prod-legacy-ftp",
+                    "tags": {
+                      "owner": "unknown"
+                    },
+                    "template": "rhel-9",
+                    "vlan": 110
+                  },
+                  "output": {
+                    "backup_policy": null,
+                    "cpu": 2,
+                    "disks": [
+                      {
+                        "size_gb": 200,
+                        "tier": "standard"
+                      }
+                    ],
+                    "ip": null,
+                    "memory_mb": 4096,
+                    "name": "prod-legacy-ftp",
+                    "tags": {
+                      "owner": "unknown"
+                    },
+                    "template": "rhel-9",
+                    "vlan": 110
+                  },
+                  "store": null,
+                  "triggers_replace": null
+                }
+              }
+            ]
+          },
+          {
+            "address": "module.vm[\"web01\"]",
+            "resources": [
+              {
+                "address": "module.vm[\"web01\"].terraform_data.vm",
+                "mode": "managed",
+                "name": "vm",
+                "provider_name": "terraform.io/builtin/terraform",
+                "schema_version": 0,
+                "sensitive_values": {
+                  "input": {
+                    "disks": [
+                      {}
+                    ],
+                    "tags": {}
+                  },
+                  "output": {
+                    "disks": [
+                      {}
+                    ],
+                    "tags": {}
+                  }
+                },
+                "type": "terraform_data",
+                "values": {
+                  "id": "ab65b13b-4a96-e41f-408c-00420d01bacc",
+                  "input": {
+                    "backup_policy": "daily",
+                    "cpu": 4,
+                    "disks": [
+                      {
+                        "size_gb": 80,
+                        "tier": "ssd"
+                      }
+                    ],
+                    "ip": "10.0.12.11",
+                    "memory_mb": 16384,
+                    "name": "prod-web01",
+                    "tags": {
+                      "app": "shop",
+                      "cost_center": "4711",
+                      "owner": "bob"
+                    },
+                    "template": "ubuntu-24.04",
+                    "vlan": 120
+                  },
+                  "output": {
+                    "backup_policy": "daily",
+                    "cpu": 4,
+                    "disks": [
+                      {
+                        "size_gb": 80,
+                        "tier": "ssd"
+                      }
+                    ],
+                    "ip": "10.0.12.11",
+                    "memory_mb": 16384,
+                    "name": "prod-web01",
+                    "tags": {
+                      "app": "shop",
+                      "cost_center": "4711",
+                      "owner": "bob"
+                    },
+                    "template": "ubuntu-24.04",
+                    "vlan": 120
+                  },
+                  "store": null,
+                  "triggers_replace": null
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "relevant_attributes": [
+    {
+      "attribute": [
+        "id"
+      ],
+      "resource": "module.vm[\"api01\"].terraform_data.vm"
+    },
+    {
+      "attribute": [
+        "id"
+      ],
+      "resource": "module.vm[\"legacy-ftp\"].terraform_data.vm"
+    },
+    {
+      "attribute": [
+        "id"
+      ],
+      "resource": "module.vm[\"web01\"].terraform_data.vm"
+    }
+  ],
+  "resource_changes": [
+    {
+      "address": "module.vm[\"api01\"].terraform_data.vm",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "input": {
+            "backup_policy": "daily",
+            "cpu": 8,
+            "disks": [
+              {
+                "size_gb": 80,
+                "tier": "ssd"
+              }
+            ],
+            "ip": "10.0.12.11",
+            "memory_mb": 16384,
+            "name": "prod-api01",
+            "tags": {
+              "app": "shop",
+              "cost_center": "4711",
+              "owner": "bob"
+            },
+            "template": "ubuntu-24.04",
+            "vlan": 120
+          },
+          "store": null,
+          "triggers_replace": null
+        },
+        "after_sensitive": {
+          "input": {
+            "disks": [
+              {}
+            ],
+            "tags": {}
+          },
+          "output": {}
+        },
+        "after_unknown": {
+          "id": true,
+          "input": {
+            "disks": [
+              {}
+            ],
+            "tags": {}
+          },
+          "output": true
+        },
+        "before": null,
+        "before_sensitive": false
+      },
+      "mode": "managed",
+      "module_address": "module.vm[\"api01\"]",
+      "name": "vm",
+      "provider_name": "terraform.io/builtin/terraform",
+      "type": "terraform_data"
+    },
+    {
+      "action_reason": "delete_because_no_module",
+      "address": "module.vm[\"db01\"].terraform_data.vm",
+      "change": {
+        "actions": [
+          "delete"
+        ],
+        "after": null,
+        "after_sensitive": false,
+        "after_unknown": {},
+        "before": {
+          "id": "ace462db-6e1e-53f8-5533-8effc2c7caf4",
+          "input": {
+            "backup_policy": "hourly",
+            "cpu": 12,
+            "disks": [
+              {
+                "size_gb": 100,
+                "tier": "ssd"
+              },
+              {
+                "size_gb": 1000,
+                "tier": "ssd"
+              }
+            ],
+            "ip": "10.0.13.20",
+            "memory_mb": 65536,
+            "name": "prod-db01",
+            "tags": {
+              "owner": "dana"
+            },
+            "template": "rhel-9",
+            "vlan": 130
+          },
+          "output": {
+            "backup_policy": "hourly",
+            "cpu": 12,
+            "disks": [
+              {
+                "size_gb": 100,
+                "tier": "ssd"
+              },
+              {
+                "size_gb": 1000,
+                "tier": "ssd"
+              }
+            ],
+            "ip": "10.0.13.20",
+            "memory_mb": 65536,
+            "name": "prod-db01",
+            "tags": {
+              "owner": "dana"
+            },
+            "template": "rhel-9",
+            "vlan": 130
+          },
+          "store": null,
+          "triggers_replace": null
+        },
+        "before_sensitive": {
+          "input": {
+            "disks": [
+              {},
+              {}
+            ],
+            "tags": {}
+          },
+          "output": {
+            "disks": [
+              {},
+              {}
+            ],
+            "tags": {}
+          }
+        }
+      },
+      "mode": "managed",
+      "module_address": "module.vm[\"db01\"]",
+      "name": "vm",
+      "provider_name": "terraform.io/builtin/terraform",
+      "type": "terraform_data"
+    },
+    {
+      "action_reason": "replace_by_request",
+      "address": "module.vm[\"legacy-ftp\"].terraform_data.vm",
+      "change": {
+        "actions": [
+          "delete",
+          "create"
+        ],
+        "after": {
+          "input": {
+            "backup_policy": null,
+            "cpu": 2,
+            "disks": [
+              {
+                "size_gb": 200,
+                "tier": "standard"
+              }
+            ],
+            "ip": null,
+            "memory_mb": 4096,
+            "name": "prod-legacy-ftp",
+            "tags": {
+              "owner": "unknown"
+            },
+            "template": "rhel-9",
+            "vlan": 110
+          },
+          "store": null,
+          "triggers_replace": null
+        },
+        "after_sensitive": {
+          "input": {
+            "disks": [
+              {}
+            ],
+            "tags": {}
+          },
+          "output": {}
+        },
+        "after_unknown": {
+          "id": true,
+          "input": {
+            "disks": [
+              {}
+            ],
+            "tags": {}
+          },
+          "output": true
+        },
+        "before": {
+          "id": "2df78a04-9bc9-44ff-5faf-a52e24ac46d5",
+          "input": {
+            "backup_policy": null,
+            "cpu": 2,
+            "disks": [
+              {
+                "size_gb": 200,
+                "tier": "standard"
+              }
+            ],
+            "ip": null,
+            "memory_mb": 4096,
+            "name": "prod-legacy-ftp",
+            "tags": {
+              "owner": "unknown"
+            },
+            "template": "rhel-9",
+            "vlan": 110
+          },
+          "output": {
+            "backup_policy": null,
+            "cpu": 2,
+            "disks": [
+              {
+                "size_gb": 200,
+                "tier": "standard"
+              }
+            ],
+            "ip": null,
+            "memory_mb": 4096,
+            "name": "prod-legacy-ftp",
+            "tags": {
+              "owner": "unknown"
+            },
+            "template": "rhel-9",
+            "vlan": 110
+          },
+          "store": null,
+          "triggers_replace": null
+        },
+        "before_sensitive": {
+          "input": {
+            "disks": [
+              {}
+            ],
+            "tags": {}
+          },
+          "output": {
+            "disks": [
+              {}
+            ],
+            "tags": {}
+          }
+        }
+      },
+      "mode": "managed",
+      "module_address": "module.vm[\"legacy-ftp\"]",
+      "name": "vm",
+      "provider_name": "terraform.io/builtin/terraform",
+      "type": "terraform_data"
+    },
+    {
+      "address": "module.vm[\"web01\"].terraform_data.vm",
+      "change": {
+        "actions": [
+          "update"
+        ],
+        "after": {
+          "id": "ab65b13b-4a96-e41f-408c-00420d01bacc",
+          "input": {
+            "backup_policy": "daily",
+            "cpu": 8,
+            "disks": [
+              {
+                "size_gb": 80,
+                "tier": "ssd"
+              }
+            ],
+            "ip": "10.0.12.11",
+            "memory_mb": 16384,
+            "name": "prod-web01",
+            "tags": {
+              "app": "shop",
+              "cost_center": "4711",
+              "owner": "bob"
+            },
+            "template": "ubuntu-24.04",
+            "vlan": 120
+          },
+          "store": null,
+          "triggers_replace": null
+        },
+        "after_sensitive": {
+          "input": {
+            "disks": [
+              {}
+            ],
+            "tags": {}
+          },
+          "output": {}
+        },
+        "after_unknown": {
+          "input": {
+            "disks": [
+              {}
+            ],
+            "tags": {}
+          },
+          "output": true
+        },
+        "before": {
+          "id": "ab65b13b-4a96-e41f-408c-00420d01bacc",
+          "input": {
+            "backup_policy": "daily",
+            "cpu": 4,
+            "disks": [
+              {
+                "size_gb": 80,
+                "tier": "ssd"
+              }
+            ],
+            "ip": "10.0.12.11",
+            "memory_mb": 16384,
+            "name": "prod-web01",
+            "tags": {
+              "app": "shop",
+              "cost_center": "4711",
+              "owner": "bob"
+            },
+            "template": "ubuntu-24.04",
+            "vlan": 120
+          },
+          "output": {
+            "backup_policy": "daily",
+            "cpu": 4,
+            "disks": [
+              {
+                "size_gb": 80,
+                "tier": "ssd"
+              }
+            ],
+            "ip": "10.0.12.11",
+            "memory_mb": 16384,
+            "name": "prod-web01",
+            "tags": {
+              "app": "shop",
+              "cost_center": "4711",
+              "owner": "bob"
+            },
+            "template": "ubuntu-24.04",
+            "vlan": 120
+          },
+          "store": null,
+          "triggers_replace": null
+        },
+        "before_sensitive": {
+          "input": {
+            "disks": [
+              {}
+            ],
+            "tags": {}
+          },
+          "output": {
+            "disks": [
+              {}
+            ],
+            "tags": {}
+          }
+        }
+      },
+      "mode": "managed",
+      "module_address": "module.vm[\"web01\"]",
+      "name": "vm",
+      "provider_name": "terraform.io/builtin/terraform",
+      "type": "terraform_data"
+    }
+  ],
+  "terraform_version": "1.16.4"
+}

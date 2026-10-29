@@ -149,6 +149,7 @@ type Run struct {
 	RequestID   pgtype.UUID
 	Policies    json.RawMessage
 	Cost        json.RawMessage
+	Plan        json.RawMessage
 }
 
 type Session struct {

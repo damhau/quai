@@ -110,6 +110,7 @@ spec:
 | `spec.delivery.mode` | `pull-request` by default ([ADR 0008](../adr/0008-pull-requests-by-default.md)); `direct` exists for sandboxes and demos, and is the only mode of generic Git, which has no pull requests. |
 | `spec.enforcement.floorRules` | Lets admins guarantee, for example, that nothing reaches `prod` without platform approval, whatever a type's author writes. Types can add rules, never remove floor rules. |
 | `spec.runner` | Where plan and apply results come from. Optional: without it, resources show *In repo* after merge. |
+| `spec.runner.planValues` | Keep the before and after values of the attributes a plan changes, except sensitive ones ([runs](06-runs-status-and-drift.md#run-report-protocol)). Default `false`: Quai keeps only the attributes' names. |
 
 Connections live in PostgreSQL, one row per document. Those declared in configuration (the
 `repositories.path` setting: a file or a directory of `Repository` documents; in the Helm chart,

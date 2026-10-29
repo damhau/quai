@@ -101,6 +101,9 @@ type FloorRule struct {
 type Runner struct {
 	Kind        string    `json:"kind,omitempty" yaml:"kind"`
 	ReportToken SecretRef `json:"reportToken,omitzero" yaml:"reportToken"` // the token runners report with
+	// PlanValues keeps the before and after values of the attributes a plan changes, except
+	// sensitive ones; without it, Quai keeps only their names.
+	PlanValues bool `json:"planValues,omitempty" yaml:"planValues"`
 }
 
 // Webhooks holds the secret the platform's webhooks carry.

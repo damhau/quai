@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/http"
+	"os"
+	"slices"
 	"strings"
 	"testing"
 
@@ -83,7 +85,7 @@ func TestRunReports(t *testing.T) {
 func TestRunReportProtocol(t *testing.T) {
 	h := newHarness(t)
 	for name, change := range map[string]map[string]any{
-		"Phase 0's drift kind": {"kind": "drift"},
+		"Phase 0's drift kind":     {"kind": "drift"},
 		"a commit that is not one": {"commit": "main"},
 		"a policy result":          {"policies": []map[string]any{{"name": "tags", "result": "maybe"}}},
 		"a currency":               {"cost": map[string]any{"currency": "chf", "monthlyDelta": 1}},
@@ -171,5 +173,54 @@ func TestRunRequests(t *testing.T) {
 	bob.do(http.MethodGet, Prefix+"/repositories/infra-live/runs?kind=plan", nil, &runs)
 	if len(runs) != 1 || runs[0].RequestNumber != r.Number {
 		t.Errorf("listed = %+v", runs)
+	}
+}
+
+func recordedPlan(t *testing.T, name string) json.RawMessage {
+	t.Helper()
+	b, err := os.ReadFile("../engine/tfplan/testdata/" + name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+// TestRunPlans: a report's plan is kept as what it changes, by resource; the summary follows
+// from it; values only when the repository keeps them, and never sensitive ones.
+func TestRunPlans(t *testing.T) {
+	h := newHarness(t)
+	_, run, body := h.reportRun(runToken, runReport(map[string]any{"kind": "plan",
+		"plan": map[string]any{"format": "terraform-json", "content": recordedPlan(t, "prod.json")}}))
+	if run.Plan == nil || len(run.Plan.Resources) != 4 || run.Summary == nil || *run.Summary != (RunSummary{Add: 2, Change: 1, Destroy: 2}) {
+		t.Fatalf("the run = %s", body)
+	}
+	web := run.Plan.Resources[3]
+	if web.Resource != "infra-live/vm/prod/web01" || web.Changes[0].Action != "update" || !slices.Equal(web.Changes[0].Attributes, []string{"input.cpu", "output"}) ||
+		web.Changes[0].Values != nil {
+		t.Errorf("web01 = %+v", web)
+	}
+	if strings.Contains(body, `"prior_state"`) || strings.Contains(body, `"configuration"`) {
+		t.Error("the plan itself is kept")
+	}
+	var runs []RunView
+	h.as("bob").do(http.MethodGet, Prefix+"/repositories/infra-live/runs", nil, &runs)
+	if len(runs) != 1 || runs[0].Plan == nil || len(runs[0].Plan.Resources) != 4 {
+		t.Errorf("listed = %+v", runs)
+	}
+	if status, _, body := h.reportRun(runToken, runReport(map[string]any{"kind": "plan",
+		"plan": map[string]any{"format": "terraform-json", "content": map[string]any{"resources": []any{}}}})); status != http.StatusUnprocessableEntity ||
+		!strings.Contains(body, "body.plan.content") {
+		t.Errorf("not a plan = %d %s", status, body)
+	}
+
+	h = newHarnessRunner(t, "planValues: true")
+	_, run, _ = h.reportRun(runToken, runReport(map[string]any{"kind": "plan", "plan": map[string]any{"format": "terraform-json", "content": recordedPlan(t, "prod.json")}}))
+	if v := run.Plan.Resources[3].Changes[0].Values["input.cpu"]; v.Before != 4.0 || v.After != 8.0 {
+		t.Errorf("with values, input.cpu = %+v", v)
+	}
+	_, run, body = h.reportRun(runToken, runReport(map[string]any{"kind": "plan", "stack": "apps/prod",
+		"plan": map[string]any{"format": "terraform-json", "content": recordedPlan(t, "nested-update.json")}}))
+	if len(run.Plan.Unmapped) != 2 || strings.Contains(body, "fixture-secret-value") || strings.Contains(body, "fixture-new-secret") {
+		t.Errorf("a sensitive update = %s", body)
 	}
 }

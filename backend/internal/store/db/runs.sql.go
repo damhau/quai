@@ -16,7 +16,7 @@ import (
 const finishRun = `-- name: FinishRun :one
 UPDATE runs SET status = $2, summary = $3, finished_at = now()
 WHERE id = $1 AND status = 'running'
-RETURNING id, org_id, repository, stack, commit, kind, status, url, summary, started_at, finished_at, pull_request, request_id, policies, cost
+RETURNING id, org_id, repository, stack, commit, kind, status, url, summary, started_at, finished_at, pull_request, request_id, policies, cost, plan
 `
 
 type FinishRunParams struct {
@@ -44,18 +44,19 @@ func (q *Queries) FinishRun(ctx context.Context, arg FinishRunParams) (Run, erro
 		&i.RequestID,
 		&i.Policies,
 		&i.Cost,
+		&i.Plan,
 	)
 	return i, err
 }
 
 const insertRun = `-- name: InsertRun :one
-INSERT INTO runs (id, repository, stack, commit, kind, status, url, pull_request, request_id, summary, policies, cost,
+INSERT INTO runs (id, repository, stack, commit, kind, status, url, pull_request, request_id, summary, policies, cost, plan,
                   started_at, finished_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7,
-        $8, $9, $10, $11, $12,
-        COALESCE($13::timestamptz, now()),
-        CASE WHEN $6 = 'running' THEN NULL ELSE COALESCE($14::timestamptz, now()) END)
-RETURNING id, org_id, repository, stack, commit, kind, status, url, summary, started_at, finished_at, pull_request, request_id, policies, cost
+        $8, $9, $10, $11, $12, $13,
+        COALESCE($14::timestamptz, now()),
+        CASE WHEN $6 = 'running' THEN NULL ELSE COALESCE($15::timestamptz, now()) END)
+RETURNING id, org_id, repository, stack, commit, kind, status, url, summary, started_at, finished_at, pull_request, request_id, policies, cost, plan
 `
 
 type InsertRunParams struct {
@@ -71,6 +72,7 @@ type InsertRunParams struct {
 	Summary     json.RawMessage
 	Policies    json.RawMessage
 	Cost        json.RawMessage
+	Plan        json.RawMessage
 	StartedAt   pgtype.Timestamptz
 	FinishedAt  pgtype.Timestamptz
 }
@@ -89,6 +91,7 @@ func (q *Queries) InsertRun(ctx context.Context, arg InsertRunParams) (Run, erro
 		arg.Summary,
 		arg.Policies,
 		arg.Cost,
+		arg.Plan,
 		arg.StartedAt,
 		arg.FinishedAt,
 	)
@@ -109,12 +112,13 @@ func (q *Queries) InsertRun(ctx context.Context, arg InsertRunParams) (Run, erro
 		&i.RequestID,
 		&i.Policies,
 		&i.Cost,
+		&i.Plan,
 	)
 	return i, err
 }
 
 const latestRun = `-- name: LatestRun :one
-SELECT id, org_id, repository, stack, commit, kind, status, url, summary, started_at, finished_at, pull_request, request_id, policies, cost FROM runs
+SELECT id, org_id, repository, stack, commit, kind, status, url, summary, started_at, finished_at, pull_request, request_id, policies, cost, plan FROM runs
 WHERE repository = $1 AND stack = $2 AND kind = $3
 ORDER BY started_at DESC, id
 LIMIT 1
@@ -145,12 +149,13 @@ func (q *Queries) LatestRun(ctx context.Context, arg LatestRunParams) (Run, erro
 		&i.RequestID,
 		&i.Policies,
 		&i.Cost,
+		&i.Plan,
 	)
 	return i, err
 }
 
 const listRuns = `-- name: ListRuns :many
-SELECT id, org_id, repository, stack, commit, kind, status, url, summary, started_at, finished_at, pull_request, request_id, policies, cost FROM runs
+SELECT id, org_id, repository, stack, commit, kind, status, url, summary, started_at, finished_at, pull_request, request_id, policies, cost, plan FROM runs
 WHERE repository = $1
   AND ($2::text = '' OR stack = $2::text)
   AND ($3::text = '' OR kind = $3::text)
@@ -196,6 +201,7 @@ func (q *Queries) ListRuns(ctx context.Context, arg ListRunsParams) ([]Run, erro
 			&i.RequestID,
 			&i.Policies,
 			&i.Cost,
+			&i.Plan,
 		); err != nil {
 			return nil, err
 		}
@@ -208,7 +214,7 @@ func (q *Queries) ListRuns(ctx context.Context, arg ListRunsParams) ([]Run, erro
 }
 
 const runningRun = `-- name: RunningRun :one
-SELECT id, org_id, repository, stack, commit, kind, status, url, summary, started_at, finished_at, pull_request, request_id, policies, cost FROM runs
+SELECT id, org_id, repository, stack, commit, kind, status, url, summary, started_at, finished_at, pull_request, request_id, policies, cost, plan FROM runs
 WHERE repository = $1 AND stack = $2 AND kind = $3 AND status = 'running'
   AND (($4::text <> '' AND url = $4::text)
     OR ((url = '' OR $4::text = '') AND commit = $5 AND pull_request = $6))
@@ -255,6 +261,7 @@ func (q *Queries) RunningRun(ctx context.Context, arg RunningRunParams) (Run, er
 		&i.RequestID,
 		&i.Policies,
 		&i.Cost,
+		&i.Plan,
 	)
 	return i, err
 }
@@ -262,7 +269,7 @@ func (q *Queries) RunningRun(ctx context.Context, arg RunningRunParams) (Run, er
 const startRun = `-- name: StartRun :one
 INSERT INTO runs (id, repository, stack, commit, kind, status, url)
 VALUES ($1, $2, $3, $4, $5, 'running', $6)
-RETURNING id, org_id, repository, stack, commit, kind, status, url, summary, started_at, finished_at, pull_request, request_id, policies, cost
+RETURNING id, org_id, repository, stack, commit, kind, status, url, summary, started_at, finished_at, pull_request, request_id, policies, cost, plan
 `
 
 type StartRunParams struct {
@@ -300,6 +307,7 @@ func (q *Queries) StartRun(ctx context.Context, arg StartRunParams) (Run, error)
 		&i.RequestID,
 		&i.Policies,
 		&i.Cost,
+		&i.Plan,
 	)
 	return i, err
 }
@@ -312,10 +320,11 @@ UPDATE runs SET
     summary      = CASE WHEN $4::jsonb <> '{}' THEN $4::jsonb ELSE summary END,
     policies     = CASE WHEN $5::jsonb <> '[]' THEN $5::jsonb ELSE policies END,
     cost         = CASE WHEN $6::jsonb <> '{}' THEN $6::jsonb ELSE cost END,
-    started_at   = COALESCE($7::timestamptz, started_at),
-    finished_at  = CASE WHEN $1 = 'running' THEN NULL ELSE COALESCE($8::timestamptz, now()) END
-WHERE id = $9
-RETURNING id, org_id, repository, stack, commit, kind, status, url, summary, started_at, finished_at, pull_request, request_id, policies, cost
+    plan         = CASE WHEN $7::jsonb <> '{}' THEN $7::jsonb ELSE plan END,
+    started_at   = COALESCE($8::timestamptz, started_at),
+    finished_at  = CASE WHEN $1 = 'running' THEN NULL ELSE COALESCE($9::timestamptz, now()) END
+WHERE id = $10
+RETURNING id, org_id, repository, stack, commit, kind, status, url, summary, started_at, finished_at, pull_request, request_id, policies, cost, plan
 `
 
 type UpdateRunParams struct {
@@ -325,6 +334,7 @@ type UpdateRunParams struct {
 	Summary    json.RawMessage
 	Policies   json.RawMessage
 	Cost       json.RawMessage
+	Plan       json.RawMessage
 	StartedAt  pgtype.Timestamptz
 	FinishedAt pgtype.Timestamptz
 	ID         uuid.UUID
@@ -340,6 +350,7 @@ func (q *Queries) UpdateRun(ctx context.Context, arg UpdateRunParams) (Run, erro
 		arg.Summary,
 		arg.Policies,
 		arg.Cost,
+		arg.Plan,
 		arg.StartedAt,
 		arg.FinishedAt,
 		arg.ID,
@@ -361,6 +372,7 @@ func (q *Queries) UpdateRun(ctx context.Context, arg UpdateRunParams) (Run, erro
 		&i.RequestID,
 		&i.Policies,
 		&i.Cost,
+		&i.Plan,
 	)
 	return i, err
 }

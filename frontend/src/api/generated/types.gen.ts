@@ -494,6 +494,59 @@ export type ParamView = {
     type: string;
 };
 
+export type PlanAmbiguous = {
+    action: 'create' | 'update' | 'delete' | 'replace';
+    address: string;
+    /**
+     * The attributes an update or a replace changes, as dotted paths
+     */
+    attributes?: Array<string> | null;
+    /**
+     * The resource IDs that claim it
+     */
+    resources: Array<string> | null;
+    /**
+     * Their values, when the repository keeps them (spec.runner.planValues); never sensitive ones
+     */
+    values?: {
+        [key: string]: PlanValue;
+    };
+};
+
+export type PlanChange = {
+    action: 'create' | 'update' | 'delete' | 'replace';
+    address: string;
+    /**
+     * The attributes an update or a replace changes, as dotted paths
+     */
+    attributes?: Array<string> | null;
+    /**
+     * Their values, when the repository keeps them (spec.runner.planValues); never sensitive ones
+     */
+    values?: {
+        [key: string]: PlanValue;
+    };
+};
+
+export type PlanResource = {
+    changes: Array<PlanChange> | null;
+    key: string;
+    /**
+     * The resource ID
+     */
+    resource: string;
+    type: string;
+};
+
+export type PlanValue = {
+    after?: unknown;
+    before?: unknown;
+    /**
+     * The new value is known only after the apply
+     */
+    unknown?: boolean;
+};
+
 export type PlanView = {
     /**
      * A URL to the JSON Schema for this object.
@@ -736,6 +789,7 @@ export type RunInputBody = {
     cost?: RunCost;
     finishedAt?: string;
     kind: 'plan' | 'apply' | 'sync' | 'drift-check';
+    plan?: RunPlan;
     policies?: Array<RunPolicy> | null;
     /**
      * The pull request the run is for, as the platform numbers it
@@ -747,6 +801,30 @@ export type RunInputBody = {
     status: 'running' | 'succeeded' | 'failed';
     summary?: RunSummary;
     url?: string;
+};
+
+export type RunPlan = {
+    /**
+     * The output of terraform show -json. Quai keeps only what it changes, by resource (docs/design/06)
+     */
+    content?: unknown;
+    format: 'terraform-json';
+    /**
+     * Where the runner keeps the plan, such as artifact://plan.json
+     */
+    ref?: string;
+};
+
+export type RunPlanView = {
+    /**
+     * Changes claimed by more than one resource
+     */
+    ambiguous?: Array<PlanAmbiguous> | null;
+    resources: Array<PlanResource> | null;
+    /**
+     * Changes to Terraform resources no type claims
+     */
+    unmapped?: Array<PlanChange> | null;
 };
 
 export type RunPolicy = {
@@ -786,6 +864,10 @@ export type RunView = {
     finishedAt?: string;
     id: string;
     kind: string;
+    /**
+     * What the plan changes, by resource, when the report carried it
+     */
+    plan?: RunPlanView;
     policies?: Array<RunPolicy> | null;
     pullRequest?: string;
     repository: string;
@@ -803,6 +885,7 @@ export type RunView = {
 
 export type Runner = {
     kind?: string;
+    planValues?: boolean;
     reportToken?: SecretRef;
 };
 
@@ -1388,6 +1471,7 @@ export type RunInputBodyWritable = {
     cost?: RunCost;
     finishedAt?: string;
     kind: 'plan' | 'apply' | 'sync' | 'drift-check';
+    plan?: RunPlan;
     policies?: Array<RunPolicy> | null;
     /**
      * The pull request the run is for, as the platform numbers it
@@ -1418,6 +1502,10 @@ export type RunViewWritable = {
     finishedAt?: string;
     id: string;
     kind: string;
+    /**
+     * What the plan changes, by resource, when the report carried it
+     */
+    plan?: RunPlanView;
     policies?: Array<RunPolicy> | null;
     pullRequest?: string;
     repository: string;

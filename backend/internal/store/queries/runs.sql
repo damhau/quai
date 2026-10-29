@@ -27,10 +27,10 @@ LIMIT 1
 FOR UPDATE;
 
 -- name: InsertRun :one
-INSERT INTO runs (id, repository, stack, commit, kind, status, url, pull_request, request_id, summary, policies, cost,
+INSERT INTO runs (id, repository, stack, commit, kind, status, url, pull_request, request_id, summary, policies, cost, plan,
                   started_at, finished_at)
 VALUES (sqlc.arg(id), sqlc.arg(repository), sqlc.arg(stack), sqlc.arg(commit), sqlc.arg(kind), sqlc.arg(status), sqlc.arg(url),
-        sqlc.arg(pull_request), sqlc.arg(request_id), sqlc.arg(summary), sqlc.arg(policies), sqlc.arg(cost),
+        sqlc.arg(pull_request), sqlc.arg(request_id), sqlc.arg(summary), sqlc.arg(policies), sqlc.arg(cost), sqlc.arg(plan),
         COALESCE(sqlc.narg(started_at)::timestamptz, now()),
         CASE WHEN sqlc.arg(status) = 'running' THEN NULL ELSE COALESCE(sqlc.narg(finished_at)::timestamptz, now()) END)
 RETURNING *;
@@ -45,6 +45,7 @@ UPDATE runs SET
     summary      = CASE WHEN sqlc.arg(summary)::jsonb <> '{}' THEN sqlc.arg(summary)::jsonb ELSE summary END,
     policies     = CASE WHEN sqlc.arg(policies)::jsonb <> '[]' THEN sqlc.arg(policies)::jsonb ELSE policies END,
     cost         = CASE WHEN sqlc.arg(cost)::jsonb <> '{}' THEN sqlc.arg(cost)::jsonb ELSE cost END,
+    plan         = CASE WHEN sqlc.arg(plan)::jsonb <> '{}' THEN sqlc.arg(plan)::jsonb ELSE plan END,
     started_at   = COALESCE(sqlc.narg(started_at)::timestamptz, started_at),
     finished_at  = CASE WHEN sqlc.arg(status) = 'running' THEN NULL ELSE COALESCE(sqlc.narg(finished_at)::timestamptz, now()) END
 WHERE id = sqlc.arg(id)

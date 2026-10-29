@@ -1,0 +1,315 @@
+{
+  "applyable": true,
+  "complete": true,
+  "configuration": {
+    "provider_config": {
+      "module.app.module.vm:terraform": {
+        "full_name": "terraform.io/builtin/terraform",
+        "module_address": "module.app.module.vm",
+        "name": "terraform"
+      },
+      "terraform": {
+        "full_name": "terraform.io/builtin/terraform",
+        "name": "terraform"
+      }
+    },
+    "root_module": {
+      "module_calls": {
+        "app": {
+          "expressions": {
+            "admin_password": {
+              "references": [
+                "var.admin_password"
+              ]
+            },
+            "name": {
+              "references": [
+                "each.key"
+              ]
+            },
+            "vms": {
+              "references": [
+                "each.value"
+              ]
+            }
+          },
+          "for_each_expression": {
+            "constant_value": {
+              "shop": [
+                "db",
+                "web"
+              ]
+            }
+          },
+          "module": {
+            "module_calls": {
+              "vm": {
+                "expressions": {
+                  "admin_password": {
+                    "references": [
+                      "var.admin_password"
+                    ]
+                  },
+                  "name": {
+                    "references": [
+                      "var.name",
+                      "each.key"
+                    ]
+                  }
+                },
+                "for_each_expression": {
+                  "references": [
+                    "var.vms"
+                  ]
+                },
+                "module": {
+                  "resources": [
+                    {
+                      "address": "terraform_data.vm",
+                      "expressions": {
+                        "input": {
+                          "references": [
+                            "var.name",
+                            "var.admin_password"
+                          ]
+                        }
+                      },
+                      "mode": "managed",
+                      "name": "vm",
+                      "provider_config_key": "module.app.module.vm:terraform",
+                      "schema_version": 0,
+                      "type": "terraform_data"
+                    }
+                  ],
+                  "variables": {
+                    "admin_password": {
+                      "sensitive": true
+                    },
+                    "name": {}
+                  }
+                },
+                "source": "../vm"
+              }
+            },
+            "variables": {
+              "admin_password": {
+                "sensitive": true
+              },
+              "name": {},
+              "vms": {}
+            }
+          },
+          "source": "./modules/app"
+        }
+      },
+      "resources": [
+        {
+          "address": "terraform_data.unclaimed",
+          "expressions": {
+            "input": {
+              "constant_value": "not described by any Quai type"
+            }
+          },
+          "mode": "managed",
+          "name": "unclaimed",
+          "provider_config_key": "terraform",
+          "schema_version": 0,
+          "type": "terraform_data"
+        }
+      ],
+      "variables": {
+        "admin_password": {
+          "default": "fixture-secret-value",
+          "sensitive": true
+        }
+      }
+    }
+  },
+  "errored": false,
+  "format_version": "1.2",
+  "planned_values": {
+    "root_module": {
+      "child_modules": [
+        {
+          "address": "module.app[\"shop\"]",
+          "child_modules": [
+            {
+              "address": "module.app[\"shop\"].module.vm[\"db\"]",
+              "resources": [
+                {
+                  "address": "module.app[\"shop\"].module.vm[\"db\"].terraform_data.vm",
+                  "mode": "managed",
+                  "name": "vm",
+                  "provider_name": "terraform.io/builtin/terraform",
+                  "schema_version": 0,
+                  "sensitive_values": {
+                    "input": {
+                      "password": true
+                    },
+                    "output": {}
+                  },
+                  "type": "terraform_data",
+                  "values": {
+                    "input": {
+                      "cpu": 2,
+                      "name": "shop-db",
+                      "password": "fixture-secret-value"
+                    },
+                    "store": null,
+                    "triggers_replace": null
+                  }
+                }
+              ]
+            },
+            {
+              "address": "module.app[\"shop\"].module.vm[\"web\"]",
+              "resources": [
+                {
+                  "address": "module.app[\"shop\"].module.vm[\"web\"].terraform_data.vm",
+                  "mode": "managed",
+                  "name": "vm",
+                  "provider_name": "terraform.io/builtin/terraform",
+                  "schema_version": 0,
+                  "sensitive_values": {
+                    "input": {
+                      "password": true
+                    },
+                    "output": {}
+                  },
+                  "type": "terraform_data",
+                  "values": {
+                    "input": {
+                      "cpu": 2,
+                      "name": "shop-web",
+                      "password": "fixture-secret-value"
+                    },
+                    "store": null,
+                    "triggers_replace": null
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "resources": [
+        {
+          "address": "terraform_data.unclaimed",
+          "mode": "managed",
+          "name": "unclaimed",
+          "provider_name": "terraform.io/builtin/terraform",
+          "schema_version": 0,
+          "sensitive_values": {},
+          "type": "terraform_data",
+          "values": {
+            "input": "not described by any Quai type",
+            "store": null,
+            "triggers_replace": null
+          }
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "terraform_data.unclaimed",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "input": "not described by any Quai type",
+          "store": null,
+          "triggers_replace": null
+        },
+        "after_sensitive": {},
+        "after_unknown": {
+          "id": true,
+          "output": true
+        },
+        "before": null,
+        "before_sensitive": false
+      },
+      "mode": "managed",
+      "name": "unclaimed",
+      "provider_name": "terraform.io/builtin/terraform",
+      "type": "terraform_data"
+    },
+    {
+      "address": "module.app[\"shop\"].module.vm[\"db\"].terraform_data.vm",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "input": {
+            "cpu": 2,
+            "name": "shop-db",
+            "password": "fixture-secret-value"
+          },
+          "store": null,
+          "triggers_replace": null
+        },
+        "after_sensitive": {
+          "input": {
+            "password": true
+          },
+          "output": {}
+        },
+        "after_unknown": {
+          "id": true,
+          "input": {},
+          "output": true
+        },
+        "before": null,
+        "before_sensitive": false
+      },
+      "mode": "managed",
+      "module_address": "module.app[\"shop\"].module.vm[\"db\"]",
+      "name": "vm",
+      "provider_name": "terraform.io/builtin/terraform",
+      "type": "terraform_data"
+    },
+    {
+      "address": "module.app[\"shop\"].module.vm[\"web\"].terraform_data.vm",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "input": {
+            "cpu": 2,
+            "name": "shop-web",
+            "password": "fixture-secret-value"
+          },
+          "store": null,
+          "triggers_replace": null
+        },
+        "after_sensitive": {
+          "input": {
+            "password": true
+          },
+          "output": {}
+        },
+        "after_unknown": {
+          "id": true,
+          "input": {},
+          "output": true
+        },
+        "before": null,
+        "before_sensitive": false
+      },
+      "mode": "managed",
+      "module_address": "module.app[\"shop\"].module.vm[\"web\"]",
+      "name": "vm",
+      "provider_name": "terraform.io/builtin/terraform",
+      "type": "terraform_data"
+    }
+  ],
+  "terraform_version": "1.16.4",
+  "variables": {
+    "admin_password": {
+      "value": "fixture-secret-value"
+    }
+  }
+}

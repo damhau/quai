@@ -1432,6 +1432,138 @@
         ],
         "type": "object"
       },
+      "PlanAmbiguous": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "create",
+              "update",
+              "delete",
+              "replace"
+            ],
+            "type": "string"
+          },
+          "address": {
+            "type": "string"
+          },
+          "attributes": {
+            "description": "The attributes an update or a replace changes, as dotted paths",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "resources": {
+            "description": "The resource IDs that claim it",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "values": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/PlanValue"
+            },
+            "description": "Their values, when the repository keeps them (spec.runner.planValues); never sensitive ones",
+            "type": "object"
+          }
+        },
+        "required": [
+          "resources",
+          "address",
+          "action"
+        ],
+        "type": "object"
+      },
+      "PlanChange": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "create",
+              "update",
+              "delete",
+              "replace"
+            ],
+            "type": "string"
+          },
+          "address": {
+            "type": "string"
+          },
+          "attributes": {
+            "description": "The attributes an update or a replace changes, as dotted paths",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "values": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/PlanValue"
+            },
+            "description": "Their values, when the repository keeps them (spec.runner.planValues); never sensitive ones",
+            "type": "object"
+          }
+        },
+        "required": [
+          "address",
+          "action"
+        ],
+        "type": "object"
+      },
+      "PlanResource": {
+        "additionalProperties": false,
+        "properties": {
+          "changes": {
+            "items": {
+              "$ref": "#/components/schemas/PlanChange"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "key": {
+            "type": "string"
+          },
+          "resource": {
+            "description": "The resource ID",
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "resource",
+          "type",
+          "key",
+          "changes"
+        ],
+        "type": "object"
+      },
+      "PlanValue": {
+        "additionalProperties": false,
+        "properties": {
+          "after": {},
+          "before": {},
+          "unknown": {
+            "description": "The new value is known only after the apply",
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
       "PlanView": {
         "additionalProperties": false,
         "properties": {
@@ -2217,6 +2349,9 @@
             ],
             "type": "string"
           },
+          "plan": {
+            "$ref": "#/components/schemas/RunPlan"
+          },
           "policies": {
             "items": {
               "$ref": "#/components/schemas/RunPolicy"
@@ -2262,6 +2397,66 @@
           "commit",
           "kind",
           "status"
+        ],
+        "type": "object"
+      },
+      "RunPlan": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "description": "The output of terraform show -json. Quai keeps only what it changes, by resource (docs/design/06)"
+          },
+          "format": {
+            "enum": [
+              "terraform-json"
+            ],
+            "type": "string"
+          },
+          "ref": {
+            "description": "Where the runner keeps the plan, such as artifact://plan.json",
+            "type": "string"
+          }
+        },
+        "required": [
+          "format"
+        ],
+        "type": "object"
+      },
+      "RunPlanView": {
+        "additionalProperties": false,
+        "properties": {
+          "ambiguous": {
+            "description": "Changes claimed by more than one resource",
+            "items": {
+              "$ref": "#/components/schemas/PlanAmbiguous"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "resources": {
+            "items": {
+              "$ref": "#/components/schemas/PlanResource"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "unmapped": {
+            "description": "Changes to Terraform resources no type claims",
+            "items": {
+              "$ref": "#/components/schemas/PlanChange"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "resources"
         ],
         "type": "object"
       },
@@ -2371,6 +2566,10 @@
           "kind": {
             "type": "string"
           },
+          "plan": {
+            "$ref": "#/components/schemas/RunPlanView",
+            "description": "What the plan changes, by resource, when the report carried it"
+          },
           "policies": {
             "items": {
               "$ref": "#/components/schemas/RunPolicy"
@@ -2427,6 +2626,9 @@
         "properties": {
           "kind": {
             "type": "string"
+          },
+          "planValues": {
+            "type": "boolean"
           },
           "reportToken": {
             "$ref": "#/components/schemas/SecretRef"

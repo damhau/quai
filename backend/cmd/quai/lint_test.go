@@ -65,3 +65,17 @@ func TestLintProblems(t *testing.T) {
 		t.Error("plural")
 	}
 }
+
+func TestLintPlan(t *testing.T) {
+	plans := "../../internal/engine/tfplan/testdata/"
+	if out, err := runLint(t, "../../../examples/gitops-repo", "--plan", plans+"prod.json", "--stack", "envs/prod"); err != nil {
+		t.Errorf("the example stack's plan = %q, %v", out, err)
+	}
+	out, err := runLint(t, "../../../examples/gitops-repo", "--plan", plans+"nested.json", "--stack", "envs/prod")
+	if err == nil || !strings.Contains(out, `terraform_data.unclaimed: created by no resource`) || !strings.Contains(out, "3 problems") {
+		t.Errorf("unclaimed resources = %q, %v", out, err)
+	}
+	if _, err := runLint(t, "../../../examples/gitops-repo", "--plan", plans+"prod.json"); err == nil || !strings.Contains(err.Error(), "go together") {
+		t.Errorf("--plan without --stack = %v", err)
+	}
+}
