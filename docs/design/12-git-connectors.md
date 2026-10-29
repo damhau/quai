@@ -6,8 +6,9 @@ A connector is everything Quai needs to work with one Git platform: authenticati
 statuses, branch policies, ownership rules, webhooks and, optionally, pipelines. Each platform
 does these differently, so each gets its own connector behind one interface.
 
-**Build order:** Azure DevOps first, starting with **Azure DevOps Server (on-premises)** and
-followed closely, or in parallel, by **Azure DevOps Services**; then GitHub, then GitLab, then
+**Build order:** Azure DevOps first: **Azure DevOps Services** for Phase 1 and the M1 pilot, and
+**Azure DevOps Server (on-premises)** on the same connector as a
+[future improvement](../plan/roadmap.md#future-improvements); then GitHub, then GitLab, then
 Bitbucket. Gitea is built alongside Azure DevOps as the reference connector for tests.
 
 ## Architecture
@@ -109,25 +110,28 @@ deliver: the harness subscribes to an address that does not resolve before the s
 reads each request back, body as sent, from the subscription's notification history.
 
 A connector ships when the suite passes against the platform editions the customer runs. For
-Azure DevOps that means an **Azure DevOps Server 2022 instance** (a Windows Server VM in the lab, or
-a test project on the pilot's own Server) and, for Services, a sandbox organization.
+Azure DevOps that means a sandbox organization for Services and, once Server is supported, an
+**Azure DevOps Server 2022 instance** (a Windows Server VM in the lab, or a test project on a
+customer's own Server).
 
-## Azure DevOps (first): Server, then Services
+## Azure DevOps (first): Services, then Server
 
-One connector covers both editions. **Azure DevOps Server (on-premises) is the first target**: it is
-what the pilot runs, and the M1 pilot is accepted on it. **Azure DevOps Services (SaaS)** follows in
-the same phase or right after: the REST APIs are almost identical, so the extra work is mainly
-Entra authentication and running the conformance suite against a Services organization.
+One connector covers both editions, whose REST APIs are almost identical. **Azure DevOps Services
+(SaaS) is the first target**: Phase 1 builds and tests the connector on it, and the M1 pilot is
+accepted on it. **Azure DevOps Server (on-premises)**, which the pilot runs, is a
+[future improvement](../plan/roadmap.md#future-improvements): the connector is written against
+Server 2022's API version, URL forms and PAT authentication, and what remains is running the
+conformance suite on a real Server and fixing the differences.
 
 ### Editions and versions
 
 | Edition | REST API version | Status in Quai |
 | --- | --- | --- |
-| Azure DevOps Server 2022 (and its updates) | 7.0 | **Baseline for the pilot** |
+| Azure DevOps Server 2022 (and its updates) | 7.0 | **The API baseline**; supported once the conformance suite passes on it ([future improvement](../plan/roadmap.md#future-improvements)) |
 | Azure DevOps Server releases after 2022 | 7.x, detected | Supported once the conformance suite passes on them |
 | Azure DevOps Server 2020 | 6.0 | Only if the pilot still runs it; some features (PR labels, parts of the policy API) need verification |
 | Azure DevOps Server 2019 and older (TFS) | 5.0 and below | Not supported |
-| Azure DevOps Services | 7.1 | Second target, same phase or right after |
+| Azure DevOps Services | 7.1 | **First target**: Phase 1 and the M1 pilot, called with 7.0 |
 
 The connector reads the instance's version at registration (`_apis/connectionData` and the
 resource-area version lists), stores it on the connection, and pins every call to an API version
@@ -153,7 +157,8 @@ rename does not break the connection.
 Service Hooks clients, wrapped in Quai's own thin client. The SDK targets Services and pins API
 versions per endpoint, some of them newer than Server 2022 accepts. The wrapper therefore controls
 the API version of every call, and calls endpoints the SDK lacks, models incorrectly or pins too
-new through `net/http`. Verifying this against a Server 2022 instance is the first task of Phase 1.
+new through `net/http`. Verifying this against a Server 2022 instance is part of the Server
+[future improvement](../plan/roadmap.md#future-improvements).
 The SDK's Git client pins its calls to 7.1 previews, so the wrapper sends every call itself: through
 the SDK's location service with its own version (the SDK puts it in the `Accept` header and only
 ever negotiates it down), or over HTTP with `api-version` in the query.

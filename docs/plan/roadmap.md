@@ -11,7 +11,7 @@ requests, real run status and enterprise identity.
 ## Assumptions
 
 - Implementation is AI-assisted; the owner reviews, tests and decides. Calendar estimates assume that setup with one person reviewing full-time. They are rough: **re-estimate after Phase 0**, whose actual duration is the best calibration available.
-- The pilot uses **Azure DevOps Server on-premises**, so the Azure DevOps connector is built first and accepted on Server; **Azure DevOps Services** is delivered in the same phase or right after ([ADR 0010](../adr/0010-git-connectors-azure-devops-first.md)). Azure Pipelines is the first runner adapter. The exact Server version is still open ([open questions](open-questions.md)).
+- The Azure DevOps connector is built first and accepted on **Azure DevOps Services**, in Phase 1 and for M1. The pilot runs **Azure DevOps Server** 2022 on-premises; the connector is written against its API version (7.0), but running it on a real Server is a [future improvement](#future-improvements) ([ADR 0010](../adr/0010-git-connectors-azure-devops-first.md)). Azure Pipelines is the first runner adapter.
 - Phases overlap where dependencies allow.
 
 ## Overview
@@ -44,7 +44,7 @@ Progress is tracked on GitHub: [milestones M1, M2, M3](https://github.com/damhau
 
 | Milestone | Target | Meaning |
 | --- | --- | --- |
-| **M1 Pilot** | ~week 14 | The pilot customer uses Quai on their real Azure DevOps Server repository for **VMs**: forms from their schema, PRs, approvals enforced by a required status, plan and apply status from Azure Pipelines, Entra ID login, on OpenShift. |
+| **M1 Pilot** | ~week 14 | The pilot customer uses Quai on a real Azure DevOps **Services** repository for **VMs**: forms from their schema, PRs, approvals enforced by a required status, plan and apply status from Azure Pipelines, Entra ID login, on OpenShift. |
 | **M2 Beta** | ~week 21 | The pilot gets **namespaces and quotas, DNS records and firewall rules**, including the data kept in HCL. Two or three design partners. Mapping generators, shared-file locators, full governance (roles, SoD, change windows, break-glass, ITSM if needed), tamper-evident audit. |
 | **M3 GA** | ~week 37 | Composite blueprints across repositories, imperative actions, drift, onboarding assistant, hardened, load-tested, pentested, documented. |
 
@@ -63,9 +63,9 @@ Goal: Quai works against real repositories through pull requests, and its
 approval is enforced. See [repository connections](../design/01-repository-connections.md)
 and [delivery and approvals](../design/05-delivery-and-approvals.md).
 
-Epics: [GitHub issues labelled `phase:1`](https://github.com/damhau/quai/issues?q=is%3Aissue%20label%3Aphase%3A1). Tasks: issues #77–#99 (`P1-01` to `P1-23`); the loop procedure and the test infrastructure are in the [Phase 1 backlog](phase-1-backlog.md).
+Epics: [GitHub issues labelled `phase:1`](https://github.com/damhau/quai/issues?q=is%3Aissue%20label%3Aphase%3A1). Tasks: issues #77–#99 (`P1-01` to `P1-23`), except #97 (moved to M3 GA) and #98 (a [future improvement](#future-improvements)); the loop procedure and the test infrastructure are in the [Phase 1 backlog](phase-1-backlog.md).
 
-**Exit:** the pilot's Azure DevOps **Server** repository is connected; a request opens a PR, the build validation pipeline plans, approvals in Quai flip the `quai/approval` status, auto-complete merges once every policy passes; removing the status-check policy (or its authorized identity) is detected within an hour and blocks delivery. The conformance suite also passes on Azure DevOps Services (at the latest by the end of Phase 2).
+**Exit:** an Azure DevOps **Services** repository is connected; a request opens a PR, the build validation pipeline plans, approvals in Quai flip the `quai/approval` status, auto-complete merges once every policy passes; removing the status-check policy (or its authorized identity) is detected within an hour and blocks delivery. The conformance suite passes on Azure DevOps Services and on Gitea.
 
 ## Phase 2: Runs and status (4 weeks)
 
@@ -121,6 +121,19 @@ Epics: [GitHub issues labelled `phase:8`](https://github.com/damhau/quai/issues?
 
 **Exit (M3 GA).**
 
+## Future improvements
+
+Wanted, but in no phase or milestone yet: each is an issue labelled `enhancement`, without a
+`phase:N` label or a milestone, and is scheduled when a customer needs it.
+
+- **Azure DevOps Server 2022** ([#98](https://github.com/damhau/quai/issues/98), formerly P1-22):
+  run the Azure DevOps connector on a real Server. Verify the Go SDK and the pinned API 7.0 calls,
+  Server's URL forms (virtual directory, collection) and an internal CA; run the conformance suite
+  and fix the differences; list the supported Server versions in
+  [Git connectors](../design/12-git-connectors.md#editions-and-versions). The connector already
+  targets API 7.0, authenticates with a PAT and unit-tests Server's URLs. Needs a Server instance
+  (a lab VM, or a test project on a customer's Server) and a service account's PAT.
+
 ## Risks
 
 | Risk | Likelihood | Impact | Mitigation |
@@ -129,8 +142,8 @@ Epics: [GitHub issues labelled `phase:8`](https://github.com/damhau/quai/issues?
 | Platform edition lacks enforcement features (e.g. GitLab tier, older Azure DevOps Server) | Medium | High | Check during registration; alternative mechanisms per connector; health page shows the active one |
 | Azure DevOps service hooks are unsigned | Certain | Medium | Dedicated webhook host, secret header, re-read every object from the API, polling reconciliation |
 | `azure-devops-go-api` gaps or slow maintenance | Medium | Low | Wrapped in Quai's own client; missing endpoints called through `net/http` |
-| No Azure DevOps Server instance available for conformance tests | Medium | High | Ask the pilot for a test project on their Server; in parallel, set up a Server 2022 VM in the lab (licensing to be checked) |
-| The Go SDK sends API versions newer than Server accepts | Medium | Medium | Quai's wrapper controls API versions and falls back to `net/http`; verified in week 1 of Phase 1 |
+| No Azure DevOps Server instance available for conformance tests | Medium | High | Server support is a [future improvement](#future-improvements), outside the milestones; when it is scheduled, ask the customer for a test project on their Server or set up a Server 2022 VM in the lab (licensing to be checked) |
+| The Go SDK sends API versions newer than Server accepts | Medium | Medium | Quai's wrapper controls API versions and falls back to `net/http`; verified on a real Server with the [future improvement](#future-improvements) |
 | Server cannot reach Quai for service hooks (firewalls) | Medium | Low | Polling mode with the same functions and higher latency |
 | Pilot runs a Server version older than 2022 | Low | Medium | Support 2020 only if needed, with the missing capabilities shown explicitly; 2019 and older are out of scope |
 | Pilot's runner cannot report plan JSON | Medium | Medium | `quai report` step; fall back to check status only, without per-resource plan |

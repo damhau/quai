@@ -48,20 +48,17 @@ Network hosts to declare per command: `dev.azure.com`, `*.visualstudio.com`,
 `vssps.dev.azure.com` (Azure DevOps), `dl.gitea.com` (Gitea), and the hosts of the envtest
 binaries.
 
-## Azure DevOps Server and Services
+## Azure DevOps Services and Server
 
-The pilot runs Azure DevOps **Server** 2022, which is what the Phase 1 exit names; no Server
-instance is available yet. The connector is one package for both editions, written against REST
-API 7.0, which Services also serves: it is built and tested on the Services sandbox, with a PAT
-(the Server authentication) and Server's URL forms unit-tested. Running the suite on a real Server
-is P1-22, a STOP task waiting for an instance. Services uses the PAT as well; Entra
+The pilot runs Azure DevOps **Server** 2022, but Phase 1 and M1 are accepted on **Services**:
+running on a real Server is a [future improvement](roadmap.md#future-improvements) (#98, formerly
+P1-22). The connector is one package for both editions, written against REST API 7.0, which
+Services also serves: it is built and tested on the Services sandbox, with a PAT (the Server
+authentication) and Server's URL forms unit-tested. Services uses the PAT as well; Entra
 authentication moved to GA (#97).
 
-## STOP tasks
+## STOP task
 
-- **P1-22** needs something only the owner can provide (named in the issue). If the issue
-  has no comment from the owner saying it is in place, comment what is missing and **stop**. When
-  it is there, implement the task and close it like any other.
 - **P1-23** (Phase 1 review): write the report the issue describes, commit with `refs`, comment that
   it is ready, and **stop**. Only the owner closes it.
 

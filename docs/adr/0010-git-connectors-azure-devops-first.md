@@ -1,6 +1,6 @@
 # ADR 0010: Per-platform Git connectors, Azure DevOps first
 
-Status: Accepted · 2026-10-26
+Status: Accepted · 2026-10-26 · Amended 2026-10-29
 
 ## Context
 
@@ -26,6 +26,15 @@ Details: [Git connectors](../design/12-git-connectors.md).
 - Azure DevOps shapes the first implementation: PR statuses on iterations, status-check branch policies with an authorized identity, auto-complete, path-based required reviewers instead of `CODEOWNERS`, unsigned service hooks (handled by re-reading every object from the API).
 - Server first means PAT authentication of a service account, internal CA certificates, collection-based URLs, possibly no network path for service hooks (polling mode), and API versions older than the Go SDK expects (the connector controls API versions itself).
 - Conformance testing needs an Azure DevOps Server 2022 instance (lab VM or a test project on the pilot's Server) and an Azure DevOps Services sandbox organization.
+
+## Amendment, 2026-10-29
+
+The owner's decision: Phase 1 and the M1 pilot are accepted on **Azure DevOps Services**, and
+running on a real Azure DevOps Server 2022 is a
+[future improvement](../plan/roadmap.md#future-improvements) (#98), with no phase or milestone.
+The rest stands: one connector for both editions, written against API 7.0 with Server's URL forms
+and PAT authentication, so adding Server means verifying it on a real instance and fixing what
+that finds. Where this record says Server first, Services now comes first.
 
 ## Alternatives considered
 
