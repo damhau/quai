@@ -103,7 +103,7 @@ func (c *Connector) Info() connectors.Info {
 		edition += " (API " + c.instance.MaxVersion + ")"
 	}
 	return connectors.Info{Platform: "azure-devops", Edition: edition, APIVersion: APIVersion,
-		Capabilities: []connectors.Capability{connectors.CapPullRequests, connectors.CapAutoComplete, connectors.CapEnforcedStatus},
+		Capabilities: []connectors.Capability{connectors.CapPullRequests, connectors.CapAutoComplete, connectors.CapEnforcedStatus, connectors.CapPipelines},
 		MergeMethods: []connectors.MergeMethod{connectors.MergeCommit, connectors.Squash, connectors.Rebase}}
 }
 
@@ -123,7 +123,7 @@ func (c *Connector) Identities() connectors.Identities     { return (*identities
 func (c *Connector) Policies() connectors.Policies   { return (*policies)(c) }
 func (c *Connector) Owners() connectors.Owners       { return (*owners)(c) }
 func (c *Connector) Webhooks() connectors.Webhooks   { return (*webhooks)(c) }
-func (c *Connector) Pipelines() connectors.Pipelines { return nil }
+func (c *Connector) Pipelines() connectors.Pipelines { return (*pipelines)(c) }
 
 type identities Connector
 

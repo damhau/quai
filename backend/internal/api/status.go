@@ -9,6 +9,7 @@ import (
 	"github.com/damhau/quai/backend/internal/engine/status"
 	"github.com/damhau/quai/backend/internal/inventory"
 	"github.com/damhau/quai/backend/internal/repositories"
+	"github.com/damhau/quai/backend/internal/runs"
 	"github.com/damhau/quai/backend/internal/store"
 	"github.com/damhau/quai/backend/internal/store/db"
 )
@@ -101,7 +102,7 @@ func (rs *repoStatuses) stack(ctx context.Context, s *store.Store, stack string)
 
 // drifted reports whether a drift check's plan changes the resource.
 func drifted(run db.Run, r inventory.Resource) bool {
-	var sp storedPlan
+	var sp runs.Plan
 	if json.Unmarshal(run.Plan, &sp) != nil {
 		return false
 	}

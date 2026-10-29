@@ -104,6 +104,18 @@ type Runner struct {
 	// PlanValues keeps the before and after values of the attributes a plan changes, except
 	// sensitive ones; without it, Quai keeps only their names.
 	PlanValues bool `json:"planValues,omitempty" yaml:"planValues"`
+	// Pipelines say which of the platform's pipelines plan, apply or check drift for which
+	// stacks (open question 8's default, docs/design/06-runs-status-and-drift.md#adapters).
+	Pipelines []Pipeline `json:"pipelines,omitempty" yaml:"pipelines"`
+}
+
+// Pipeline is one of the platform's pipelines, as the runner adapter reads its runs.
+type Pipeline struct {
+	Name string `json:"name" yaml:"name"` // the pipeline's name on the platform
+	Kind string `json:"kind" yaml:"kind" enum:"plan,apply,drift-check"`
+	// Stacks are the stacks a run covers: one stack, or a pattern like a type's (envs/{env}),
+	// each stack of the repository's resources that it matches.
+	Stacks string `json:"stacks" yaml:"stacks"`
 }
 
 // Webhooks holds the secret the platform's webhooks carry.
@@ -227,6 +239,14 @@ func (d *Document) Validate() error {
 	}
 	if err := checkKnownHosts(s.Credentials.KnownHosts); err != nil {
 		add("spec.credentials.knownHosts: %v", err)
+	}
+	for i, p := range s.Runner.Pipelines {
+		if strings.TrimSpace(p.Name) == "" || strings.TrimSpace(p.Stacks) == "" {
+			add("spec.runner.pipelines[%d] needs a name and stacks", i)
+		}
+		if !slices.Contains([]string{"plan", "apply", "drift-check"}, p.Kind) {
+			add("spec.runner.pipelines[%d].kind must be plan, apply or drift-check", i)
+		}
 	}
 	switch s.Delivery.Mode {
 	case "direct":

@@ -14,15 +14,16 @@ WHERE repository = $1 AND stack = $2 AND kind = $3
 ORDER BY started_at DESC, id
 LIMIT 1;
 
--- name: RunningRun :one
--- The running run a report continues (docs/design/06-runs-status-and-drift.md#run-report-protocol):
--- same repository, stack and kind, and the same url, or, when either has none, the same commit
--- and pull request.
+-- name: ReportedRun :one
+-- The run a report continues (docs/design/06-runs-status-and-drift.md#run-report-protocol): of
+-- the same repository, stack and kind, the one with the same url, whatever its status (a run's
+-- page names it), or, when either has none, the running one with the same commit and pull
+-- request.
 SELECT * FROM runs
-WHERE repository = sqlc.arg(repository) AND stack = sqlc.arg(stack) AND kind = sqlc.arg(kind) AND status = 'running'
+WHERE repository = sqlc.arg(repository) AND stack = sqlc.arg(stack) AND kind = sqlc.arg(kind)
   AND ((sqlc.arg(url)::text <> '' AND url = sqlc.arg(url)::text)
-    OR ((url = '' OR sqlc.arg(url)::text = '') AND commit = sqlc.arg(commit) AND pull_request = sqlc.arg(pull_request)))
-ORDER BY started_at DESC, id
+    OR (status = 'running' AND (url = '' OR sqlc.arg(url)::text = '') AND commit = sqlc.arg(commit) AND pull_request = sqlc.arg(pull_request)))
+ORDER BY (sqlc.arg(url)::text <> '' AND url = sqlc.arg(url)::text) DESC, started_at DESC, id
 LIMIT 1
 FOR UPDATE;
 

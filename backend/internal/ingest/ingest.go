@@ -39,6 +39,9 @@ type Handler interface {
 	Awaited(ctx context.Context, repo *repositories.Repo) ([]string, error)
 	// Reconcile reconciles what waits on the repository with what Git holds, after each fetch.
 	Reconcile(ctx context.Context, repo *repositories.Repo) error
+	// RunReported moves on what a run recorded from a pipeline changes (requests waiting for
+	// their plan or apply).
+	RunReported(ctx context.Context, run db.Run) error
 }
 
 // Service ingests webhooks and polls repositories.
@@ -262,9 +265,12 @@ func (s *Service) Process(ctx context.Context, name string, events []Event) erro
 	}
 	return jobs.WithRepositoryLock(ctx, s.store.Pool, name, lockSnooze, func(ctx context.Context) error {
 		prs := map[string]bool{}
+		var pipelineRuns []string
 		fetch := false
 		for _, e := range events {
 			switch {
+			case e.Run != nil:
+				pipelineRuns = append(pipelineRuns, e.Run.Run.ID)
 			case e.Push != nil:
 				fetch = true
 			case e.PullRequest != nil:
@@ -285,6 +291,11 @@ func (s *Service) Process(ctx context.Context, name string, events []Event) erro
 		}
 		for id := range prs {
 			if err := s.reread(ctx, repo, id); err != nil {
+				return err
+			}
+		}
+		for _, id := range pipelineRuns {
+			if err := s.pipelineRun(ctx, repo, id); err != nil {
 				return err
 			}
 		}
@@ -329,7 +340,16 @@ func (s *Service) handle(ctx context.Context, repo *repositories.Repo, pr connec
 	if s.handler == nil {
 		return nil
 	}
-	return s.handler.PullRequest(ctx, repo, pr)
+	if err := s.handler.PullRequest(ctx, repo, pr); err != nil {
+		return err
+	}
+	// Its build validation runs are plans: also read when service hooks cannot reach Quai.
+	if pr.State == connectors.PROpen {
+		if err := s.pullRequestRuns(ctx, repo, pr.ID); err != nil {
+			s.log.WarnContext(ctx, "the pull request's build validation", slog.String("repository", repo.Name), slog.String("pull_request", pr.ID), slog.Any("error", err))
+		}
+	}
+	return nil
 }
 
 type pollWorker struct {

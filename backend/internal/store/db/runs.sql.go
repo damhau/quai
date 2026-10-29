@@ -263,17 +263,17 @@ func (q *Queries) ListRuns(ctx context.Context, arg ListRunsParams) ([]Run, erro
 	return items, nil
 }
 
-const runningRun = `-- name: RunningRun :one
+const reportedRun = `-- name: ReportedRun :one
 SELECT id, org_id, repository, stack, commit, kind, status, url, summary, started_at, finished_at, pull_request, request_id, policies, cost, plan FROM runs
-WHERE repository = $1 AND stack = $2 AND kind = $3 AND status = 'running'
+WHERE repository = $1 AND stack = $2 AND kind = $3
   AND (($4::text <> '' AND url = $4::text)
-    OR ((url = '' OR $4::text = '') AND commit = $5 AND pull_request = $6))
-ORDER BY started_at DESC, id
+    OR (status = 'running' AND (url = '' OR $4::text = '') AND commit = $5 AND pull_request = $6))
+ORDER BY ($4::text <> '' AND url = $4::text) DESC, started_at DESC, id
 LIMIT 1
 FOR UPDATE
 `
 
-type RunningRunParams struct {
+type ReportedRunParams struct {
 	Repository  string
 	Stack       string
 	Kind        string
@@ -282,11 +282,12 @@ type RunningRunParams struct {
 	PullRequest string
 }
 
-// The running run a report continues (docs/design/06-runs-status-and-drift.md#run-report-protocol):
-// same repository, stack and kind, and the same url, or, when either has none, the same commit
-// and pull request.
-func (q *Queries) RunningRun(ctx context.Context, arg RunningRunParams) (Run, error) {
-	row := q.db.QueryRow(ctx, runningRun,
+// The run a report continues (docs/design/06-runs-status-and-drift.md#run-report-protocol): of
+// the same repository, stack and kind, the one with the same url, whatever its status (a run's
+// page names it), or, when either has none, the running one with the same commit and pull
+// request.
+func (q *Queries) ReportedRun(ctx context.Context, arg ReportedRunParams) (Run, error) {
+	row := q.db.QueryRow(ctx, reportedRun,
 		arg.Repository,
 		arg.Stack,
 		arg.Kind,

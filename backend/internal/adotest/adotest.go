@@ -214,8 +214,15 @@ type Delivery struct {
 // in secretHeader.
 func (s *Sandbox) Deliveries(t *testing.T, hook, secretHeader, secret string, enough func([]Delivery) bool) []Delivery {
 	t.Helper()
+	return s.DeliveriesWithin(t, 2*time.Minute, hook, secretHeader, secret, enough)
+}
+
+// DeliveriesWithin is Deliveries, waiting up to timeout: a pipeline run's notifications come
+// later than a push's.
+func (s *Sandbox) DeliveriesWithin(t *testing.T, timeout time.Duration, hook, secretHeader, secret string, enough func([]Delivery) bool) []Delivery {
+	t.Helper()
 	ctx := context.Background()
-	deadline := time.Now().Add(2 * time.Minute)
+	deadline := time.Now().Add(timeout)
 	for {
 		subs, err := s.Subscriptions(ctx, hook)
 		if err != nil {
@@ -250,7 +257,11 @@ func (s *Sandbox) Deliveries(t *testing.T, hook, secretHeader, secret string, en
 			return out
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("Azure DevOps did not record the deliveries in time: %d so far", len(out))
+			byEvent := map[string]int{}
+			for _, d := range out {
+				byEvent[d.EventType]++
+			}
+			t.Fatalf("Azure DevOps did not record the deliveries in time: %d so far, %v", len(out), byEvent)
 		}
 		time.Sleep(5 * time.Second)
 	}

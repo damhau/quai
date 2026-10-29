@@ -506,6 +506,12 @@ export type ParamView = {
     type: string;
 };
 
+export type Pipeline = {
+    kind: 'plan' | 'apply' | 'drift-check';
+    name: string;
+    stacks: string;
+};
+
 export type PlanAmbiguous = {
     action: 'create' | 'update' | 'delete' | 'replace';
     address: string;
@@ -937,6 +943,7 @@ export type RunView = {
 
 export type Runner = {
     kind?: string;
+    pipelines?: Array<Pipeline> | null;
     planValues?: boolean;
     reportToken?: SecretRef;
 };

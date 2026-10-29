@@ -160,6 +160,33 @@ func (c *Client) Do(ctx context.Context, method, path, version string, query url
 	return decode(resp, out)
 }
 
+// Download gets a signed URL, such as an artifact's signed content, as bytes: at most limit of
+// them, an error beyond. The URL carries its own authorization: the PAT goes only to the
+// collection's host.
+func (c *Client) Download(ctx context.Context, signed string, limit int64) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, signed, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("X-TFS-FedAuthRedirect", "Suppress")
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode/100 != 2 {
+		return nil, decode(resp, nil)
+	}
+	b, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(b)) > limit {
+		return nil, fmt.Errorf("azure devops: a download larger than %d bytes", limit)
+	}
+	return b, nil
+}
+
 // Send calls the resource at location, as the SDK routes it, with the API version given and
 // route values, sending in as JSON and decoding the answer into out.
 func (c *Client) Send(ctx context.Context, method string, location uuid.UUID, version string, route map[string]string, query url.Values, in, out any) error {

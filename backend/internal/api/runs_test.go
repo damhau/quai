@@ -112,6 +112,15 @@ func TestRunReportProtocol(t *testing.T) {
 		finished.Policies[1].Message != "a public IP" || finished.Cost == nil || finished.Cost.MonthlyDelta != 142.4 {
 		t.Errorf("finished = %s", body)
 	}
+	// The same report again, as an adapter polling sees it, is the same run; so is a re-run, which
+	// keeps its page.
+	if _, again, _ := h.reportRun(runToken, runReport(map[string]any{"kind": "plan", "pullRequest": "412", "url": "https://ci.example.com/88121"})); again.ID != started.ID {
+		t.Errorf("the same report again started a run")
+	}
+	if _, rerun, _ := h.reportRun(runToken, runReport(map[string]any{"kind": "plan", "status": "running", "pullRequest": "412", "url": "https://ci.example.com/88121"})); rerun.ID != started.ID || rerun.Status != "running" {
+		t.Errorf("a re-run = %+v", rerun)
+	}
+	h.reportRun(runToken, runReport(map[string]any{"kind": "plan", "pullRequest": "412", "url": "https://ci.example.com/88121"}))
 	// Another pipeline run at the same commit, with its own url, is another run.
 	_, other, _ := h.reportRun(runToken, runReport(map[string]any{"kind": "plan", "status": "running", "pullRequest": "412", "url": "https://ci.example.com/88122"}))
 	if other.ID == started.ID {
@@ -211,6 +220,12 @@ func TestRunPlans(t *testing.T) {
 		"plan": map[string]any{"format": "terraform-json", "content": map[string]any{"resources": []any{}}}})); status != http.StatusUnprocessableEntity ||
 		!strings.Contains(body, "body.plan.content") {
 		t.Errorf("not a plan = %d %s", status, body)
+	}
+	// A plan in the run's artifacts needs a platform with pipelines to read it from.
+	if status, _, body := h.reportRun(runToken, runReport(map[string]any{"kind": "plan", "url": "https://ci.example.com/_build/results?buildId=7",
+		"plan": map[string]any{"format": "terraform-json", "ref": "artifact://plan/plan.json"}})); status != http.StatusUnprocessableEntity ||
+		!strings.Contains(body, "body.plan.ref") || !strings.Contains(body, "has no pipelines") {
+		t.Errorf("a plan ref without pipelines = %d %s", status, body)
 	}
 
 	h = newHarnessRunner(t, "planValues: true")

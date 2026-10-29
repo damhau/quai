@@ -1445,6 +1445,31 @@
         ],
         "type": "object"
       },
+      "Pipeline": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "plan",
+              "apply",
+              "drift-check"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "stacks": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "kind",
+          "stacks"
+        ],
+        "type": "object"
+      },
       "PlanAmbiguous": {
         "additionalProperties": false,
         "properties": {
@@ -2709,6 +2734,15 @@
         "properties": {
           "kind": {
             "type": "string"
+          },
+          "pipelines": {
+            "items": {
+              "$ref": "#/components/schemas/Pipeline"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
           },
           "planValues": {
             "type": "boolean"

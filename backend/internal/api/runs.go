@@ -14,14 +14,13 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/damhau/quai/backend/internal/authz"
 	"github.com/damhau/quai/backend/internal/engine/locate"
 	"github.com/damhau/quai/backend/internal/engine/tfplan"
 	"github.com/damhau/quai/backend/internal/repositories"
 	"github.com/damhau/quai/backend/internal/requests"
+	"github.com/damhau/quai/backend/internal/runs"
 	"github.com/damhau/quai/backend/internal/store"
 	"github.com/damhau/quai/backend/internal/store/db"
 )
@@ -87,12 +86,6 @@ type RunPlanView struct {
 	Resources []PlanResource  `json:"resources"`
 	Unmapped  []PlanChange    `json:"unmapped,omitempty" doc:"Changes to Terraform resources no type claims"`
 	Ambiguous []PlanAmbiguous `json:"ambiguous,omitempty" doc:"Changes claimed by more than one resource"`
-}
-
-// storedPlan is what Quai keeps of a plan (runs.plan): the mapping, never the plan.
-type storedPlan struct {
-	Format string `json:"format"`
-	tfplan.Mapping
 }
 
 // RunView is a run reported by a runner.
@@ -169,13 +162,13 @@ func registerRuns(a huma.API, reg *repositories.Registry, s *store.Store, svc *r
 		if s == nil {
 			return nil, huma.Error503ServiceUnavailable("no database")
 		}
-		r, err := report(ctx, s, repo, in)
+		r, changed, err := report(ctx, s, repo, in)
 		if err != nil {
 			return nil, err
 		}
 		// A plan goes on its request's timeline and decides its rules on the plan; an apply
-		// settles the requests waiting for it.
-		if svc != nil {
+		// settles the requests waiting for it. The same report again changes nothing.
+		if svc != nil && changed {
 			if err := svc.RunReported(ctx, r); err != nil && log != nil {
 				log.ErrorContext(ctx, "moving requests on after a run", slog.String("run", r.ID.String()), slog.Any("error", err))
 			}
@@ -223,85 +216,29 @@ func registerRuns(a huma.API, reg *repositories.Registry, s *store.Store, svc *r
 // maxRunReport bounds a run report, plan included.
 const maxRunReport = 64 << 20
 
-// report records a run report: it continues the running run it describes, or starts a run.
-func report(ctx context.Context, s *store.Store, repo *repositories.Repo, in *runInput) (db.Run, error) {
+// report records a run report through runs.Record.
+func report(ctx context.Context, s *store.Store, repo *repositories.Repo, in *runInput) (db.Run, bool, error) {
 	b := in.Body
-	repository := repo.Name
-	request, err := runRequest(ctx, s, repository, b.PullRequest, b.Commit)
-	if err != nil {
-		return db.Run{}, err
-	}
-	summary, policies, cost, planned := []byte(`{}`), []byte(`[]`), []byte(`{}`), []byte(`{}`)
-	if b.Plan != nil && len(b.Plan.Content) > 0 {
-		changes, err := tfplan.Parse(b.Plan.Content, tfplan.Options{Values: repo.Document.Spec.Runner.PlanValues})
-		if err != nil {
-			return db.Run{}, huma.Error422UnprocessableEntity(err.Error(), &huma.ErrorDetail{Location: "body.plan.content", Message: err.Error()})
-		}
-		// The types of the repository's default branch say which resources own what.
-		snap, err := repo.Snapshot(ctx, false)
-		if err != nil {
-			return db.Run{}, err
-		}
-		planned, _ = json.Marshal(storedPlan{Format: b.Plan.Format, Mapping: tfplan.Map(changes, b.Stack, tfplan.Claims(snap.Definitions.Types))})
-		if b.Summary == nil {
-			add, change, destroy := tfplan.Summary(changes)
-			b.Summary = &RunSummary{Add: add, Change: change, Destroy: destroy}
-		}
-	}
+	r := runs.Report{Stack: b.Stack, Commit: b.Commit, PullRequest: b.PullRequest, Kind: b.Kind, Status: b.Status, URL: b.URL,
+		StartedAt: b.StartedAt, FinishedAt: b.FinishedAt}
 	if b.Summary != nil {
-		summary, _ = json.Marshal(b.Summary)
+		r.Summary = &runs.Summary{Add: b.Summary.Add, Change: b.Summary.Change, Destroy: b.Summary.Destroy}
 	}
-	if len(b.Policies) > 0 {
-		policies, _ = json.Marshal(b.Policies)
+	for _, p := range b.Policies {
+		r.Policies = append(r.Policies, runs.Policy{Name: p.Name, Result: p.Result, Message: p.Message})
 	}
 	if b.Cost != nil {
-		cost, _ = json.Marshal(b.Cost)
+		r.Cost = &runs.Cost{Currency: b.Cost.Currency, MonthlyDelta: b.Cost.MonthlyDelta}
 	}
-	var run db.Run
-	err = s.Tx(ctx, func(_ pgx.Tx, q *db.Queries) error {
-		prev, err := q.RunningRun(ctx, db.RunningRunParams{Repository: repository, Stack: b.Stack, Kind: b.Kind, Url: b.URL, Commit: b.Commit, PullRequest: b.PullRequest})
-		switch {
-		case err == nil:
-			run, err = q.UpdateRun(ctx, db.UpdateRunParams{ID: prev.ID, Status: b.Status, Url: b.URL, RequestID: request, Summary: summary,
-				Policies: policies, Cost: cost, Plan: planned, StartedAt: timestamp(b.StartedAt), FinishedAt: timestamp(b.FinishedAt)})
-			return err
-		case !errors.Is(err, pgx.ErrNoRows):
-			return err
-		}
-		run, err = q.InsertRun(ctx, db.InsertRunParams{ID: uuid.New(), Repository: repository, Stack: b.Stack, Commit: b.Commit, Kind: b.Kind,
-			Status: b.Status, Url: b.URL, PullRequest: b.PullRequest, RequestID: request, Summary: summary, Policies: policies, Cost: cost,
-			Plan: planned, StartedAt: timestamp(b.StartedAt), FinishedAt: timestamp(b.FinishedAt)})
-		return err
-	})
-	return run, err
-}
-
-// runRequest finds the request a run belongs to: its pull request's, or the one whose change
-// set the run's commit landed.
-func runRequest(ctx context.Context, s *store.Store, repository, pullRequest, commit string) (pgtype.UUID, error) {
-	var id uuid.UUID
-	var err error
-	if pullRequest != "" {
-		var d db.Delivery
-		d, err = s.GetDeliveryByPullRequest(ctx, db.GetDeliveryByPullRequestParams{Repository: repository, PullRequest: pullRequest})
-		id = d.RequestID
-	} else {
-		id, err = s.RequestAtCommit(ctx, db.RequestAtCommitParams{Repository: repository, Commit: commit})
+	if b.Plan != nil {
+		r.Plan, r.PlanFormat, r.PlanRef = b.Plan.Content, b.Plan.Format, b.Plan.Ref
 	}
-	switch {
-	case errors.Is(err, pgx.ErrNoRows):
-		return pgtype.UUID{}, nil
-	case err != nil:
-		return pgtype.UUID{}, err
+	run, changed, err := runs.Record(ctx, s, repo, r)
+	var pe *runs.PlanError
+	if errors.As(err, &pe) {
+		return db.Run{}, false, huma.Error422UnprocessableEntity(pe.Error(), &huma.ErrorDetail{Location: "body." + pe.Field, Message: pe.Error()})
 	}
-	return pgtype.UUID{Bytes: id, Valid: true}, nil
-}
-
-func timestamp(t *time.Time) pgtype.Timestamptz {
-	if t == nil {
-		return pgtype.Timestamptz{}
-	}
-	return pgtype.Timestamptz{Time: *t, Valid: true}
+	return run, changed, err
 }
 
 func runView(r db.Run) RunView {
@@ -323,7 +260,7 @@ func runView(r db.Run) RunView {
 	if string(r.Cost) != "{}" && json.Unmarshal(r.Cost, &cost) == nil {
 		v.Cost = &cost
 	}
-	var sp storedPlan
+	var sp runs.Plan
 	if string(r.Plan) != "{}" && json.Unmarshal(r.Plan, &sp) == nil {
 		v.Plan = runPlanView(r.Repository, sp.Mapping)
 	}

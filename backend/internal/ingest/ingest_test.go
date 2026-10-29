@@ -37,8 +37,9 @@ const hookSecret = "hook-secret-for-tests"
 
 // recorder is the Handler of the tests: it keeps the pull requests it is given.
 type recorder struct {
-	mu  sync.Mutex
-	prs []connectors.PullRequest
+	mu   sync.Mutex
+	prs  []connectors.PullRequest
+	runs []db.Run
 }
 
 func (r *recorder) PullRequest(_ context.Context, _ *repositories.Repo, pr connectors.PullRequest) error {
@@ -50,6 +51,20 @@ func (r *recorder) PullRequest(_ context.Context, _ *repositories.Repo, pr conne
 
 func (r *recorder) Awaited(context.Context, *repositories.Repo) ([]string, error) { return nil, nil }
 func (r *recorder) Reconcile(context.Context, *repositories.Repo) error           { return nil }
+
+func (r *recorder) RunReported(_ context.Context, run db.Run) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.runs = append(r.runs, run)
+	return nil
+}
+
+// reported returns the runs handed on.
+func (r *recorder) reported() []db.Run {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return slices.Clone(r.runs)
+}
 
 func (r *recorder) seen(id string, state connectors.PullRequestState) bool {
 	r.mu.Lock()

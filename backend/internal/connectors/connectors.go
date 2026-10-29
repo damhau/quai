@@ -247,18 +247,31 @@ type Webhooks interface {
 
 // Run is a pipeline run.
 type Run struct {
-	Pipeline string
-	ID       string
-	State    string // queued, running, completed
-	Result   string // succeeded, failed, … once completed
-	Commit   string
-	URL      string
+	Pipeline    string // its pipeline's name
+	ID          string
+	State       string // queued, running, completed
+	Result      string // succeeded, failed, canceled, … once completed
+	Commit      string
+	Branch      string // the branch it ran on (refs/heads/…), or the pull request's merge ref
+	PullRequest string // the pull request it validated, for a run of a pull request
+	URL         string // its page
+	Started     time.Time
+	Finished    time.Time
 }
 
-// Pipelines triggers and reads pipeline runs (CapPipelines).
+// Pipelines triggers and reads pipeline runs (CapPipelines): the runner adapter of a platform
+// with its own pipelines (docs/design/06-runs-status-and-drift.md#adapters).
 type Pipelines interface {
+	// Trigger queues a run of the pipeline named pipeline on branch.
 	Trigger(ctx context.Context, pipeline, branch string) (Run, error)
-	Get(ctx context.Context, pipeline, id string) (Run, error)
+	// Get reads a run; ErrNotFound when it is not one of the repository's.
+	Get(ctx context.Context, id string) (Run, error)
+	// PullRequestRuns returns the runs of a pull request's build validation.
+	PullRequestRuns(ctx context.Context, pullRequest string) ([]Run, error)
+	// Artifact returns a file of one of a run's artifacts.
+	Artifact(ctx context.Context, run, artifact, file string) ([]byte, error)
+	// Check verifies that the pipeline named pipeline exists and that its runs can be read.
+	Check(ctx context.Context, pipeline string) error
 }
 
 // User is a platform user.

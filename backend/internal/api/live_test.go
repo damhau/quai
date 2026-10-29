@@ -59,7 +59,18 @@ func requireApproval(t *testing.T, sb *adotest.Sandbox, repo *repositories.Repo,
 		t.Fatal(err)
 	}
 	p.id = created.ID
-	return p
+	// A new policy takes a moment to show in the branch's policies: wait until it enforces.
+	deadline := time.Now().Add(time.Minute)
+	for {
+		e, err := repo.Connector.Policies().Verify(context.Background(), "main", "quai/approval")
+		if err == nil && e.Enforced {
+			return p
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the approval policy does not show: %+v, %v", e, err)
+		}
+		time.Sleep(2 * time.Second)
+	}
 }
 
 // update sets the policy's authorized identity ("" for any identity).
@@ -152,9 +163,17 @@ func TestAzureDevOpsDelivery(t *testing.T) {
 	if err != nil || pr.Source != "quai/r-1-web01-resize" || !strings.Contains(pr.Description, connectors.Marker(r.ID)) || len(pr.Labels) == 0 {
 		t.Errorf("the pull request: source %q, labels %v, marker %v, %v", pr.Source, pr.Labels, strings.Contains(pr.Description, connectors.Marker(r.ID)), err)
 	}
-	statuses, err := repo.Connector.Statuses().List(ctx, connectors.StatusTarget{PullRequest: pr.ID})
-	if err != nil || len(statuses) == 0 || statuses[0].Name != "quai/approval" || statuses[0].State != connectors.StatusPending {
-		t.Errorf("statuses: %+v, %v", statuses, err)
+	// The status is published once the pull request is open: read until it shows.
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		statuses, err := repo.Connector.Statuses().List(ctx, connectors.StatusTarget{PullRequest: pr.ID})
+		if err == nil && len(statuses) > 0 && statuses[0].Name == "quai/approval" && statuses[0].State == connectors.StatusPending {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("statuses: %+v, %v", statuses, err)
+		}
+		time.Sleep(time.Second)
 	}
 
 	if status, body := alice.do(http.MethodPost, Prefix+"/requests/"+r.ID+"/review", map[string]string{"decision": "approve"}, nil); status != http.StatusOK {
@@ -354,13 +373,18 @@ func (s sandboxSecrets) Get(ctx context.Context, name string) (secrets.Secret, e
 	return sandboxPAT{s.sb}.Get(ctx, name)
 }
 
-// TestAzureDevOpsAccess: on the sandbox, the access test passes every check and leaves no branch
-// behind; a repository connected through the API gets its service hook subscription installed.
-// Skipped without the sandbox's PAT.
+// TestAzureDevOpsAccess: on the sandbox, the access test passes every check, its pipelines
+// included, and leaves no branch behind; a repository connected through the API gets its service
+// hook subscriptions installed, the pipeline-run one among them. Skipped without the sandbox's
+// PAT.
 func TestAzureDevOpsAccess(t *testing.T) {
 	sb := adotest.New(t)
 	ctx := context.Background()
-	name, _ := sb.Repository(t)
+	name, id := sb.Repository(t)
+	if err := sb.AddFiles(ctx, id, "main", "A pipeline", map[string]string{"apply.yml": "trigger: none\npool:\n  vmImage: ubuntu-latest\nsteps:\n  - script: echo quai\n"}); err != nil {
+		t.Fatal(err)
+	}
+	sb.Pipeline(t, name, id, "apply.yml")
 	pushExample(t, sb.URL(name), func(ctx context.Context) (gitx.Credentials, error) {
 		pat, _, _ := sb.PAT(ctx)
 		return gitx.Credentials{Header: "Authorization: " + azuredevops.BasicAuth(pat.Reveal())}, nil
@@ -378,7 +402,8 @@ func TestAzureDevOpsAccess(t *testing.T) {
 	}, func(c *config.Config) { c.Server.PublicURL = public })
 	alice := h.as("alice")
 	spec := map[string]any{"connector": "azure-devops", "url": sb.URL(name), "credentials": map[string]any{"ref": "env:ADO_PAT"},
-		"webhooks": map[string]any{"secret": map[string]any{"ref": "env:HOOK_SECRET"}}}
+		"webhooks": map[string]any{"secret": map[string]any{"ref": "env:HOOK_SECRET"}},
+		"runner":   map[string]any{"pipelines": []map[string]any{{"name": name + "-apply", "kind": "apply", "stacks": "envs/{env}"}}}}
 
 	var v AccessView
 	if status, body := alice.do(http.MethodPost, Prefix+"/repository-access-tests", document("infra-two", spec), &v); status != http.StatusOK {
@@ -389,7 +414,7 @@ func TestAzureDevOpsAccess(t *testing.T) {
 			t.Errorf("check %s: %+v", c.Name, c)
 		}
 	}
-	if !v.OK || len(v.Checks) != 8 || v.Scan == nil || !v.Scan.Found {
+	if !v.OK || len(v.Checks) != 9 || v.Scan == nil || !v.Scan.Found {
 		t.Errorf("access test = %+v", v)
 	}
 	var refs struct {
@@ -408,7 +433,7 @@ func TestAzureDevOpsAccess(t *testing.T) {
 	if status, body := alice.do(http.MethodPost, Prefix+"/repositories/infra-two/webhook", nil, &w); status != http.StatusOK || !w.Installed || w.URL != hook {
 		t.Errorf("install the webhook = %d %s", status, body)
 	}
-	if subs, err := sb.Subscriptions(ctx, hook); err != nil || len(subs) == 0 {
+	if subs, err := sb.Subscriptions(ctx, hook); err != nil || subs["git.push"] == "" || subs["ms.vss-pipelines.run-state-changed-event"] == "" {
 		t.Errorf("subscriptions = %v, %v", subs, err)
 	}
 	if status, body := alice.do(http.MethodDelete, Prefix+"/repositories/infra-two", nil, nil); status != http.StatusNoContent {

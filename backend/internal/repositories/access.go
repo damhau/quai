@@ -32,6 +32,7 @@ const (
 	CheckStatus      = "status"
 	CheckDelete      = "delete-branch"
 	CheckProtection  = "branch-protection"
+	CheckPipelines   = "pipelines" // spec.runner.pipelines exist and their runs can be read
 )
 
 // Check is one step of the access test.
@@ -70,6 +71,7 @@ var permissions = map[string]map[string]string{
 		CheckStatus:      "Contribute to pull requests on the repository (statuses are posted on pull requests)",
 		CheckDelete:      "Force push on the branch folder refs/heads/%s* (deleting a branch)",
 		CheckProtection:  "View project-level information, to read the branch policies",
+		CheckPipelines:   "View builds (Build: Read) on the pipelines spec.runner.pipelines names",
 	},
 	"gitea": { // #nosec G101 -- the permissions a credential needs, not credentials
 		CheckCredentials: "a token at spec.credentials.ref that Quai can read",
@@ -119,7 +121,7 @@ func (a *accessRun) skip(name, why string) {
 
 // skipRest skips the checks not run yet after the one that failed.
 func (a *accessRun) skipRest(after string) {
-	order := []string{CheckCredentials, CheckConnector, CheckRead, CheckPush, CheckPullRequest, CheckStatus, CheckDelete, CheckProtection}
+	order := []string{CheckCredentials, CheckConnector, CheckRead, CheckPush, CheckPullRequest, CheckStatus, CheckDelete, CheckProtection, CheckPipelines}
 	done := map[string]bool{}
 	for _, c := range a.report.Checks {
 		done[c.Name] = true
@@ -177,6 +179,18 @@ func (r *Registry) AccessTest(ctx context.Context, d Document) (AccessReport, er
 	} else {
 		_, err := pol.Protection(ctx, spec.DefaultBranch)
 		a.check(CheckProtection, err)
+	}
+	switch p := conn.Pipelines(); {
+	case len(spec.Runner.Pipelines) == 0:
+		a.skip(CheckPipelines, "the connection names no pipelines")
+	case p == nil:
+		a.check(CheckPipelines, fmt.Errorf("spec.runner.pipelines names pipelines, but the %s connector reads none", spec.Connector))
+	default:
+		var errs []error
+		for _, pl := range spec.Runner.Pipelines {
+			errs = append(errs, p.Check(ctx, pl.Name))
+		}
+		a.check(CheckPipelines, errors.Join(errs...))
 	}
 	if a.report.Scan, err = scan(ctx, m, head); err != nil {
 		return AccessReport{}, err

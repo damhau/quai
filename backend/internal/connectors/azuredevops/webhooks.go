@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -19,8 +20,13 @@ import (
 // the API whatever an event names.
 const SecretHeader = "X-Quai-Webhook-Secret" // #nosec G101 -- a header name, not a credential
 
-// hookEvents are the service hook events Quai subscribes to.
+// hookEvents are the service hook events of the repository Quai subscribes to.
 var hookEvents = []string{"git.push", "git.pullrequest.created", "git.pullrequest.updated", "git.pullrequest.merged"}
+
+// runEvent is the project's pipeline runs changing state: the runner adapter's signal
+// (docs/design/06-runs-status-and-drift.md#adapters). Quai reads each run again, and keeps
+// those of its repository.
+const runEvent = "ms.vss-pipelines.run-state-changed-event"
 
 type webhooks Connector
 
@@ -45,13 +51,15 @@ func (w *webhooks) subscriptions(ctx context.Context, url string) (map[string]st
 	var list struct {
 		Value []subscription `json:"value"`
 	}
-	q := map[string][]string{"publisherId": {"tfs"}, "consumerId": {"webHooks"}, "consumerActionId": {"httpRequest"}}
+	q := map[string][]string{"consumerId": {"webHooks"}, "consumerActionId": {"httpRequest"}}
 	if err := c.client.Do(ctx, http.MethodGet, "/_apis/hooks/subscriptions", APIVersion, q, nil, &list); err != nil {
 		return nil, err
 	}
 	out := map[string]string{} // by event type
 	for _, s := range list.Value {
-		if s.ConsumerInputs["url"] == url && strings.EqualFold(s.PublisherInputs["repository"], repo.ID) {
+		ours := s.PublisherID == "tfs" && strings.EqualFold(s.PublisherInputs["repository"], repo.ID) ||
+			s.PublisherID == "pipelines" && strings.EqualFold(s.PublisherInputs["projectId"], repo.ProjectID)
+		if s.ConsumerInputs["url"] == url && ours {
 			out[s.EventType] = s.ID
 		}
 	}
@@ -59,8 +67,9 @@ func (w *webhooks) subscriptions(ctx context.Context, url string) (map[string]st
 }
 
 // Subscribe creates the service hook subscriptions (Web Hooks consumer) of the repository's
-// pushes and pull requests to url, with the secret in SecretHeader, or updates those already
-// delivering there. Creating them needs "Edit subscriptions" on the project.
+// pushes and pull requests, and of the project's pipeline runs, to url, with the secret in
+// SecretHeader, or updates those already delivering there. Creating them needs "Edit
+// subscriptions" on the project.
 func (w *webhooks) Subscribe(ctx context.Context, url string, secret secrets.Secret) error {
 	c := (*Connector)(w)
 	if strings.ContainsAny(secret.Reveal(), "\r\n") || secret.Reveal() == "" {
@@ -74,13 +83,17 @@ func (w *webhooks) Subscribe(ctx context.Context, url string, secret secrets.Sec
 	if err != nil {
 		return err
 	}
-	for _, event := range hookEvents {
+	for _, event := range append(slices.Clone(hookEvents), runEvent) {
 		s := subscription{PublisherID: "tfs", EventType: event, ResourceVersion: "1.0", ConsumerID: "webHooks", ConsumerActionID: "httpRequest",
 			PublisherInputs: map[string]string{"projectId": repo.ProjectID, "repository": repo.ID, "branch": ""},
 			ConsumerInputs: map[string]string{"url": url, "httpHeaders": SecretHeader + ": " + secret.Reveal(),
 				"resourceDetailsToSend": "all", "messagesToSend": "none", "detailedMessagesToSend": "none"}}
-		if event == "git.pullrequest.merged" {
+		switch event {
+		case "git.pullrequest.merged":
 			s.PublisherInputs["mergeResult"] = ""
+		case runEvent:
+			s.PublisherID, s.ResourceVersion = "pipelines", "5.1-preview.1"
+			s.PublisherInputs = map[string]string{"projectId": repo.ProjectID, "pipelineId": "", "runStateId": "", "runResultId": ""}
 		}
 		if id, ok := existing[event]; ok {
 			s.ID = id
@@ -149,6 +162,19 @@ func (w *webhooks) Parse(header http.Header, body []byte, secret secrets.Secret)
 		return d, err
 	}
 	switch {
+	case e.EventType == runEvent:
+		var r struct {
+			Run struct {
+				ID       int `json:"id"`
+				Pipeline struct {
+					Name string `json:"name"`
+				} `json:"pipeline"`
+			} `json:"run"`
+		}
+		if err := json.Unmarshal(e.Resource, &r); err != nil || r.Run.ID == 0 {
+			return d, fmt.Errorf("azure devops %s: no run (%v)", e.EventType, err)
+		}
+		d.Events = append(d.Events, connectors.PipelineRunChanged{Run: connectors.Run{ID: strconv.Itoa(r.Run.ID), Pipeline: r.Run.Pipeline.Name}})
 	case e.EventType == "git.push":
 		var r pushResource
 		if err := json.Unmarshal(e.Resource, &r); err != nil {

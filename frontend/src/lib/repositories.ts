@@ -35,6 +35,7 @@ export const checkTitles: Record<string, string> = {
   status: "Post a status on it",
   "delete-branch": "Delete the branch",
   "branch-protection": "Read the branch protection",
+  pipelines: "Read the pipelines' runs",
 }
 
 /** isAdmin says whether the signed-in person administers repositories somewhere. */

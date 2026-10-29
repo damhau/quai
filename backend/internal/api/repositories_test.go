@@ -178,13 +178,21 @@ func TestRepositoryAccess(t *testing.T) {
 	}
 	var names []string
 	for _, c := range v.Checks {
-		if !c.OK {
+		if !c.OK && (c.Name != "pipelines" || c.Skipped != "the connection names no pipelines") {
 			t.Errorf("check %s: %+v", c.Name, c)
 		}
 		names = append(names, c.Name)
 	}
-	if !v.OK || strings.Join(names, ",") != "credentials,connector,read,push,pull-request,status,delete-branch,branch-protection" {
+	if !v.OK || strings.Join(names, ",") != "credentials,connector,read,push,pull-request,status,delete-branch,branch-protection,pipelines" {
 		t.Errorf("checks = %v, ok %v", names, v.OK)
+	}
+	// Pipelines named for a platform whose connector reads none.
+	withPipelines := map[string]any{"connector": "gitea", "url": r.CloneURL, "credentials": map[string]any{"ref": "env:GITEA_TOKEN"},
+		"runner": map[string]any{"pipelines": []map[string]any{{"name": "plan", "kind": "plan", "stacks": "envs/{env}"}}}}
+	var p AccessView
+	alice.do(http.MethodPost, Prefix+"/repository-access-tests", document("infra-two", withPipelines), &p)
+	if c := p.Checks[len(p.Checks)-1]; p.OK || c.Name != "pipelines" || !strings.Contains(c.Error, "the gitea connector reads none") {
+		t.Errorf("pipelines on Gitea = %+v", p.Checks)
 	}
 	if v.Scan == nil || !v.Scan.Found || v.Scan.Types == 0 {
 		t.Errorf("scan = %+v", v.Scan)
