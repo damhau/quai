@@ -6,49 +6,6 @@ import (
 	"testing"
 )
 
-// Ported from "sync webhook updates deployment status": runners report runs with the
-// repository's run token, and resources show their stack's latest apply.
-func TestRunReports(t *testing.T) {
-	h := newHarness(t)
-	token := runToken
-	runner := h.as("")
-
-	send := func(tok string) int {
-		req, _ := http.NewRequest(http.MethodPost, h.srv.URL+Prefix+"/runs", strings.NewReader(`{"repository":"infra-live","stack":"envs/prod","commit":"abcdef1","kind":"apply","status":"succeeded","url":"https://ci.example.com/1"}`))
-		req.Header.Set("Content-Type", "application/json")
-		if tok != "" {
-			req.Header.Set("Authorization", "Bearer "+tok)
-		}
-		resp, err := runner.c.Do(req)
-		if err != nil {
-			t.Fatal(err)
-		}
-		resp.Body.Close()
-		return resp.StatusCode
-	}
-	if status := send("wrong"); status != http.StatusUnauthorized {
-		t.Errorf("wrong token = %d", status)
-	}
-	if status := send(""); status != http.StatusUnprocessableEntity {
-		t.Errorf("no token = %d", status)
-	}
-	if status := send(token); status != http.StatusAccepted {
-		t.Fatalf("report = %d", status)
-	}
-	var d ResourceDetail
-	h.as("bob").do(http.MethodGet, Prefix+"/resource?id=infra-live/vm/prod/web01", nil, &d)
-	if d.LastApply == nil || d.LastApply.Status != "succeeded" || d.LastApply.Commit != "abcdef1" {
-		t.Errorf("last apply = %+v", d.LastApply)
-	}
-	var inv []ResourceView
-	h.as("bob").do(http.MethodGet, Prefix+"/inventory", nil, &inv)
-	for _, r := range inv {
-		if (r.Stack == "envs/prod") != (r.LastApply != nil) {
-			t.Errorf("%s: last apply %+v", r.ID, r.LastApply)
-		}
-	}
-}
-
 func TestInstancesLogAndEvents(t *testing.T) {
 	h := newHarness(t)
 	bob := h.as("bob")

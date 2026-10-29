@@ -4,7 +4,7 @@ import { sent, submitted, vm } from "./catalog"
 
 // A fake inventory: VM files as the vm type reads them, one of them not matching its schema.
 
-const run = { id: "r1", repository: "infra-live", stack: "envs/prod", commit: "abcdef1234", kind: "apply", status: "succeeded", summary: null, startedAt: "2026-10-27T09:00:00Z" }
+const run = { id: "r1", repository: "infra-live", stack: "envs/prod", commit: "abcdef1234", kind: "apply", status: "succeeded", startedAt: "2026-10-27T09:00:00Z" }
 
 export const resources: ResourceView[] = [
   { id: "infra-live/vm/prod/web01", repository: "infra-live", type: "vm", key: "prod/web01", path: "envs/prod/vms/web01.yaml", params: { env: "prod", name: "web01" }, owner: "bob", stack: "envs/prod", status: "conforming", lastApply: run },

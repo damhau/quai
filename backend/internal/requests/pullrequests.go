@@ -430,6 +430,9 @@ func (s *Service) merged(ctx context.Context, r db.Request, d db.Delivery, pr co
 		if err := q.SetDeliveryMerged(ctx, db.SetDeliveryMergedParams{RequestID: r.ID, MergeCommit: pr.MergeCommit}); err != nil {
 			return err
 		}
+		if err := q.SetChangeSetCommit(ctx, db.SetChangeSetCommitParams{RequestID: r.ID, Repository: d.Repository, Commit: pr.MergeCommit}); err != nil {
+			return err
+		}
 		if _, err := q.TransitionRequest(ctx, db.TransitionRequestParams{ID: r.ID, FromState: from, ToState: Applied}); err != nil {
 			return conflict(err, r)
 		}

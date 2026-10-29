@@ -3,8 +3,8 @@
 import { queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { cancelRequest, checkRepositoryEnforcement, createRepository, createToken, deleteRepository, generateRunToken, getBlueprint, getInstance, getMe, getMeta, getRepository, getRequest, getResource, getType, installRepositoryWebhook, listCatalog, listEvents, listInstances, listInventory, listRepositories, listRepositoryConnections, listRequests, listTokens, type Options, planBlueprint, planInstanceAction, planType, previewBlueprint, previewDefinitions, previewType, publishBlueprint, reportRun, repositoryCommit, repositoryHealth, repositoryLog, requestBlueprint, requestInstanceAction, requestType, retryRequest, reviewRequest, revokeToken, syncRepository, testRepositoryAccess, updateRepository } from '../sdk.gen';
-import type { CancelRequestData, CancelRequestError, CancelRequestResponse, CheckRepositoryEnforcementData, CheckRepositoryEnforcementError, CheckRepositoryEnforcementResponse, CreateRepositoryData, CreateRepositoryError, CreateRepositoryResponse, CreateTokenData, CreateTokenError, CreateTokenResponse, DeleteRepositoryData, DeleteRepositoryError, DeleteRepositoryResponse, GenerateRunTokenData, GenerateRunTokenError, GenerateRunTokenResponse, GetBlueprintData, GetBlueprintError, GetBlueprintResponse, GetInstanceData, GetInstanceError, GetInstanceResponse, GetMeData, GetMeError, GetMeResponse, GetMetaData, GetMetaError, GetMetaResponse, GetRepositoryData, GetRepositoryError, GetRepositoryResponse, GetRequestData, GetRequestError, GetRequestResponse, GetResourceData, GetResourceError, GetResourceResponse, GetTypeData, GetTypeError, GetTypeResponse, InstallRepositoryWebhookData, InstallRepositoryWebhookError, InstallRepositoryWebhookResponse, ListCatalogData, ListCatalogError, ListCatalogResponse, ListEventsData, ListEventsError, ListEventsResponse, ListInstancesData, ListInstancesError, ListInstancesResponse, ListInventoryData, ListInventoryError, ListInventoryResponse, ListRepositoriesData, ListRepositoriesError, ListRepositoriesResponse, ListRepositoryConnectionsData, ListRepositoryConnectionsError, ListRepositoryConnectionsResponse, ListRequestsData, ListRequestsError, ListRequestsResponse, ListTokensData, ListTokensError, ListTokensResponse, PlanBlueprintData, PlanBlueprintError, PlanBlueprintResponse, PlanInstanceActionData, PlanInstanceActionError, PlanInstanceActionResponse, PlanTypeData, PlanTypeError, PlanTypeResponse, PreviewBlueprintData, PreviewBlueprintError, PreviewBlueprintResponse, PreviewDefinitionsData, PreviewDefinitionsError, PreviewDefinitionsResponse, PreviewTypeData, PreviewTypeError, PreviewTypeResponse, PublishBlueprintData, PublishBlueprintError, PublishBlueprintResponse, ReportRunData, ReportRunError, ReportRunResponse, RepositoryCommitData, RepositoryCommitError, RepositoryCommitResponse, RepositoryHealthData, RepositoryHealthError, RepositoryHealthResponse, RepositoryLogData, RepositoryLogError, RepositoryLogResponse, RequestBlueprintData, RequestBlueprintError, RequestBlueprintResponse, RequestInstanceActionData, RequestInstanceActionError, RequestInstanceActionResponse, RequestTypeData, RequestTypeError, RequestTypeResponse, RetryRequestData, RetryRequestError, RetryRequestResponse, ReviewRequestData, ReviewRequestError, ReviewRequestResponse, RevokeTokenData, RevokeTokenError, RevokeTokenResponse, SyncRepositoryData, SyncRepositoryError, SyncRepositoryResponse, TestRepositoryAccessData, TestRepositoryAccessError, TestRepositoryAccessResponse, UpdateRepositoryData, UpdateRepositoryError, UpdateRepositoryResponse } from '../types.gen';
+import { cancelRequest, checkRepositoryEnforcement, createRepository, createToken, deleteRepository, generateRunToken, getBlueprint, getInstance, getMe, getMeta, getRepository, getRequest, getResource, getType, installRepositoryWebhook, listCatalog, listEvents, listInstances, listInventory, listRepositories, listRepositoryConnections, listRequests, listRuns, listTokens, type Options, planBlueprint, planInstanceAction, planType, previewBlueprint, previewDefinitions, previewType, publishBlueprint, reportRun, repositoryCommit, repositoryHealth, repositoryLog, requestBlueprint, requestInstanceAction, requestType, retryRequest, reviewRequest, revokeToken, syncRepository, testRepositoryAccess, updateRepository } from '../sdk.gen';
+import type { CancelRequestData, CancelRequestError, CancelRequestResponse, CheckRepositoryEnforcementData, CheckRepositoryEnforcementError, CheckRepositoryEnforcementResponse, CreateRepositoryData, CreateRepositoryError, CreateRepositoryResponse, CreateTokenData, CreateTokenError, CreateTokenResponse, DeleteRepositoryData, DeleteRepositoryError, DeleteRepositoryResponse, GenerateRunTokenData, GenerateRunTokenError, GenerateRunTokenResponse, GetBlueprintData, GetBlueprintError, GetBlueprintResponse, GetInstanceData, GetInstanceError, GetInstanceResponse, GetMeData, GetMeError, GetMeResponse, GetMetaData, GetMetaError, GetMetaResponse, GetRepositoryData, GetRepositoryError, GetRepositoryResponse, GetRequestData, GetRequestError, GetRequestResponse, GetResourceData, GetResourceError, GetResourceResponse, GetTypeData, GetTypeError, GetTypeResponse, InstallRepositoryWebhookData, InstallRepositoryWebhookError, InstallRepositoryWebhookResponse, ListCatalogData, ListCatalogError, ListCatalogResponse, ListEventsData, ListEventsError, ListEventsResponse, ListInstancesData, ListInstancesError, ListInstancesResponse, ListInventoryData, ListInventoryError, ListInventoryResponse, ListRepositoriesData, ListRepositoriesError, ListRepositoriesResponse, ListRepositoryConnectionsData, ListRepositoryConnectionsError, ListRepositoryConnectionsResponse, ListRequestsData, ListRequestsError, ListRequestsResponse, ListRunsData, ListRunsError, ListRunsResponse, ListTokensData, ListTokensError, ListTokensResponse, PlanBlueprintData, PlanBlueprintError, PlanBlueprintResponse, PlanInstanceActionData, PlanInstanceActionError, PlanInstanceActionResponse, PlanTypeData, PlanTypeError, PlanTypeResponse, PreviewBlueprintData, PreviewBlueprintError, PreviewBlueprintResponse, PreviewDefinitionsData, PreviewDefinitionsError, PreviewDefinitionsResponse, PreviewTypeData, PreviewTypeError, PreviewTypeResponse, PublishBlueprintData, PublishBlueprintError, PublishBlueprintResponse, ReportRunData, ReportRunError, ReportRunResponse, RepositoryCommitData, RepositoryCommitError, RepositoryCommitResponse, RepositoryHealthData, RepositoryHealthError, RepositoryHealthResponse, RepositoryLogData, RepositoryLogError, RepositoryLogResponse, RequestBlueprintData, RequestBlueprintError, RequestBlueprintResponse, RequestInstanceActionData, RequestInstanceActionError, RequestInstanceActionResponse, RequestTypeData, RequestTypeError, RequestTypeResponse, RetryRequestData, RetryRequestError, RetryRequestResponse, ReviewRequestData, ReviewRequestError, ReviewRequestResponse, RevokeTokenData, RevokeTokenError, RevokeTokenResponse, SyncRepositoryData, SyncRepositoryError, SyncRepositoryResponse, TestRepositoryAccessData, TestRepositoryAccessError, TestRepositoryAccessResponse, UpdateRepositoryData, UpdateRepositoryError, UpdateRepositoryResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -250,6 +250,24 @@ export const createRepositoryMutation = (options?: Partial<Options<CreateReposit
     };
     return mutationOptions;
 };
+
+export const listRunsQueryKey = (options: Options<ListRunsData>) => createQueryKey('listRuns', options);
+
+/**
+ * List a repository's runs, newest first
+ */
+export const listRunsOptions = (options: Options<ListRunsData>) => queryOptions<ListRunsResponse, ListRunsError, ListRunsResponse, ReturnType<typeof listRunsQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await listRuns({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: listRunsQueryKey(options)
+});
 
 /**
  * Disconnect a repository managed through the API; its requests and history stay
@@ -730,7 +748,9 @@ export const getResourceOptions = (options: Options<GetResourceData>) => queryOp
 });
 
 /**
- * Report a plan, apply, sync or drift run (runners)
+ * Report a plan, apply, sync or drift check (runners)
+ *
+ * A report continues the running run of the same repository, stack and kind that has the same url or, when either has none, the same commit and pull request; otherwise it is a new run.
  */
 export const reportRunMutation = (options?: Partial<Options<ReportRunData>>): UseMutationOptions<ReportRunResponse, ReportRunError, Options<ReportRunData>> => {
     const mutationOptions: UseMutationOptions<ReportRunResponse, ReportRunError, Options<ReportRunData>> = {

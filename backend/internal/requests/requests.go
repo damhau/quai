@@ -850,6 +850,10 @@ func (w *Worker) Work(ctx context.Context, job *river.Job[DeliverArgs]) error {
 		if _, err := repo.Snapshot(ctx, true); err != nil {
 			s.log.WarnContext(ctx, "refresh after commit", slog.Any("error", err))
 		}
+		// The commit that landed the change set, for the runs at it to find the request.
+		if err := s.store.SetChangeSetCommit(ctx, db.SetChangeSetCommitParams{RequestID: r.ID, Repository: cs.Repository, Commit: sha}); err != nil {
+			return err
+		}
 		// Without a runner, a merged change is final (docs/design/01: resources show In repo).
 		_, err = s.transition(ctx, r, Merging, Applied, "committed", map[string]any{"commit": sha})
 		return err

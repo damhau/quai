@@ -722,18 +722,43 @@ export type RuleView = {
     satisfied: boolean;
 };
 
+export type RunCost = {
+    currency: string;
+    monthlyDelta: number;
+};
+
 export type RunInputBody = {
     /**
      * A URL to the JSON Schema for this object.
      */
     readonly $schema?: string;
     commit: string;
-    kind: 'plan' | 'apply' | 'sync' | 'drift';
+    cost?: RunCost;
+    finishedAt?: string;
+    kind: 'plan' | 'apply' | 'sync' | 'drift-check';
+    policies?: Array<RunPolicy> | null;
+    /**
+     * The pull request the run is for, as the platform numbers it
+     */
+    pullRequest?: string;
     repository: string;
     stack: string;
+    startedAt?: string;
     status: 'running' | 'succeeded' | 'failed';
-    summary?: unknown;
+    summary?: RunSummary;
     url?: string;
+};
+
+export type RunPolicy = {
+    message?: string;
+    name: string;
+    result: 'passed' | 'warning' | 'failed';
+};
+
+export type RunSummary = {
+    add: number;
+    change: number;
+    destroy: number;
 };
 
 export type RunTokenView = {
@@ -757,13 +782,22 @@ export type RunView = {
      */
     readonly $schema?: string;
     commit: string;
+    cost?: RunCost;
+    finishedAt?: string;
     id: string;
     kind: string;
+    policies?: Array<RunPolicy> | null;
+    pullRequest?: string;
     repository: string;
+    /**
+     * The request the run belongs to: its pull request's, or the one whose merge commit it ran at
+     */
+    request?: string;
+    requestNumber?: number;
     stack: string;
     startedAt: string;
     status: string;
-    summary: unknown;
+    summary?: RunSummary;
     url?: string;
 };
 
@@ -1351,11 +1385,19 @@ export type ReviewInputBodyWritable = {
 
 export type RunInputBodyWritable = {
     commit: string;
-    kind: 'plan' | 'apply' | 'sync' | 'drift';
+    cost?: RunCost;
+    finishedAt?: string;
+    kind: 'plan' | 'apply' | 'sync' | 'drift-check';
+    policies?: Array<RunPolicy> | null;
+    /**
+     * The pull request the run is for, as the platform numbers it
+     */
+    pullRequest?: string;
     repository: string;
     stack: string;
+    startedAt?: string;
     status: 'running' | 'succeeded' | 'failed';
-    summary?: unknown;
+    summary?: RunSummary;
     url?: string;
 };
 
@@ -1372,13 +1414,22 @@ export type RunTokenViewWritable = {
 
 export type RunViewWritable = {
     commit: string;
+    cost?: RunCost;
+    finishedAt?: string;
     id: string;
     kind: string;
+    policies?: Array<RunPolicy> | null;
+    pullRequest?: string;
     repository: string;
+    /**
+     * The request the run belongs to: its pull request's, or the one whose merge commit it ran at
+     */
+    request?: string;
+    requestNumber?: number;
     stack: string;
     startedAt: string;
     status: string;
-    summary: unknown;
+    summary?: RunSummary;
     url?: string;
 };
 
@@ -1789,6 +1840,43 @@ export type CreateRepositoryResponses = {
 };
 
 export type CreateRepositoryResponse = CreateRepositoryResponses[keyof CreateRepositoryResponses];
+
+export type ListRunsData = {
+    body?: never;
+    path: {
+        name: string;
+    };
+    query?: {
+        /**
+         * Only this stack's runs
+         */
+        stack?: string;
+        /**
+         * Only runs of this kind
+         */
+        kind?: 'plan' | 'apply' | 'sync' | 'drift-check' | '';
+        limit?: number;
+    };
+    url: '/api/v1/repositories/{name}/runs';
+};
+
+export type ListRunsErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ListRunsError = ListRunsErrors[keyof ListRunsErrors];
+
+export type ListRunsResponses = {
+    /**
+     * OK
+     */
+    200: Array<RunView> | null;
+};
+
+export type ListRunsResponse = ListRunsResponses[keyof ListRunsResponses];
 
 export type DeleteRepositoryData = {
     body?: never;

@@ -20,8 +20,8 @@ and derived per resource, not reported per resource as in the prototype.
 
 ## Run report protocol
 
-Phase 0 records each report as a run and shows the latest apply of a resource's
-stack on the resource. The run token is configured per repository as its SHA-256, in hex
+Quai records each report as a run and shows the latest apply of a resource's stack on the
+resource. The run token is configured per repository as its SHA-256, in hex
 (`spec.runner.reportToken`, a reference to a secret holding the hash: Quai never stores the
 token itself). `POST /api/v1/repositories/{name}/run-token` generates one.
 
@@ -54,6 +54,10 @@ Content-Type: application/json
 }
 ```
 
+- `kind` is `plan`, `apply`, `sync` or `drift-check`; `status` is `running`, `succeeded` or `failed`. `pullRequest`, the times, `url`, `summary`, `policies` (each `passed`, `warning` or `failed`) and `cost` (an ISO 4217 currency) are optional; without `startedAt`, a run starts when Quai receives its first report, and without `finishedAt` it finishes when Quai receives the result.
+- **One run, several reports.** A report continues the running run of the same repository, stack and kind that has the same `url` or, when either has no `url`, the same commit and pull request: a runner reports `running` when it starts and the result when it ends, and Quai keeps one run. Anything else is a new run. What a later report leaves out (`url`, `summary`, `policies`, `cost`, `startedAt`) is kept.
+- **The request.** A run belongs to the request whose pull request it names, or else to the request whose change set its commit landed (the direct commit, or the pull request's merge commit; an abbreviated commit matches by prefix).
+- `GET /api/v1/repositories/{name}/runs` lists a repository's runs, newest first, narrowed by `stack` and `kind`.
 - `plan.ref` is optional. When present, the runner uploads the `terraform show -json` output (or Quai fetches it from the CI artifact), and Quai maps resource changes to Quai resources through each type's `address` pattern, using `hashicorp/terraform-json`.
 - Plan JSON can contain sensitive values. Quai stores only addresses, actions and changed attribute names by default; attribute values are kept only for attributes marked non-sensitive, and only if the repository opts in.
 - The same CLI binary provides `quai report`, a step customers drop into any pipeline: it reads the plan file and posts the report.

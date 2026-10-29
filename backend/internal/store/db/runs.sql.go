@@ -10,12 +10,13 @@ import (
 	"encoding/json"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const finishRun = `-- name: FinishRun :one
 UPDATE runs SET status = $2, summary = $3, finished_at = now()
 WHERE id = $1 AND status = 'running'
-RETURNING id, org_id, repository, stack, commit, kind, status, url, summary, started_at, finished_at
+RETURNING id, org_id, repository, stack, commit, kind, status, url, summary, started_at, finished_at, pull_request, request_id, policies, cost
 `
 
 type FinishRunParams struct {
@@ -39,12 +40,81 @@ func (q *Queries) FinishRun(ctx context.Context, arg FinishRunParams) (Run, erro
 		&i.Summary,
 		&i.StartedAt,
 		&i.FinishedAt,
+		&i.PullRequest,
+		&i.RequestID,
+		&i.Policies,
+		&i.Cost,
+	)
+	return i, err
+}
+
+const insertRun = `-- name: InsertRun :one
+INSERT INTO runs (id, repository, stack, commit, kind, status, url, pull_request, request_id, summary, policies, cost,
+                  started_at, finished_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7,
+        $8, $9, $10, $11, $12,
+        COALESCE($13::timestamptz, now()),
+        CASE WHEN $6 = 'running' THEN NULL ELSE COALESCE($14::timestamptz, now()) END)
+RETURNING id, org_id, repository, stack, commit, kind, status, url, summary, started_at, finished_at, pull_request, request_id, policies, cost
+`
+
+type InsertRunParams struct {
+	ID          uuid.UUID
+	Repository  string
+	Stack       string
+	Commit      string
+	Kind        string
+	Status      string
+	Url         string
+	PullRequest string
+	RequestID   pgtype.UUID
+	Summary     json.RawMessage
+	Policies    json.RawMessage
+	Cost        json.RawMessage
+	StartedAt   pgtype.Timestamptz
+	FinishedAt  pgtype.Timestamptz
+}
+
+func (q *Queries) InsertRun(ctx context.Context, arg InsertRunParams) (Run, error) {
+	row := q.db.QueryRow(ctx, insertRun,
+		arg.ID,
+		arg.Repository,
+		arg.Stack,
+		arg.Commit,
+		arg.Kind,
+		arg.Status,
+		arg.Url,
+		arg.PullRequest,
+		arg.RequestID,
+		arg.Summary,
+		arg.Policies,
+		arg.Cost,
+		arg.StartedAt,
+		arg.FinishedAt,
+	)
+	var i Run
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Repository,
+		&i.Stack,
+		&i.Commit,
+		&i.Kind,
+		&i.Status,
+		&i.Url,
+		&i.Summary,
+		&i.StartedAt,
+		&i.FinishedAt,
+		&i.PullRequest,
+		&i.RequestID,
+		&i.Policies,
+		&i.Cost,
 	)
 	return i, err
 }
 
 const latestRun = `-- name: LatestRun :one
-SELECT id, org_id, repository, stack, commit, kind, status, url, summary, started_at, finished_at FROM runs
+SELECT id, org_id, repository, stack, commit, kind, status, url, summary, started_at, finished_at, pull_request, request_id, policies, cost FROM runs
 WHERE repository = $1 AND stack = $2 AND kind = $3
 ORDER BY started_at DESC, id
 LIMIT 1
@@ -71,38 +141,102 @@ func (q *Queries) LatestRun(ctx context.Context, arg LatestRunParams) (Run, erro
 		&i.Summary,
 		&i.StartedAt,
 		&i.FinishedAt,
+		&i.PullRequest,
+		&i.RequestID,
+		&i.Policies,
+		&i.Cost,
 	)
 	return i, err
 }
 
-const reportRun = `-- name: ReportRun :one
-INSERT INTO runs (id, repository, stack, commit, kind, status, url, summary, finished_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CASE WHEN $6 = 'running' THEN NULL ELSE now() END)
-RETURNING id, org_id, repository, stack, commit, kind, status, url, summary, started_at, finished_at
+const listRuns = `-- name: ListRuns :many
+SELECT id, org_id, repository, stack, commit, kind, status, url, summary, started_at, finished_at, pull_request, request_id, policies, cost FROM runs
+WHERE repository = $1
+  AND ($2::text = '' OR stack = $2::text)
+  AND ($3::text = '' OR kind = $3::text)
+ORDER BY started_at DESC, id
+LIMIT $4
 `
 
-type ReportRunParams struct {
-	ID         uuid.UUID
+type ListRunsParams struct {
 	Repository string
 	Stack      string
-	Commit     string
 	Kind       string
-	Status     string
-	Url        string
-	Summary    json.RawMessage
+	MaxRows    int32
 }
 
-// A run report from a runner, recorded as it is: running, or finished.
-func (q *Queries) ReportRun(ctx context.Context, arg ReportRunParams) (Run, error) {
-	row := q.db.QueryRow(ctx, reportRun,
-		arg.ID,
+// A repository's runs, newest first; stack and kind narrow them when given.
+func (q *Queries) ListRuns(ctx context.Context, arg ListRunsParams) ([]Run, error) {
+	rows, err := q.db.Query(ctx, listRuns,
 		arg.Repository,
 		arg.Stack,
-		arg.Commit,
 		arg.Kind,
-		arg.Status,
+		arg.MaxRows,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Run{}
+	for rows.Next() {
+		var i Run
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.Repository,
+			&i.Stack,
+			&i.Commit,
+			&i.Kind,
+			&i.Status,
+			&i.Url,
+			&i.Summary,
+			&i.StartedAt,
+			&i.FinishedAt,
+			&i.PullRequest,
+			&i.RequestID,
+			&i.Policies,
+			&i.Cost,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const runningRun = `-- name: RunningRun :one
+SELECT id, org_id, repository, stack, commit, kind, status, url, summary, started_at, finished_at, pull_request, request_id, policies, cost FROM runs
+WHERE repository = $1 AND stack = $2 AND kind = $3 AND status = 'running'
+  AND (($4::text <> '' AND url = $4::text)
+    OR ((url = '' OR $4::text = '') AND commit = $5 AND pull_request = $6))
+ORDER BY started_at DESC, id
+LIMIT 1
+FOR UPDATE
+`
+
+type RunningRunParams struct {
+	Repository  string
+	Stack       string
+	Kind        string
+	Url         string
+	Commit      string
+	PullRequest string
+}
+
+// The running run a report continues (docs/design/06-runs-status-and-drift.md#run-report-protocol):
+// same repository, stack and kind, and the same url, or, when either has none, the same commit
+// and pull request.
+func (q *Queries) RunningRun(ctx context.Context, arg RunningRunParams) (Run, error) {
+	row := q.db.QueryRow(ctx, runningRun,
+		arg.Repository,
+		arg.Stack,
+		arg.Kind,
 		arg.Url,
-		arg.Summary,
+		arg.Commit,
+		arg.PullRequest,
 	)
 	var i Run
 	err := row.Scan(
@@ -117,6 +251,10 @@ func (q *Queries) ReportRun(ctx context.Context, arg ReportRunParams) (Run, erro
 		&i.Summary,
 		&i.StartedAt,
 		&i.FinishedAt,
+		&i.PullRequest,
+		&i.RequestID,
+		&i.Policies,
+		&i.Cost,
 	)
 	return i, err
 }
@@ -124,7 +262,7 @@ func (q *Queries) ReportRun(ctx context.Context, arg ReportRunParams) (Run, erro
 const startRun = `-- name: StartRun :one
 INSERT INTO runs (id, repository, stack, commit, kind, status, url)
 VALUES ($1, $2, $3, $4, $5, 'running', $6)
-RETURNING id, org_id, repository, stack, commit, kind, status, url, summary, started_at, finished_at
+RETURNING id, org_id, repository, stack, commit, kind, status, url, summary, started_at, finished_at, pull_request, request_id, policies, cost
 `
 
 type StartRunParams struct {
@@ -158,6 +296,71 @@ func (q *Queries) StartRun(ctx context.Context, arg StartRunParams) (Run, error)
 		&i.Summary,
 		&i.StartedAt,
 		&i.FinishedAt,
+		&i.PullRequest,
+		&i.RequestID,
+		&i.Policies,
+		&i.Cost,
+	)
+	return i, err
+}
+
+const updateRun = `-- name: UpdateRun :one
+UPDATE runs SET
+    status       = $1,
+    url          = CASE WHEN $2::text <> '' THEN $2::text ELSE url END,
+    request_id   = COALESCE(request_id, $3::uuid),
+    summary      = CASE WHEN $4::jsonb <> '{}' THEN $4::jsonb ELSE summary END,
+    policies     = CASE WHEN $5::jsonb <> '[]' THEN $5::jsonb ELSE policies END,
+    cost         = CASE WHEN $6::jsonb <> '{}' THEN $6::jsonb ELSE cost END,
+    started_at   = COALESCE($7::timestamptz, started_at),
+    finished_at  = CASE WHEN $1 = 'running' THEN NULL ELSE COALESCE($8::timestamptz, now()) END
+WHERE id = $9
+RETURNING id, org_id, repository, stack, commit, kind, status, url, summary, started_at, finished_at, pull_request, request_id, policies, cost
+`
+
+type UpdateRunParams struct {
+	Status     string
+	Url        string
+	RequestID  pgtype.UUID
+	Summary    json.RawMessage
+	Policies   json.RawMessage
+	Cost       json.RawMessage
+	StartedAt  pgtype.Timestamptz
+	FinishedAt pgtype.Timestamptz
+	ID         uuid.UUID
+}
+
+// A later report of a running run: what it says replaces what the run had, and what it leaves
+// out is kept.
+func (q *Queries) UpdateRun(ctx context.Context, arg UpdateRunParams) (Run, error) {
+	row := q.db.QueryRow(ctx, updateRun,
+		arg.Status,
+		arg.Url,
+		arg.RequestID,
+		arg.Summary,
+		arg.Policies,
+		arg.Cost,
+		arg.StartedAt,
+		arg.FinishedAt,
+		arg.ID,
+	)
+	var i Run
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Repository,
+		&i.Stack,
+		&i.Commit,
+		&i.Kind,
+		&i.Status,
+		&i.Url,
+		&i.Summary,
+		&i.StartedAt,
+		&i.FinishedAt,
+		&i.PullRequest,
+		&i.RequestID,
+		&i.Policies,
+		&i.Cost,
 	)
 	return i, err
 }

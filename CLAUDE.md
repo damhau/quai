@@ -14,9 +14,9 @@ every request becomes a reviewed change in their Git repositories. Start with
   milestones M1–M3 and labelled `phase:N`, `type:task` / `type:epic`, `area:*`. GitHub is the only
   task list. Phase 0 tasks were issues #1–#29 (`P0-NN` is `#NN`). Phase 1 tasks are issues
   #77–#99, titled `P1-NN` (`P1-NN` is `#(76+NN)`). Phase 2 tasks are issues #101–#113, titled
-  `P2-NN` (`P2-NN` is `#(99+NN)`; P2-01, #100, moved to Phase 4); how an iteration works, the test infrastructure (Gitea, envtest,
-  kind, the Azure DevOps sandbox, recorded Terraform plans) and when to stop are in
-  [`docs/plan/phase-2-backlog.md`](docs/plan/phase-2-backlog.md).
+  `P2-NN` (`P2-NN` is `#(99+NN)`; P2-01, #100, moved to Phase 4); how an iteration works, the
+  test infrastructure (Gitea, envtest, kind, the Azure DevOps sandbox, recorded Terraform plans)
+  and when to stop are in [`docs/plan/phase-2-backlog.md`](docs/plan/phase-2-backlog.md).
 
 ## Rules
 

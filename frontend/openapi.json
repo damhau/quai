@@ -2167,6 +2167,24 @@
         ],
         "type": "object"
       },
+      "RunCost": {
+        "additionalProperties": false,
+        "properties": {
+          "currency": {
+            "pattern": "^[A-Z]{3}$",
+            "type": "string"
+          },
+          "monthlyDelta": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "currency",
+          "monthlyDelta"
+        ],
+        "type": "object"
+      },
       "RunInputBody": {
         "additionalProperties": false,
         "properties": {
@@ -2183,19 +2201,43 @@
             "pattern": "^[0-9a-f]{7,64}$",
             "type": "string"
           },
+          "cost": {
+            "$ref": "#/components/schemas/RunCost"
+          },
+          "finishedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
           "kind": {
             "enum": [
               "plan",
               "apply",
               "sync",
-              "drift"
+              "drift-check"
             ],
+            "type": "string"
+          },
+          "policies": {
+            "items": {
+              "$ref": "#/components/schemas/RunPolicy"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "pullRequest": {
+            "description": "The pull request the run is for, as the platform numbers it",
             "type": "string"
           },
           "repository": {
             "type": "string"
           },
           "stack": {
+            "type": "string"
+          },
+          "startedAt": {
+            "format": "date-time",
             "type": "string"
           },
           "status": {
@@ -2206,7 +2248,9 @@
             ],
             "type": "string"
           },
-          "summary": {},
+          "summary": {
+            "$ref": "#/components/schemas/RunSummary"
+          },
           "url": {
             "format": "uri",
             "type": "string"
@@ -2218,6 +2262,57 @@
           "commit",
           "kind",
           "status"
+        ],
+        "type": "object"
+      },
+      "RunPolicy": {
+        "additionalProperties": false,
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "name": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "result": {
+            "enum": [
+              "passed",
+              "warning",
+              "failed"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "result"
+        ],
+        "type": "object"
+      },
+      "RunSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "add": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "change": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "destroy": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "add",
+          "change",
+          "destroy"
         ],
         "type": "object"
       },
@@ -2263,14 +2358,41 @@
           "commit": {
             "type": "string"
           },
+          "cost": {
+            "$ref": "#/components/schemas/RunCost"
+          },
+          "finishedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
           "id": {
             "type": "string"
           },
           "kind": {
             "type": "string"
           },
+          "policies": {
+            "items": {
+              "$ref": "#/components/schemas/RunPolicy"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "pullRequest": {
+            "type": "string"
+          },
           "repository": {
             "type": "string"
+          },
+          "request": {
+            "description": "The request the run belongs to: its pull request's, or the one whose merge commit it ran at",
+            "type": "string"
+          },
+          "requestNumber": {
+            "format": "int64",
+            "type": "integer"
           },
           "stack": {
             "type": "string"
@@ -2282,7 +2404,9 @@
           "status": {
             "type": "string"
           },
-          "summary": {},
+          "summary": {
+            "$ref": "#/components/schemas/RunSummary"
+          },
           "url": {
             "type": "string"
           }
@@ -2294,7 +2418,6 @@
           "commit",
           "kind",
           "status",
-          "summary",
           "startedAt"
         ],
         "type": "object"
@@ -3367,6 +3490,92 @@
         "summary": "Connect a repository",
         "tags": [
           "Repositories"
+        ]
+      }
+    },
+    "/api/v1/repositories/{name}/runs": {
+      "get": {
+        "operationId": "list-runs",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only this stack's runs",
+            "explode": false,
+            "in": "query",
+            "name": "stack",
+            "schema": {
+              "description": "Only this stack's runs",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only runs of this kind",
+            "explode": false,
+            "in": "query",
+            "name": "kind",
+            "schema": {
+              "description": "Only runs of this kind",
+              "enum": [
+                "plan",
+                "apply",
+                "sync",
+                "drift-check",
+                ""
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 100,
+              "format": "int64",
+              "maximum": 500,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RunView"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List a repository's runs, newest first",
+        "tags": [
+          "Runs"
         ]
       }
     },
@@ -4649,6 +4858,7 @@
     },
     "/api/v1/runs": {
       "post": {
+        "description": "A report continues the running run of the same repository, stack and kind that has the same url or, when either has none, the same commit and pull request; otherwise it is a new run.",
         "operationId": "report-run",
         "parameters": [
           {
@@ -4694,7 +4904,7 @@
             "description": "Error"
           }
         },
-        "summary": "Report a plan, apply, sync or drift run (runners)",
+        "summary": "Report a plan, apply, sync or drift check (runners)",
         "tags": [
           "Runs"
         ]

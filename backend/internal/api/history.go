@@ -2,10 +2,6 @@ package api
 
 import (
 	"context"
-	"crypto/sha256"
-	"crypto/subtle"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -13,12 +9,10 @@ import (
 	"net/http"
 	"path"
 	"slices"
-	"strings"
 	"testing/fstest"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
-	"github.com/google/uuid"
 
 	"github.com/damhau/quai/backend/internal/auth"
 	"github.com/damhau/quai/backend/internal/authz"
@@ -31,7 +25,6 @@ import (
 	"github.com/damhau/quai/backend/internal/jobs"
 	"github.com/damhau/quai/backend/internal/repositories"
 	"github.com/damhau/quai/backend/internal/store"
-	"github.com/damhau/quai/backend/internal/store/db"
 )
 
 // InstanceResource is one resource of a blueprint instance, as it is now.
@@ -62,19 +55,6 @@ type CommitText struct {
 	Text string `json:"text"`
 }
 
-// RunView is a run reported by a runner.
-type RunView struct {
-	ID         string          `json:"id"`
-	Repository string          `json:"repository"`
-	Stack      string          `json:"stack"`
-	Commit     string          `json:"commit"`
-	Kind       string          `json:"kind"`
-	Status     string          `json:"status"`
-	URL        string          `json:"url,omitempty"`
-	Summary    json.RawMessage `json:"summary"`
-	StartedAt  time.Time       `json:"startedAt"`
-}
-
 type logInput struct {
 	Repository string `path:"repository"`
 	Path       string `query:"path"`
@@ -90,19 +70,6 @@ type instanceInput struct {
 	Repository string `path:"repository"`
 	Blueprint  string `path:"blueprint"`
 	Name       string `path:"name"`
-}
-
-type runInput struct {
-	Authorization string `header:"Authorization" required:"true" doc:"Bearer and the repository's run token"`
-	Body          struct {
-		Repository string          `json:"repository"`
-		Stack      string          `json:"stack"`
-		Commit     string          `json:"commit" pattern:"^[0-9a-f]{7,64}$"`
-		Kind       string          `json:"kind" enum:"plan,apply,sync,drift"`
-		Status     string          `json:"status" enum:"running,succeeded,failed"`
-		URL        string          `json:"url,omitempty" format:"uri"`
-		Summary    json.RawMessage `json:"summary,omitempty"`
-	}
 }
 
 type publishInput struct {
@@ -236,39 +203,6 @@ func registerHistory(a huma.API, reg *repositories.Registry, s *store.Store) {
 		return &out[[]EventView]{Body: views}, nil
 	})
 
-	// authz: public — runners authenticate with the repository's run token, checked here.
-	// The path is auth.RunsPath.
-	huma.Register(a, huma.Operation{
-		OperationID: "report-run", Method: http.MethodPost, Path: Prefix + "/runs",
-		Summary: "Report a plan, apply, sync or drift run (runners)", Tags: []string{"Runs"}, DefaultStatus: http.StatusAccepted,
-	}, func(ctx context.Context, in *runInput) (*out[RunView], error) {
-		repo, err := reg.Get(in.Body.Repository)
-		if err != nil {
-			return nil, huma.Error401Unauthorized("invalid run token")
-		}
-		token, _ := strings.CutPrefix(in.Authorization, "Bearer ")
-		want, ok, err := repo.RunToken(ctx)
-		if err != nil {
-			return nil, err
-		}
-		// The secret holds the token's SHA-256 in hex (docs/design/06-runs-status-and-drift.md),
-		// never the token: what is sent is hashed and compared in constant time.
-		sent := sha256.Sum256([]byte(token))
-		if !ok || subtle.ConstantTimeCompare([]byte(hex.EncodeToString(sent[:])), []byte(strings.ToLower(strings.TrimSpace(want.Reveal())))) != 1 {
-			return nil, huma.Error401Unauthorized("invalid run token")
-		}
-		summary := in.Body.Summary
-		if len(summary) == 0 {
-			summary = json.RawMessage(`{}`)
-		}
-		r, err := s.ReportRun(ctx, db.ReportRunParams{ID: uuid.New(), Repository: repo.Name, Stack: in.Body.Stack, Commit: in.Body.Commit,
-			Kind: in.Body.Kind, Status: in.Body.Status, Url: in.Body.URL, Summary: summary})
-		if err != nil {
-			return nil, err
-		}
-		return &out[RunView]{Body: runView(r)}, nil
-	})
-
 	huma.Register(a, huma.Operation{
 		OperationID: "publish-blueprint", Method: http.MethodPut, Path: Prefix + "/repositories/{repository}/blueprints/{name}",
 		Summary: "Publish a blueprint from the designer", Tags: []string{"Catalog"},
@@ -381,9 +315,4 @@ func instances(snap *repositories.Snapshot) []InstanceView {
 		views = append(views, v)
 	}
 	return views
-}
-
-func runView(r db.Run) RunView {
-	return RunView{ID: r.ID.String(), Repository: r.Repository, Stack: r.Stack, Commit: r.Commit, Kind: r.Kind, Status: r.Status,
-		URL: r.Url, Summary: r.Summary, StartedAt: r.StartedAt.Time}
 }

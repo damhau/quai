@@ -40,6 +40,7 @@ type ChangeSet struct {
 	Hash         string
 	Fingerprints json.RawMessage
 	CreatedAt    pgtype.Timestamptz
+	Commit       string
 }
 
 type DefinitionSet struct {
@@ -133,17 +134,21 @@ type Review struct {
 }
 
 type Run struct {
-	ID         uuid.UUID
-	OrgID      string
-	Repository string
-	Stack      string
-	Commit     string
-	Kind       string
-	Status     string
-	Url        string
-	Summary    json.RawMessage
-	StartedAt  pgtype.Timestamptz
-	FinishedAt pgtype.Timestamptz
+	ID          uuid.UUID
+	OrgID       string
+	Repository  string
+	Stack       string
+	Commit      string
+	Kind        string
+	Status      string
+	Url         string
+	Summary     json.RawMessage
+	StartedAt   pgtype.Timestamptz
+	FinishedAt  pgtype.Timestamptz
+	PullRequest string
+	RequestID   pgtype.UUID
+	Policies    json.RawMessage
+	Cost        json.RawMessage
 }
 
 type Session struct {

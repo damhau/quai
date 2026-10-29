@@ -39,7 +39,7 @@ func (q *Queries) CreateChange(ctx context.Context, arg CreateChangeParams) erro
 const createChangeSet = `-- name: CreateChangeSet :one
 INSERT INTO change_sets (id, request_id, repository, hash, fingerprints)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, request_id, repository, hash, fingerprints, created_at
+RETURNING id, request_id, repository, hash, fingerprints, created_at, commit
 `
 
 type CreateChangeSetParams struct {
@@ -66,6 +66,7 @@ func (q *Queries) CreateChangeSet(ctx context.Context, arg CreateChangeSetParams
 		&i.Hash,
 		&i.Fingerprints,
 		&i.CreatedAt,
+		&i.Commit,
 	)
 	return i, err
 }
@@ -80,7 +81,7 @@ func (q *Queries) DeleteChanges(ctx context.Context, changeSetID uuid.UUID) erro
 }
 
 const listChangeSets = `-- name: ListChangeSets :many
-SELECT id, request_id, repository, hash, fingerprints, created_at FROM change_sets WHERE request_id = $1 ORDER BY repository
+SELECT id, request_id, repository, hash, fingerprints, created_at, commit FROM change_sets WHERE request_id = $1 ORDER BY repository
 `
 
 func (q *Queries) ListChangeSets(ctx context.Context, requestID uuid.UUID) ([]ChangeSet, error) {
@@ -99,6 +100,7 @@ func (q *Queries) ListChangeSets(ctx context.Context, requestID uuid.UUID) ([]Ch
 			&i.Hash,
 			&i.Fingerprints,
 			&i.CreatedAt,
+			&i.Commit,
 		); err != nil {
 			return nil, err
 		}
@@ -138,6 +140,42 @@ func (q *Queries) ListChanges(ctx context.Context, changeSetID uuid.UUID) ([]Cha
 		return nil, err
 	}
 	return items, nil
+}
+
+const requestAtCommit = `-- name: RequestAtCommit :one
+SELECT request_id FROM change_sets
+WHERE repository = $1 AND commit <> '' AND left(commit, length($2::text)) = $2::text
+ORDER BY created_at DESC
+LIMIT 1
+`
+
+type RequestAtCommitParams struct {
+	Repository string
+	Commit     string
+}
+
+// The request whose change set a commit landed; commit may be abbreviated.
+func (q *Queries) RequestAtCommit(ctx context.Context, arg RequestAtCommitParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, requestAtCommit, arg.Repository, arg.Commit)
+	var request_id uuid.UUID
+	err := row.Scan(&request_id)
+	return request_id, err
+}
+
+const setChangeSetCommit = `-- name: SetChangeSetCommit :exec
+UPDATE change_sets SET commit = $3 WHERE request_id = $1 AND repository = $2
+`
+
+type SetChangeSetCommitParams struct {
+	RequestID  uuid.UUID
+	Repository string
+	Commit     string
+}
+
+// The commit that landed a change set: the direct commit, or the pull request's merge commit.
+func (q *Queries) SetChangeSetCommit(ctx context.Context, arg SetChangeSetCommitParams) error {
+	_, err := q.db.Exec(ctx, setChangeSetCommit, arg.RequestID, arg.Repository, arg.Commit)
+	return err
 }
 
 const setChangeSetHash = `-- name: SetChangeSetHash :exec
