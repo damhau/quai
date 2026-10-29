@@ -9,7 +9,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { ago, shortSha } from "@/lib/format"
+import { ago, shortSha, webURL } from "@/lib/format"
 import { eventText, requestTitle } from "@/lib/requests"
 import { openStates } from "@/lib/resources"
 
@@ -179,11 +179,11 @@ function ResourcePage() {
               {r.lastApply ? (
                 <p>
                   <Badge variant="outline">{r.lastApply.status}</Badge> {r.lastApply.kind} of {shortSha(r.lastApply.commit)} {ago(r.lastApply.startedAt)}
-                  {r.lastApply.url && (
+                  {webURL(r.lastApply.url) && (
                     <>
                       {" "}
                       ·{" "}
-                      <a href={r.lastApply.url} className="underline" rel="noreferrer" target="_blank">
+                      <a href={webURL(r.lastApply.url)} className="underline" rel="noreferrer" target="_blank">
                         run
                       </a>
                     </>

@@ -1,5 +1,5 @@
 import type { EventView, RequestView } from "@/api/generated/types.gen"
-import { shortSha } from "@/lib/format"
+import { shortSha, webURL } from "@/lib/format"
 
 // How requests read in the UI. States and event kinds are those of backend/internal/requests.
 
@@ -56,7 +56,7 @@ function planText(d: unknown): string {
 
 /** runURL is the page of the run an event names, if any. */
 export function runURL(e: EventView): string | undefined {
-  return str(e.data, "url")
+  return webURL(str(e.data, "url"))
 }
 
 /** planDecisions says which rules a plan made apply, from a plan_decided event. */

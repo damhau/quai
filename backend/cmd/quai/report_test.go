@@ -11,9 +11,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
+
+	"go.yaml.in/yaml/v3"
 
 	"github.com/damhau/quai/backend/internal/config"
 	"github.com/damhau/quai/backend/internal/pgtest"
@@ -209,5 +212,39 @@ func TestReportRetries(t *testing.T) {
 	err := o.run(t.Context(), io.Discard, env(map[string]string{"QUAI_URL": "http://" + addr, "QUAI_REPOSITORY": "infra-live", "QUAI_RUN_TOKEN": "t"}))
 	if err == nil || !strings.Contains(err.Error(), "could not reach Quai") {
 		t.Errorf("unreachable = %v", err)
+	}
+}
+
+// TestRunnerTemplates: the CI templates of deploy/runners parse, and call quai report with flags
+// it has.
+func TestRunnerTemplates(t *testing.T) {
+	flag := regexp.MustCompile(`--([a-z][a-z-]*)`)
+	for _, file := range []string{"azure-pipelines/quai-report.yml", "github-actions/action.yml", "gitlab-ci/quai-report.yml"} {
+		b, err := os.ReadFile("../../../deploy/runners/" + file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var doc map[string]any
+		if err := yaml.Unmarshal(b, &doc); err != nil || len(doc) == 0 {
+			t.Errorf("%s: %v", file, err)
+		}
+		cmd := newReportCmd()
+		seen := map[string]bool{}
+		for _, line := range strings.Split(string(b), "\n") {
+			if strings.HasPrefix(strings.TrimSpace(line), "#") || !strings.Contains(line, "report") && !strings.Contains(line, "args+=") {
+				continue
+			}
+			for _, m := range flag.FindAllStringSubmatch(line, -1) {
+				seen[m[1]] = true
+				if cmd.Flags().Lookup(m[1]) == nil {
+					t.Errorf("%s: quai report has no --%s", file, m[1])
+				}
+			}
+		}
+		for _, required := range []string{"stack", "kind", "status", "plan"} {
+			if !seen[required] {
+				t.Errorf("%s: no --%s", file, required)
+			}
+		}
 	}
 }

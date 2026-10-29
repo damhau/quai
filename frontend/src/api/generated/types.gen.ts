@@ -2882,6 +2882,49 @@ export type ReportRunResponses = {
 
 export type ReportRunResponse = ReportRunResponses[keyof ReportRunResponses];
 
+export type ReportFluxEventData = {
+    /**
+     * The Flux event (event.Event): involvedObject, severity, reason, metadata.revision; other fields are ignored
+     */
+    body: unknown;
+    headers: {
+        /**
+         * Bearer and the repository's run token
+         */
+        Authorization: string;
+    };
+    path?: never;
+    query: {
+        /**
+         * The repository's name in Quai
+         */
+        repository: string;
+        /**
+         * The stack; the event's object (<namespace>/<name>) otherwise
+         */
+        stack?: string;
+    };
+    url: '/api/v1/runs/flux';
+};
+
+export type ReportFluxEventErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ReportFluxEventError = ReportFluxEventErrors[keyof ReportFluxEventErrors];
+
+export type ReportFluxEventResponses = {
+    /**
+     * Accepted
+     */
+    202: RunView;
+};
+
+export type ReportFluxEventResponse = ReportFluxEventResponses[keyof ReportFluxEventResponses];
+
 export type ListTokensData = {
     body?: never;
     path?: never;

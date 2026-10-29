@@ -1,0 +1,28 @@
+# Plans envs/prod on each pull request to main and reports the plan to Quai: a "Build
+# validation" branch policy runs it, and spec.runner.pipelines names it (kind: plan).
+trigger: none
+pr: none # run by the branch policy
+
+resources:
+  repositories:
+    - repository: quai
+      type: github
+      name: damhau/quai
+      endpoint: github # a GitHub service connection
+
+variables:
+  - group: quai # quaiUrl, quaiRepository and the secret quaiRunToken
+
+pool:
+  vmImage: ubuntu-latest
+
+steps:
+  - checkout: self
+  - script: |
+      set -euo pipefail
+      terraform -chdir=envs/prod init -input=false
+      terraform -chdir=envs/prod plan -input=false -out=tfplan
+      terraform -chdir=envs/prod show -json tfplan > plan.json
+    displayName: terraform plan
+  - template: deploy/runners/azure-pipelines/quai-report.yml@quai
+    parameters: { stack: envs/prod, kind: plan, plan: plan.json }

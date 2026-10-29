@@ -7,8 +7,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -152,20 +154,9 @@ func registerRuns(a huma.API, reg *repositories.Registry, s *store.Store, svc *r
 		Description: "A report continues the running run of the same repository, stack and kind that has the same url or, when " +
 			"either has none, the same commit and pull request; otherwise it is a new run.",
 	}, func(ctx context.Context, in *runInput) (*out[RunView], error) {
-		repo, err := reg.Get(in.Body.Repository)
-		if err != nil {
-			return nil, huma.Error401Unauthorized("invalid run token")
-		}
-		token, _ := strings.CutPrefix(in.Authorization, "Bearer ")
-		want, ok, err := repo.RunToken(ctx)
+		repo, err := runTokenRepo(ctx, reg, in.Body.Repository, in.Authorization)
 		if err != nil {
 			return nil, err
-		}
-		// The secret holds the token's SHA-256 in hex (docs/design/06-runs-status-and-drift.md),
-		// never the token: what is sent is hashed and compared in constant time.
-		sent := sha256.Sum256([]byte(token))
-		if !ok || subtle.ConstantTimeCompare([]byte(hex.EncodeToString(sent[:])), []byte(strings.ToLower(strings.TrimSpace(want.Reveal())))) != 1 {
-			return nil, huma.Error401Unauthorized("invalid run token")
 		}
 		if s == nil {
 			return nil, huma.Error503ServiceUnavailable("no database")
@@ -182,6 +173,43 @@ func registerRuns(a huma.API, reg *repositories.Registry, s *store.Store, svc *r
 			}
 		}
 		return &out[RunView]{Body: runView(r)}, nil
+	})
+
+	// authz: public — Flux authenticates with the repository's run token, checked here.
+	// The path is auth.FluxRunsPath.
+	huma.Register(a, huma.Operation{
+		OperationID: "report-flux-event", Method: http.MethodPost, Path: Prefix + "/runs/flux",
+		Summary: "Report a Flux reconciliation as a sync run (Flux's notification controller, generic provider)", Tags: []string{"Runs"},
+		DefaultStatus: http.StatusAccepted, MaxBodyBytes: 1 << 20,
+		Description: "The event of a Flux object (involvedObject, severity, reason, metadata.revision), as the generic provider posts it: " +
+			"an error is a failed sync, Progressing a running one, anything else a succeeded one, of the stack named by the query or the object (<namespace>/<name>), " +
+			"at the commit of its revision. The events of one object and revision are one run.",
+	}, func(ctx context.Context, in *fluxInput) (*out[RunView], error) {
+		repo, err := runTokenRepo(ctx, reg, in.Repository, in.Authorization)
+		if err != nil {
+			return nil, err
+		}
+		if s == nil {
+			return nil, huma.Error503ServiceUnavailable("no database")
+		}
+		var e fluxEvent
+		if err := json.Unmarshal(in.Body, &e); err != nil {
+			return nil, huma.Error422UnprocessableEntity("not a Flux event: " + err.Error())
+		}
+		r, err := e.report(in.Stack)
+		if err != nil {
+			return nil, huma.Error422UnprocessableEntity(err.Error())
+		}
+		run, changed, err := runs.Record(ctx, s, repo, r)
+		if err != nil {
+			return nil, err
+		}
+		if svc != nil && changed {
+			if err := svc.RunReported(ctx, run); err != nil && log != nil {
+				log.ErrorContext(ctx, "moving requests on after a run", slog.String("run", run.ID.String()), slog.Any("error", err))
+			}
+		}
+		return &out[RunView]{Body: runView(run)}, nil
 	})
 
 	huma.Register(a, huma.Operation{
@@ -258,6 +286,81 @@ func registerRuns(a huma.API, reg *repositories.Registry, s *store.Store, svc *r
 		}
 		return &out[[]RunView]{Body: views}, nil
 	})
+}
+
+// runTokenRepo returns the repository a run token, sent as authorization, is the token of.
+func runTokenRepo(ctx context.Context, reg *repositories.Registry, name, authorization string) (*repositories.Repo, error) {
+	repo, err := reg.Get(name)
+	if err != nil {
+		return nil, huma.Error401Unauthorized("invalid run token")
+	}
+	token, _ := strings.CutPrefix(authorization, "Bearer ")
+	want, ok, err := repo.RunToken(ctx)
+	if err != nil {
+		return nil, err
+	}
+	// The secret holds the token's SHA-256 in hex (docs/design/06-runs-status-and-drift.md),
+	// never the token: what is sent is hashed and compared in constant time.
+	sent := sha256.Sum256([]byte(token))
+	if !ok || subtle.ConstantTimeCompare([]byte(hex.EncodeToString(sent[:])), []byte(strings.ToLower(strings.TrimSpace(want.Reveal())))) != 1 {
+		return nil, huma.Error401Unauthorized("invalid run token")
+	}
+	return repo, nil
+}
+
+type fluxInput struct {
+	Authorization string          `header:"Authorization" required:"true" doc:"Bearer and the repository's run token"`
+	Repository    string          `query:"repository" required:"true" doc:"The repository's name in Quai"`
+	Stack         string          `query:"stack" doc:"The stack; the event's object (<namespace>/<name>) otherwise"`
+	Body          json.RawMessage `doc:"The Flux event (event.Event): involvedObject, severity, reason, metadata.revision; other fields are ignored"`
+}
+
+// fluxEvent is what Flux's notification controller posts (event.Event), the fields Quai reads.
+type fluxEvent struct {
+	InvolvedObject struct {
+		Kind      string `json:"kind"`
+		Namespace string `json:"namespace"`
+		Name      string `json:"name"`
+	} `json:"involvedObject"`
+	Severity  string            `json:"severity"`
+	Timestamp time.Time         `json:"timestamp"`
+	Reason    string            `json:"reason"`
+	Metadata  map[string]string `json:"metadata"`
+}
+
+// fluxRevision is the commit of a Flux revision: main@sha1:<commit>, sha1:<commit> or <commit>.
+var fluxRevision = regexp.MustCompile(`(?:^|[@:])([0-9a-f]{7,64})$`)
+
+// report is the sync run a Flux event says.
+func (e fluxEvent) report(stack string) (runs.Report, error) {
+	o := e.InvolvedObject
+	if o.Name == "" {
+		return runs.Report{}, fmt.Errorf("the event names no object (involvedObject)")
+	}
+	m := fluxRevision.FindStringSubmatch(e.Metadata["revision"])
+	if m == nil {
+		return runs.Report{}, fmt.Errorf("the event's revision %q names no commit", e.Metadata["revision"])
+	}
+	if stack == "" {
+		stack = o.Namespace + "/" + o.Name
+	}
+	r := runs.Report{Stack: stack, Commit: m[1], Kind: "sync", Status: "succeeded",
+		URL: "flux://" + o.Namespace + "/" + strings.ToLower(o.Kind) + "/" + o.Name + "?revision=" + m[1]}
+	at := e.Timestamp
+	switch {
+	case e.Severity == "error":
+		r.Status = "failed"
+	case strings.Contains(e.Reason, "Progressing"):
+		r.Status = "running"
+	}
+	if !at.IsZero() {
+		if r.Status == "running" {
+			r.StartedAt = &at
+		} else {
+			r.FinishedAt = &at
+		}
+	}
+	return r, nil
 }
 
 // maxRunReport bounds a run report, plan included.

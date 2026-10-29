@@ -138,3 +138,11 @@ test("a drifted resource says what differs", async () => {
   expect(differs).toHaveTextContent('module.vm["web01"].terraform_data.vm update: input.cpu')
   expect(screen.getByText("Drifted")).toBeInTheDocument()
 })
+
+test("a run whose page is not a web page has no link", async () => {
+  state.user = "alice"
+  server.use(http.get("*/api/v1/repositories/:name/runs", () => HttpResponse.json([run("sync", "succeeded", "flux-system/apps", "abcdef1", { url: "flux://flux-system/kustomization/apps?revision=abcdef1" })])))
+  renderApp("/admin/repositories/infra-live")
+  const runs = await screen.findByRole("region", { name: "Runs of flux-system/apps" }, slow)
+  expect(within(runs).queryByRole("link")).not.toBeInTheDocument()
+})

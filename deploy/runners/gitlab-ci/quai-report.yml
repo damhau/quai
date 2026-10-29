@@ -1,0 +1,27 @@
+# quai report as a GitLab CI job template (docs/operations/deployment-and-operations.md#runners):
+#
+#   include:
+#     - remote: https://raw.githubusercontent.com/damhau/quai/main/deploy/runners/gitlab-ci/quai-report.yml
+#   quai-report-plan:
+#     extends: .quai-report
+#     stage: plan
+#     needs: [plan]
+#     variables: { QUAI_STACK: envs/prod, QUAI_KIND: plan, QUAI_PLAN: plan.json }
+#
+# The job reports succeeded; a copy with `when: on_failure` and QUAI_STATUS: failed reports a
+# failure. QUAI_URL, QUAI_REPOSITORY and QUAI_RUN_TOKEN (masked) are CI/CD variables.
+.quai-report:
+  image:
+    name: ghcr.io/damhau/quai:main
+    entrypoint: [""]
+  variables:
+    QUAI_STATUS: succeeded
+    QUAI_PLAN: ""
+  script:
+    - |
+      set -eu
+      if [ -n "$QUAI_PLAN" ] && [ -f "$QUAI_PLAN" ]; then
+        quai report --stack "$QUAI_STACK" --kind "$QUAI_KIND" --status "$QUAI_STATUS" --plan "$QUAI_PLAN"
+      else
+        quai report --stack "$QUAI_STACK" --kind "$QUAI_KIND" --status "$QUAI_STATUS"
+      fi

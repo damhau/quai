@@ -1,0 +1,53 @@
+# quai report as a GitHub Actions composite action (docs/operations/deployment-and-operations.md#runners):
+#
+#   - uses: damhau/quai/deploy/runners/github-actions@main
+#     if: always()
+#     with:
+#       stack: envs/prod
+#       kind: plan
+#       status: ${{ job.status == 'success' && 'succeeded' || 'failed' }}
+#       plan: plan.json
+#     env:
+#       QUAI_URL: ${{ vars.QUAI_URL }}
+#       QUAI_REPOSITORY: ${{ vars.QUAI_REPOSITORY }}
+#       QUAI_RUN_TOKEN: ${{ secrets.QUAI_RUN_TOKEN }}
+name: quai report
+description: Report a plan, apply, sync or drift check to Quai
+inputs:
+  stack:
+    description: The stack the run is for, such as envs/prod
+    required: true
+  kind:
+    description: plan, apply, sync or drift-check
+    required: true
+  status:
+    description: running, succeeded or failed
+    required: true
+  plan:
+    description: The plan, as terraform show -json writes it
+    required: false
+    default: ""
+  image:
+    description: The Quai image
+    required: false
+    default: ghcr.io/damhau/quai:main
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        STACK: ${{ inputs.stack }}
+        KIND: ${{ inputs.kind }}
+        STATUS: ${{ inputs.status }}
+        PLAN: ${{ inputs.plan }}
+        IMAGE: ${{ inputs.image }}
+      run: |
+        set -euo pipefail
+        args=(report --stack "$STACK" --kind "$KIND" --status "$STATUS")
+        if [ -n "$PLAN" ] && [ -f "$PLAN" ]; then
+          args+=(--plan "$PLAN")
+        fi
+        docker run --rm -v "$PWD:/work:ro" -w /work \
+          -e QUAI_URL -e QUAI_REPOSITORY -e QUAI_RUN_TOKEN -e GITHUB_ACTIONS -e GITHUB_SHA -e GITHUB_REF \
+          -e GITHUB_SERVER_URL -e GITHUB_REPOSITORY -e GITHUB_RUN_ID -e GITHUB_RUN_ATTEMPT \
+          "$IMAGE" "${args[@]}"

@@ -1,0 +1,31 @@
+# Applies envs/prod when main changes and reports the apply to Quai: spec.runner.pipelines
+# names it (kind: apply), and requests merged to main wait for it.
+trigger:
+  branches:
+    include: [main]
+  paths:
+    include: [envs/prod, modules]
+pr: none
+
+resources:
+  repositories:
+    - repository: quai
+      type: github
+      name: damhau/quai
+      endpoint: github # a GitHub service connection
+
+variables:
+  - group: quai # quaiUrl, quaiRepository and the secret quaiRunToken
+
+pool:
+  vmImage: ubuntu-latest
+
+steps:
+  - checkout: self
+  - script: |
+      set -euo pipefail
+      terraform -chdir=envs/prod init -input=false
+      terraform -chdir=envs/prod apply -input=false -auto-approve
+    displayName: terraform apply
+  - template: deploy/runners/azure-pipelines/quai-report.yml@quai
+    parameters: { stack: envs/prod, kind: apply }

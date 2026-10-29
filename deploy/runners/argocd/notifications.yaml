@@ -1,0 +1,56 @@
+# Argo CD reports its syncs to Quai as sync runs (docs/design/06-runs-status-and-drift.md#adapters),
+# through the notifications controller: merge these keys into argocd-notifications-cm and
+# argocd-notifications-secret, and subscribe the Applications Quai follows:
+#
+#   metadata:
+#     annotations:
+#       notifications.argoproj.io/subscribe.quai-sync.quai: ""
+#       quai.dev/repository: infra-live   # the repository's name in Quai
+#       quai.dev/stack: apps/shop          # optional: the Application's name otherwise
+#
+# Each sync operation is one run, named by its start: Quai keeps its running and finished
+# reports as one.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-notifications-cm
+  namespace: argocd
+data:
+  service.webhook.quai: |
+    url: https://quai.example.com
+    headers:
+      - name: Authorization
+        value: Bearer $quai-run-token
+      - name: Content-Type
+        value: application/json
+  template.quai-sync: |
+    webhook:
+      quai:
+        method: POST
+        path: /api/v1/runs
+        body: |
+          {
+            "repository": "{{index .app.metadata.annotations "quai.dev/repository"}}",
+            "stack": "{{or (index .app.metadata.annotations "quai.dev/stack") .app.metadata.name}}",
+            "commit": "{{.app.status.sync.revision}}",
+            "kind": "sync",
+            "status": "{{if eq .app.status.operationState.phase "Running"}}running{{else if eq .app.status.operationState.phase "Succeeded"}}succeeded{{else}}failed{{end}}",
+            "startedAt": "{{.app.status.operationState.startedAt}}",{{if .app.status.operationState.finishedAt}}
+            "finishedAt": "{{.app.status.operationState.finishedAt}}",{{end}}
+            "url": "{{.context.argocdUrl}}/applications/{{.app.metadata.namespace}}/{{.app.metadata.name}}?operation={{.app.status.operationState.startedAt}}"
+          }
+  trigger.quai-sync: |
+    - when: app.status.operationState != nil and app.status.operationState.phase in ['Running']
+      oncePer: app.status.operationState.startedAt
+      send: [quai-sync]
+    - when: app.status.operationState != nil and app.status.operationState.phase in ['Succeeded', 'Error', 'Failed']
+      oncePer: app.status.operationState.finishedAt
+      send: [quai-sync]
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: argocd-notifications-secret
+  namespace: argocd
+stringData:
+  quai-run-token: replace-with-the-repository-run-token # POST /api/v1/repositories/{name}/run-token

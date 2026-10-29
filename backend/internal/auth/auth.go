@@ -79,6 +79,13 @@ const WebhooksPath = "/webhooks/"
 // API token (docs/design/06-runs-status-and-drift.md#run-report-protocol).
 const RunsPath = "/api/v1/runs"
 
+// FluxRunsPath is where Flux's notification controller reports, with a run token too.
+const FluxRunsPath = "/api/v1/runs/flux"
+
+// IsRunsPath reports whether path is one of the run report endpoints, which runners call with
+// a run token.
+func IsRunsPath(path string) bool { return path == RunsPath || path == FluxRunsPath }
+
 // Session keys.
 const (
 	keyUser     = "user"
@@ -131,7 +138,7 @@ func (a *Authenticator) Middleware(next http.Handler) http.Handler {
 			return
 		}
 		// Runners report with their repository's run token, which the run endpoint checks.
-		if h := r.Header.Get("Authorization"); h != "" && r.URL.Path != RunsPath {
+		if h := r.Header.Get("Authorization"); h != "" && !IsRunsPath(r.URL.Path) {
 			id, err := a.tokenIdentity(ctx, h)
 			if err != nil {
 				writeProblem(w, http.StatusUnauthorized, err.Error())

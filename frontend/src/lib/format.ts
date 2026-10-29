@@ -18,3 +18,6 @@ export function ago(at: string | Date, now = new Date()): string {
 }
 
 export const shortSha = (sha: string) => sha.slice(0, 7)
+
+/** webURL is a run's page when it is one to open: http or https (a Flux run's is flux://…). */
+export const webURL = (url?: string) => (url && /^https?:\/\//i.test(url) ? url : undefined)

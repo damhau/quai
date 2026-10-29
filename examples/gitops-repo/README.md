@@ -14,5 +14,8 @@ end-to-end scenarios.
   approval, and the day-2 actions.
 - `blueprints/`: catalog items built from the `vm` type: a single VM sized from
   t-shirt sizes, and a web server with its database server.
+- `pipelines/`: Azure Pipelines that plan `envs/prod` on pull requests (as build
+  validation) and apply it on main, each reporting to Quai with the `quai report`
+  step template of `deploy/runners/azure-pipelines`.
 
 Quai edits the YAML files and nothing else.

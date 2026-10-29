@@ -5309,6 +5309,81 @@
         ]
       }
     },
+    "/api/v1/runs/flux": {
+      "post": {
+        "description": "The event of a Flux object (involvedObject, severity, reason, metadata.revision), as the generic provider posts it: an error is a failed sync, Progressing a running one, anything else a succeeded one, of the stack named by the query or the object (\u003cnamespace\u003e/\u003cname\u003e), at the commit of its revision. The events of one object and revision are one run.",
+        "operationId": "report-flux-event",
+        "parameters": [
+          {
+            "description": "Bearer and the repository's run token",
+            "in": "header",
+            "name": "Authorization",
+            "required": true,
+            "schema": {
+              "description": "Bearer and the repository's run token",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The repository's name in Quai",
+            "explode": false,
+            "in": "query",
+            "name": "repository",
+            "required": true,
+            "schema": {
+              "description": "The repository's name in Quai",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The stack; the event's object (\u003cnamespace\u003e/\u003cname\u003e) otherwise",
+            "explode": false,
+            "in": "query",
+            "name": "stack",
+            "schema": {
+              "description": "The stack; the event's object (\u003cnamespace\u003e/\u003cname\u003e) otherwise",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "description": "The Flux event (event.Event): involvedObject, severity, reason, metadata.revision; other fields are ignored"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunView"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Report a Flux reconciliation as a sync run (Flux's notification controller, generic provider)",
+        "tags": [
+          "Runs"
+        ]
+      }
+    },
     "/api/v1/tokens": {
       "get": {
         "operationId": "list-tokens",

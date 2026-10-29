@@ -3,7 +3,7 @@ import { AlertTriangle, ExternalLink } from "lucide-react"
 import type { PlanChange, RunView } from "@/api/generated/types.gen"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
-import { ago } from "@/lib/format"
+import { ago, webURL } from "@/lib/format"
 import { resourceParams } from "@/lib/resources"
 
 const destructive = (c: PlanChange) => c.action === "delete" || c.action === "replace"
@@ -53,8 +53,8 @@ export function Plans({ plans }: { plans: RunView[] }) {
               </span>
             )}
             <span className="text-muted-foreground text-xs">{ago(p.finishedAt ?? p.startedAt)}</span>
-            {p.url && (
-              <a href={p.url} target="_blank" rel="noreferrer" className="text-muted-foreground inline-flex items-center gap-1 text-xs underline">
+            {webURL(p.url) && (
+              <a href={webURL(p.url)} target="_blank" rel="noreferrer" className="text-muted-foreground inline-flex items-center gap-1 text-xs underline">
                 run <ExternalLink className="size-3" aria-hidden />
               </a>
             )}

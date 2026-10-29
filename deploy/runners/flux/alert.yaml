@@ -1,0 +1,38 @@
+# Flux reports its reconciliations to Quai as sync runs (docs/design/06-runs-status-and-drift.md#adapters):
+# the notification controller's generic provider posts each event of the Kustomizations an
+# Alert follows to /api/v1/runs/flux, with the repository's run token. The run's stack is the
+# stack query parameter, or the Kustomization (<namespace>/<name>); its commit, the event's
+# revision. ReconciliationSucceeded is a succeeded sync, an error a failed one, Progressing a
+# running one.
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
+kind: Provider
+metadata:
+  name: quai
+  namespace: flux-system
+spec:
+  type: generic
+  address: https://quai.example.com/api/v1/runs/flux?repository=infra-live
+  secretRef:
+    name: quai-run-token
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: quai-run-token
+  namespace: flux-system
+stringData:
+  headers: |
+    Authorization: Bearer replace-with-the-repository-run-token
+---
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
+kind: Alert
+metadata:
+  name: quai
+  namespace: flux-system
+spec:
+  providerRef:
+    name: quai
+  eventSeverity: info
+  eventSources:
+    - kind: Kustomization
+      name: "*"

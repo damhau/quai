@@ -146,7 +146,7 @@ func webhookHost(host string, next http.Handler) http.Handler {
 		}
 		onHost := strings.EqualFold(name, host)
 		hook := strings.HasPrefix(r.URL.Path, auth.WebhooksPath)
-		if hook != onHost && !(onHost && (r.URL.Path == auth.RunsPath || r.URL.Path == "/healthz")) {
+		if hook != onHost && !(onHost && (auth.IsRunsPath(r.URL.Path) || r.URL.Path == "/healthz")) {
 			writeProblem(w, http.StatusNotFound, "no such resource")
 			return
 		}

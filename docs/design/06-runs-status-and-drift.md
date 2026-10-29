@@ -67,12 +67,12 @@ Content-Type: application/json
 | Runner | How results reach Quai |
 | --- | --- |
 | Azure Pipelines (first) | A `quai report` step (or task) after plan and apply. `spec.runner.pipelines` names the pipelines, each with its kind and the stacks it covers ([repository connections](01-repository-connections.md)). Their runs' state changes arrive through a service hook (`ms.vss-pipelines.run-state-changed-event`), and a pull request's build validation runs are read through its policy evaluations when Quai polls; Quai reads each run again and records it as a run of each stack its pipeline covers (a pattern: each stack of the repository's resources it matches), named by its results page, the page `quai report` names: both describe one run. Drift checks are queued with the Pipelines runs API. |
-| GitHub Actions, GitLab CI, Jenkins | A `quai report` step after plan and apply (container image or binary). Quai also reads check and pipeline status from platform webhooks as a fallback. |
+| GitHub Actions, GitLab CI, Jenkins | A `quai report` step after plan and apply (container image or binary): a composite action and a job template in `deploy/runners/`. Quai also reads check and pipeline status from platform webhooks as a fallback. |
 | Atlantis | A custom workflow step calling `quai report`; Quai also reads the `atlantis/plan` and `atlantis/apply` statuses. |
 | Spacelift | Spacelift webhooks for run state changes; plan JSON through its API. |
 | HCP Terraform / Terraform Enterprise | Run notifications (webhook); plan JSON through the API. |
-| Argo CD | Notifications controller template posting sync and health per application (the prototype's template, upgraded to the run protocol). |
-| Flux | Notification-controller `Alert` with a generic webhook provider. |
+| Argo CD | Notifications controller template posting each sync of an Application as a `sync` run (`deploy/runners/argocd/notifications.yaml`): the repository and the stack from its annotations (`quai.dev/repository`, `quai.dev/stack`, the Application's name otherwise), its sync revision, and a page per sync operation, so its running and finished reports are one run. |
+| Flux | Notification-controller `Alert` with a generic webhook provider (`deploy/runners/flux/alert.yaml`), posting Flux's own events to `POST /api/v1/runs/flux?repository=<name>` with the run token as a header: an error is a failed `sync`, `Progressing` a running one, anything else a succeeded one, of the stack the `stack` query names or of the object (`<namespace>/<name>`), at the commit of its revision; the events of one object and revision are one run. |
 
 ## Resource status
 

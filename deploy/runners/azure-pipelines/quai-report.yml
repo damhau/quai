@@ -1,0 +1,51 @@
+# quai report as an Azure Pipelines step template (docs/operations/deployment-and-operations.md#runners).
+# Add it after `terraform plan` (with `terraform show -json tfplan > plan.json`) and after
+# `terraform apply`:
+#
+#   resources:
+#     repositories:
+#       - repository: quai
+#         type: github
+#         name: damhau/quai
+#         endpoint: github          # a GitHub service connection
+#   steps:
+#     - template: deploy/runners/azure-pipelines/quai-report.yml@quai
+#       parameters: { stack: envs/prod, kind: plan, plan: plan.json }
+#
+# It reports how the job went (Agent.JobStatus), so it runs whatever happened before it. The
+# pipeline defines quaiUrl and quaiRepository, and the secret variable quaiRunToken (a variable
+# group, say).
+parameters:
+  - name: stack
+    type: string
+  - name: kind
+    type: string
+    values: [plan, apply, sync, drift-check]
+  - name: plan
+    type: string
+    default: ""
+  - name: image
+    type: string
+    default: ghcr.io/damhau/quai:main
+
+steps:
+  - bash: |
+      set -euo pipefail
+      case "$AGENT_JOBSTATUS" in
+        Succeeded|SucceededWithIssues) status=succeeded ;;
+        *) status=failed ;;
+      esac
+      args=(report --stack "${{ parameters.stack }}" --kind "${{ parameters.kind }}" --status "$status")
+      if [ -n "${{ parameters.plan }}" ] && [ -f "${{ parameters.plan }}" ]; then
+        args+=(--plan "${{ parameters.plan }}")
+      fi
+      docker run --rm -v "$PWD:/work:ro" -w /work \
+        -e QUAI_URL -e QUAI_REPOSITORY -e QUAI_RUN_TOKEN -e TF_BUILD -e BUILD_SOURCEVERSION -e BUILD_BUILDID \
+        -e SYSTEM_COLLECTIONURI -e SYSTEM_TEAMPROJECT -e SYSTEM_PULLREQUEST_PULLREQUESTID \
+        "${{ parameters.image }}" "${args[@]}"
+    displayName: quai report (${{ parameters.kind }} of ${{ parameters.stack }})
+    condition: always()
+    env:
+      QUAI_URL: $(quaiUrl)
+      QUAI_REPOSITORY: $(quaiRepository)
+      QUAI_RUN_TOKEN: $(quaiRunToken)
