@@ -257,13 +257,14 @@ type Run struct {
 	URL         string // its page
 	Started     time.Time
 	Finished    time.Time
+	Parameters  map[string]string // the template parameters it was queued with
 }
 
 // Pipelines triggers and reads pipeline runs (CapPipelines): the runner adapter of a platform
 // with its own pipelines (docs/design/06-runs-status-and-drift.md#adapters).
 type Pipelines interface {
-	// Trigger queues a run of the pipeline named pipeline on branch.
-	Trigger(ctx context.Context, pipeline, branch string) (Run, error)
+	// Trigger queues a run of the pipeline named pipeline on branch, with template parameters.
+	Trigger(ctx context.Context, pipeline, branch string, parameters map[string]string) (Run, error)
 	// Get reads a run; ErrNotFound when it is not one of the repository's.
 	Get(ctx context.Context, id string) (Run, error)
 	// PullRequestRuns returns the runs of a pull request's build validation.

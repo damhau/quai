@@ -418,36 +418,42 @@ func (q *Queries) StartRun(ctx context.Context, arg StartRunParams) (Run, error)
 const updateRun = `-- name: UpdateRun :one
 UPDATE runs SET
     status       = $1,
-    url          = CASE WHEN $2::text <> '' THEN $2::text ELSE url END,
-    request_id   = COALESCE(request_id, $3::uuid),
-    summary      = CASE WHEN $4::jsonb <> '{}' THEN $4::jsonb ELSE summary END,
-    policies     = CASE WHEN $5::jsonb <> '[]' THEN $5::jsonb ELSE policies END,
-    cost         = CASE WHEN $6::jsonb <> '{}' THEN $6::jsonb ELSE cost END,
-    plan         = CASE WHEN $7::jsonb <> '{}' THEN $7::jsonb ELSE plan END,
-    started_at   = COALESCE($8::timestamptz, started_at),
-    finished_at  = CASE WHEN $1 = 'running' THEN NULL ELSE COALESCE($9::timestamptz, now()) END
-WHERE id = $10
+    commit       = CASE WHEN commit = '' THEN $2::text ELSE commit END,
+    pull_request = CASE WHEN pull_request = '' THEN $3::text ELSE pull_request END,
+    url          = CASE WHEN $4::text <> '' THEN $4::text ELSE url END,
+    request_id   = COALESCE(request_id, $5::uuid),
+    summary      = CASE WHEN $6::jsonb <> '{}' THEN $6::jsonb ELSE summary END,
+    policies     = CASE WHEN $7::jsonb <> '[]' THEN $7::jsonb ELSE policies END,
+    cost         = CASE WHEN $8::jsonb <> '{}' THEN $8::jsonb ELSE cost END,
+    plan         = CASE WHEN $9::jsonb <> '{}' THEN $9::jsonb ELSE plan END,
+    started_at   = COALESCE($10::timestamptz, started_at),
+    finished_at  = CASE WHEN $1 = 'running' THEN NULL ELSE COALESCE($11::timestamptz, now()) END
+WHERE id = $12
 RETURNING id, org_id, repository, stack, commit, kind, status, url, summary, started_at, finished_at, pull_request, request_id, policies, cost, plan
 `
 
 type UpdateRunParams struct {
-	Status     string
-	Url        string
-	RequestID  pgtype.UUID
-	Summary    json.RawMessage
-	Policies   json.RawMessage
-	Cost       json.RawMessage
-	Plan       json.RawMessage
-	StartedAt  pgtype.Timestamptz
-	FinishedAt pgtype.Timestamptz
-	ID         uuid.UUID
+	Status      string
+	Commit      string
+	PullRequest string
+	Url         string
+	RequestID   pgtype.UUID
+	Summary     json.RawMessage
+	Policies    json.RawMessage
+	Cost        json.RawMessage
+	Plan        json.RawMessage
+	StartedAt   pgtype.Timestamptz
+	FinishedAt  pgtype.Timestamptz
+	ID          uuid.UUID
 }
 
-// A later report of a running run: what it says replaces what the run had, and what it leaves
-// out is kept.
+// A later report of a run: what it says replaces what the run had, and what it leaves out is
+// kept; a run queued before its commit was known takes the report's.
 func (q *Queries) UpdateRun(ctx context.Context, arg UpdateRunParams) (Run, error) {
 	row := q.db.QueryRow(ctx, updateRun,
 		arg.Status,
+		arg.Commit,
+		arg.PullRequest,
 		arg.Url,
 		arg.RequestID,
 		arg.Summary,

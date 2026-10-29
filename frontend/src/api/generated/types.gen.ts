@@ -263,6 +263,17 @@ export type Document = {
     spec: Spec;
 };
 
+export type DriftInputBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * One stack to check; every stack of the drift-check pipeline by default
+     */
+    stack?: string;
+};
+
 export type Enforcement = {
     floorRules?: Array<FloorRule> | null;
     requiredCheck?: string;
@@ -942,6 +953,7 @@ export type RunView = {
 };
 
 export type Runner = {
+    driftInterval?: string;
     kind?: string;
     pipelines?: Array<Pipeline> | null;
     planValues?: boolean;
@@ -1246,6 +1258,13 @@ export type DocumentWritable = {
     kind: string;
     metadata: Metadata;
     spec: Spec;
+};
+
+export type DriftInputBodyWritable = {
+    /**
+     * One stack to check; every stack of the drift-check pipeline by default
+     */
+    stack?: string;
 };
 
 export type EnforcementViewWritable = {
@@ -2011,6 +2030,33 @@ export type CreateRepositoryResponses = {
 };
 
 export type CreateRepositoryResponse = CreateRepositoryResponses[keyof CreateRepositoryResponses];
+
+export type CheckDriftData = {
+    body: DriftInputBodyWritable;
+    path: {
+        name: string;
+    };
+    query?: never;
+    url: '/api/v1/repositories/{name}/drift-checks';
+};
+
+export type CheckDriftErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type CheckDriftError = CheckDriftErrors[keyof CheckDriftErrors];
+
+export type CheckDriftResponses = {
+    /**
+     * Accepted
+     */
+    202: Array<RunView> | null;
+};
+
+export type CheckDriftResponse = CheckDriftResponses[keyof CheckDriftResponses];
 
 export type ListRunsData = {
     body?: never;

@@ -214,8 +214,16 @@ type VerifyArgs struct {
 // Kind names the job.
 func (VerifyArgs) Kind() string { return "verify_enforcement" }
 
-// ScheduleArgs queues the polls and the enforcement checks that are due, and forgets old
-// deliveries. It runs every minute.
+// DriftArgs queues the drift checks of one repository's stacks that are due.
+type DriftArgs struct {
+	Repository string `json:"repository"`
+}
+
+// Kind names the job.
+func (DriftArgs) Kind() string { return "schedule_drift" }
+
+// ScheduleArgs queues the polls, the enforcement checks and the drift checks that are due, and
+// forgets old deliveries. It runs every minute.
 type ScheduleArgs struct{}
 
 // Kind names the job.
@@ -227,6 +235,7 @@ func (s *Service) Workers(w *river.Workers) {
 	river.AddWorker(w, &pollWorker{s: s})
 	river.AddWorker(w, &scheduleWorker{s: s})
 	river.AddWorker(w, &verifyWorker{s: s})
+	river.AddWorker(w, &driftWorker{s: s})
 }
 
 // Periodic is the job that schedules the polls, for jobs.Options.
@@ -498,6 +507,12 @@ func (w *scheduleWorker) Work(ctx context.Context, _ *river.Job[ScheduleArgs]) e
 	for _, repo := range s.reg.List() {
 		if t, ok := verified[repo.Name]; repo.Document.Spec.Delivery.Mode == "pull-request" && (!ok || s.now().Sub(t) >= repositories.EnforcementInterval) {
 			if _, err := client.Insert(ctx, VerifyArgs{Repository: repo.Name}, &river.InsertOpts{UniqueOpts: river.UniqueOpts{ByArgs: true, ByState: pending}}); err != nil {
+				return err
+			}
+		}
+		// At most one drift job an hour for each repository; it queues the stacks that are due.
+		if hasDriftCheck(repo) {
+			if _, err := client.Insert(ctx, DriftArgs{Repository: repo.Name}, &river.InsertOpts{UniqueOpts: river.UniqueOpts{ByArgs: true, ByPeriod: time.Hour}}); err != nil {
 				return err
 			}
 		}

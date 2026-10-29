@@ -107,6 +107,9 @@ type Runner struct {
 	// Pipelines say which of the platform's pipelines plan, apply or check drift for which
 	// stacks (open question 8's default, docs/design/06-runs-status-and-drift.md#adapters).
 	Pipelines []Pipeline `json:"pipelines,omitempty" yaml:"pipelines"`
+	// DriftInterval is how often each stack's drift is checked, with the drift-check pipeline
+	// (docs/design/06-runs-status-and-drift.md#drift); 24h by default.
+	DriftInterval Duration `json:"driftInterval,omitzero" yaml:"driftInterval"`
 }
 
 // Pipeline is one of the platform's pipelines, as the runner adapter reads its runs.
@@ -239,6 +242,18 @@ func (d *Document) Validate() error {
 	}
 	if err := checkKnownHosts(s.Credentials.KnownHosts); err != nil {
 		add("spec.credentials.knownHosts: %v", err)
+	}
+	if s.Runner.DriftInterval != 0 && s.Runner.DriftInterval < Duration(time.Hour) {
+		add("spec.runner.driftInterval must be at least 1h")
+	}
+	drift := 0
+	for _, p := range s.Runner.Pipelines {
+		if p.Kind == "drift-check" {
+			drift++
+		}
+	}
+	if drift > 1 {
+		add("spec.runner.pipelines names more than one drift-check pipeline")
 	}
 	for i, p := range s.Runner.Pipelines {
 		if strings.TrimSpace(p.Name) == "" || strings.TrimSpace(p.Stacks) == "" {

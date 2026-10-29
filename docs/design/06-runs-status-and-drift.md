@@ -136,6 +136,17 @@ runner:
 2. The check runs `terraform plan -detailed-exitcode` (exit code 2 means changes) and reports `kind: drift-check` with plan JSON.
 3. Quai maps the drifted addresses to resources and marks them *Drifted*, with the attributes that differ.
 
+On Azure Pipelines, the drift check is the pipeline of `spec.runner.pipelines` whose kind is
+`drift-check` (one at most). Quai queues it on the default branch for each stack it covers once
+per `spec.runner.driftInterval` (24h by default, at least 1h): a stack is due when its latest
+drift check started that long ago, or never. A pipeline whose `stacks` is a pattern is queued
+once per stack with the template parameter `stack`, which its YAML declares, and its run counts
+for that stack only. The run is recorded as soon as it is queued, so the next schedule does not
+queue it again; its state and its `quai report` continue it. A repository admin queues the checks
+at once with `POST /api/v1/repositories/{name}/drift-checks` (the repository's page: *Check
+drift*), for every stack or one. The latest finished drift check decides: a clean one, newer
+than the drifted one, clears *Drifted*.
+
 Actions on a drifted resource:
 
 | Action | Effect |

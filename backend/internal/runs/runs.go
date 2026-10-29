@@ -121,7 +121,7 @@ func Record(ctx context.Context, s *store.Store, repo *repositories.Repo, r Repo
 			if !changed && prev.FinishedAt.Valid && !finished.Valid {
 				finished = prev.FinishedAt // the same report again: it finished then
 			}
-			run, err = q.UpdateRun(ctx, db.UpdateRunParams{ID: prev.ID, Status: r.Status, Url: r.URL, RequestID: request, Summary: summary,
+			run, err = q.UpdateRun(ctx, db.UpdateRunParams{ID: prev.ID, Status: r.Status, Commit: r.Commit, PullRequest: r.PullRequest, Url: r.URL, RequestID: request, Summary: summary,
 				Policies: policies, Cost: cost, Plan: planned, StartedAt: timestamp(r.StartedAt), FinishedAt: finished})
 			return err
 		case !errors.Is(err, pgx.ErrNoRows):

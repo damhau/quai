@@ -32,6 +32,7 @@ func TestDerive(t *testing.T) {
 		{"a clean drift check", Input{Runner: true, Runs: []Run{drift("c5", false), run("apply", "succeeded", "c4")}, After: after}, Applied, 1},
 		{"an apply after the drift", Input{Runner: true, Runs: []Run{run("apply", "succeeded", "c5"), drift("c4", true)}, After: after}, Applied, 0},
 		{"a drift check before the change", Input{Runner: true, Runs: []Run{drift("c2", true)}, After: after}, InRepo, -1},
+		{"a clean drift check after a drift", Input{Runner: true, Runs: []Run{drift("c5", false), drift("c5", true), run("apply", "succeeded", "c4")}, After: after}, Applied, 2},
 	} {
 		if got, i := Derive(c.in); got != c.want || i != c.run {
 			t.Errorf("%s: %s, run %d", c.name, got, i)

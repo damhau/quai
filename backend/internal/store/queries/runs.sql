@@ -37,10 +37,12 @@ VALUES (sqlc.arg(id), sqlc.arg(repository), sqlc.arg(stack), sqlc.arg(commit), s
 RETURNING *;
 
 -- name: UpdateRun :one
--- A later report of a running run: what it says replaces what the run had, and what it leaves
--- out is kept.
+-- A later report of a run: what it says replaces what the run had, and what it leaves out is
+-- kept; a run queued before its commit was known takes the report's.
 UPDATE runs SET
     status       = sqlc.arg(status),
+    commit       = CASE WHEN commit = '' THEN sqlc.arg(commit)::text ELSE commit END,
+    pull_request = CASE WHEN pull_request = '' THEN sqlc.arg(pull_request)::text ELSE pull_request END,
     url          = CASE WHEN sqlc.arg(url)::text <> '' THEN sqlc.arg(url)::text ELSE url END,
     request_id   = COALESCE(request_id, sqlc.narg(request_id)::uuid),
     summary      = CASE WHEN sqlc.arg(summary)::jsonb <> '{}' THEN sqlc.arg(summary)::jsonb ELSE summary END,

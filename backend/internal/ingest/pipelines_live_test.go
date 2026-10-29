@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/url"
+	"os"
+	"path/filepath"
 	"strconv"
 	"testing"
 	"time"
@@ -132,5 +135,78 @@ func TestAzureDevOpsPipelineRuns(t *testing.T) {
 	}
 	if len(e.handler.reported()) < 2 {
 		t.Errorf("runs handed on = %+v", e.handler.reported())
+	}
+}
+
+// driftPipeline checks one stack, its template parameter.
+const driftPipeline = `trigger: none
+parameters:
+  - name: stack
+    type: string
+    default: all
+pool:
+  vmImage: ubuntu-latest
+steps:
+  - script: |
+      echo "drift check of ${{ parameters.stack }}"
+`
+
+// TestAzureDevOpsDrift queues a drift check on the sandbox as the schedule does: the run of the
+// drift-check pipeline for the one stack of the repository's resources, with that stack as a
+// template parameter, recorded at once and finished when the pipeline is. Skipped without the
+// sandbox's PAT.
+func TestAzureDevOpsDrift(t *testing.T) {
+	sb := adotest.New(t)
+	ctx := context.Background()
+	name, id := sb.Repository(t)
+	files := map[string]string{"drift.yml": driftPipeline}
+	for _, f := range []string{".quai/types/vm.yaml", "catalog/schemas/vm.schema.json", "envs/prod/vms/web01.yaml"} {
+		b, err := os.ReadFile(filepath.Join("../../../examples/gitops-repo", f))
+		if err != nil {
+			t.Fatal(err)
+		}
+		files[f] = string(b)
+	}
+	if err := sb.AddFiles(ctx, id, "main", "A VM and a drift check", files); err != nil {
+		t.Fatal(err)
+	}
+	pipelineID := sb.Pipeline(t, name, id, "drift.yml")
+	e := start(t, name, `connector: azure-devops
+  url: `+sb.URL(name)+`
+  credentials: { ref: env:ADO_PAT }
+  runner:
+    pipelines: [{ name: `+name+`-drift, kind: drift-check, stacks: "envs/{env}" }]`, repositories.Options{
+		Secrets:    secrets.New(map[string]secrets.Backend{"env": sandboxEnv{sb}}),
+		Connectors: &connectors.Registry{Factories: map[string]connectors.Factory{"azure-devops": azuredevops.New}, HTTP: sb.HTTP},
+		Network:    sb.Network,
+	})
+	e.proxy = sb.Network.Proxy
+	if err := e.svc.QueueDueDrift(ctx, name); err != nil {
+		t.Fatal(err)
+	}
+	queued, _ := e.store.ListRuns(ctx, db.ListRunsParams{Repository: name, Kind: "drift-check", MaxRows: 10})
+	if len(queued) != 1 || queued[0].Stack != "envs/prod" || queued[0].Status != "running" {
+		t.Fatalf("queued = %+v", queued)
+	}
+	if err := e.svc.QueueDueDrift(ctx, name); err != nil {
+		t.Fatal(err)
+	}
+	if again, _ := e.store.ListRuns(ctx, db.ListRunsParams{Repository: name, Kind: "drift-check", MaxRows: 10}); len(again) != 1 {
+		t.Errorf("queued twice: %+v", again)
+	}
+	u, _ := url.Parse(queued[0].Url)
+	runID := u.Query().Get("buildId")
+	run, err := e.repo().Connector.Pipelines().Get(ctx, runID)
+	if err != nil || run.Parameters["stack"] != "envs/prod" {
+		t.Errorf("the run = %+v, %v", run, err)
+	}
+	n, _ := strconv.Atoi(runID)
+	sb.Await(t, pipelineID, n, 10*time.Minute)
+	if err := e.svc.pipelineRun(ctx, e.repo(), runID); err != nil {
+		t.Fatal(err)
+	}
+	done, _ := e.store.ListRuns(ctx, db.ListRunsParams{Repository: name, Kind: "drift-check", MaxRows: 10})
+	if len(done) != 1 || done[0].ID != queued[0].ID || done[0].Status != "succeeded" || done[0].Commit == "" {
+		t.Errorf("the finished drift check = %+v", done)
 	}
 }

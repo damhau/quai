@@ -83,3 +83,58 @@ test("a repository's page lists its runs by stack", async () => {
   expect(within(prod).getByRole("link", { name: "run" })).toHaveAttribute("href", "https://ci.example.com/3")
   expect(within(screen.getByRole("region", { name: "Runs of envs/dev" })).getByText("Failed")).toBeInTheDocument()
 })
+
+test("with a drift-check pipeline, a repository's page queues the drift checks", async () => {
+  state.user = "alice"
+  let queued = false
+  server.use(
+    http.get("*/api/v1/repositories/:name", () =>
+      HttpResponse.json({
+        name: "infra-live",
+        managedBy: "api",
+        connected: true,
+        document: {
+          apiVersion: "quai.dev/v1beta1",
+          kind: "Repository",
+          metadata: { name: "infra-live" },
+          spec: { connector: "azure-devops", url: "https://dev.azure.com/acme/infra/_git/live", runner: { pipelines: [{ name: "infra-drift", kind: "drift-check", stacks: "envs/{env}" }] } },
+        },
+      }),
+    ),
+    http.get("*/api/v1/repositories/:name/runs", () => HttpResponse.json(queued ? [run("drift-check", "running", "envs/prod", "abcdef1")] : [])),
+    http.post("*/api/v1/repositories/:name/drift-checks", () => {
+      queued = true
+      return HttpResponse.json([run("drift-check", "running", "envs/prod", "abcdef1")], { status: 202 })
+    }),
+  )
+  const user = (await import("@testing-library/user-event")).default.setup()
+  renderApp("/admin/repositories/infra-live")
+  await user.click(await screen.findByRole("button", { name: "Check drift" }, slow))
+  expect(await screen.findByText("Drift checks queued: envs/prod.")).toBeInTheDocument()
+  expect(await screen.findByRole("region", { name: "Runs of envs/prod" })).toHaveTextContent("drift-check")
+})
+
+test("a drifted resource says what differs", async () => {
+  state.user = "bob"
+  server.use(
+    http.get("*/api/v1/resource", () =>
+      HttpResponse.json({
+        ...resources[0],
+        state: "drifted",
+        stateRun: run("drift-check", "succeeded", "envs/prod", "abcdef1", {
+          plan: { resources: [{ resource: "infra-live/vm/prod/web01", type: "vm", key: "prod/web01", changes: [{ address: 'module.vm["web01"].terraform_data.vm', action: "update", attributes: ["input.cpu"] }] }] },
+        }),
+        commit: "abc123",
+        raw: "cpu: 4\n",
+        actions: [],
+        canOperate: false,
+        requests: [],
+        history: [],
+      }),
+    ),
+  )
+  renderApp("/resources/infra-live/vm/prod/web01")
+  const differs = await screen.findByRole("list", { name: "What differs" }, slow)
+  expect(differs).toHaveTextContent('module.vm["web01"].terraform_data.vm update: input.cpu')
+  expect(screen.getByText("Drifted")).toBeInTheDocument()
+})

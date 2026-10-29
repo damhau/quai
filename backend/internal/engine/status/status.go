@@ -45,7 +45,8 @@ func Derive(in Input) (string, int) {
 	if !in.Runner {
 		return InRepo, -1
 	}
-	seenRun := false // a plan or an apply, newer than the one being looked at
+	seenRun := false   // a plan or an apply, newer than the one being looked at
+	seenDrift := false // a finished drift check: only the latest one says whether it drifted
 	for i, r := range in.Runs {
 		if in.After == nil || !in.After(r.Commit) {
 			continue
@@ -69,7 +70,11 @@ func Derive(in Input) (string, int) {
 				return Failed, i
 			}
 		case "drift-check":
-			if r.Status != "running" && r.Drifted {
+			if r.Status == "running" || seenDrift {
+				continue
+			}
+			seenDrift = true
+			if r.Drifted {
 				return Drifted, i
 			}
 		}

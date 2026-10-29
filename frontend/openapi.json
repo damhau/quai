@@ -816,6 +816,25 @@
         ],
         "type": "object"
       },
+      "DriftInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/api/v1/schemas/DriftInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "stack": {
+            "description": "One stack to check; every stack of the drift-check pipeline by default",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "Enforcement": {
         "additionalProperties": false,
         "properties": {
@@ -2732,6 +2751,9 @@
       "Runner": {
         "additionalProperties": false,
         "properties": {
+          "driftInterval": {
+            "type": "string"
+          },
           "kind": {
             "type": "string"
           },
@@ -3809,6 +3831,64 @@
         "summary": "Connect a repository",
         "tags": [
           "Repositories"
+        ]
+      }
+    },
+    "/api/v1/repositories/{name}/drift-checks": {
+      "post": {
+        "description": "Triggers the drift-check pipeline of spec.runner.pipelines for each stack, or the one given, as the daily schedule does (docs/design/06-runs-status-and-drift.md#drift).",
+        "operationId": "check-drift",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DriftInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RunView"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Queue drift checks of a repository's stacks now (repository admins)",
+        "tags": [
+          "Runs"
         ]
       }
     },

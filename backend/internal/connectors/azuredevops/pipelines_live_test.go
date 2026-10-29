@@ -47,7 +47,7 @@ func TestLivePipelines(t *testing.T) {
 	}
 	p := c.Pipelines()
 
-	run, err := p.Trigger(ctx, name+"-azure-pipelines", "main")
+	run, err := p.Trigger(ctx, name+"-azure-pipelines", "main", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

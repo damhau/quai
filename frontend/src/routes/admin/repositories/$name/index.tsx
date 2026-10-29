@@ -98,7 +98,7 @@ function Health() {
           </CardContent>
         </Card>
       )}
-      {h?.connected && <StackRuns repository={name} />}
+      {h?.connected && <StackRuns repository={name} drift={(doc?.spec.runner?.pipelines ?? []).some((p) => p.kind === "drift-check")} />}
     </section>
   )
 }

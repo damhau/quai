@@ -114,6 +114,7 @@ spec:
 | `spec.enforcement.floorRules` | Lets admins guarantee, for example, that nothing reaches `prod` without platform approval, whatever a type's author writes. Types can add rules, never remove floor rules. |
 | `spec.runner` | Where plan and apply results come from. Optional: without it, resources show *In repo* after merge. |
 | `spec.runner.pipelines` | The platform's pipelines the runner adapter reads (Azure Pipelines): each with its `name`, its `kind` (`plan`, `apply` or `drift-check`) and the `stacks` its runs cover, one stack or a pattern like a type's `stack`. The access test checks that each exists and that its runs can be read. |
+| `spec.runner.driftInterval` | How often each stack's drift is checked with the `drift-check` pipeline of `spec.runner.pipelines` ([drift](06-runs-status-and-drift.md#drift)). Default `24h`, at least `1h`. |
 | `spec.runner.planValues` | Keep the before and after values of the attributes a plan changes, except sensitive ones ([runs](06-runs-status-and-drift.md#run-report-protocol)). Default `false`: Quai keeps only the attributes' names. |
 
 Connections live in PostgreSQL, one row per document. Those declared in configuration (the

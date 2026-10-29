@@ -151,6 +151,19 @@ function ResourcePage() {
                   r.state !== "pending_change" && <span className="text-muted-foreground text-xs">no run reported since its last change</span>
                 )}
               </p>
+              {r.state === "drifted" && (
+                <ul className="grid gap-1" aria-label="What differs">
+                  {(r.stateRun?.plan?.resources ?? [])
+                    .filter((p) => p.resource === r.id)
+                    .flatMap((p) => p.changes ?? [])
+                    .map((c) => (
+                      <li key={c.address} className="text-xs">
+                        <code className="font-mono">{c.address}</code> {c.action}
+                        {(c.attributes ?? []).length > 0 && <>: {(c.attributes ?? []).join(", ")}</>}
+                      </li>
+                    ))}
+                </ul>
+              )}
               {(r.applies ?? []).length > 0 && (
                 <ul className="grid gap-1" aria-label="Applies">
                   {(r.applies ?? []).map((e) => (

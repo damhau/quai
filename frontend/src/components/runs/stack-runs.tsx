@@ -1,21 +1,42 @@
-import { useQuery } from "@tanstack/react-query"
-import { listRunsOptions } from "@/api/generated/@tanstack/react-query.gen"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { ScanSearch } from "lucide-react"
+import { checkDriftMutation, listRunsOptions, listRunsQueryKey } from "@/api/generated/@tanstack/react-query.gen"
 import type { RunView } from "@/api/generated/types.gen"
 import { StateBadge } from "@/components/requests/state-badge"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ago, shortSha } from "@/lib/format"
+import { problemMessage } from "@/lib/problems"
 
-/** StackRuns lists a repository's latest runs, by stack (docs/design/06). */
-export function StackRuns({ repository }: { repository: string }) {
+/** StackRuns lists a repository's latest runs, by stack (docs/design/06); with a drift-check
+ *  pipeline, it queues the drift checks of its stacks now. */
+export function StackRuns({ repository, drift }: { repository: string; drift: boolean }) {
+  const queryClient = useQueryClient()
   const { data } = useQuery(listRunsOptions({ path: { name: repository }, query: { limit: 100 } }))
+  const check = useMutation({
+    ...checkDriftMutation(),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: listRunsQueryKey({ path: { name: repository } }) }),
+  })
   const byStack = new Map<string, RunView[]>()
   for (const r of data ?? []) byStack.set(r.stack, [...(byStack.get(r.stack) ?? []), r])
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="flex flex-row items-center justify-between gap-2">
         <CardTitle>Runs</CardTitle>
+        {drift && (
+          <Button size="sm" variant="outline" disabled={check.isPending} onClick={() => check.mutate({ path: { name: repository }, body: {} })}>
+            <ScanSearch /> Check drift
+          </Button>
+        )}
       </CardHeader>
       <CardContent className="grid gap-4 text-sm">
+        {check.error && (
+          <Alert variant="destructive">
+            <AlertDescription>{problemMessage(check.error)}</AlertDescription>
+          </Alert>
+        )}
+        {check.isSuccess && <p className="text-muted-foreground">Drift checks queued: {(check.data ?? []).map((r) => r.stack).join(", ")}.</p>}
         {byStack.size === 0 && <p className="text-muted-foreground">No run reported yet: the pipelines report with quai report.</p>}
         {[...byStack].map(([stack, runs]) => (
           <section key={stack} aria-label={`Runs of ${stack}`} className="grid gap-1">

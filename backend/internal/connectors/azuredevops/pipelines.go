@@ -40,6 +40,7 @@ type build struct {
 		ID string `json:"id"`
 	} `json:"repository"`
 	TriggerInfo map[string]string `json:"triggerInfo"`
+	Parameters  map[string]string `json:"templateParameters"`
 }
 
 // Get reads a run through the Builds API: the run of a YAML pipeline is a build. A run of
@@ -65,7 +66,7 @@ func (p *pipelines) Get(ctx context.Context, id string) (connectors.Run, error) 
 
 func (c *Connector) run(repo Repository, b build) connectors.Run {
 	r := connectors.Run{Pipeline: b.Definition.Name, ID: strconv.Itoa(b.ID), Commit: b.SourceVer, Branch: b.Branch, Result: b.Result,
-		PullRequest: b.TriggerInfo["pr.number"], URL: RunURL(c.loc.Collection, repo.ProjectName, b.ID)}
+		PullRequest: b.TriggerInfo["pr.number"], URL: RunURL(c.loc.Collection, repo.ProjectName, b.ID), Parameters: b.Parameters}
 	switch b.Status {
 	case "completed":
 		r.State = "completed"
@@ -125,8 +126,9 @@ func (p *pipelines) Check(ctx context.Context, pipeline string) error {
 	return c.client.Do(ctx, http.MethodGet, path(repo.ProjectID, "_apis", "pipelines", strconv.Itoa(id), "runs"), APIVersion, nil, nil, nil)
 }
 
-// Trigger queues a run of the pipeline named pipeline on branch.
-func (p *pipelines) Trigger(ctx context.Context, pipeline, branch string) (connectors.Run, error) {
+// Trigger queues a run of the pipeline named pipeline on branch, with template parameters (which
+// its YAML must declare).
+func (p *pipelines) Trigger(ctx context.Context, pipeline, branch string, parameters map[string]string) (connectors.Run, error) {
 	c := (*Connector)(p)
 	repo, err := c.Resolve(ctx)
 	if err != nil {
@@ -140,6 +142,9 @@ func (p *pipelines) Trigger(ctx context.Context, pipeline, branch string) (conne
 		ID int `json:"id"`
 	}
 	body := map[string]any{"resources": map[string]any{"repositories": map[string]any{"self": map[string]any{"refName": "refs/heads/" + strings.TrimPrefix(branch, "refs/heads/")}}}}
+	if len(parameters) > 0 {
+		body["templateParameters"] = parameters
+	}
 	if err := c.client.Do(ctx, http.MethodPost, path(repo.ProjectID, "_apis", "pipelines", strconv.Itoa(id), "runs"), APIVersion, nil, body, &run); err != nil {
 		return connectors.Run{}, err
 	}

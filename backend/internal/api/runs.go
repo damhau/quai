@@ -9,6 +9,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -127,6 +128,13 @@ type runInput struct {
 	}
 }
 
+type driftInput struct {
+	Repository string `path:"name"`
+	Body       struct {
+		Stack string `json:"stack,omitempty" doc:"One stack to check; every stack of the drift-check pipeline by default"`
+	}
+}
+
 type runsInput struct {
 	Repository string `path:"name"`
 	Stack      string `query:"stack" doc:"Only this stack's runs"`
@@ -174,6 +182,45 @@ func registerRuns(a huma.API, reg *repositories.Registry, s *store.Store, svc *r
 			}
 		}
 		return &out[RunView]{Body: runView(r)}, nil
+	})
+
+	huma.Register(a, huma.Operation{
+		OperationID: "check-drift", Method: http.MethodPost, Path: Prefix + "/repositories/{name}/drift-checks",
+		Summary: "Queue drift checks of a repository's stacks now (repository admins)", Tags: []string{"Runs"}, DefaultStatus: http.StatusAccepted,
+		Description: "Triggers the drift-check pipeline of spec.runner.pipelines for each stack, or the one given, as the daily schedule does (docs/design/06-runs-status-and-drift.md#drift).",
+	}, func(ctx context.Context, in *driftInput) (*out[[]RunView], error) {
+		repo, err := reg.Get(in.Repository)
+		if err != nil {
+			return nil, huma.Error404NotFound(err.Error())
+		}
+		if _, err := authorize(ctx, authz.ManageRepository, authz.Object{Repository: repo.Name}); err != nil {
+			return nil, err
+		}
+		if s == nil {
+			return nil, huma.Error503ServiceUnavailable("no database")
+		}
+		stacks, err := runs.DriftStacks(ctx, repo)
+		if errors.Is(err, runs.ErrNoDriftCheck) {
+			return nil, huma.Error409Conflict(repo.Name + " has no drift-check pipeline in spec.runner.pipelines, or its platform cannot trigger it")
+		}
+		if err != nil {
+			return nil, err
+		}
+		if in.Body.Stack != "" {
+			if !slices.Contains(stacks, in.Body.Stack) {
+				return nil, huma.Error422UnprocessableEntity("the drift-check pipeline does not cover "+in.Body.Stack, &huma.ErrorDetail{Location: "body.stack", Message: "is not one of " + strings.Join(stacks, ", ")})
+			}
+			stacks = []string{in.Body.Stack}
+		}
+		views := []RunView{}
+		for _, stack := range stacks {
+			run, err := runs.QueueDrift(ctx, s, repo, stack, time.Now())
+			if err != nil {
+				return nil, huma.Error502BadGateway(err.Error())
+			}
+			views = append(views, runView(run))
+		}
+		return &out[[]RunView]{Body: views}, nil
 	})
 
 	huma.Register(a, huma.Operation{

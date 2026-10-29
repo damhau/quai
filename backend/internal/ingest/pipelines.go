@@ -5,14 +5,12 @@ import (
 	"errors"
 	"log/slog"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/damhau/quai/backend/internal/connectors"
-	"github.com/damhau/quai/backend/internal/engine/locate"
-	"github.com/damhau/quai/backend/internal/inventory"
 	"github.com/damhau/quai/backend/internal/repositories"
 	"github.com/damhau/quai/backend/internal/runs"
+	"github.com/riverqueue/river"
 )
 
 // pipelineRun reads a run of one of the repository's pipelines again, as a service hook named
@@ -57,9 +55,13 @@ func (s *Service) recordRun(ctx context.Context, repo *repositories.Repo, run co
 		if pl.Name != run.Pipeline {
 			continue
 		}
-		stacks, err := stacksOf(ctx, repo, pl.Stacks)
+		stacks, err := runs.Stacks(ctx, repo, pl.Stacks)
 		if err != nil {
 			return err
+		}
+		// A run queued for one stack (template parameter stack) covers that one.
+		if st := run.Parameters["stack"]; st != "" && slices.Contains(stacks, st) {
+			stacks = []string{st}
 		}
 		for _, stack := range stacks {
 			r := runs.Report{Stack: stack, Commit: run.Commit, PullRequest: run.PullRequest, Kind: pl.Kind, Status: runStatus(run), URL: run.URL,
@@ -98,30 +100,43 @@ func when(t time.Time) *time.Time {
 	return &t
 }
 
-// stacksOf returns the stacks a pipeline covers: the one it names, or, for a pattern such as
-// envs/{env}, each stack of the repository's resources that matches it.
-func stacksOf(ctx context.Context, repo *repositories.Repo, pattern string) ([]string, error) {
-	if !strings.Contains(pattern, "{") {
-		return []string{pattern}, nil
-	}
-	p, err := locate.Compile(pattern)
+func hasDriftCheck(repo *repositories.Repo) bool {
+	return slices.ContainsFunc(repo.Document.Spec.Runner.Pipelines, func(p repositories.Pipeline) bool { return p.Kind == "drift-check" })
+}
+
+type driftWorker struct {
+	river.WorkerDefaults[DriftArgs]
+	s *Service
+}
+
+func (w *driftWorker) Work(ctx context.Context, job *river.Job[DriftArgs]) error {
+	return w.s.QueueDueDrift(ctx, job.Args.Repository)
+}
+
+// QueueDueDrift queues the drift checks of the repository's stacks that are due
+// (docs/design/06-runs-status-and-drift.md#drift): those whose latest check started a drift
+// interval ago or more, or never.
+func (s *Service) QueueDueDrift(ctx context.Context, name string) error {
+	repo, err := s.reg.Get(name)
 	if err != nil {
-		return nil, err
+		return nil
 	}
-	snap, err := repo.Snapshot(ctx, false)
+	now := s.now()
+	due, err := runs.DueDrift(ctx, s.store, repo, now)
+	if errors.Is(err, runs.ErrNoDriftCheck) {
+		return nil
+	}
 	if err != nil {
-		return nil, err
+		return err
 	}
-	resources, err := inventory.Scan(snap)
-	if err != nil {
-		return nil, err
-	}
-	var out []string
-	for _, r := range resources {
-		if _, ok := p.Match(r.Stack); ok && !slices.Contains(out, r.Stack) {
-			out = append(out, r.Stack)
+	var errs []error
+	for _, stack := range due {
+		run, err := runs.QueueDrift(ctx, s.store, repo, stack, now)
+		if err != nil {
+			errs = append(errs, err)
+			continue
 		}
+		s.log.InfoContext(ctx, "drift check queued", slog.String("repository", name), slog.String("stack", stack), slog.String("run", run.Url))
 	}
-	slices.Sort(out)
-	return out, nil
+	return errors.Join(errs...)
 }
