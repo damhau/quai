@@ -2,9 +2,9 @@ name: live
 
 # The live tests against the Azure DevOps sandbox (docs/plan/phase-1-backlog.md#test-infrastructure),
 # nightly and on demand: the connector's conformance suite, webhooks replayed from the sandbox,
-# and the scenarios that follow a request through its pull request (pending status, approval,
-# auto-complete). They need the AZURE_DEVOPS_PAT repository secret; without it, the job says so
-# and does nothing.
+# the scenarios that follow a request through its pull request (pending status, approval,
+# auto-complete), and pipelines on the sandbox's hosted agents. They need the AZURE_DEVOPS_PAT
+# repository secret; without it, the job says so and does nothing.
 on:
   schedule:
     - cron: "23 2 * * *"
@@ -59,6 +59,6 @@ jobs:
         env:
           QUAI_TEST_AZURE_DEVOPS_PAT_FILE: ${{ runner.temp }}/azure-devops-pat
           QUAI_TEST_AZURE_DEVOPS_URL: https://dev.azure.com/dh-consulting/quai-sandbox
-        run: go test -count=1 -timeout 30m ./internal/connectors/azuredevops/... ./internal/ingest/... ./internal/api/...
+        run: go test -count=1 -timeout 30m ./internal/adotest/... ./internal/connectors/azuredevops/... ./internal/ingest/... ./internal/api/...
       - if: always() && env.HAS_PAT == 'true'
         run: rm -f "$RUNNER_TEMP/azure-devops-pat"
