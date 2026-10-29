@@ -29,7 +29,8 @@ jobs:
     steps:
       - if: env.HAS_PAT != 'true'
         working-directory: .
-        run: echo "::notice::No AZURE_DEVOPS_PAT secret: the live tests did not run."
+        run: |
+          echo "::notice::No AZURE_DEVOPS_PAT secret: the live tests did not run."
       - if: env.HAS_PAT == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
