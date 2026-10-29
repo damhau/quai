@@ -68,8 +68,19 @@ func Match(sets ...RuleSet) ([]Rule, error) {
 	var out []Rule
 	for _, set := range sets {
 		for _, r := range set.Rules {
-			deferred := r.Condition != nil && r.Condition.Uses(expr.VarPlan) && set.Vars.Plan == nil
-			if r.Condition != nil && !deferred {
+			// A condition reading the plan, when there is none yet, waits for it only if its
+			// result depends on it.
+			deferred := false
+			if r.Condition != nil && r.Condition.Uses(expr.VarPlan) && set.Vars.Plan == nil {
+				ok, known, err := r.Condition.Decided(set.Vars, expr.VarPlan)
+				if err != nil {
+					return nil, fmt.Errorf("approval rule %s/%s: %w", set.Source, r.Name, err)
+				}
+				if known && !ok {
+					continue
+				}
+				deferred = !known
+			} else if r.Condition != nil {
 				ok, err := r.Condition.Test(set.Vars)
 				if err != nil {
 					return nil, fmt.Errorf("approval rule %s/%s: %w", set.Source, r.Name, err)

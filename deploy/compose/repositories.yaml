@@ -12,4 +12,6 @@ spec:
   # Pull requests, merged by Quai once approved: main requires quai/approval (seed-gitea.sh).
   delivery: { mode: pull-request, merge: auto, mergeMethod: squash }
   webhooks: { secret: { ref: env:QUAI_WEBHOOK_SECRET } }
+  # The fake runner (docker-compose.yml) reports with the run token whose hash this is.
+  runner: { reportToken: { ref: env:QUAI_RUN_TOKEN_SHA256 } }
   sync: { pollInterval: 1m }

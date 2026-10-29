@@ -13,6 +13,57 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const attachPullRequestRuns = `-- name: AttachPullRequestRuns :many
+UPDATE runs SET request_id = $1
+WHERE repository = $2 AND pull_request = $3 AND request_id IS NULL
+RETURNING id, org_id, repository, stack, commit, kind, status, url, summary, started_at, finished_at, pull_request, request_id, policies, cost, plan
+`
+
+type AttachPullRequestRunsParams struct {
+	RequestID   pgtype.UUID
+	Repository  string
+	PullRequest string
+}
+
+// Gives a request the runs of its pull request reported before the pull request was recorded as
+// its: a pipeline can plan a pull request as soon as it opens, before Quai stores its number.
+func (q *Queries) AttachPullRequestRuns(ctx context.Context, arg AttachPullRequestRunsParams) ([]Run, error) {
+	rows, err := q.db.Query(ctx, attachPullRequestRuns, arg.RequestID, arg.Repository, arg.PullRequest)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Run{}
+	for rows.Next() {
+		var i Run
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.Repository,
+			&i.Stack,
+			&i.Commit,
+			&i.Kind,
+			&i.Status,
+			&i.Url,
+			&i.Summary,
+			&i.StartedAt,
+			&i.FinishedAt,
+			&i.PullRequest,
+			&i.RequestID,
+			&i.Policies,
+			&i.Cost,
+			&i.Plan,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const finishRun = `-- name: FinishRun :one
 UPDATE runs SET status = $2, summary = $3, finished_at = now()
 WHERE id = $1 AND status = 'running'

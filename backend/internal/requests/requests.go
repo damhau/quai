@@ -533,11 +533,18 @@ func (s *Service) Review(ctx context.Context, who auth.Identity, id uuid.UUID, d
 	return next, err
 }
 
-// Refresh makes this process see what an applied request committed: a worker in another process
-// may have delivered it since this process last fetched the repository, and the requester's next
-// look at the resource or the log should show it.
+// Refresh makes this process see what a request committed: a worker in another process may have
+// delivered it since this process last fetched the repository, and the requester's next look at
+// the resource or the log should show it. With a runner, a merged request is applying, then
+// applied or failed.
 func (s *Service) Refresh(ctx context.Context, r db.Request) {
-	if r.State != Applied {
+	switch r.State {
+	case Applied, Applying:
+	case Failed:
+		if !s.landed(ctx, r) {
+			return
+		}
+	default:
 		return
 	}
 	repo, err := s.reg.Get(s.Repository(ctx, r))

@@ -27,6 +27,11 @@ export function RulesPreview({ rules }: { rules: RuleView[] }) {
               ))}
               {r.external && <Badge variant="outline">{r.external}</Badge>}
             </span>
+            {r.waitingForPlan && r.when && (
+              <span className="text-muted-foreground text-xs">
+                Decided by the plan: <code className="font-mono">{r.when}</code>
+              </span>
+            )}
           </div>
         </li>
       ))}

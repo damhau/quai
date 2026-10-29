@@ -22,6 +22,21 @@ COPY --from=frontend /src/frontend/dist/ ./internal/web/dist/
 ARG VERSION=dev
 RUN go build -ldflags "-s -w -X main.version=${VERSION}" -o /out/quai ./cmd/quai
 
+# The fake runner of the end-to-end scenarios (backend/tools/fakerunner), with quai for quai
+# report and a recorded plan: docker-compose.yml builds this target; the default one, below, is
+# Quai's image.
+FROM backend AS fakerunner-build
+RUN go build -o /out/fakerunner ./tools/fakerunner
+
+FROM alpine:3.24.3@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a AS fake-runner
+RUN adduser -D -H -u 10001 -G root -s /sbin/nologin runner
+COPY --from=backend /out/quai /usr/local/bin/quai
+COPY --from=fakerunner-build /out/fakerunner /usr/local/bin/fakerunner
+COPY backend/internal/engine/tfplan/testdata/prod.json /etc/fakerunner/plan.json
+USER 10001
+EXPOSE 8090
+ENTRYPOINT ["/usr/local/bin/fakerunner"]
+
 FROM alpine:3.24.3@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a
 # The group is root so that OpenShift's arbitrary user ids, which run in it, can write the cache.
 RUN apk add --no-cache git openssh-client openssh-keygen ca-certificates tzdata \

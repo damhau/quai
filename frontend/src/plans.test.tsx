@@ -77,3 +77,11 @@ test("rules on the plan say whether they wait for it, apply, or do not apply", a
   expect(screen.getByText("the plan decided the rules that read it: type/destroys does not apply")).toBeInTheDocument()
   expect(screen.queryByRole("region", { name: /Plan of/ })).not.toBeInTheDocument()
 })
+
+test("the preview of a request says which rules the plan decides", async () => {
+  const { render, screen: s } = await import("@testing-library/react")
+  const { RulesPreview } = await import("@/components/approval/rules-preview")
+  render(<RulesPreview rules={[{ names: ["type/cost"], approvers: ["group:finops"], min: 1, approvals: [], satisfied: false, waitingForPlan: true, when: "plan.cost.monthlyDelta > 500" }]} />)
+  expect(s.getByText("Decided by the plan:")).toBeInTheDocument()
+  expect(s.getByText("plan.cost.monthlyDelta > 500")).toBeInTheDocument()
+})

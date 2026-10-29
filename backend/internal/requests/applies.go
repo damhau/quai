@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -71,6 +72,25 @@ func (s *Service) settle(ctx context.Context, r db.Request) error {
 	if err != nil {
 		return err
 	}
+	// An apply includes the landing commit when it ran at it or after it. This process's mirror
+	// may not have the apply's commit yet (another process merged): it fetches once to know.
+	fetched := false
+	includes := func(commit string) bool {
+		if commit != "" && (strings.HasPrefix(landed, commit) || strings.HasPrefix(commit, landed)) {
+			return true
+		}
+		if ok, err := repo.Mirror.IsAncestor(ctx, landed, commit); err == nil && ok {
+			return true
+		}
+		if !fetched {
+			fetched = true
+			if err := repo.Mirror.Fetch(ctx); err == nil {
+				ok, err := repo.Mirror.IsAncestor(ctx, landed, commit)
+				return err == nil && ok
+			}
+		}
+		return false
+	}
 	var applied []db.Run
 	for _, st := range r.Stacks {
 		runs, err := s.store.StackRuns(ctx, db.StackRunsParams{Repository: repo.Name, Stack: st, MaxRows: runsToSettle})
@@ -82,7 +102,7 @@ func (s *Service) settle(ctx context.Context, r db.Request) error {
 			if run.Kind != "apply" || run.Status == "running" {
 				continue
 			}
-			if ok, err := repo.Mirror.IsAncestor(ctx, landed, run.Commit); err == nil && ok {
+			if includes(run.Commit) {
 				latest = &runs[i]
 				break
 			}

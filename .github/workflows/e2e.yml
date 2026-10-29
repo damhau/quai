@@ -15,7 +15,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # The compose stack: the server and a worker, PostgreSQL, and Gitea seeded with the examples.
+      # The compose stack: the server and a worker, PostgreSQL, Gitea seeded with the examples, and
+      # the fake runner.
       - run: docker compose up --detach --build --wait --wait-timeout 300 --quiet-pull
       - run: docker compose --profile e2e run --name e2e --quiet-pull e2e
       - if: failure()

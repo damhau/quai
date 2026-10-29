@@ -32,7 +32,8 @@ docker compose up --build --wait   # Quai on http://localhost:8080, Gitea on htt
 docker compose down -v             # stop and start over
 ```
 
-`QUAI_PORT` and `GITEA_PORT` choose other ports. Sign in as one of the demo users: **alice**
+`QUAI_PORT`, `GITEA_PORT` and `FAKERUNNER_PORT` (the fake runner standing in for the
+repository's pipelines, on :8090) choose other ports. Sign in as one of the demo users: **alice**
 (platform admin), **bob** and **carol** (developers), **fiona** (FinOps). The account menu signs
 you out to switch.
 

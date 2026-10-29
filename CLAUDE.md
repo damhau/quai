@@ -54,7 +54,7 @@ npm run cel:cases                        # after a cel-go upgrade: cel-go's conf
 Local stack and end-to-end tests (from the repository root, Docker):
 
 ```bash
-docker compose up --build --wait            # Quai on :8080 (QUAI_PORT), Gitea on :3000 (GITEA_PORT)
+docker compose up --build --wait            # Quai on :8080 (QUAI_PORT), Gitea on :3000 (GITEA_PORT), the fake runner on :8090
 docker compose --profile e2e run --rm e2e   # the Playwright scenarios in e2e/, against that stack
 docker compose down -v
 ```

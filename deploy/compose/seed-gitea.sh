@@ -24,6 +24,11 @@ fi
 if [ ! -s /run/quai/webhook-secret ]; then
 	(umask 027 && head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n' >/run/quai/webhook-secret)
 fi
+# The run token the fake runner reports with, and its SHA-256, which Quai keeps.
+if [ ! -s /run/quai/run-token.sha256 ]; then
+	(umask 027 && head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n' >/run/quai/run-token)
+	(umask 027 && printf '%s' "$(cat /run/quai/run-token)" | sha256sum | cut -d' ' -f1 | tr -d '\n' >/run/quai/run-token.sha256)
+fi
 exists() { curl -fs -o /dev/null -H "Authorization: token $token" "$api/repos/quai/$1"; }
 
 if ! exists infra-live; then
@@ -31,6 +36,10 @@ if ! exists infra-live; then
 		-d '{"name":"infra-live","default_branch":"main","private":false}' "$api/user/repos" >/dev/null
 	work=$(mktemp -d)
 	cp -R /seed/gitops-repo/. "$work"
+	# A rule on the plan's cost, which the fake runner reports: a production VM costing more than
+	# 500 a month needs FinOps too.
+	awk '{ print } /^    rules:$/ && !done { print "      - name: cost"; print "        when: params.env == '\''prod'\'' && plan.cost.monthlyDelta > 500"; print "        approvers: [group:finops]"; done = 1 }' \
+		"$work/.quai/types/vm.yaml" >"$work/vm.yaml" && mv "$work/vm.yaml" "$work/.quai/types/vm.yaml"
 	(
 		cd "$work"
 		git init -q -b main
@@ -56,6 +65,13 @@ if ! curl -fsS -H "Authorization: token $token" "$api/repos/quai/infra-live/hook
 		-d "{\"type\":\"gitea\",\"active\":true,\"events\":[\"push\",\"pull_request\",\"status\"],\"config\":{\"url\":\"http://server:8080/webhooks/infra-live\",\"content_type\":\"json\",\"secret\":\"$secret\"}}" \
 		"$api/repos/quai/infra-live/hooks" >/dev/null
 	echo "Added quai/infra-live's webhook"
+fi
+# The fake runner's webhook: pull requests are plans, pushes to main applies.
+if ! curl -fsS -H "Authorization: token $token" "$api/repos/quai/infra-live/hooks" | grep -q 'fake-runner:8090/hooks'; then
+	curl -fsS -H "Authorization: token $token" -H 'Content-Type: application/json' \
+		-d '{"type":"gitea","active":true,"events":["push","pull_request"],"config":{"url":"http://fake-runner:8090/hooks","content_type":"json"}}' \
+		"$api/repos/quai/infra-live/hooks" >/dev/null
+	echo "Added the fake runner's webhook"
 fi
 if ! exists network; then
 	curl -fsS -H "Authorization: token $token" -H 'Content-Type: application/json' \

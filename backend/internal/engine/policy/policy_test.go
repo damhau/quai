@@ -281,3 +281,36 @@ func TestPlanRules(t *testing.T) {
 		t.Errorf("a denial on a rule that does not apply = %+v", out)
 	}
 }
+
+// TestPlanRulesDecidedEarly: a condition reading the plan waits for one only when its result
+// depends on it.
+func TestPlanRulesDecidedEarly(t *testing.T) {
+	env, err := expr.NewEnv(expr.WithPlan())
+	if err != nil {
+		t.Fatal(err)
+	}
+	rule := func(name, when string) definitions.Rule {
+		c, err := env.CompileCondition(when)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return definitions.Rule{Name: name, When: when, Condition: c, Approvers: []string{"group:finops"}}
+	}
+	rules := []definitions.Rule{
+		rule("prod-cost", "params.env == 'prod' && plan.cost.monthlyDelta > 500"),
+		rule("dev-or-no-destroys", "params.env == 'dev' || plan.destroys == 0"),
+		rule("costed", "has(plan.cost) && plan.cost.monthlyDelta > 500"),
+	}
+	got, err := Match(RuleSet{Source: SourceType, Rules: rules, Vars: expr.Vars{Params: map[string]any{"env": "dev"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// In dev: the first does not apply, the second applies whatever the plan, the third waits.
+	if len(got) != 2 || got[0].Names[0] != "type/dev-or-no-destroys" || got[0].Plan != nil || !got[1].Undecided() {
+		t.Errorf("in dev = %+v", got)
+	}
+	got, _ = Match(RuleSet{Source: SourceType, Rules: rules, Vars: expr.Vars{Params: map[string]any{"env": "prod"}}})
+	if len(got) != 3 || !got[0].Undecided() || !got[1].Undecided() || !got[2].Undecided() {
+		t.Errorf("in prod, all three wait: %+v", got)
+	}
+}

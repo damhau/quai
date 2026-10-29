@@ -220,7 +220,9 @@ same currency) and `policies` (each `name` and `result`). Until the owner decide
 
 - **Undecided until a plan reports.** Such a rule is kept apart, never merged with another, and
   the request cannot reach *Approved* while it waits: approvals given in the meantime count for it
-  and stand, and a denial from its approvers rejects the request as for any rule.
+  and stand, and a denial from its approvers rejects the request as for any rule. A condition
+  whose result does not depend on the plan is decided at once, as any rule's:
+  `params.env == 'prod' && plan.cost.monthlyDelta > 500` does not apply in dev, whatever the plan.
 - **Decided by each plan.** When a plan reports, the rule applies or not; each new plan of the
   same change set (after a rebuild on a moved base, say) decides it again. A rule that no longer
   applies is satisfied. A request that is approved but not merged yet, which a new plan makes need

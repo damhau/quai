@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -24,6 +25,7 @@ type reportOptions struct {
 	server, repository, stack, kind, status string
 	plan, commit, pullRequest, url          string
 	tokenFile, caFile                       string
+	costDelta, costCurrency                 string // the monthly cost delta, from a cost estimate (Infracost, say)
 }
 
 // maxPlan is the largest plan Quai accepts with a report.
@@ -59,6 +61,8 @@ func newReportCmd() *cobra.Command {
 	f.StringVar(&o.commit, "commit", "", "the commit the run is at (default: the CI's)")
 	f.StringVar(&o.pullRequest, "pull-request", "", "the pull request the run is for (default: the CI's)")
 	f.StringVar(&o.url, "url", "", "the run's page (default: the CI's)")
+	f.StringVar(&o.costDelta, "cost-monthly-delta", "", "the plan's monthly cost change, such as 142.4 (with --cost-currency)")
+	f.StringVar(&o.costCurrency, "cost-currency", "", "the cost's currency, an ISO 4217 code such as CHF")
 	f.StringVar(&o.tokenFile, "token-file", "", "a file holding the run token (QUAI_RUN_TOKEN_FILE)")
 	f.StringVar(&o.caFile, "ca-file", "", "PEM CA certificates to trust besides the system's (QUAI_CA_FILE)")
 	for _, name := range []string{"stack", "kind", "status"} {
@@ -89,6 +93,16 @@ func (o reportOptions) run(ctx context.Context, out io.Writer, getenv func(strin
 		if v != "" {
 			body[k] = v
 		}
+	}
+	if (o.costDelta == "") != (o.costCurrency == "") {
+		return errors.New("--cost-monthly-delta and --cost-currency go together")
+	}
+	if o.costDelta != "" {
+		delta, err := strconv.ParseFloat(o.costDelta, 64)
+		if err != nil {
+			return fmt.Errorf("--cost-monthly-delta: %w", err)
+		}
+		body["cost"] = map[string]any{"currency": o.costCurrency, "monthlyDelta": delta}
 	}
 	if o.plan != "" {
 		content, err := readPlan(o.plan)

@@ -5,6 +5,7 @@
 package runs
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -75,7 +76,9 @@ func (e *PlanError) Unwrap() error { return e.Err }
 // Record records a report of a run of repo: it continues the run of the same stack and kind
 // that has the same url, or, when either has none, the running one with the same commit and
 // pull request, or starts a run. What a later report leaves out is kept. changed says whether
-// the report started the run or changed its status: the same report again changes nothing.
+// the report started the run, changed its status or added to what it says (its plan, cost or
+// policies, after the adapter recorded it from the pipeline's state): the same report again
+// changes nothing.
 func Record(ctx context.Context, s *store.Store, repo *repositories.Repo, r Report) (run db.Run, changed bool, err error) {
 	request, err := requestOf(ctx, s, repo.Name, r.PullRequest, r.Commit)
 	if err != nil {
@@ -123,6 +126,8 @@ func Record(ctx context.Context, s *store.Store, repo *repositories.Repo, r Repo
 			}
 			run, err = q.UpdateRun(ctx, db.UpdateRunParams{ID: prev.ID, Status: r.Status, Commit: r.Commit, PullRequest: r.PullRequest, Url: r.URL, RequestID: request, Summary: summary,
 				Policies: policies, Cost: cost, Plan: planned, StartedAt: timestamp(r.StartedAt), FinishedAt: finished})
+			changed = changed || !bytes.Equal(prev.Summary, run.Summary) || !bytes.Equal(prev.Policies, run.Policies) ||
+				!bytes.Equal(prev.Cost, run.Cost) || !bytes.Equal(prev.Plan, run.Plan)
 			return err
 		case !errors.Is(err, pgx.ErrNoRows):
 			return err

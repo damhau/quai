@@ -406,3 +406,37 @@ func TestAPIDetails(t *testing.T) {
 		t.Error("CompileValue accepted a func")
 	}
 }
+
+// TestDecided: a condition is decided without a variable when its result does not depend on it.
+func TestDecided(t *testing.T) {
+	env, err := NewEnv(WithPlan())
+	if err != nil {
+		t.Fatal(err)
+	}
+	dev := Vars{Params: map[string]any{"env": "dev"}}
+	for _, tt := range []struct {
+		src           string
+		result, known bool
+	}{
+		{"params.env == 'prod' && plan.cost.monthlyDelta > 500", false, true},
+		{"params.env == 'dev' || plan.destroys > 0", true, true},
+		{"params.env == 'dev' && plan.destroys > 0", false, false},
+		{"has(plan.cost) && plan.cost.monthlyDelta > 500", false, false},
+		{"params.env == 'dev'", true, true},
+	} {
+		p, err := env.CompileCondition(tt.src)
+		if err != nil {
+			t.Fatalf("CompileCondition(%q): %v", tt.src, err)
+		}
+		if result, known, err := p.Decided(dev, VarPlan); err != nil || result != tt.result || known != tt.known {
+			t.Errorf("Decided(%q) = %v, %v, %v; want %v, %v", tt.src, result, known, err, tt.result, tt.known)
+		}
+	}
+	p, err := env.CompileCondition("inputs.size")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := p.Decided(Vars{Inputs: map[string]any{"size": 3}}, VarPlan); err == nil || !strings.Contains(err.Error(), "must be a bool") {
+		t.Errorf("Decided(an int) error = %v", err)
+	}
+}

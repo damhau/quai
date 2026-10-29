@@ -184,7 +184,8 @@ func (e *Env) compile(src string, condition bool) (*Program, error) {
 			return nil, &Error{Expr: src, Err: fmt.Errorf("a condition must be a bool, not %s", out)}
 		}
 	}
-	prg, err := e.cel.Program(ast, cel.CostLimit(CostLimit))
+	// Partial evaluation lets Decided tell whether a result depends on a variable.
+	prg, err := e.cel.Program(ast, cel.CostLimit(CostLimit), cel.EvalOptions(cel.OptPartialEval))
 	if err != nil {
 		return nil, &Error{Expr: src, Err: err}
 	}
@@ -200,6 +201,35 @@ func (p *Program) String() string { return p.src }
 
 // Uses reports whether the expression reads the variable name.
 func (p *Program) Uses(name string) bool { return p.uses[name] }
+
+// Decided evaluates a condition with the variable unknown not known yet: known is false when the
+// result depends on it (params.env == 'prod' && plan.cost.monthlyDelta > 500 is false in dev,
+// whatever the plan; in prod it waits for one).
+func (p *Program) Decided(v Vars, unknown string) (result, known bool, err error) {
+	if p.prg == nil {
+		return true, true, nil
+	}
+	act, err := v.activation()
+	if err != nil {
+		return false, false, err
+	}
+	partial, err := cel.PartialVars(act, cel.AttributePattern(unknown))
+	if err != nil {
+		return false, false, &Error{Expr: p.src, Err: err}
+	}
+	out, _, err := p.prg.Eval(partial)
+	if out != nil && types.IsUnknown(out) {
+		return false, false, nil
+	}
+	if err != nil {
+		return false, false, &Error{Expr: p.src, Err: err}
+	}
+	b, ok := out.(types.Bool)
+	if !ok {
+		return false, false, &Error{Expr: p.src, Err: fmt.Errorf("a condition must be a bool, not %s", out.Type().TypeName())}
+	}
+	return bool(b), true, nil
+}
 
 // Eval evaluates the expression. The result is in the JSON data model, or Absent when the
 // expression evaluates to `optional.none()`.

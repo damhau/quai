@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -171,8 +172,14 @@ func (w *openWorker) Work(ctx context.Context, job *river.Job[OpenArgs]) error {
 		if sha == "" {
 			sha = pr.Head
 		}
-		return s.store.Tx(ctx, func(tx pgx.Tx, q *db.Queries) error {
+		var early []db.Run
+		err = s.store.Tx(ctx, func(tx pgx.Tx, q *db.Queries) error {
 			if _, err := q.PutDelivery(ctx, db.PutDeliveryParams{RequestID: r.ID, Repository: repo.Name, Branch: d.Branch, PullRequest: pr.ID, Url: pr.URL, Head: sha}); err != nil {
+				return err
+			}
+			// A pipeline may have reported on the pull request before its number was stored here.
+			early, err = q.AttachPullRequestRuns(ctx, db.AttachPullRequestRunsParams{RequestID: pgtype.UUID{Bytes: r.ID, Valid: true}, Repository: repo.Name, PullRequest: pr.ID})
+			if err != nil {
 				return err
 			}
 			if err := event(ctx, q, r, "pull_request_opened", "", map[string]any{"pullRequest": pr.ID, "url": pr.URL, "branch": d.Branch, "commit": sha}); err != nil {
@@ -186,6 +193,16 @@ func (w *openWorker) Work(ctx context.Context, job *river.Job[OpenArgs]) error {
 			}
 			return nil
 		})
+		if err != nil {
+			return err
+		}
+		slices.SortFunc(early, func(a, b db.Run) int { return a.StartedAt.Time.Compare(b.StartedAt.Time) })
+		for _, run := range early {
+			if err := s.RunReported(ctx, run); err != nil {
+				s.log.WarnContext(ctx, "a run reported before its pull request was recorded", slog.String("request", r.ID.String()), slog.String("run", run.ID.String()), slog.Any("error", err))
+			}
+		}
+		return nil
 	})
 }
 

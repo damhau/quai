@@ -181,3 +181,63 @@ func mustFile(t *testing.T, h *harness, path string) string {
 	}
 	return s
 }
+
+// TestPlanBeforeItsPullRequest: a pipeline can plan a pull request as soon as it opens, before
+// Quai stores its number; the plan becomes the request's when it does, and decides its rules.
+func TestPlanBeforeItsPullRequest(t *testing.T) {
+	h, _ := giteaHarnessWith(t, "auto", runner, costRule)
+	bob := h.as("bob")
+	h.planOf(RequestView{Delivery: &DeliveryView{PullRequest: "1"}}, "https://ci.example.com/1", 40) // the repository's first
+
+	var r RequestView
+	if status, body := bob.do(http.MethodPost, Prefix+"/requests/type", resize("dev/build-agent-01", 4), &r); status != http.StatusCreated {
+		t.Fatalf("submit = %d %s", status, body)
+	}
+	r = bob.awaitDelivery(r.ID, "merged", func(v RequestView) bool { return v.State == "applying" })
+	if r.Delivery.PullRequest != "1" {
+		t.Fatalf("the request's pull request is #%s, not the first", r.Delivery.PullRequest)
+	}
+	if cost := ruleNamed(r, "type/cost"); !cost.NotApplicable || len(r.Plans) != 1 ||
+		!slices.ContainsFunc(r.Events, func(e EventView) bool { return e.Kind == "plan_reported" }) {
+		t.Errorf("the early plan: cost rule %+v, plans %+v, events %+v", cost, r.Plans, r.Events)
+	}
+}
+
+// TestCostAfterThePlan: an adapter records a plan from the pipeline's state, without a cost;
+// the cost comes later, in a report of the same run, and decides the rules again. The same
+// report again changes nothing.
+func TestCostAfterThePlan(t *testing.T) {
+	h, _ := giteaHarnessWith(t, "auto", runner, costRule)
+	bob := h.as("bob")
+	var r RequestView
+	if status, body := bob.do(http.MethodPost, Prefix+"/requests/type", resize("dev/build-agent-01", 4), &r); status != http.StatusCreated {
+		t.Fatalf("submit = %d %s", status, body)
+	}
+	r = bob.awaitDelivery(r.ID, "opened", func(v RequestView) bool { return v.Delivery != nil && v.Delivery.PullRequest != "" })
+	url := "https://ci.example.com/_build/results?buildId=9"
+	if status, _, body := h.reportRun(runToken, runReport(map[string]any{"kind": "plan", "pullRequest": r.Delivery.PullRequest, "url": url})); status != http.StatusAccepted {
+		t.Fatalf("plan = %d %s", status, body)
+	}
+	if cost := ruleNamed(bob.read(r.ID), "type/cost"); cost.PlanError == "" || cost.NotApplicable {
+		t.Fatalf("without a cost, the rule applies: %+v", cost)
+	}
+	h.planOf(r, url, 40)
+	r = bob.awaitDelivery(r.ID, "merged", func(v RequestView) bool { return v.State == "applying" })
+	if cost := ruleNamed(r, "type/cost"); !cost.NotApplicable || cost.PlanError != "" {
+		t.Errorf("with its cost: %+v", cost)
+	}
+	reported := func() int {
+		n := 0
+		for _, e := range bob.read(r.ID).Events {
+			if e.Kind == "plan_reported" {
+				n++
+			}
+		}
+		return n
+	}
+	before := reported()
+	h.planOf(r, url, 40)
+	if after := reported(); after != before {
+		t.Errorf("the same report again: %d plan_reported events, then %d", before, after)
+	}
+}

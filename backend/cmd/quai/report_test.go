@@ -125,7 +125,7 @@ func TestReport(t *testing.T) {
 			with(map[string]string{"TF_BUILD": "True", "BUILD_SOURCEVERSION": "2222222222222222222222222222222222222222", "SYSTEM_PULLREQUEST_PULLREQUESTID": "412",
 				"SYSTEM_COLLECTIONURI": "https://dev.azure.com/acme/", "SYSTEM_TEAMPROJECT": "Infra Live", "BUILD_BUILDID": "88", "QUAI_RUN_TOKEN_FILE": tokenFile}),
 			"412", "https://dev.azure.com/acme/Infra%20Live/_build/results?buildId=88"},
-		{"GitLab CI, flags over the CI's", reportOptions{pullRequest: "6", tokenFile: tokenFile},
+		{"GitLab CI, flags over the CI's, with a cost", reportOptions{pullRequest: "6", tokenFile: tokenFile, costDelta: "142.4", costCurrency: "CHF"},
 			with(map[string]string{"GITLAB_CI": "true", "CI_COMMIT_SHA": "3333333333333333333333333333333333333333", "CI_MERGE_REQUEST_IID": "5",
 				"CI_PIPELINE_URL": "https://gitlab.acme.ch/infra/live/-/pipelines/9"}),
 			"6", "https://gitlab.acme.ch/infra/live/-/pipelines/9"},
@@ -143,6 +143,9 @@ func TestReport(t *testing.T) {
 		}
 		if r := runs[0]; r.PullRequest != c.pullRequest || r.Url != c.url || r.Kind != "plan" || r.Stack != "envs/prod" {
 			t.Errorf("%s: the run = %+v", c.name, r)
+		}
+		if c.opts.costDelta != "" && string(runs[0].Cost) != `{"currency": "CHF", "monthlyDelta": 142.4}` {
+			t.Errorf("%s: the cost = %s", c.name, runs[0].Cost)
 		}
 		if c.opts.plan != "" && !strings.Contains(out.String(), "+2 ~1 -2, 4 resources") {
 			t.Errorf("%s: %q", c.name, out.String())
@@ -166,6 +169,8 @@ func TestReportRefused(t *testing.T) {
 		"no server":      {func(_ *reportOptions, v map[string]string) { delete(v, "QUAI_URL") }, "no Quai"},
 		"a plan file":    {func(o *reportOptions, _ map[string]string) { o.plan = "report_test.go" }, "is not JSON"},
 		"a missing file": {func(o *reportOptions, _ map[string]string) { o.tokenFile = "nope" }, "nope"},
+		"a cost alone":   {func(o *reportOptions, _ map[string]string) { o.costDelta = "12" }, "go together"},
+		"a wrong cost":   {func(o *reportOptions, _ map[string]string) { o.costDelta, o.costCurrency = "much", "CHF" }, "--cost-monthly-delta"},
 	} {
 		o, v := base, map[string]string{}
 		for k, val := range vars {

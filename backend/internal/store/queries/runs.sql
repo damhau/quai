@@ -76,3 +76,10 @@ SELECT * FROM runs
 WHERE repository = sqlc.arg(repository) AND stack = sqlc.arg(stack) AND pull_request = ''
 ORDER BY started_at DESC, id
 LIMIT sqlc.arg(max_rows);
+
+-- name: AttachPullRequestRuns :many
+-- Gives a request the runs of its pull request reported before the pull request was recorded as
+-- its: a pipeline can plan a pull request as soon as it opens, before Quai stores its number.
+UPDATE runs SET request_id = sqlc.arg(request_id)
+WHERE repository = sqlc.arg(repository) AND pull_request = sqlc.arg(pull_request) AND request_id IS NULL
+RETURNING *;
