@@ -173,10 +173,11 @@ func registerRuns(a huma.API, reg *repositories.Registry, s *store.Store, svc *r
 		if err != nil {
 			return nil, err
 		}
-		// A plan decides the rules of its request that read it.
-		if r.RequestID.Valid && r.Kind == "plan" && r.Status == "succeeded" && svc != nil {
-			if err := svc.PlanReported(ctx, uuid.UUID(r.RequestID.Bytes)); err != nil && log != nil {
-				log.ErrorContext(ctx, "deciding the rules on the plan", slog.String("request", uuid.UUID(r.RequestID.Bytes).String()), slog.Any("error", err))
+		// A plan goes on its request's timeline and decides its rules on the plan; an apply
+		// settles the requests waiting for it.
+		if svc != nil {
+			if err := svc.RunReported(ctx, r); err != nil && log != nil {
+				log.ErrorContext(ctx, "moving requests on after a run", slog.String("run", r.ID.String()), slog.Any("error", err))
 			}
 		}
 		return &out[RunView]{Body: runView(r)}, nil

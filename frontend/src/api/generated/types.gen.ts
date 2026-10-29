@@ -339,6 +339,10 @@ export type EventView = {
     at: string;
     data: unknown;
     kind: string;
+    /**
+     * The request it happened to, on a resource's timeline
+     */
+    request?: string;
 };
 
 export type FloorRule = {
@@ -697,6 +701,10 @@ export type ResourceDetail = {
      */
     readonly $schema?: string;
     actions: Array<ActionView> | null;
+    /**
+     * The applies of the requests on the resource, newest first: applied and apply_failed events
+     */
+    applies?: Array<EventView> | null;
     /**
      * Whether the caller may change the resource through requests
      */
@@ -1452,6 +1460,10 @@ export type RequestViewWritable = {
 
 export type ResourceDetailWritable = {
     actions: Array<ActionView> | null;
+    /**
+     * The applies of the requests on the resource, newest first: applied and apply_failed events
+     */
+    applies?: Array<EventView> | null;
     /**
      * Whether the caller may change the resource through requests
      */

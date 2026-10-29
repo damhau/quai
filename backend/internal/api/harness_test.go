@@ -66,15 +66,21 @@ const runToken = "run-token-for-infra-live"
 
 func newHarness(t *testing.T) *harness {
 	t.Helper()
-	return newHarnessRunner(t, "")
+	return harnessWith(t, "")
 }
 
-// newHarnessRunner is newHarness with more runner settings, such as "planValues: true".
+// newHarnessRunner is newHarness with a runner reporting with runToken, and more runner settings
+// such as "planValues: true": merged requests then wait for their apply.
 func newHarnessRunner(t *testing.T, runner string) *harness {
 	t.Helper()
 	if runner != "" {
 		runner = ", " + runner
 	}
+	return harnessWith(t, "\n  runner: { reportToken: { ref: env:INFRA_LIVE_RUN_TOKEN }"+runner+" }")
+}
+
+func harnessWith(t *testing.T, runner string) *harness {
+	t.Helper()
 	dir := t.TempDir()
 	bare, work := localRemote(t, dir)
 
@@ -82,8 +88,7 @@ func newHarnessRunner(t *testing.T, runner string) *harness {
   url: `+bare+`
   enforcement:
     floorRules: [{ name: production-floor, when: "params.env == 'prod'", approvers: [group:platform-admins] }]
-  runner: { reportToken: { ref: env:INFRA_LIVE_RUN_TOKEN }`+runner+` }
-  sync: { minInterval: 1ns }`, repositories.Options{Secrets: secrets.New(map[string]secrets.Backend{"env": secrets.Env{Lookup: func(name string) (string, bool) {
+  sync: { minInterval: 1ns }`+runner, repositories.Options{Secrets: secrets.New(map[string]secrets.Backend{"env": secrets.Env{Lookup: func(name string) (string, bool) {
 		sum := sha256.Sum256([]byte(runToken))
 		return hex.EncodeToString(sum[:]), name == "INFRA_LIVE_RUN_TOKEN"
 	}}})})

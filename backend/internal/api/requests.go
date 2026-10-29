@@ -73,10 +73,11 @@ type ReviewView struct {
 
 // EventView is something that happened to a request.
 type EventView struct {
-	Kind  string          `json:"kind"`
-	Actor string          `json:"actor,omitempty"`
-	Data  json.RawMessage `json:"data"`
-	At    time.Time       `json:"at"`
+	Kind    string          `json:"kind"`
+	Actor   string          `json:"actor,omitempty"`
+	Data    json.RawMessage `json:"data"`
+	At      time.Time       `json:"at"`
+	Request string          `json:"request,omitempty" doc:"The request it happened to, on a resource's timeline"`
 }
 
 // RequestView is a request.
@@ -408,7 +409,8 @@ func requestView(ctx context.Context, svc *requests.Service, s *store.Store, r d
 		Type: r.TypeName, Blueprint: r.Blueprint, Requester: r.Requester, Reason: r.Reason, State: r.State, Stack: r.Stack,
 		CreatedAt: r.CreatedAt.Time, UpdatedAt: r.UpdatedAt.Time, CanReview: requests.CanReview(r, me.Principal)}
 	v.CanCancel = requests.Cancellable(r.State) && allowed(ctx, authz.CancelRequest, requestObject(ctx, svc, r))
-	v.CanRetry = r.State == requests.Failed && allowed(ctx, authz.RetryRequest, requestObject(ctx, svc, r))
+	// A failed apply is not retried: the change is in Git, the next apply reports on it.
+	v.CanRetry = r.State == requests.Failed && allowed(ctx, authz.RetryRequest, requestObject(ctx, svc, r)) && !svc.Landed(ctx, r)
 	_ = json.Unmarshal(r.Inputs, &v.Inputs)
 	var rules []policy.Rule
 	_ = json.Unmarshal(r.Rules, &rules)

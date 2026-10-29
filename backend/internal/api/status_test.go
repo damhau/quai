@@ -12,7 +12,7 @@ import (
 // repository after its merge, applying, failed, a person's commit, one apply covering several
 // merges, drifted.
 func TestResourceStatus(t *testing.T) {
-	h := newHarness(t)
+	h := newHarnessRunner(t, "")
 	bob, alice := h.as("bob"), h.as("alice")
 	head := func() string { return strings.TrimSpace(git(t, h.bare, "rev-parse", "main")) }
 	state := func(id string) (string, *RunView) {
@@ -53,7 +53,7 @@ func TestResourceStatus(t *testing.T) {
 	expect("while the request waits", web, "pending_change")
 	expect("another resource meanwhile", ftp, "applied")
 	alice.do(http.MethodPost, Prefix+"/requests/"+r.ID+"/review", map[string]string{"decision": "approve"}, nil)
-	bob.await(r.ID, "applied")
+	bob.await(r.ID, "applying")
 	c1 := head()
 	expect("merged, not applied yet", web, "in_repo")
 

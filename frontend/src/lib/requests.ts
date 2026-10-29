@@ -9,15 +9,19 @@ export const states: Record<string, { label: string; tone: Tone }> = {
   pending_approval: { label: "Pending approval", tone: "waiting" },
   approved: { label: "Approved", tone: "neutral" },
   merging: { label: "Delivering", tone: "neutral" },
+  applying: { label: "Applying", tone: "waiting" },
   applied: { label: "Applied", tone: "good" },
   rejected: { label: "Denied", tone: "bad" },
   failed: { label: "Failed", tone: "bad" },
   stale: { label: "Stale", tone: "waiting" },
   cancelled: { label: "Cancelled", tone: "neutral" },
+  // Runs' statuses, shown with the same badges.
+  running: { label: "Running", tone: "waiting" },
+  succeeded: { label: "Succeeded", tone: "good" },
 }
 
 /** inProgress reports whether a request may still change by itself, so its page refreshes. */
-export const inProgress = (state: string) => ["pending_approval", "approved", "merging"].includes(state)
+export const inProgress = (state: string) => ["pending_approval", "approved", "merging", "applying"].includes(state)
 
 export function requestTitle(r: Pick<RequestView, "kind" | "action" | "target">): string {
   switch (r.kind) {
@@ -39,6 +43,22 @@ function str(data: unknown, key: string): string | undefined {
 }
 
 /** eventText says what an event of a request's timeline means. */
+/** planText says how a plan of a request's pull request went, from a plan_reported event. */
+function planText(d: unknown): string {
+  const data = (d ?? {}) as { stack?: string; status?: string; summary?: { add?: number; change?: number; destroy?: number }; cost?: { currency?: string; monthlyDelta?: number }; policies?: Record<string, number> }
+  let text = `the plan of ${data.stack ?? "its stack"} ${data.status === "failed" ? "failed" : "succeeded"}`
+  if (data.summary) text += `: +${data.summary.add ?? 0} ~${data.summary.change ?? 0} −${data.summary.destroy ?? 0}`
+  if (data.cost?.currency && data.cost.monthlyDelta !== undefined) text += ` · ${data.cost.currency} ${data.cost.monthlyDelta >= 0 ? "+" : "−"}${Math.abs(data.cost.monthlyDelta)}/month`
+  const policies = Object.entries(data.policies ?? {}).filter(([result]) => result !== "passed")
+  if (policies.length) text += ` · policies: ${policies.map(([result, n]) => `${n} ${result}${n === 1 ? "" : "s"}`).join(", ")}`
+  return text
+}
+
+/** runURL is the page of the run an event names, if any. */
+export function runURL(e: EventView): string | undefined {
+  return str(e.data, "url")
+}
+
 /** planDecisions says which rules a plan made apply, from a plan_decided event. */
 function planDecisions(d: unknown): string {
   const decisions = (d as { decisions?: { rules?: string[]; applies?: boolean }[] } | null)?.decisions ?? []
@@ -67,7 +87,12 @@ export function eventText(e: EventView): string {
     case "committed":
       return `committed ${shortSha(str(d, "commit") ?? "")}`
     case "applied":
+      if (str(d, "stack")) return `the apply of ${str(d, "stack")} succeeded at ${shortSha(str(d, "commit") ?? "")}`
       return `applied ${shortSha(str(d, "commit") ?? "")}${str(d, "note") ? ` (${str(d, "note")})` : ""}`
+    case "apply_failed":
+      return `the apply of ${str(d, "stack") ?? "its stack"} failed at ${shortSha(str(d, "commit") ?? "")}`
+    case "plan_reported":
+      return planText(d)
     case "failed":
       return `delivery failed: ${str(d, "error") ?? "unknown error"}`
     case "cancelled":

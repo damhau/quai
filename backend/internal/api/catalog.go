@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/google/uuid"
 
 	"github.com/damhau/quai/backend/internal/auth"
 	"github.com/damhau/quai/backend/internal/authz"
@@ -200,6 +201,7 @@ type ResourceDetail struct {
 	History    []CommitView     `json:"history"`
 	CanOperate bool             `json:"canOperate" doc:"Whether the caller may change the resource through requests"`
 	Requests   []RequestSummary `json:"requests" doc:"The latest requests on the resource that the caller may read, newest first"`
+	Applies    []EventView      `json:"applies,omitempty" doc:"The applies of the requests on the resource, newest first: applied and apply_failed events"`
 }
 
 // RequestSummary is a request on a resource's page.
@@ -438,6 +440,18 @@ func registerCatalog(a huma.API, reg *repositories.Registry, s *store.Store) {
 		d.CanOperate = allowed(ctx, authz.OperateResource, resourceObject(r))
 		if d.Requests, err = requestSummaries(ctx, s, r.Repository, r.ID); err != nil {
 			return nil, err
+		}
+		if s != nil {
+			evs, _ := s.ListTargetEvents(ctx, db.ListTargetEventsParams{Target: r.ID, MaxRows: 100})
+			for _, e := range evs {
+				if e.Kind == "applied" || e.Kind == "apply_failed" {
+					v := EventView{Kind: e.Kind, Actor: e.Actor, Data: e.Data, At: e.CreatedAt.Time}
+					if e.RequestID.Valid {
+						v.Request = uuid.UUID(e.RequestID.Bytes).String()
+					}
+					d.Applies = append(d.Applies, v)
+				}
+			}
 		}
 		return &out[ResourceDetail]{Body: d}, nil
 	})

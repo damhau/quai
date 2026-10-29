@@ -120,6 +120,7 @@ type Request struct {
 	Stack             string
 	Rules             json.RawMessage
 	Owners            []string
+	Stacks            []string
 }
 
 type Review struct {

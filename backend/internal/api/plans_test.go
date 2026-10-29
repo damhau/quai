@@ -92,7 +92,7 @@ func TestPlanRules(t *testing.T) {
 	if status, body := fiona.do(http.MethodPost, Prefix+"/requests/"+r.ID+"/review", map[string]string{"decision": "approve"}, nil); status != http.StatusOK {
 		t.Fatalf("FinOps approval = %d %s", status, body)
 	}
-	bob.awaitDelivery(r.ID, "applied", func(v RequestView) bool { return v.State == "applied" })
+	bob.awaitDelivery(r.ID, "merged", func(v RequestView) bool { return v.State == "applying" }) // waiting for its apply
 
 	// A cheap plan in dev: the cost rule, the only one there, does not apply, and the request
 	// goes on without an approval.
@@ -105,7 +105,7 @@ func TestPlanRules(t *testing.T) {
 		t.Fatalf("before its plan, the request is %s", second.State)
 	}
 	h.planOf(second, "https://ci.example.com/2", 40)
-	second = bob.awaitDelivery(second.ID, "applied", func(v RequestView) bool { return v.State == "applied" })
+	second = bob.awaitDelivery(second.ID, "merged", func(v RequestView) bool { return v.State == "applying" })
 	if cost := ruleNamed(second, "type/cost"); !cost.NotApplicable || !cost.Satisfied {
 		t.Errorf("the cost rule after a cheap plan = %+v", cost)
 	}

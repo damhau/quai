@@ -77,7 +77,8 @@ stateDiagram-v2
   Approved --> Stale: owned region changed before merge
   Approved --> PendingApproval: a new plan makes a rule apply
   Approved --> Merging: window open, checks green
-  Merging --> Applying: merged
+  Merging --> Applying: merged (with a runner)
+  Merging --> Applied: merged (without a runner)
   Merging --> Failed: merge refused
   Applying --> Applied: apply succeeded
   Applying --> Failed: apply failed
@@ -87,7 +88,10 @@ stateDiagram-v2
 ```
 
 In pull-request mode the PR is opened at submit, so CI can plan while approvals
-are pending. In direct mode the commit happens at *Merging*.
+are pending. In direct mode the commit happens at *Merging*. With a runner, a merged request is
+*Applying* until the applies of its stacks report ([runs](../design/06-runs-status-and-drift.md#runs-and-requests));
+a retry delivers again a request whose merge failed, not one whose apply failed: that change is
+in Git, and the next apply of its stacks reports on it.
 
 ### Resource status
 

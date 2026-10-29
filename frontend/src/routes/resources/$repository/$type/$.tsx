@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ago, shortSha } from "@/lib/format"
-import { requestTitle } from "@/lib/requests"
+import { eventText, requestTitle } from "@/lib/requests"
 import { openStates } from "@/lib/resources"
 
 export const Route = createFileRoute("/resources/$repository/$type/$")({
@@ -151,6 +151,18 @@ function ResourcePage() {
                   r.state !== "pending_change" && <span className="text-muted-foreground text-xs">no run reported since its last change</span>
                 )}
               </p>
+              {(r.applies ?? []).length > 0 && (
+                <ul className="grid gap-1" aria-label="Applies">
+                  {(r.applies ?? []).map((e) => (
+                    <li key={`${e.request}-${e.at}`} className="text-xs">
+                      <Link to="/requests/$id" params={{ id: e.request ?? "" }} className="hover:underline">
+                        {eventText(e)}
+                      </Link>{" "}
+                      <span className="text-muted-foreground">{ago(e.at)}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
               {r.lastApply ? (
                 <p>
                   <Badge variant="outline">{r.lastApply.status}</Badge> {r.lastApply.kind} of {shortSha(r.lastApply.commit)} {ago(r.lastApply.startedAt)}

@@ -146,10 +146,11 @@ const openChangePaths = `-- name: OpenChangePaths :many
 SELECT DISTINCT c.path FROM changes c
 JOIN change_sets cs ON cs.id = c.change_set_id
 JOIN requests r ON r.id = cs.request_id
-WHERE cs.repository = $1 AND r.state IN ('planned', 'pending_approval', 'approved', 'stale', 'merging', 'applying')
+WHERE cs.repository = $1 AND r.state IN ('planned', 'pending_approval', 'approved', 'stale', 'merging')
 `
 
-// The paths open requests change in a repository: their resources have a pending change.
+// The paths open requests change in a repository and that are not in Git yet: their resources
+// have a pending change. Once merged, a change's runs say the resource's status.
 func (q *Queries) OpenChangePaths(ctx context.Context, repository string) ([]string, error) {
 	rows, err := q.db.Query(ctx, openChangePaths, repository)
 	if err != nil {

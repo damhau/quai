@@ -84,7 +84,7 @@ The first row that holds decides:
 
 | Condition | Status |
 | --- | --- |
-| An open request changes the resource's region | Pending change |
+| An open request changes the resource's region and is not merged yet | Pending change |
 | The latest `plan` or `apply` is running | Planning / Applying |
 | A finished `drift-check` reports changes to the resource, newer than the latest finished `apply` | Drifted |
 | The latest `apply` succeeded | Applied |
@@ -99,6 +99,22 @@ the index records the new last-change commit, and the next apply for that stack
 updates the status. The resource page shows commits by people and by Quai on
 one timeline, Quai's with the request each delivered (its `Quai-Request` trailer). The
 repository's page lists the latest runs of each stack.
+
+## Runs and requests
+
+With `spec.runner`, a merged request (its pull request merged, or its direct commit made) is
+*Applying*. It waits for an apply of each stack its change is in (the stack of the resource,
+or of each resource of a blueprint) that includes the commit that landed it: the latest such
+apply of each stack decides, *Applied* when each succeeded, *Failed* when one failed. An apply
+Quai receives before it sees the merge counts too; a request whose resources have no stack is
+applied at once, and without a runner, merged means applied. A failed apply is not retried by
+delivering again: the change is in Git, and the next apply reports on it.
+
+A request's timeline records each finished plan of its pull request (`plan_reported`, with its
+summary, cost and policy results) and its apply (`applied` or `apply_failed`, with the run).
+The apply events are also on the timeline of the request's target, which the resource's page
+lists (for a blueprint instance, the instance's). Sending them by email, Teams or Slack comes
+with the notification channels ([notifications](05-delivery-and-approvals.md#notifications)).
 
 ## The request timeline
 

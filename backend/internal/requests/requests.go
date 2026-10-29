@@ -49,6 +49,7 @@ const (
 	Cancelled       = "cancelled"
 	Stale           = "stale"
 	Merging         = "merging"
+	Applying        = "applying" // merged, waiting for the apply that includes it (with a runner)
 	Applied         = "applied"
 	Failed          = "failed"
 )
@@ -113,6 +114,7 @@ type InstanceActionInput struct {
 // Plan is what a request would change and who would have to approve it.
 type Plan struct {
 	Kind, Action, Target, Repository, Type, Blueprint, Stack string
+	Stacks                                                   []string // every stack the change set is in
 	Commit                                                   string
 	ChangeSet                                                *plan.ChangeSet
 	Rules                                                    []policy.Rule
@@ -208,6 +210,9 @@ func (s *Service) PlanType(ctx context.Context, who auth.Identity, in TypeInput)
 	region, _ := loc.Region(req.Params)
 	p.Target = locate.ID(repo.Name, t.Metadata.Name, region.Key)
 	p.Stack = stack(t, req.Params)
+	if p.Stack != "" {
+		p.Stacks = []string{p.Stack}
+	}
 
 	// The rules see the document as it will be, and as it was.
 	next := current
@@ -273,7 +278,7 @@ func (s *Service) PlanBlueprint(ctx context.Context, who auth.Identity, in Bluep
 	}
 	return &Plan{
 		Kind: generate.Create, Target: b.Metadata.Name + "/" + in.Name, Repository: repo.Name, Blueprint: b.Metadata.Name,
-		Commit: snap.Commit, ChangeSet: cs, Rules: rules, Owners: []string{who.Principal.Name}, Inputs: inputs,
+		Stacks: stacksOf(snap, cs.Resources), Commit: snap.Commit, ChangeSet: cs, Rules: rules, Owners: []string{who.Principal.Name}, Inputs: inputs,
 		Authorize: authz.CreateRequest, Object: authz.Object{Repository: repo.Name, CatalogItem: b.Metadata.Name},
 	}, s.deliverable(ctx, repo)
 }
@@ -321,7 +326,7 @@ func (s *Service) PlanInstanceAction(ctx context.Context, who auth.Identity, in 
 		}
 		return p, err
 	}
-	p.ChangeSet, p.Inputs = cs, inputs
+	p.ChangeSet, p.Inputs, p.Stacks = cs, inputs, stacksOf(snap, cs.Resources)
 
 	// Each resource's rules see its document as it will be and as it was; the blueprint's see the
 	// instance's inputs and the action's.
@@ -381,7 +386,7 @@ func (s *Service) Submit(ctx context.Context, who auth.Identity, p *Plan, reason
 		r, err := q.CreateRequest(ctx, db.CreateRequestParams{
 			ID: uuid.New(), Kind: p.Kind, Action: p.Action, Target: p.Target, TypeName: p.Type, Blueprint: p.Blueprint,
 			Requester: who.Principal.Name, RequesterEmail: who.Email, Reason: reason, Inputs: inputs, State: state,
-			DefinitionsCommit: p.Commit, BaseCommit: p.Commit, Stack: p.Stack, Rules: rules, Owners: owners,
+			DefinitionsCommit: p.Commit, BaseCommit: p.Commit, Stack: p.Stack, Rules: rules, Owners: owners, Stacks: nonNil(p.Stacks),
 		})
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
@@ -579,6 +584,9 @@ func (s *Service) Retry(ctx context.Context, who auth.Identity, id uuid.UUID) (d
 	}
 	if r.State != Failed {
 		return r, fmt.Errorf("%w: only a failed request can be retried; a stale one must be planned again", ErrConflict)
+	}
+	if s.landed(ctx, r) {
+		return r, fmt.Errorf("%w: the change is in Git already and its apply failed: the next apply of its stacks reports on it", ErrConflict)
 	}
 	var next db.Request
 	err = s.store.Tx(ctx, func(tx pgx.Tx, q *db.Queries) error {
@@ -860,9 +868,16 @@ func (w *Worker) Work(ctx context.Context, job *river.Job[DeliverArgs]) error {
 		if err := s.store.SetChangeSetCommit(ctx, db.SetChangeSetCommitParams{RequestID: r.ID, Repository: cs.Repository, Commit: sha}); err != nil {
 			return err
 		}
-		// Without a runner, a merged change is final (docs/design/01: resources show In repo).
-		_, err = s.transition(ctx, r, Merging, Applied, "committed", map[string]any{"commit": sha})
-		return err
+		// Without a runner, a committed change is final (docs/design/01: resources show In
+		// repo); with one, it waits for the apply that includes the commit.
+		if !repo.HasRunner() {
+			_, err = s.transition(ctx, r, Merging, Applied, "committed", map[string]any{"commit": sha})
+			return err
+		}
+		if r, err = s.transition(ctx, r, Merging, Applying, "committed", map[string]any{"commit": sha}); err != nil {
+			return err
+		}
+		return s.settle(ctx, r)
 	})
 }
 
@@ -1004,6 +1019,20 @@ func ownedObject(repository, item, owner string) authz.Object {
 		o.Owner = owner
 	}
 	return o
+}
+
+// stacksOf returns the stacks the planned resources are in, sorted.
+func stacksOf(snap *repositories.Snapshot, rs []plan.Planned) []string {
+	var out []string
+	for _, r := range rs {
+		if t := snap.Definitions.Types[r.Type]; t != nil {
+			if st := stack(t, r.Params); st != "" && !slices.Contains(out, st) {
+				out = append(out, st)
+			}
+		}
+	}
+	slices.Sort(out)
+	return out
 }
 
 func stack(t *definitions.ResourceType, params map[string]string) string {

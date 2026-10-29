@@ -412,11 +412,16 @@ func pending(names []string, statuses []connectors.Status) []string {
 	return out
 }
 
-// merged records the merge of a request's pull request: the request is applied (without a
-// runner, merged means applied).
+// merged records the merge of a request's pull request: without a runner, merged means applied;
+// with one, the request waits for the apply that includes the merge commit.
 func (s *Service) merged(ctx context.Context, r db.Request, d db.Delivery, pr connectors.PullRequest) error {
-	if r.State == Applied {
+	if r.State == Applied || r.State == Applying || r.State == Failed && s.landed(ctx, r) {
 		return nil
+	}
+	to := Applied
+	repo, repoErr := s.reg.Get(d.Repository)
+	if repoErr == nil && repo.HasRunner() {
+		to = Applying
 	}
 	from := r.State
 	kind := "merged"
@@ -433,9 +438,11 @@ func (s *Service) merged(ctx context.Context, r db.Request, d db.Delivery, pr co
 		if err := q.SetChangeSetCommit(ctx, db.SetChangeSetCommitParams{RequestID: r.ID, Repository: d.Repository, Commit: pr.MergeCommit}); err != nil {
 			return err
 		}
-		if _, err := q.TransitionRequest(ctx, db.TransitionRequestParams{ID: r.ID, FromState: from, ToState: Applied}); err != nil {
+		next, err := q.TransitionRequest(ctx, db.TransitionRequestParams{ID: r.ID, FromState: from, ToState: to})
+		if err != nil {
 			return conflict(err, r)
 		}
+		r = next
 		if err := event(ctx, q, r, kind, "", data); err != nil {
 			return err
 		}
@@ -453,12 +460,13 @@ func (s *Service) merged(ctx context.Context, r db.Request, d db.Delivery, pr co
 	} else {
 		s.delivered(ctx, d.Repository, Applied)
 	}
-	if repo, err := s.reg.Get(d.Repository); err == nil {
+	if repoErr == nil {
 		if _, err := repo.Snapshot(ctx, true); err != nil {
 			s.log.WarnContext(ctx, "refresh after a merge", slog.Any("error", err))
 		}
 	}
-	return nil
+	// The apply may have been reported before Quai saw the merge.
+	return s.settle(ctx, r)
 }
 
 // PullRequest acts on one of Quai's pull requests as re-read from the platform after a webhook

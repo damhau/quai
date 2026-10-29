@@ -23,7 +23,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { ago } from "@/lib/format"
 import { fieldErrors, hasFieldErrors, problemMessage } from "@/lib/problems"
-import { eventText, inProgress, requestTitle } from "@/lib/requests"
+import { eventText, inProgress, requestTitle, runURL } from "@/lib/requests"
 
 export const Route = createFileRoute("/requests/$id")({
   loader: ({ context, params }) => context.queryClient.ensureQueryData(getRequestOptions({ path: params })),
@@ -131,6 +131,14 @@ function RequestPage() {
                   <li key={i} className="text-sm">
                     {e.actor && <span className="font-medium">{e.actor} </span>}
                     {eventText(e)}
+                    {runURL(e) && (
+                      <>
+                        {" "}
+                        <a href={runURL(e)} target="_blank" rel="noreferrer" className="text-muted-foreground text-xs underline">
+                          run
+                        </a>
+                      </>
+                    )}
                     <div className="text-muted-foreground text-xs" title={new Date(e.at).toLocaleString()}>
                       {ago(e.at)}
                     </div>

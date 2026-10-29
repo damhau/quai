@@ -970,6 +970,10 @@
           "data": {},
           "kind": {
             "type": "string"
+          },
+          "request": {
+            "description": "The request it happened to, on a resource's timeline",
+            "type": "string"
           }
         },
         "required": [
@@ -2030,6 +2034,16 @@
           "actions": {
             "items": {
               "$ref": "#/components/schemas/ActionView"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "applies": {
+            "description": "The applies of the requests on the resource, newest first: applied and apply_failed events",
+            "items": {
+              "$ref": "#/components/schemas/EventView"
             },
             "type": [
               "array",

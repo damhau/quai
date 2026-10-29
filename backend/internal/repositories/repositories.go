@@ -74,6 +74,12 @@ type Repo struct {
 	changes     *ChangeIndex // the last change index built
 }
 
+// HasRunner reports whether the repository's runs are reported (spec.runner): without a runner,
+// a merged change is applied and resources stay in the repository.
+func (r *Repo) HasRunner() bool {
+	return r.Document.Spec.Runner.ReportToken.Ref != "" || r.Document.Spec.Runner.Kind != ""
+}
+
 // Snapshot is a repository at one commit: its files and the definitions read from them.
 type Snapshot struct {
 	Repository  string

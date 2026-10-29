@@ -44,7 +44,7 @@ func (st *statuses) of(ctx context.Context, repo *repositories.Repo, snap *repos
 	}
 	in := status.Input{
 		Pending: slices.ContainsFunc(rs.pending, func(p string) bool { return p == r.Path || strings.HasPrefix(p, strings.TrimSuffix(r.Path, "/")+"/") }),
-		Runner:  repo.Document.Spec.Runner.ReportToken.Ref != "" || repo.Document.Spec.Runner.Kind != "",
+		Runner:  repo.HasRunner(),
 	}
 	runs := rs.stack(ctx, st.s, r.Stack)
 	for _, run := range runs {

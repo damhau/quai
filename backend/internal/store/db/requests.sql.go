@@ -12,11 +12,65 @@ import (
 	"github.com/google/uuid"
 )
 
+const applyingRequests = `-- name: ApplyingRequests :many
+SELECT r.id, r.org_id, r.kind, r.action, r.target, r.type_name, r.blueprint, r.requester, r.reason, r.inputs, r.state, r.definitions_commit, r.base_commit, r.created_at, r.updated_at, r.number, r.requester_email, r.stack, r.rules, r.owners, r.stacks FROM requests r
+JOIN change_sets cs ON cs.request_id = r.id
+WHERE r.state = 'applying' AND cs.repository = $1 AND $2::text = ANY(r.stacks)
+`
+
+type ApplyingRequestsParams struct {
+	Repository string
+	Stack      string
+}
+
+// The requests of a repository waiting for an apply of stack.
+func (q *Queries) ApplyingRequests(ctx context.Context, arg ApplyingRequestsParams) ([]Request, error) {
+	rows, err := q.db.Query(ctx, applyingRequests, arg.Repository, arg.Stack)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Request{}
+	for rows.Next() {
+		var i Request
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.Kind,
+			&i.Action,
+			&i.Target,
+			&i.TypeName,
+			&i.Blueprint,
+			&i.Requester,
+			&i.Reason,
+			&i.Inputs,
+			&i.State,
+			&i.DefinitionsCommit,
+			&i.BaseCommit,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Number,
+			&i.RequesterEmail,
+			&i.Stack,
+			&i.Rules,
+			&i.Owners,
+			&i.Stacks,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const createRequest = `-- name: CreateRequest :one
 INSERT INTO requests (id, kind, action, target, type_name, blueprint, requester, requester_email, reason, inputs, state,
-                      definitions_commit, base_commit, stack, rules, owners)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
-RETURNING id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners
+                      definitions_commit, base_commit, stack, rules, owners, stacks)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, COALESCE($17::text[], '{}'))
+RETURNING id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks
 `
 
 type CreateRequestParams struct {
@@ -36,6 +90,7 @@ type CreateRequestParams struct {
 	Stack             string
 	Rules             json.RawMessage
 	Owners            []string
+	Stacks            []string
 }
 
 func (q *Queries) CreateRequest(ctx context.Context, arg CreateRequestParams) (Request, error) {
@@ -56,6 +111,7 @@ func (q *Queries) CreateRequest(ctx context.Context, arg CreateRequestParams) (R
 		arg.Stack,
 		arg.Rules,
 		arg.Owners,
+		arg.Stacks,
 	)
 	var i Request
 	err := row.Scan(
@@ -79,12 +135,13 @@ func (q *Queries) CreateRequest(ctx context.Context, arg CreateRequestParams) (R
 		&i.Stack,
 		&i.Rules,
 		&i.Owners,
+		&i.Stacks,
 	)
 	return i, err
 }
 
 const getRequest = `-- name: GetRequest :one
-SELECT id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners FROM requests WHERE id = $1
+SELECT id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks FROM requests WHERE id = $1
 `
 
 func (q *Queries) GetRequest(ctx context.Context, id uuid.UUID) (Request, error) {
@@ -111,12 +168,13 @@ func (q *Queries) GetRequest(ctx context.Context, id uuid.UUID) (Request, error)
 		&i.Stack,
 		&i.Rules,
 		&i.Owners,
+		&i.Stacks,
 	)
 	return i, err
 }
 
 const listRequests = `-- name: ListRequests :many
-SELECT id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners FROM requests
+SELECT id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks FROM requests
 WHERE (cardinality($1::text[]) = 0 OR state = ANY ($1::text[]))
   AND ($2::text = '' OR requester = $2::text)
   AND ($3::text = '' OR target = $3::text)
@@ -167,6 +225,7 @@ func (q *Queries) ListRequests(ctx context.Context, arg ListRequestsParams) ([]R
 			&i.Stack,
 			&i.Rules,
 			&i.Owners,
+			&i.Stacks,
 		); err != nil {
 			return nil, err
 		}
@@ -196,7 +255,7 @@ func (q *Queries) SetRequestRules(ctx context.Context, arg SetRequestRulesParams
 const transitionRequest = `-- name: TransitionRequest :one
 UPDATE requests SET state = $1, updated_at = now()
 WHERE id = $2 AND state = $3
-RETURNING id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners
+RETURNING id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks
 `
 
 type TransitionRequestParams struct {
@@ -231,6 +290,7 @@ func (q *Queries) TransitionRequest(ctx context.Context, arg TransitionRequestPa
 		&i.Stack,
 		&i.Rules,
 		&i.Owners,
+		&i.Stacks,
 	)
 	return i, err
 }
