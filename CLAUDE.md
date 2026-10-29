@@ -13,16 +13,17 @@ every request becomes a reviewed change in their Git repositories. Start with
 - **Tasks are GitHub issues** in [damhau/quai](https://github.com/damhau/quai/issues), grouped in
   milestones M1–M3 and labelled `phase:N`, `type:task` / `type:epic`, `area:*`. GitHub is the only
   task list. Phase 0 tasks were issues #1–#29 (`P0-NN` is `#NN`). Phase 1 tasks are issues
-  #77–#99, titled `P1-NN` (`P1-NN` is `#(76+NN)`); how an iteration works, the test infrastructure
-  (Gitea, envtest, kind, the Azure DevOps sandbox) and when to stop are in
-  [`docs/plan/phase-1-backlog.md`](docs/plan/phase-1-backlog.md).
+  #77–#99, titled `P1-NN` (`P1-NN` is `#(76+NN)`). Phase 2 tasks are issues #100–#113, titled
+  `P2-NN` (`P2-NN` is `#(99+NN)`); how an iteration works, the test infrastructure (Gitea, envtest,
+  kind, the Azure DevOps sandbox, recorded Terraform plans) and when to stop are in
+  [`docs/plan/phase-2-backlog.md`](docs/plan/phase-2-backlog.md).
 
 ## Rules
 
 - The docs are the spec. If an implementation must deviate, update the relevant document in the
   same commit. If a decision is not covered, add it to `docs/plan/open-questions.md` and stop to ask.
 - Commit straight to `main`, one task per commit or a few small commits, message
-  `P1-NN: summary (closes #<issue>)` (`refs` for STOP tasks the owner closes).
+  `P2-NN: summary (closes #<issue>)` (`refs` for STOP tasks the owner closes).
   Never add `Co-Authored-By` or other attribution trailers. Push after each task and check CI.
 - If `git config user.name` is empty, stop and ask the owner to configure a Git identity.
 - Never commit secrets, never disable TLS verification, never weaken a test to make it pass.

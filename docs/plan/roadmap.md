@@ -72,7 +72,7 @@ Epics: [GitHub issues labelled `phase:1`](https://github.com/damhau/quai/issues?
 Goal: approvers see the plan; owners see whether their change is live. See
 [runs, status and drift](../design/06-runs-status-and-drift.md).
 
-Epics: [GitHub issues labelled `phase:2`](https://github.com/damhau/quai/issues?q=is%3Aissue%20label%3Aphase%3A2). Each epic is broken into task issues when the phase starts.
+Epics: [GitHub issues labelled `phase:2`](https://github.com/damhau/quai/issues?q=is%3Aissue%20label%3Aphase%3A2). Tasks: issues #100–#113 (`P2-01` to `P2-14`); the loop procedure and the test infrastructure are in the [Phase 2 backlog](phase-2-backlog.md).
 
 **Exit (M1 Pilot):** the pilot's users request, approve with the plan in front of them, and see the apply result, on their own repository and pipeline.
 
