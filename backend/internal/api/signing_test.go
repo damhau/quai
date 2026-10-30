@@ -22,6 +22,7 @@ import (
 // verify-commit checks against the allowed signers; in direct mode the commit, made after the
 // approvals, carries them as Approved-by trailers.
 func TestSignedCommits(t *testing.T) {
+	t.Parallel()
 	if _, err := exec.LookPath("ssh-keygen"); err != nil {
 		t.Skip("no ssh-keygen")
 	}

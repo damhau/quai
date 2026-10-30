@@ -25,7 +25,9 @@ every request becomes a reviewed change in their Git repositories. Start with
   same commit. If a decision is not covered, add it to `docs/plan/open-questions.md` and stop to ask.
 - Commit straight to `main`, one task per commit or a few small commits, message
   `P3-NN: summary (closes #<issue>)` (`refs` for STOP tasks the owner closes).
-  Never add `Co-Authored-By` or other attribution trailers. Push after each task and check CI.
+  Never add `Co-Authored-By` or other attribution trailers. Push after each task without waiting
+  for CI. Before starting the next task, read the previous push's CI and the last nightly runs;
+  a red one is fixed first ([test tiers](docs/engineering/testing.md#tiers)).
 - If `git config user.name` is empty, stop and ask the owner to configure a Git identity.
 - Never commit secrets, never disable TLS verification, never weaken a test to make it pass.
 - If an action is blocked by Veto (`[BLOCKED BY POLICY]`, guardrail exception) or by the sandbox,
@@ -38,7 +40,8 @@ every request becomes a reviewed change in their Git repositories. Start with
 Backend (from `backend/`, Go 1.27):
 
 ```bash
-make check     # build, vet, staticcheck, gosec, govulncheck, sqlc diff, go test -race
+make quick     # tier 1, before each commit: build, vet, and the changed packages' checks and tests
+make check     # tier 2, as CI runs it: build, vet, staticcheck, gosec, govulncheck, sqlc diff, go test -race
 make generate  # regenerate internal/store/db after changing queries or migrations
 go test ./internal/engine/...            # fast loop on the engine
 go test -fuzz=FuzzYAMLEdit -fuzztime=60s ./internal/engine/edit/yamledit

@@ -10,6 +10,7 @@ import (
 // Ported from the prototype's "types are read from the repository, with discovered params" and
 // "brownfield files show up in the inventory with owners".
 func TestCatalogAndInventory(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	bob := h.as("bob")
 
@@ -76,6 +77,7 @@ func TestCatalogAndInventory(t *testing.T) {
 }
 
 func TestSyncAndProblems(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	alice := h.as("alice")
 	h.push("envs/test/vms/t1.yaml", "owner: carol\ntemplate: rhel-9\ncpu: 2\nmemory_gb: 4\ndisks: [{ size_gb: 20 }]\nnetwork: { vlan: 110 }\n")
@@ -106,6 +108,7 @@ func TestSyncAndProblems(t *testing.T) {
 }
 
 func TestAnonymousCatalog(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	nobody := h.as("")
 	for _, path := range []string{"/catalog", "/inventory", "/repositories", "/repositories/infra-live/types/vm", "/resource?id=infra-live/vm/prod/web01"} {

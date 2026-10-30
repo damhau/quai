@@ -8,9 +8,40 @@ on:
 permissions:
   contents: read
 
+# Tier 2 of docs/engineering/testing.md: every gate of `make check`, in parallel jobs. The
+# workflow takes as long as its slowest job: the static checks, or one half of the tests.
 jobs:
-  check:
+  static:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      # staticcheck, gosec, govulncheck and sqlc, built once per version and toolchain by
+      # tools/tool.sh: the key follows the versions the Makefile pins and the toolchain go.mod
+      # selects.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/quai-tools
+          key: go-tools-${{ runner.os }}-${{ hashFiles('backend/Makefile', 'backend/go.mod') }}
+      - run: make static
+      - name: quai lint on the example repository
+        run: go run ./cmd/quai lint ../examples/gitops-repo
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        half: [api, others] # internal/api, the slowest package, and everything else
+    name: test (${{ matrix.half }})
     defaults:
       run:
         working-directory: backend
@@ -30,6 +61,4 @@ jobs:
           path: ~/.cache/quai
           key: test-binaries-${{ runner.os }}-${{ hashFiles('backend/internal/pgtest/*.go', 'backend/internal/k8stest/*.go', 'backend/internal/giteatest/*.go', 'backend/go.sum') }}
           restore-keys: test-binaries-${{ runner.os }}-
-      - run: make check
-      - name: quai lint on the example repository
-        run: go run ./cmd/quai lint ../examples/gitops-repo
+      - run: make test-${{ matrix.half }}

@@ -100,6 +100,7 @@ func wait(t *testing.T, events <-chan *river.Event, kind string, timeout time.Du
 }
 
 func TestCleanupSessions(t *testing.T) {
+	t.Parallel()
 	p, _ := pool(t)
 	ctx := context.Background()
 	if _, err := p.Exec(ctx, `INSERT INTO sessions (token, data, expiry) VALUES
@@ -141,6 +142,7 @@ func (w *recordWorker) Work(ctx context.Context, job *river.Job[recordArgs]) err
 }
 
 func TestInsertTx(t *testing.T) {
+	t.Parallel()
 	p, _ := pool(t)
 	ctx := context.Background()
 	ins, err := NewInserter(p, quiet)
@@ -186,6 +188,7 @@ func TestInsertTx(t *testing.T) {
 }
 
 func TestRepositoryLock(t *testing.T) {
+	t.Parallel()
 	p, _ := pool(t)
 	ctx := context.Background()
 	held := make(chan struct{})
@@ -247,6 +250,7 @@ func helperWorker(url string) int {
 // A worker process killed in the middle of a job leaves it running; another worker rescues it
 // and runs it again.
 func TestWorkerKilledMidJob(t *testing.T) {
+	t.Parallel()
 	p, url := pool(t)
 	ctx := context.Background()
 	ins, err := NewInserter(p, quiet)

@@ -23,6 +23,7 @@ func (h *harness) branch(name, file, content string) {
 // TestPreview: catalog authors see a branch's definitions before they are merged; the catalog
 // keeps the default branch's, and nothing is requested from a preview.
 func TestPreview(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	alice, bob := h.as("alice"), h.as("bob")
 	original, _ := h.file(".quai/types/vm.yaml")

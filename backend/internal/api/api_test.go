@@ -34,6 +34,7 @@ func get(h http.Handler, path string, header ...string) *httptest.ResponseRecord
 }
 
 func TestHealthAndMeta(t *testing.T) {
+	t.Parallel()
 	h, logs := newTest(t)
 	if rec := get(h, "/healthz"); rec.Code != http.StatusOK || rec.Body.String() != "ok\n" {
 		t.Errorf("/healthz = %d %q", rec.Code, rec.Body)
@@ -61,6 +62,7 @@ func TestHealthAndMeta(t *testing.T) {
 }
 
 func TestOpenAPI(t *testing.T) {
+	t.Parallel()
 	h, _ := newTest(t)
 	rec := get(h, Prefix+"/openapi.json")
 	var doc struct {
@@ -80,6 +82,7 @@ func TestOpenAPI(t *testing.T) {
 }
 
 func TestProblems(t *testing.T) {
+	t.Parallel()
 	h, logs := newTest(t)
 	for path, status := range map[string]int{Prefix + "/nope": 404, "/elsewhere": 404} {
 		rec := get(h, path)
@@ -118,6 +121,7 @@ func TestProblems(t *testing.T) {
 }
 
 func TestProblemMapping(t *testing.T) {
+	t.Parallel()
 	ve := &schema.ValidationError{Fields: map[string]string{"cpu": "must be at most 32", "$": "must be an object"}}
 	p := Problem(fmt.Errorf("plan: %w", ve), "body.document")
 	if p.GetStatus() != 422 {
@@ -151,6 +155,7 @@ func TestProblemMapping(t *testing.T) {
 }
 
 func TestServesTheUI(t *testing.T) {
+	t.Parallel()
 	h := New(Options{Version: "test", Logger: slog.New(slog.DiscardHandler), UI: fstest.MapFS{"index.html": {Data: []byte("<!doctype html><title>Quai</title>")}}})
 	for _, tc := range []struct {
 		method, path, want string

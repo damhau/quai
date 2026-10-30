@@ -10,6 +10,7 @@ import (
 // TestWebhookHost: with a webhook host name, /webhooks/ answers there only, and that host answers
 // nothing else but run reports and /healthz.
 func TestWebhookHost(t *testing.T) {
+	t.Parallel()
 	hooks := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusAccepted) })
 	h := New(Options{Version: "test", Logger: slog.New(slog.DiscardHandler), Webhooks: hooks, WebhookHost: "hooks.quai.example.com"})
 	for _, tc := range []struct {

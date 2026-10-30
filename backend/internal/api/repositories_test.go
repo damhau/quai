@@ -28,6 +28,7 @@ func document(name string, spec map[string]any) map[string]any {
 // TestManageRepositories: repository admins connect, change and disconnect repositories through
 // the API; those declared in configuration are read-only there; others may not.
 func TestManageRepositories(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	alice, bob := h.as("alice"), h.as("bob")
 	bare, _ := localRemote(t, t.TempDir())
@@ -98,6 +99,7 @@ func TestManageRepositories(t *testing.T) {
 
 // TestListConnections: the connections, connected or not, as their admins see them.
 func TestListConnections(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	alice := h.as("alice")
 	gone := document("gone", map[string]any{"connector": "generic", "url": filepath.Join(t.TempDir(), "nowhere.git"), "delivery": map[string]any{"mode": "direct"}})
@@ -117,6 +119,7 @@ func TestListConnections(t *testing.T) {
 // TestHealthAndRunToken: a repository's health says what Quai knows of it; a run token is new
 // each time, with its SHA-256 for the secret.
 func TestHealthAndRunToken(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	alice := h.as("alice")
 	if err := h.ingest.Poll(t.Context(), "infra-live"); err != nil {
@@ -164,6 +167,7 @@ func accessHarness(t *testing.T, r *giteatest.Repo, vars map[string]string) *har
 // leaves nothing behind; with a reader's, the push fails with the permission it needs. The
 // webhook is installed through the platform.
 func TestRepositoryAccess(t *testing.T) {
+	t.Parallel()
 	g := giteatest.Get(t)
 	r := g.Repo(t, "infra")
 	reader := g.User(t, "reader")

@@ -1,9 +1,15 @@
 name: packaging
 
+# On every push, the chart is checked and the image built, started and, on main, published. The
+# vulnerability scan of the image runs nightly and on demand (gh workflow run packaging.yml), so
+# pushes do not wait for it (docs/engineering/testing.md).
 on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    - cron: "7 1 * * *"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -57,8 +63,10 @@ jobs:
           format: cyclonedx-json
           output-file: sbom.cdx.json
           artifact-name: quai.cdx.json
-      # Known vulnerabilities with a fix, of high or critical severity, fail the build.
-      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+      # Nightly: known vulnerabilities with a fix, of high or critical severity, fail the run; the
+      # image is built from main's latest commit, as the one published.
+      - if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           version: v0.76.1
           image-ref: quai:ci
@@ -66,8 +74,8 @@ jobs:
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: "1"
-      # On main, the image that was scanned is published, signed keylessly (Sigstore, with this
-      # workflow's identity) and its SBOM attested.
+      # On a push to main, the image is published, signed keylessly (Sigstore, with this workflow's
+      # identity) and its SBOM attested; the nightly run scans what main publishes.
       - if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:

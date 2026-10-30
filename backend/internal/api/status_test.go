@@ -12,6 +12,7 @@ import (
 // repository after its merge, applying, failed, a person's commit, one apply covering several
 // merges, drifted.
 func TestResourceStatus(t *testing.T) {
+	t.Parallel()
 	h := newHarnessRunner(t, "")
 	bob, alice := h.as("bob"), h.as("alice")
 	head := func() string { return strings.TrimSpace(git(t, h.bare, "rev-parse", "main")) }

@@ -117,6 +117,7 @@ func resizeBody(cpu int) map[string]any {
 // approval turns it to success and Quai merges through the platform; the merge applies the
 // request. A cancelled request's pull request is closed.
 func TestPullRequestDelivery(t *testing.T) {
+	t.Parallel()
 	h, remote := giteaHarness(t, "auto")
 	g := giteatest.Get(t)
 	bob, alice := h.as("bob"), h.as("alice")
@@ -203,6 +204,7 @@ func TestPullRequestDelivery(t *testing.T) {
 // TestManualMerge: with merge: manual, the approval only turns quai/approval to success; the
 // person who merges applies the request.
 func TestManualMerge(t *testing.T) {
+	t.Parallel()
 	h, remote := giteaHarness(t, "manual")
 	g := giteatest.Get(t)
 	bob, alice := h.as("bob"), h.as("alice")
@@ -290,6 +292,7 @@ func (h *harness) awaitPullRequest(t *testing.T, r *giteatest.Repo, number int64
 // TestWebhooksThroughTheServer: Gitea's deliveries reach the ingestion through the server's
 // /webhooks/ mount: a push is recorded as a webhook, and fetched.
 func TestWebhooksThroughTheServer(t *testing.T) {
+	t.Parallel()
 	g := giteatest.Get(t)
 	r := g.Repo(t, "infra")
 	pushExample(t, r.CloneURL, func(context.Context) (gitx.Credentials, error) { return gitx.Credentials{Header: g.GitHeader()}, nil }, nil)

@@ -57,6 +57,7 @@ func hasEvent(r RequestView, kind, text string) bool {
 // The base moves, the owned region unchanged: the branch is rebuilt on it; same hash, the
 // approval stays.
 func TestRebuildOnNewBase(t *testing.T) {
+	t.Parallel()
 	h, remote := giteaHarness(t, "manual")
 	g := giteatest.Get(t)
 	r := approved(t, h)
@@ -85,6 +86,7 @@ func TestRebuildOnNewBase(t *testing.T) {
 
 // An owned region changes on the base: the request is stale.
 func TestOwnedRegionChanged(t *testing.T) {
+	t.Parallel()
 	h, remote := giteaHarness(t, "manual")
 	r := opened(t, h)
 	if err := remote.Write("main", "envs/prod/vms/web01.yaml", "owner: bob\ntemplate: ubuntu-24.04\ncpu: 5\nmemory_gb: 16\n"); err != nil {
@@ -100,6 +102,7 @@ func TestOwnedRegionChanged(t *testing.T) {
 
 // The definitions change: the request is stale.
 func TestDefinitionsChanged(t *testing.T) {
+	t.Parallel()
 	h, remote := giteaHarness(t, "manual")
 	r := opened(t, h)
 	original, _, err := giteatest.Get(t).Client.GetFile(remote.Owner, remote.Name, "main", ".quai/types/vm.yaml")
@@ -118,6 +121,7 @@ func TestDefinitionsChanged(t *testing.T) {
 // Someone pushes to the branch, within the request's file: the approvals are void and the
 // request is approved again from the branch's content.
 func TestOutsidePushWithin(t *testing.T) {
+	t.Parallel()
 	h, remote := giteaHarness(t, "manual")
 	r := approved(t, h)
 	if err := remote.Write(r.Delivery.Branch, "envs/prod/vms/web01.yaml", "owner: bob\ntemplate: ubuntu-24.04\ncpu: 7\nmemory_gb: 16\ndisks: [{ size_gb: 80 }]\nnetwork: { vlan: 120 }\n"); err != nil {
@@ -136,6 +140,7 @@ func TestOutsidePushWithin(t *testing.T) {
 // Someone replaces the branch's commit with the same content (a reworded commit): the approval
 // stands, and quai/approval is published again on the new commit.
 func TestOutsidePushSameContent(t *testing.T) {
+	t.Parallel()
 	h, remote := giteaHarness(t, "manual")
 	g := giteatest.Get(t)
 	r := approved(t, h)
@@ -170,6 +175,7 @@ func TestOutsidePushSameContent(t *testing.T) {
 // Someone pushes to the branch beyond the request's files: the request is closed, and its pull
 // request.
 func TestOutsidePushBeyond(t *testing.T) {
+	t.Parallel()
 	h, remote := giteaHarness(t, "manual")
 	r := opened(t, h)
 	if err := remote.Write(r.Delivery.Branch, "README.md", "# Not the request's\n"); err != nil {
@@ -184,6 +190,7 @@ func TestOutsidePushBeyond(t *testing.T) {
 
 // The pull request is closed outside Quai: the request is cancelled.
 func TestClosedOutside(t *testing.T) {
+	t.Parallel()
 	h, remote := giteaHarness(t, "manual")
 	r := opened(t, h)
 	closed := gitea.StateClosed
@@ -199,6 +206,7 @@ func TestClosedOutside(t *testing.T) {
 // The pull request is merged without Quai's approval (the protection was removed): the request
 // is applied, and the bypass recorded as an alert.
 func TestMergedWithoutApproval(t *testing.T) {
+	t.Parallel()
 	h, remote := giteaHarness(t, "manual")
 	r := opened(t, h)
 	if err := remote.Unprotect("main"); err != nil {

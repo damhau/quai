@@ -24,6 +24,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -54,9 +55,15 @@ type Instance struct {
 	dir    string
 }
 
+// slots bounds the tests using Gitea at once. It runs on SQLite, which serializes writes, and its
+// queues (auto-merge among them) fall behind when every parallel test uses it at the same time.
+const slots = 4
+
 var (
 	instance *Instance
 	names    atomic.Int64
+	free     = make(chan struct{}, slots)
+	holding  sync.Map // the tests holding a slot, so that a test calling Get again takes no other
 )
 
 // Main starts Gitea, runs the tests and stops it. Use it as
@@ -73,11 +80,19 @@ func Main(m *testing.M) int {
 	return code
 }
 
-// Get returns the running Gitea.
+// Get returns the running Gitea. A test waits for one of the slots before using it, and frees it
+// when it ends.
 func Get(t testing.TB) *Instance {
 	t.Helper()
 	if instance == nil {
 		t.Fatal("giteatest: call giteatest.Main from TestMain")
+	}
+	if _, held := holding.LoadOrStore(t, true); !held {
+		free <- struct{}{}
+		t.Cleanup(func() {
+			holding.Delete(t)
+			<-free
+		})
 	}
 	return instance
 }

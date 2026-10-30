@@ -37,6 +37,7 @@ func manifests(t *testing.T, file string) []map[string]any {
 // TestArgoCDTemplate renders the Argo CD notification template as the notifications controller
 // would, for a sync running then finished, and Quai takes both as one sync run.
 func TestArgoCDTemplate(t *testing.T) {
+	t.Parallel()
 	h := newHarnessRunner(t, "")
 	cm := manifests(t, "argocd/notifications.yaml")[0]["data"].(map[string]any)
 	var tmpl struct {
@@ -89,6 +90,7 @@ func TestArgoCDTemplate(t *testing.T) {
 // TestFluxEvents posts events as Flux's generic provider does: a reconciliation progressing then
 // succeeded is one sync run; an error is a failed one.
 func TestFluxEvents(t *testing.T) {
+	t.Parallel()
 	h := newHarnessRunner(t, "")
 	alert := manifests(t, "flux/alert.yaml")
 	if address, _ := alert[0]["spec"].(map[string]any)["address"].(string); !strings.Contains(address, "/api/v1/runs/flux?repository=") {

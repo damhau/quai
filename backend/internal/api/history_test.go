@@ -7,6 +7,7 @@ import (
 )
 
 func TestInstancesLogAndEvents(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	bob := h.as("bob")
 	var r RequestView
@@ -56,6 +57,7 @@ func TestInstancesLogAndEvents(t *testing.T) {
 
 // Ported from "only admins publish blueprints, and they are validated and committed".
 func TestPublishBlueprint(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	bp := map[string]any{
 		"apiVersion": "quai.dev/v1beta1", "kind": "Blueprint",
@@ -97,6 +99,7 @@ func TestPublishBlueprint(t *testing.T) {
 }
 
 func TestInstanceActions(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	bob := h.as("bob")
 	var r RequestView

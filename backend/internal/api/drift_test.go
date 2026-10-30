@@ -44,6 +44,7 @@ func driftHarness(t *testing.T) (*harness, *pipelinestest.Pipelines) {
 // Terraform resources changed as Drifted, with what differs, and a clean one clears them
 // (docs/design/06-runs-status-and-drift.md#drift).
 func TestDriftChecks(t *testing.T) {
+	t.Parallel()
 	h, fake := driftHarness(t)
 	alice, bob := h.as("alice"), h.as("bob")
 	// The stack was applied before the drift checks run.
@@ -105,6 +106,7 @@ func TestDriftChecks(t *testing.T) {
 
 // TestNoDriftCheck: without a drift-check pipeline, there is nothing to queue.
 func TestNoDriftCheck(t *testing.T) {
+	t.Parallel()
 	h := newHarnessRunner(t, "")
 	if status, _ := h.as("alice").do(http.MethodPost, Prefix+"/repositories/infra-live/drift-checks", map[string]any{}, nil); status != http.StatusConflict {
 		t.Errorf("queue without a drift-check pipeline = %d", status)
@@ -115,6 +117,7 @@ func TestNoDriftCheck(t *testing.T) {
 // request waits for the apply pipeline's run, which Quai reads when a service hook names it, or
 // when it polls.
 func TestPipelinesRunner(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	bare, _ := localRemote(t, dir)
 	fake := &pipelinestest.Pipelines{}

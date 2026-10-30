@@ -38,6 +38,7 @@ func (h *harness) timeline(t *testing.T) []string {
 // an alert is recorded. Restoring the protection unblocks; removing the required check blocks
 // again.
 func TestEnforcement(t *testing.T) {
+	t.Parallel()
 	h, remote := giteaHarness(t, "manual")
 	ctx := context.Background()
 	bob := h.as("bob")

@@ -14,6 +14,7 @@ import (
 // function of this package it calls, unless the comment just above huma.Register says
 // "authz: public" (docs/design/08-identity-access-tenancy.md#evaluation).
 func TestEveryHandlerAuthorizes(t *testing.T) {
+	t.Parallel()
 	fset := token.NewFileSet()
 	entries, err := os.ReadDir(".")
 	if err != nil {
@@ -41,6 +42,7 @@ func TestEveryHandlerAuthorizes(t *testing.T) {
 
 // The check itself finds a handler that does not authorize.
 func TestTheCheckFindsMissingAuthorize(t *testing.T) {
+	t.Parallel()
 	src := `package api
 
 func register(a huma.API) {

@@ -2,21 +2,37 @@
 
 Status: Draft · 2026-10-26
 
+## Tiers
+
+Tests run in three tiers, so that work does not wait for what a later tier catches.
+
+| Tier | When | Who waits for it | What |
+| --- | --- | --- | --- |
+| **1. Quick** | Before each commit, locally (`make quick` in `backend/`; `npm run typecheck && npm run lint && npm run test` in `frontend/` when it changed) | The developer or the session | Build and vet everything; staticcheck and the tests, without `-race`, of the changed packages and of those that import them (or whose tests do); `sqlc diff` when queries or migrations changed; `quai lint` on the example repository when it changed |
+| **2. Full** | On every push, in CI (`backend.yml`, `frontend.yml`, `packaging.yml`) | Nobody: the next iteration reads the previous push's result before it starts, and a red one is fixed first | `make check` in parallel jobs (static checks, `internal/api`'s tests, the other tests, all with `-race`), the frontend, the chart lint and the image build and smoke test |
+| **3. Slow** | Nightly, and on demand before a phase review or a milestone (`gh workflow run`) | The phase review and the milestone: they close with tiers 2 and 3 green on the same commit | The Playwright scenarios (`e2e.yml`), the Helm chart on kind (`kind.yml`), the image's vulnerability scan (Trivy, `packaging.yml`), the live tests on the Azure DevOps sandbox (`live.yml`) |
+
+Tests that need no shared state run in parallel (`t.Parallel()`) where they are slow: each has
+its own database (`pgtest`) and its own Gitea repositories. At most four use a package's Gitea at
+once (`giteatest`): it runs on SQLite, and its queues fall behind under more. The live tests on
+the sandboxes stay sequential: the sandbox has one pipeline agent.
+
 | Level | Scope | Tools | Runs |
 | --- | --- | --- | --- |
-| Engine unit | Expressions, schemas, locators, generators, editors, policy | `go test`, table-driven | Every PR |
-| Golden | Generator and editor output, byte for byte | `testdata/golden/`, `-update` flag to regenerate deliberately | Every PR |
-| File-editing corpus | Real-world YAML, JSON, HCL files with edits and expected results | `testdata/corpus/` | Every PR |
+| Engine unit | Expressions, schemas, locators, generators, editors, policy | `go test`, table-driven | Tiers 1 and 2 |
+| Golden | Generator and editor output, byte for byte | `testdata/golden/`, `-update` flag to regenerate deliberately | Tiers 1 and 2 |
+| File-editing corpus | Real-world YAML, JSON, HCL files with edits and expected results | `testdata/corpus/` | Tiers 1 and 2 |
 | Fuzzing | Editors: parse, decode-equals-intent, bytes-outside-region-unchanged, idempotence | `go test -fuzz` | 60 s per target on PRs; 1 h nightly |
-| Store | SQL queries and migrations against real PostgreSQL | Embedded PostgreSQL 17 (`internal/pgtest`, `fergusstrange/embedded-postgres`), or the database in `QUAI_TEST_DATABASE_URL` | Every PR |
+| Store | SQL queries and migrations against real PostgreSQL | Embedded PostgreSQL 17 (`internal/pgtest`, `fergusstrange/embedded-postgres`), or the database in `QUAI_TEST_DATABASE_URL` | Tiers 1 and 2 |
 | Connector conformance | The shared suite in [Git connectors](../design/12-git-connectors.md#conformance-suite): branch, PR, status, enforcement, merge, policies, webhooks, throttling | **Azure DevOps Services (first):** nightly run against a sandbox organization. **Azure DevOps Server** ([future improvement](../plan/roadmap.md#future-improvements)): recorded fixtures on every PR, plus a nightly run against a Server 2022 lab VM and, before each release to a Server customer, against a test project on their Server. **Gitea:** a real Gitea started by the tests from its binary (`internal/giteatest`) on every PR. GitHub and GitLab added with their connectors. | PR (containers, fixtures), nightly (real platforms) |
-| API | Handlers end to end with a real database and real Git repositories | `httptest`, embedded PostgreSQL, local bare repositories, and Gitea (`internal/giteatest`) | Every PR |
-| Jobs | Delivery, staleness, merge, run ingestion, retries after crashes | River test helpers, fault injection (kill a worker mid-job) | Every PR |
-| Frontend unit | Components, schema form, hooks | Vitest, Testing Library, MSW | Every PR |
+| API | Handlers end to end with a real database and real Git repositories | `httptest`, embedded PostgreSQL, local bare repositories, and Gitea (`internal/giteatest`) | Tiers 1 and 2 |
+| Jobs | Delivery, staleness, merge, run ingestion, retries after crashes | River test helpers, fault injection (kill a worker mid-job) | Tiers 1 and 2 |
+| Frontend unit | Components, schema form, hooks | Vitest, Testing Library, MSW | Tiers 1 and 2 |
 | End to end | Catalog → request → PR → approve → merge → run report → status, in a browser | Playwright against a compose stack (Quai, PostgreSQL, Gitea, a fake runner). Today (`e2e/`, run by `docker compose --profile e2e run --rm e2e` on a running stack): the prototype's walkthroughs on the VM-first examples, through pull requests on Gitea, whose `main` requires `quai/approval` and whose webhook reaches Quai: a blueprint request approved by two groups, its pull request linked from the request page and `quai/approval` pending on Gitea until the last approval merges it; a VM created and resized through the `vm` type with a minimal diff, each merged through its pull request; ownership; the designer publishing a blueprint that is then requested; the registration wizard connecting a repository; runs, through the stack's fake runner (`backend/tools/fakerunner`, the `fake-runner` service), which plans each pull request and applies `main` on Gitea's webhooks with `quai report` and a recorded plan, a request's reason steering it (`[costly]`: a plan costing 900 a month, `[fail-apply]`: a failed apply): the plan on the request page while approvals wait, a seeded rule on its cost bringing FinOps in, the request and its resource applied after the merge, a failed apply failing both. The same scenarios on the Azure DevOps sandbox are live tests, run locally and nightly (`.github/workflows/live.yml`): `TestAzureDevOpsDelivery` (pull request with a pending status, approval, auto-complete) and `TestAzureDevOpsRuns` (a plan pipeline as the pull requests' build validation, apply pipelines succeeding and failing, through the Azure Pipelines adapter) | Nightly (`e2e.yml`), and on demand |
 | Accessibility | Main journeys | Playwright + axe | Nightly (`e2e.yml`), and on demand |
 | Load | 2,000 requests/day profile, 500 users, 500 repositories | k6 | Before each release |
-| Security | ZAP baseline, dependency and image scans | ZAP, govulncheck, `npm audit`, Trivy | Dependency and image scans on every PR; ZAP every release |
+| Security | ZAP baseline, dependency and image scans | ZAP, govulncheck, `npm audit`, Trivy | govulncheck in tier 2; the image scan (Trivy) in tier 3; ZAP every release |
+| Helm chart | Install and upgrade on a cluster, migrations as hooks, smoke test | kind (`kind.yml`) | Tier 3 |
 | Upgrade | Migrate a database from the previous release with real data shapes | Scripted | Every release |
 | DR | Restore from backup, re-index, reconcile open PRs | Scripted runbook | Twice a year |
 

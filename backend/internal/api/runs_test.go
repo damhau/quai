@@ -55,6 +55,7 @@ func runReport(change map[string]any) map[string]any {
 // Ported from "sync webhook updates deployment status": runners report runs with the
 // repository's run token, and resources show their stack's latest apply.
 func TestRunReports(t *testing.T) {
+	t.Parallel()
 	h := newHarnessRunner(t, "")
 	sent := runReport(map[string]any{"url": "https://ci.example.com/1"})
 	if status, _, _ := h.reportRun("wrong", sent); status != http.StatusUnauthorized {
@@ -83,6 +84,7 @@ func TestRunReports(t *testing.T) {
 // TestRunReportProtocol: the report of docs/design/06-runs-status-and-drift.md is validated;
 // a run reported running and then finished is one run; runs are listed per repository.
 func TestRunReportProtocol(t *testing.T) {
+	t.Parallel()
 	h := newHarnessRunner(t, "")
 	for name, change := range map[string]map[string]any{
 		"Phase 0's drift kind":     {"kind": "drift"},
@@ -154,6 +156,7 @@ func TestRunReportProtocol(t *testing.T) {
 // TestRunRequests: a run belongs to the request whose commit it ran at, or whose pull request
 // it names.
 func TestRunRequests(t *testing.T) {
+	t.Parallel()
 	h := newHarnessRunner(t, "")
 	bob := h.as("bob")
 	var r RequestView
@@ -197,6 +200,7 @@ func recordedPlan(t *testing.T, name string) json.RawMessage {
 // TestRunPlans: a report's plan is kept as what it changes, by resource; the summary follows
 // from it; values only when the repository keeps them, and never sensitive ones.
 func TestRunPlans(t *testing.T) {
+	t.Parallel()
 	h := newHarnessRunner(t, "")
 	_, run, body := h.reportRun(runToken, runReport(map[string]any{"kind": "plan",
 		"plan": map[string]any{"format": "terraform-json", "content": recordedPlan(t, "prod.json")}}))

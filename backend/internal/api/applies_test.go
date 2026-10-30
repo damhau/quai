@@ -24,6 +24,7 @@ func eventKinds(r RequestView) []string {
 // failed apply fails the request, which is not delivered again; the timeline has the plans and
 // the applies, and the resource's page its applies.
 func TestRequestsAfterMerge(t *testing.T) {
+	t.Parallel()
 	h := newHarnessRunner(t, "")
 	bob := h.as("bob")
 	head := func() string { return strings.TrimSpace(git(t, h.bare, "rev-parse", "main")) }
@@ -99,6 +100,7 @@ func TestRequestsAfterMerge(t *testing.T) {
 
 // TestNoRunner: without spec.runner, a committed request is applied.
 func TestNoRunner(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	bob := h.as("bob")
 	var r RequestView

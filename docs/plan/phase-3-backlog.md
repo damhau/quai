@@ -18,15 +18,19 @@ gh issue list --repo damhau/quai --label phase:3 --label type:task --state open 
 Commit as `P3-NN: <summary> (closes #<issue>)`. A task may take a few commits; the last one
 closes it.
 
-The Playwright scenarios and the live tests run every night, not on each push (`e2e.yml`,
-`live.yml`). So:
-- **Before taking a task,** read the last nightly runs (`gh run list --workflow e2e.yml` and
-  `--workflow live.yml`). A red run is fixed first, in a commit of its own
-  (`Fix: <summary> (nightly <workflow>)`).
-- **A task's local gates** are `make check` and the frontend's checks. The Playwright scenarios
-  run locally only when the task changes them or the request flows they cover; the live tests
-  only when it changes a connector or the runs. A task that changes `e2e/` dispatches the
-  workflow (`gh workflow run e2e.yml`) and waits for it before closing.
+Tests run in [three tiers](../engineering/testing.md#tiers), and an iteration waits only for
+the first:
+- **Before taking a task,** read the previous push's CI (tier 2) and the last nightly runs
+  (tier 3: `e2e.yml`, `kind.yml`, `packaging.yml`, `live.yml`). A red one is fixed first, in a
+  commit of its own (`Fix: <summary> (<workflow>)`).
+- **Before committing,** run tier 1: `make quick` in `backend/`, and the frontend's checks when
+  `frontend/` changed. Run the Playwright scenarios locally only when the task changes them or
+  the request flows they cover, and the live tests only when it changes a connector or the runs.
+  A task that changes `e2e/` dispatches the workflow (`gh workflow run e2e.yml`) and waits for
+  it before closing.
+- **After committing,** push and take the next task without waiting for CI.
+- **The Phase 3 review** (P3-21) is written once tiers 2 and 3 are green on the same commit: it
+  dispatches the nightly workflows and waits for them.
 
 The order follows the dependencies:
 - **The editors:** JSON, HCL, then formats in the pipeline (P3-01 to P3-03).

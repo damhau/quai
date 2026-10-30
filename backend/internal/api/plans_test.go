@@ -62,6 +62,7 @@ func resize(key string, cpu int) map[string]any {
 // TestPlanRules: a rule on the plan's cost waits for the plan while approvals come in; a costly
 // plan makes it apply and FinOps approve; a cheap one leaves it out and the request goes on.
 func TestPlanRules(t *testing.T) {
+	t.Parallel()
 	h, _ := giteaHarnessWith(t, "auto", runner, costRule)
 	bob, alice, fiona := h.as("bob"), h.as("alice"), h.as("fiona")
 
@@ -114,6 +115,7 @@ func TestPlanRules(t *testing.T) {
 // TestNewPlanNeedsApproval: an approved request waiting for a person to merge it goes back to
 // pending approval when a new plan makes a rule apply, and quai/approval with it.
 func TestNewPlanNeedsApproval(t *testing.T) {
+	t.Parallel()
 	h, remote := giteaHarnessWith(t, "manual", runner, costRule)
 	g := giteatest.Get(t)
 	bob, alice, fiona := h.as("bob"), h.as("alice"), h.as("fiona")
@@ -160,6 +162,7 @@ func TestNewPlanNeedsApproval(t *testing.T) {
 // TestPlanRulesDirect: delivered by a direct commit, a request has no plan before its approval:
 // a rule on the plan applies.
 func TestPlanRulesDirect(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	h.push(".quai/types/vm.yaml", string(costRule(".quai/types/vm.yaml", []byte(mustFile(t, h, ".quai/types/vm.yaml")))))
 	bob := h.as("bob")
@@ -185,6 +188,7 @@ func mustFile(t *testing.T, h *harness, path string) string {
 // TestPlanBeforeItsPullRequest: a pipeline can plan a pull request as soon as it opens, before
 // Quai stores its number; the plan becomes the request's when it does, and decides its rules.
 func TestPlanBeforeItsPullRequest(t *testing.T) {
+	t.Parallel()
 	h, _ := giteaHarnessWith(t, "auto", runner, costRule)
 	bob := h.as("bob")
 	h.planOf(RequestView{Delivery: &DeliveryView{PullRequest: "1"}}, "https://ci.example.com/1", 40) // the repository's first
@@ -207,6 +211,7 @@ func TestPlanBeforeItsPullRequest(t *testing.T) {
 // the cost comes later, in a report of the same run, and decides the rules again. The same
 // report again changes nothing.
 func TestCostAfterThePlan(t *testing.T) {
+	t.Parallel()
 	h, _ := giteaHarnessWith(t, "auto", runner, costRule)
 	bob := h.as("bob")
 	var r RequestView

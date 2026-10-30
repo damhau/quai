@@ -45,6 +45,7 @@ func exampleRemote(t *testing.T) string {
 // covers once per drift interval, each run queued with its stack as a template parameter
 // (docs/design/06-runs-status-and-drift.md#drift).
 func TestDriftSchedule(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	fake := &pipelinestest.Pipelines{}
 	e := start(t, "infra", `connector: generic
@@ -95,6 +96,7 @@ func TestDriftSchedule(t *testing.T) {
 // merges, so that a plan that finished after the last poll is recorded; an abandoned one's are
 // not.
 func TestMergedPullRequestRuns(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	fake := &pipelinestest.Pipelines{}
 	e := start(t, "infra", `connector: generic
@@ -123,6 +125,7 @@ func TestMergedPullRequestRuns(t *testing.T) {
 // on the default branch, for when their service hooks cannot reach Quai. A run already recorded
 // changes nothing; plan pipelines and other branches are not read.
 func TestPolledPipelineRuns(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	fake := &pipelinestest.Pipelines{}
 	e := start(t, "infra", `connector: generic

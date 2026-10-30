@@ -16,6 +16,7 @@ func newVM(env, name string, cpu int) map[string]any {
 
 // Ported from "create writes one file at the type's path, owned by the requester".
 func TestCreateIsCommittedWhenNoRuleApplies(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	bob := h.as("bob")
 	var r RequestView
@@ -49,6 +50,7 @@ func TestCreateIsCommittedWhenNoRuleApplies(t *testing.T) {
 
 // Ported from "create validates params and the document against the repo's JSON Schema".
 func TestCreateValidation(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	bob := h.as("bob")
 	req := newVM("staging", "Bad_Name", 99)
@@ -66,6 +68,7 @@ func TestCreateValidation(t *testing.T) {
 // Ported from "prod create needs platform-admins; growing past 8 vCPU needs finops" and
 // "requester cannot self-approve".
 func TestApprovals(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	bob, alice, fiona, carol := h.as("bob"), h.as("alice"), h.as("fiona"), h.as("carol")
 	var p PlanView
@@ -121,6 +124,7 @@ func TestApprovals(t *testing.T) {
 
 // Ported from "denial rejects and requires a comment".
 func TestDenialAndCancel(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	bob, alice := h.as("bob"), h.as("alice")
 	var r RequestView
@@ -162,6 +166,7 @@ func TestDenialAndCancel(t *testing.T) {
 // Ported from "day-2 resize on a hand-written file changes only the touched lines" and "indexed
 // set paths, immutable fields, owner protection and no-ops".
 func TestDayTwo(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	bob := h.as("bob")
 	resize := map[string]any{"repository": "infra-live", "type": "vm", "kind": "action", "key": "prod/web01", "action": "resize", "actionInputs": map[string]any{"cpu": "8", "memory_gb": 32}}
@@ -225,6 +230,7 @@ func TestDayTwo(t *testing.T) {
 
 // Ported from "a human edit to the file makes a pending approval stale".
 func TestStale(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	bob, alice := h.as("bob"), h.as("alice")
 	var r RequestView
@@ -243,6 +249,7 @@ func TestStale(t *testing.T) {
 // the approval makes it stale; a broken edit of the type does not, as the planned version stays
 // active; a change elsewhere does not either.
 func TestStaleDefinitions(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	bob, alice := h.as("bob"), h.as("alice")
 	original, ok := h.file(".quai/types/vm.yaml")
@@ -295,6 +302,7 @@ func TestStaleDefinitions(t *testing.T) {
 
 // Ported from "delete removes the file; unparseable files are listed but never edited".
 func TestDeleteAndUnparseable(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	h.push("envs/dev/vms/broken.yaml", "owner: bob\ncpu: [2\n")
 	bob, alice := h.as("bob"), h.as("alice")
@@ -332,6 +340,7 @@ func TestDeleteAndUnparseable(t *testing.T) {
 }
 
 func TestBlueprintRequest(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	bob := h.as("bob")
 	var r RequestView

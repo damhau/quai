@@ -1,9 +1,11 @@
 name: kind
 
+# Nightly, and on demand (gh workflow run kind.yml): pushes do not wait for a cluster
+# (docs/engineering/testing.md).
 on:
-  push:
-    branches: [main]
-  pull_request:
+  schedule:
+    - cron: "17 1 * * *"
+  workflow_dispatch:
 
 permissions:
   contents: read

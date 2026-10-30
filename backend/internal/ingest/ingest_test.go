@@ -234,6 +234,7 @@ func (e *env) send(path string, d delivery) (int, map[string]any) {
 // TestWebhooks: Gitea's deliveries are verified, recorded once, and processed by re-reading:
 // a push fetches the new head, a pull request is read again and handed on.
 func TestWebhooks(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	e := setup(t)
 	name := e.remote.Name
@@ -282,6 +283,7 @@ func TestWebhooks(t *testing.T) {
 // TestPolling: without webhooks, the scheduled poll finds the new head and Quai's open pull
 // requests.
 func TestPolling(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	e := setup(t)
 	name := e.remote.Name
@@ -328,6 +330,7 @@ func (e *env) trust() ([]string, bool) {
 // TestTrust: a poll records whether the definitions only change through review, on Gitea: the
 // branch protected, and CODEOWNERS covering .quai/.
 func TestTrust(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	e := setup(t)
 	if err := e.svc.Poll(ctx, e.name); err != nil {
@@ -388,6 +391,7 @@ func (e *env) events() []string {
 // again after an hour; a policy change verifies it at once. Losing it is an alert on the
 // repository's timeline, getting it back an event.
 func TestEnforcementChecks(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	e := setup(t)
 	if _, err := e.svc.jobs.Insert(ctx, ScheduleArgs{}, nil); err != nil {
