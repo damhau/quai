@@ -259,7 +259,23 @@ func (w *statusWorker) Work(ctx context.Context, job *river.Job[StatusArgs]) err
 	if err != nil {
 		return err
 	}
-	return s.publish(ctx, repo, r, d, job.Args.Description)
+	return s.publishLatest(ctx, repo, r.ID, job.Args.Description)
+}
+
+// publishLatest publishes the request's status from its latest state, one publisher at a time: a
+// job that read the request before a change cannot publish after the one that read it after.
+func (s *Service) publishLatest(ctx context.Context, repo *repositories.Repo, id uuid.UUID, description string) error {
+	return jobs.WithLock(ctx, s.store.Pool, "quai/request-status/"+id.String(), func(ctx context.Context) error {
+		r, err := s.get(ctx, id)
+		if err != nil {
+			return err
+		}
+		d, err := s.store.GetDelivery(ctx, id)
+		if err != nil {
+			return err
+		}
+		return s.publish(ctx, repo, r, d, description)
+	})
 }
 
 // publish sets quai/approval for the request's state, with description if given; a rejected or
@@ -316,7 +332,7 @@ func (s *Service) deliverPR(ctx context.Context, job *river.Job[DeliverArgs], r 
 	if r.State == Approved || r.State == Merging {
 		// quai/approval succeeds before every attempt: a status job that read the request before
 		// its approval may have published pending after the success.
-		if err := s.publish(ctx, repo, r, d, ""); err != nil {
+		if err := s.publishLatest(ctx, repo, r.ID, ""); err != nil {
 			return err
 		}
 	}
@@ -346,31 +362,40 @@ func (s *Service) deliverPR(ctx context.Context, job *river.Job[DeliverArgs], r 
 	if r.State != Merging {
 		return nil
 	}
-	msg, err := s.mergeMessage(ctx, r)
-	if err != nil {
-		return err
-	}
-	opts := connectors.MergeOptions{Head: d.Head, Method: connectors.MergeMethod(spec.MergeMethod), Message: msg, DeleteBranch: *spec.DeleteBranch}
-	if repo.Connector.Info().Has(connectors.CapAutoComplete) {
-		err = prs.AutoComplete(ctx, d.PullRequest, opts)
-	} else {
-		_, err = prs.Merge(ctx, d.PullRequest, opts)
-	}
-	if errors.Is(err, connectors.ErrBlocked) && job.Attempt < job.MaxAttempts {
-		return river.JobSnooze(30 * time.Second)
-	}
-	if err != nil {
-		if job.Attempt >= job.MaxAttempts {
-			_, _ = s.transition(ctx, r, Merging, Failed, "failed", map[string]any{"error": err.Error()})
+	// One merge at a time per request: approvals, rebuilds and statuses each start a delivery,
+	// and two merges of one pull request at once can each leave a commit on the base.
+	return jobs.WithLock(ctx, s.store.Pool, "quai/request-merge/"+r.ID.String(), func(ctx context.Context) error {
+		if pr, err := prs.Get(ctx, d.PullRequest); err != nil {
+			return err
+		} else if pr.State == connectors.PRMerged {
+			return s.merged(ctx, r, d, pr)
 		}
-		return err
-	}
-	if pr, err := prs.Get(ctx, d.PullRequest); err == nil && pr.State == connectors.PRMerged {
-		return s.merged(ctx, r, d, pr)
-	}
-	// The platform merges once its policies pass, and webhooks or the poll tell. Quai asks again
-	// meanwhile: a merge the platform scheduled may wait for a check that has already passed.
-	return river.JobSnooze(mergeRecheck)
+		msg, err := s.mergeMessage(ctx, r)
+		if err != nil {
+			return err
+		}
+		opts := connectors.MergeOptions{Head: d.Head, Method: connectors.MergeMethod(spec.MergeMethod), Message: msg, DeleteBranch: *spec.DeleteBranch}
+		if repo.Connector.Info().Has(connectors.CapAutoComplete) {
+			err = prs.AutoComplete(ctx, d.PullRequest, opts)
+		} else {
+			_, err = prs.Merge(ctx, d.PullRequest, opts)
+		}
+		if errors.Is(err, connectors.ErrBlocked) && job.Attempt < job.MaxAttempts {
+			return river.JobSnooze(mergeRecheck) // a required check is pending
+		}
+		if err != nil {
+			if job.Attempt >= job.MaxAttempts {
+				_, _ = s.transition(ctx, r, Merging, Failed, "failed", map[string]any{"error": err.Error()})
+			}
+			return err
+		}
+		if pr, err := prs.Get(ctx, d.PullRequest); err == nil && pr.State == connectors.PRMerged {
+			return s.merged(ctx, r, d, pr)
+		}
+		// The platform merges once its policies pass, and webhooks or the poll tell. Quai asks
+		// again meanwhile: a merge the platform scheduled may wait for a check that has passed.
+		return river.JobSnooze(mergeRecheck)
+	})
 }
 
 // mergeRecheck is how long a merging request waits before Quai asks the platform again.

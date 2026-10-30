@@ -109,6 +109,26 @@ func WithRepositoryLock(ctx context.Context, pool *pgxpool.Pool, repository stri
 	return fn(ctx)
 }
 
+// WithLock runs fn holding the advisory lock named name, waiting for it: work that must not
+// interleave, such as reading a request's state and publishing its status.
+func WithLock(ctx context.Context, pool *pgxpool.Pool, name string, fn func(context.Context) error) error {
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Release()
+	h := fnv.New64a()
+	_, _ = h.Write([]byte(name))
+	key := int64(h.Sum64()) // #nosec G115 -- any 64 bits make a key
+	if _, err := conn.Exec(ctx, "SELECT pg_advisory_lock($1)", key); err != nil {
+		return err
+	}
+	defer func() {
+		_, _ = conn.Exec(context.WithoutCancel(ctx), "SELECT pg_advisory_unlock($1)", key)
+	}()
+	return fn(ctx)
+}
+
 // lockKey maps a repository to the 64-bit key of its advisory lock.
 func lockKey(repository string) int64 {
 	h := fnv.New64a()

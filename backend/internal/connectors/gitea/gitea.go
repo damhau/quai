@@ -144,7 +144,9 @@ func (c *Connector) Info() connectors.Info {
 		Platform:     "gitea",
 		Edition:      edition,
 		APIVersion:   "v1",
-		Capabilities: []connectors.Capability{connectors.CapPullRequests, connectors.CapAutoComplete, connectors.CapSignedWebhooks, connectors.CapCodeOwnersFile},
+		// No CapAutoComplete: Gitea merges a scheduled pull request on a status change, and Quai
+		// publishes its status more than once (docs/design/12-git-connectors.md).
+		Capabilities: []connectors.Capability{connectors.CapPullRequests, connectors.CapSignedWebhooks, connectors.CapCodeOwnersFile},
 		MergeMethods: []connectors.MergeMethod{connectors.MergeCommit, connectors.Squash, connectors.Rebase},
 	}
 }
