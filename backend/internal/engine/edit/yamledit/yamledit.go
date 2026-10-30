@@ -19,8 +19,8 @@ package yamledit
 
 import (
 	"fmt"
-	"regexp"
-	"strings"
+
+	"github.com/damhau/quai/backend/internal/engine/edit/document"
 )
 
 // Edit returns src edited so that it decodes to want, changing as few bytes as it can.
@@ -46,7 +46,7 @@ func Edit(src []byte, want any) (out []byte, err error) {
 	if err != nil {
 		return nil, err
 	}
-	changes := diff(f.value, want, path{}, nil)
+	changes := document.Diff(f.value, want)
 	if len(changes) == 0 {
 		return src, nil
 	}
@@ -81,6 +81,8 @@ type RefusalError struct {
 	// refusal is about the whole file.
 	Path   string
 	Reason string
+	// At is Path as a document path, nil for the whole file.
+	At document.Path
 }
 
 func (e *RefusalError) Error() string {
@@ -94,36 +96,7 @@ func (e *RefusalError) Error() string {
 func refuse(p path, format string, args ...any) error {
 	e := &RefusalError{Reason: fmt.Sprintf(format, args...)}
 	if p != nil {
-		e.Path = p.String()
+		e.Path, e.At = p.String(), p
 	}
 	return e
-}
-
-// path addresses a value in a document: string elements are mapping keys, int elements are
-// sequence indices. The empty path is the document root.
-type path []any
-
-func (p path) key(k string) path { return append(p[:len(p):len(p)], k) }
-
-func (p path) index(i int) path { return append(p[:len(p):len(p)], i) }
-
-var identifier = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]*$`)
-
-// String renders p as "$", "$.network.ip", "$.disks[0]" or `$["dotted.key"]`.
-func (p path) String() string {
-	var b strings.Builder
-	b.WriteString("$")
-	for _, step := range p {
-		switch step := step.(type) {
-		case int:
-			fmt.Fprintf(&b, "[%d]", step)
-		case string:
-			if identifier.MatchString(step) {
-				b.WriteString("." + step)
-			} else {
-				fmt.Fprintf(&b, "[%q]", step)
-			}
-		}
-	}
-	return b.String()
 }

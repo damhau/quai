@@ -64,6 +64,7 @@ function Day2Form({ resource, type, day2 }: { resource: ResourceDetail; type: Ty
     return new Set([...(type.managedFields ?? []), ...hiddenFields(ui.fields, values, vars)])
   }, [action, ui, values, resource, doc, me, day2.kind, type])
   const locked = action ? [] : Object.entries(type.ui.fields ?? {}).flatMap(([p, f]) => (f.immutable ? [p] : []))
+  const code = useMemo(() => Object.fromEntries((resource.definedInCode ?? []).map((c) => [c.field, c.text])), [resource.definedInCode])
 
   const body: TypeRequestInputBody = {
     repository: resource.repository,
@@ -126,6 +127,7 @@ function Day2Form({ resource, type, day2 }: { resource: ResourceDetail; type: Ty
               errors={errors}
               hidden={hidden}
               locked={locked}
+              code={action ? undefined : code}
               onTouch={touch}
             />
           )}

@@ -25,7 +25,7 @@ import (
 	"github.com/damhau/quai/backend/internal/auth"
 	"github.com/damhau/quai/backend/internal/authz"
 	"github.com/damhau/quai/backend/internal/engine/definitions"
-	"github.com/damhau/quai/backend/internal/engine/edit/yamledit"
+	"github.com/damhau/quai/backend/internal/engine/edit"
 	"github.com/damhau/quai/backend/internal/engine/expr"
 	"github.com/damhau/quai/backend/internal/engine/generate"
 	"github.com/damhau/quai/backend/internal/engine/locate"
@@ -203,6 +203,10 @@ func (s *Service) PlanType(ctx context.Context, who auth.Identity, in TypeInput)
 
 	cs, err := plan.Type(snap.FS, t, req)
 	if err != nil {
+		// A value the file's editor will not write (one defined in code) is a field's problem.
+		if at, reason, ok := edit.Refused(err); ok && len(at) > 0 {
+			err = &schema.ValidationError{Fields: map[string]string{edit.Field(at): reason}}
+		}
 		return p, schema.Under("values", err)
 	}
 	p.ChangeSet = cs
@@ -217,7 +221,7 @@ func (s *Service) PlanType(ctx context.Context, who auth.Identity, in TypeInput)
 	// The rules see the document as it will be, and as it was.
 	next := current
 	if c := cs.Changes[0]; c.After != nil {
-		if doc, err := yamledit.Decode(c.After); err == nil {
+		if doc, _, err := edit.Decode(c.Path, c.After); err == nil {
 			next, _ = doc.(map[string]any)
 		}
 	}

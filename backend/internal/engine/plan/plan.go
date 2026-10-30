@@ -1,7 +1,8 @@
 // Package plan turns a request into a change set: the file changes it makes, the fingerprints
 // of the regions it read, and a hash of its content (docs/design/04-blueprints-and-change-sets.md
-// #change-sets). Files are written through yamledit, so an update changes only the bytes that
-// must change, and new files list their keys in the schema's order.
+// #change-sets). Files are written through the editors of package edit (YAML, JSON, HCL), so an
+// update changes only the bytes that must change, and new files list their keys in the schema's
+// order.
 //
 // Planning reads the repository through an fs.FS at the base commit and writes nothing.
 package plan
@@ -20,6 +21,7 @@ import (
 	"strings"
 
 	"github.com/damhau/quai/backend/internal/engine/definitions"
+	"github.com/damhau/quai/backend/internal/engine/edit"
 	"github.com/damhau/quai/backend/internal/engine/edit/yamledit"
 	"github.com/damhau/quai/backend/internal/engine/expr"
 	"github.com/damhau/quai/backend/internal/engine/generate"
@@ -105,8 +107,8 @@ func addType(cs *ChangeSet, fsys fs.FS, t *definitions.ResourceType, r generate.
 	if err != nil {
 		return locate.Region{}, err
 	}
-	if !yamlFile(region.Path) {
-		return locate.Region{}, fmt.Errorf("%s: only YAML files can be written for now", region.Path)
+	if _, ok := edit.FormatOf(region.Path); !ok {
+		return locate.Region{}, fmt.Errorf("%s: Quai edits YAML, JSON and HCL files (.yaml, .yml, .json, .tfvars, .hcl)", region.Path)
 	}
 	fp, err := locate.Fingerprint(fsys, region)
 	if err != nil {
@@ -126,7 +128,7 @@ func addType(cs *ChangeSet, fsys fs.FS, t *definitions.ResourceType, r generate.
 		if err != nil {
 			return locate.Region{}, err
 		}
-		out, err := yamledit.Create(doc, t.FileSchema.PropertyOrder())
+		out, err := edit.Create(region.Path, doc, t.FileSchema.PropertyOrder())
 		if err != nil {
 			return locate.Region{}, err
 		}
@@ -145,7 +147,7 @@ func addType(cs *ChangeSet, fsys fs.FS, t *definitions.ResourceType, r generate.
 		cs.Changes = append(cs.Changes, Change{Path: region.Path, Op: OpDelete, Before: before})
 		return region, nil
 	}
-	decoded, err := yamledit.Decode(before)
+	decoded, code, err := edit.Decode(region.Path, before)
 	if err != nil {
 		return locate.Region{}, fmt.Errorf("%s cannot be read, so Quai will not edit it: %w", region.Path, err)
 	}
@@ -153,12 +155,12 @@ func addType(cs *ChangeSet, fsys fs.FS, t *definitions.ResourceType, r generate.
 	if !ok {
 		return locate.Region{}, fmt.Errorf("%s does not hold a mapping, so Quai will not edit it", region.Path)
 	}
-	r.Current = current
+	r.Current, r.Code = current, code
 	doc, err := generate.Identity(t, r)
 	if err != nil {
 		return locate.Region{}, err
 	}
-	after, err := yamledit.Edit(before, doc)
+	after, err := edit.Edit(region.Path, before, doc)
 	if err != nil {
 		return locate.Region{}, err
 	}
@@ -167,10 +169,6 @@ func addType(cs *ChangeSet, fsys fs.FS, t *definitions.ResourceType, r generate.
 	}
 	cs.Changes = append(cs.Changes, Change{Path: region.Path, Op: OpUpdate, Before: before, After: after})
 	return region, nil
-}
-
-func yamlFile(p string) bool {
-	return strings.HasSuffix(p, ".yaml") || strings.HasSuffix(p, ".yml")
 }
 
 // BlueprintRequest creates an instance of a blueprint.

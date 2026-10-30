@@ -19,6 +19,7 @@ import (
 	"github.com/damhau/quai/backend/internal/auth"
 	"github.com/damhau/quai/backend/internal/authz"
 	"github.com/damhau/quai/backend/internal/engine/definitions"
+	"github.com/damhau/quai/backend/internal/engine/edit"
 	"github.com/damhau/quai/backend/internal/engine/edit/yamledit"
 	"github.com/damhau/quai/backend/internal/engine/expr"
 	"github.com/damhau/quai/backend/internal/engine/locate"
@@ -202,6 +203,15 @@ type ResourceDetail struct {
 	CanOperate bool             `json:"canOperate" doc:"Whether the caller may change the resource through requests"`
 	Requests   []RequestSummary `json:"requests" doc:"The latest requests on the resource that the caller may read, newest first"`
 	Applies    []EventView      `json:"applies,omitempty" doc:"The applies of the requests on the resource, newest first: applied and apply_failed events"`
+	// DefinedInCode are the fields whose value is an expression (an HCL file): the document
+	// leaves them out, and forms show them read-only.
+	DefinedInCode []CodeView `json:"definedInCode,omitempty" doc:"Fields whose value is defined in code (an HCL expression or heredoc): shown, never written"`
+}
+
+// CodeView is a value defined in code: an HCL expression or heredoc.
+type CodeView struct {
+	Field string `json:"field" doc:"The field, as a dotted path such as vms.web01.cpu"`
+	Text  string `json:"text" doc:"The expression as written, such as var.default_cpu"`
 }
 
 // RequestSummary is a request on a resource's page.
@@ -675,6 +685,9 @@ func resourceView(r inventory.Resource) ResourceView {
 
 func resourceDetail(ctx context.Context, repo *repositories.Repo, snap *repositories.Snapshot, r inventory.Resource) ResourceDetail {
 	d := ResourceDetail{ResourceView: resourceView(r), Commit: snap.Commit, Document: r.Document, Actions: []ActionView{}, History: []CommitView{}}
+	for _, c := range r.Code {
+		d.DefinedInCode = append(d.DefinedInCode, CodeView{Field: edit.Field(c.Path), Text: c.Text})
+	}
 	if raw, err := fs.ReadFile(snap.FS, r.Path); err == nil {
 		d.Raw = string(raw)
 	}

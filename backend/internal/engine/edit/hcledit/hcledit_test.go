@@ -126,10 +126,10 @@ func TestDecode(t *testing.T) {
 	}
 	var paths []string
 	for _, c := range code {
-		paths = append(paths, c.String())
+		paths = append(paths, c.Path.String()+" "+c.Text)
 	}
-	if !reflect.DeepEqual(paths, []string{"$.c", "$.d.f", "$.g", "$.h"}) {
-		t.Errorf("code = %v", paths)
+	if !reflect.DeepEqual(paths, []string{"$.c var.c", "$.d.f local.f", "$.g [1, var.g]", "$.h <<EOT\nhi\nEOT"}) {
+		t.Errorf("code = %q", paths)
 	}
 }
 

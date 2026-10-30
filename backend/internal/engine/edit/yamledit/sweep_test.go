@@ -113,9 +113,9 @@ func sweepEdits(doc any) []sweepEdit {
 		v := valueAt(doc, p)
 		switch v := v.(type) {
 		case map[string]any:
-			out = append(out, sweepEdit{kind: "add key", path: p, want: with(doc, p.key("quai_added"), "x")})
+			out = append(out, sweepEdit{kind: "add key", path: p, want: with(doc, p.Key("quai_added"), "x")})
 		case []any:
-			out = append(out, sweepEdit{kind: "append item", path: p, want: with(doc, p.index(len(v)), "x")})
+			out = append(out, sweepEdit{kind: "append item", path: p, want: with(doc, p.Index(len(v)), "x")})
 		default:
 			s, single := changedScalar(v)
 			out = append(out,

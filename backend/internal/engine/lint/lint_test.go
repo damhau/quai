@@ -127,3 +127,23 @@ func TestPlan(t *testing.T) {
 		t.Errorf("not a plan: %v", problems)
 	}
 }
+
+// TestFormats: types whose files are JSON and HCL are checked as YAML ones are: each file against
+// the schema (a required value defined in code is not missing) and round trip.
+func TestFormats(t *testing.T) {
+	fsys := copyExamples(t)
+	typ := func(name, path string) *fstest.MapFile {
+		return &fstest.MapFile{Data: []byte("apiVersion: quai.dev/v1beta1\nkind: ResourceType\nmetadata: { name: " + name + ", title: VM }\n" +
+			"spec:\n  locate: { strategy: file, path: \"" + path + "\" }\n  params:\n    - { name: env, title: Environment }\n    - { name: name, title: Name }\n" +
+			"  schema: catalog/schemas/vm.schema.json\n  generate: { kind: identity }\n")}
+	}
+	fsys[".quai/types/vm-json.yaml"] = typ("vm-json", "json/{env}/{name}.tfvars.json")
+	fsys[".quai/types/vm-hcl.yaml"] = typ("vm-hcl", "hcl/{env}/{name}.tfvars")
+	fsys["json/dev/a.tfvars.json"] = &fstest.MapFile{Data: []byte(`{"template": "rhel-9", "cpu": 2, "memory_gb": 4, "disks": [{"size_gb": 50}], "network": {"vlan": 110}}` + "\n")}
+	fsys["hcl/dev/a.tfvars"] = &fstest.MapFile{Data: []byte("template  = \"rhel-9\"\ncpu       = var.cpu # defined in code\nmemory_gb = 4\ndisks     = [{ size_gb = 50 }]\nnetwork   = { vlan = 110 }\n")}
+	fsys["hcl/dev/bad.tfvars"] = &fstest.MapFile{Data: []byte("template = \"rhel-9\"\ncpu = 2\nmemory_gb = \"four\"\ndisks = [{ size_gb = 50 }]\nnetwork = { vlan = 110 }\n")}
+	r := Run(fsys)
+	if r.Types != 3 || r.Resources != 7 || len(r.Problems) != 1 || r.Problems[0].Path != "hcl/dev/bad.tfvars" || r.Problems[0].Field != "memory_gb" {
+		t.Errorf("report = %+v", r)
+	}
+}

@@ -311,10 +311,13 @@ func TestPlanRefusals(t *testing.T) {
 		t.Fatal(problems)
 	}
 	name := map[string]string{"name": "x"}
-	for typeName, want := range map[string]string{"dir": "dir locator is not available yet", "json": "only YAML files"} {
-		if _, err := Type(fsys, repo.Types[typeName], generate.Request{Kind: generate.Create, Params: name}); err == nil || !strings.Contains(err.Error(), want) {
-			t.Errorf("%s: error = %v, want %q", typeName, err, want)
-		}
+	if _, err := Type(fsys, repo.Types["dir"], generate.Request{Kind: generate.Create, Params: name}); err == nil || !strings.Contains(err.Error(), "dir locator is not available yet") {
+		t.Errorf("dir: error = %v", err)
+	}
+	// JSON files are written by their own editor.
+	if cs, err := Type(fsys, repo.Types["json"], generate.Request{Kind: generate.Create, Params: name}); err != nil || len(cs.Changes) != 1 ||
+		cs.Changes[0].Path != "j/x.json" || string(cs.Changes[0].After) != "{}\n" {
+		t.Errorf("json: %+v, %v", cs, err)
 	}
 	for key, want := range map[string]string{"broken": "cannot be read", "list": "does not hold a mapping"} {
 		_, err := Type(fsys, repo.Types["item"], generate.Request{Kind: generate.Action, ActionName: "on", Params: map[string]string{"name": key}})

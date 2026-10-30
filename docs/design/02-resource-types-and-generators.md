@@ -299,6 +299,13 @@ generate:
 | HCL `*.tfvars`, `locals` blocks | ✅ | ✅ | `hashicorp/hcl/v2`: `hclsyntax` for every value's byte range, text edits, `hclwrite` to render values and keep `terraform fmt`'s formatting |
 | TOML, INI, XML | via plugin | via plugin | — |
 
+The format of a type's files follows their extension (`locate.path`): `.yaml` and `.yml`,
+`.json` (with `.tfvars.json`), `.tfvars` and `.hcl`, whose top-level attributes are the document.
+Inventory, forms, requests and `quai lint` read and write every format the same way
+(`internal/engine/edit`). A value an HCL file defines in code (an expression or a heredoc) is not
+in the document: the form shows the expression and leaves it, the schema does not count it as
+missing, and a request that writes it is refused for that field.
+
 The editors and their safety checks are specified in [03-file-editing.md](03-file-editing.md).
 
 ## Managed fields

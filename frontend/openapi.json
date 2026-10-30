@@ -416,6 +416,24 @@
         ],
         "type": "object"
       },
+      "CodeView": {
+        "additionalProperties": false,
+        "properties": {
+          "field": {
+            "description": "The field, as a dotted path such as vms.web01.cpu",
+            "type": "string"
+          },
+          "text": {
+            "description": "The expression as written, such as var.default_cpu",
+            "type": "string"
+          }
+        },
+        "required": [
+          "field",
+          "text"
+        ],
+        "type": "object"
+      },
       "CommitText": {
         "additionalProperties": false,
         "properties": {
@@ -2100,6 +2118,16 @@
           },
           "commit": {
             "type": "string"
+          },
+          "definedInCode": {
+            "description": "Fields whose value is defined in code (an HCL expression or heredoc): shown, never written",
+            "items": {
+              "$ref": "#/components/schemas/CodeView"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
           },
           "document": {
             "additionalProperties": {},

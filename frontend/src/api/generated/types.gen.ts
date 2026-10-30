@@ -129,6 +129,17 @@ export type CheckView = {
     skipped?: string;
 };
 
+export type CodeView = {
+    /**
+     * The field, as a dotted path such as vms.web01.cpu
+     */
+    field: string;
+    /**
+     * The expression as written, such as var.default_cpu
+     */
+    text: string;
+};
+
 export type CommitText = {
     /**
      * A URL to the JSON Schema for this object.
@@ -727,6 +738,10 @@ export type ResourceDetail = {
      */
     canOperate: boolean;
     commit: string;
+    /**
+     * Fields whose value is defined in code (an HCL expression or heredoc): shown, never written
+     */
+    definedInCode?: Array<CodeView> | null;
     document?: {
         [key: string]: unknown;
     };
@@ -1495,6 +1510,10 @@ export type ResourceDetailWritable = {
      */
     canOperate: boolean;
     commit: string;
+    /**
+     * Fields whose value is defined in code (an HCL expression or heredoc): shown, never written
+     */
+    definedInCode?: Array<CodeView> | null;
     document?: {
         [key: string]: unknown;
     };

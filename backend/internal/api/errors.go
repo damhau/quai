@@ -8,6 +8,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/damhau/quai/backend/internal/engine/edit"
 	"github.com/damhau/quai/backend/internal/engine/expr"
 	"github.com/damhau/quai/backend/internal/engine/plan"
 	"github.com/damhau/quai/backend/internal/engine/schema"
@@ -19,8 +20,9 @@ import (
 // where domain errors become HTTP statuses (docs/engineering/backend.md#conventions). Field
 // errors become 422 with one detail per field, located in the request body under prefix, such
 // as "body.values.cpu". A definition that cannot plan the request (an expression that fails, a
-// blueprint resource its type rejects) is a 422 with its message. Errors it does not know are
-// 500s without their message, which may hold internal details.
+// blueprint resource its type rejects) is a 422 with its message, as is an edit a file editor
+// refuses (a value defined in code, a YAML anchor), located at its field. Errors it does not know
+// are 500s without their message, which may hold internal details.
 func Problem(err error, prefix string) huma.StatusError {
 	var (
 		ve *schema.ValidationError
@@ -53,6 +55,9 @@ func Problem(err error, prefix string) huma.StatusError {
 		return huma.Error409Conflict(err.Error())
 	case errors.Is(err, plan.ErrNoChange):
 		return huma.Error422UnprocessableEntity(err.Error())
+	}
+	if _, reason, ok := edit.Refused(err); ok {
+		return huma.Error422UnprocessableEntity("Quai cannot make this change safely: " + reason)
 	}
 	return huma.NewError(http.StatusInternalServerError, "internal error")
 }

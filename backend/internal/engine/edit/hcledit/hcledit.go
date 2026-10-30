@@ -39,6 +39,8 @@ type RefusalError struct {
 	// is about the whole file.
 	Path   string
 	Reason string
+	// At is Path as a document path, nil for the whole file.
+	At document.Path
 }
 
 func (e *RefusalError) Error() string {
@@ -52,7 +54,7 @@ func (e *RefusalError) Error() string {
 func refuse(p document.Path, format string, args ...any) error {
 	e := &RefusalError{Reason: fmt.Sprintf(format, args...)}
 	if p != nil {
-		e.Path = p.String()
+		e.Path, e.At = p.String(), p
 	}
 	return e
 }
@@ -63,15 +65,24 @@ const internalError = "internal error"
 // DefinedInCode is the reason of a refusal to write a value that is an expression or a heredoc.
 const DefinedInCode = "the value is defined in code"
 
+// Code is a value defined in code: an expression or a heredoc, which the document leaves out.
+type Code struct {
+	Path document.Path
+	Text string // as written, such as var.default_cpu
+}
+
 // Decode returns the literal values of the body block selects (the file's top-level attributes
-// when it is empty, its locals block when it is "locals") as a document, and the paths of the
-// values defined in code, which the document leaves out.
-func Decode(src []byte, block string) (doc any, code []document.Path, err error) {
+// when it is empty, its locals block when it is "locals") as a document, and the values defined
+// in code, which the document leaves out, in file order.
+func Decode(src []byte, block string) (doc any, code []Code, err error) {
 	f, err := parse(src, block)
 	if err != nil {
 		return nil, nil, err
 	}
-	return f.root.value, f.code, nil
+	for _, p := range f.code {
+		code = append(code, Code{Path: p, Text: f.text(f.at(p))})
+	}
+	return f.root.value, code, nil
 }
 
 // Edit returns src edited so that the body block selects decodes to want, an object in the JSON

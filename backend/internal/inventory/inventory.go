@@ -13,7 +13,7 @@ import (
 	"strings"
 
 	"github.com/damhau/quai/backend/internal/engine/definitions"
-	"github.com/damhau/quai/backend/internal/engine/edit/yamledit"
+	"github.com/damhau/quai/backend/internal/engine/edit"
 	"github.com/damhau/quai/backend/internal/engine/locate"
 	"github.com/damhau/quai/backend/internal/engine/schema"
 	"github.com/damhau/quai/backend/internal/repositories"
@@ -42,6 +42,9 @@ type Resource struct {
 	Problems map[string]string
 	Error    string
 	Document map[string]any
+	// Code are the values of the file defined in code (an HCL expression): left out of Document,
+	// shown read-only, never written.
+	Code []edit.Code
 }
 
 // Scan returns every resource of every type in the snapshot, sorted by ID.
@@ -119,11 +122,12 @@ func read(snap *repositories.Snapshot, t *definitions.ResourceType, r locate.Reg
 		res.Status, res.Error = Unparseable, err.Error()
 		return res
 	}
-	decoded, err := yamledit.Decode(src)
+	decoded, code, err := edit.Decode(r.Path, src)
 	if err != nil {
 		res.Status, res.Error = Unparseable, err.Error()
 		return res
 	}
+	res.Code = code
 	doc, ok := decoded.(map[string]any)
 	if !ok {
 		res.Status, res.Error = Unparseable, "the file does not hold a mapping"
@@ -137,11 +141,11 @@ func read(snap *repositories.Snapshot, t *definitions.ResourceType, r locate.Reg
 	}
 	if err := t.FileSchema.Validate(doc); err != nil {
 		var ve *schema.ValidationError
-		res.Status = NonConforming
-		if errors.As(err, &ve) {
-			res.Problems = ve.Fields
-		} else {
-			res.Error = err.Error()
+		switch {
+		case !errors.As(err, &ve):
+			res.Status, res.Error = NonConforming, err.Error()
+		case len(edit.OutsideCode(ve.Fields, code)) > 0:
+			res.Status, res.Problems = NonConforming, edit.OutsideCode(ve.Fields, code)
 		}
 	}
 	return res

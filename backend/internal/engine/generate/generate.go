@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	"github.com/damhau/quai/backend/internal/engine/definitions"
+	"github.com/damhau/quai/backend/internal/engine/edit"
 	"github.com/damhau/quai/backend/internal/engine/expr"
 	"github.com/damhau/quai/backend/internal/engine/schema"
 )
@@ -39,6 +40,9 @@ type Request struct {
 	Values map[string]any
 	// Current is the region's content in Git, for update, action and delete.
 	Current map[string]any
+	// Code are the values of the region defined in code (an HCL expression): Current leaves them
+	// out, the editor keeps them, and the schema does not count them as missing.
+	Code []edit.Code
 	// ActionName and ActionInputs, for an action. The inputs are checked with ValidateInputs.
 	ActionName   string
 	ActionInputs map[string]any
@@ -110,7 +114,13 @@ func Identity(t *definitions.ResourceType, r Request) (map[string]any, error) {
 		return nil, err
 	}
 	if err := t.FileSchema.Validate(doc); err != nil {
-		return nil, err
+		var ve *schema.ValidationError
+		if !errors.As(err, &ve) {
+			return nil, err
+		}
+		if fields := edit.OutsideCode(ve.Fields, r.Code); len(fields) > 0 {
+			return nil, &schema.ValidationError{Fields: fields}
+		}
 	}
 	return doc, nil
 }

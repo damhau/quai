@@ -18,13 +18,13 @@ func (f *file) edits(changes []change) ([]textEdit, error) {
 	for _, c := range changes {
 		var e textEdit
 		var err error
-		switch c.kind {
+		switch c.Kind {
 		case setScalar:
 			e, err = f.setScalar(c)
 		case replaceNode:
 			e, err = f.replace(c)
 		default:
-			parent := c.path[:len(c.path)-1]
+			parent := c.Path[:len(c.Path)-1]
 			if _, ok := groups[parent.String()]; !ok {
 				order = append(order, parent)
 			}
@@ -84,7 +84,7 @@ func (f *file) collectionAt(p path) (*collection, error) {
 		}
 	} else {
 		for i := range n.Content {
-			el, err := f.itemElement(n, i, c.flow, p.index(i))
+			el, err := f.itemElement(n, i, c.flow, p.Index(i))
 			if err != nil {
 				return nil, err
 			}
@@ -117,11 +117,11 @@ func (f *file) entryElement(k, v *yaml.Node, flow bool, p path) (element, error)
 		return element{}, refuse(p, "the mapping has a key that is not a scalar")
 	}
 	key := k.Value
-	start, _, err := f.keySpan(k, p.key(key))
+	start, _, err := f.keySpan(k, p.Key(key))
 	if err != nil {
 		return element{}, err
 	}
-	end, err := f.entryEnd(k, v, flow, p.key(key))
+	end, err := f.entryEnd(k, v, flow, p.Key(key))
 	if err != nil {
 		return element{}, err
 	}
@@ -199,20 +199,20 @@ func (f *file) collectionEdits(p path, changes []change) ([]textEdit, error) {
 	removed := make([]bool, len(c.elements))
 	var added []addition
 	for _, ch := range changes {
-		switch ch.kind {
+		switch ch.Kind {
 		case removeKey, removeItem:
-			i := c.index(ch.path)
+			i := c.index(ch.Path)
 			if i < 0 {
-				return nil, refuse(ch.path, "the value is not in the syntax tree")
+				return nil, refuse(ch.Path, "the value is not in the syntax tree")
 			}
 			if hasAnchor(c.elements[i].nodes...) {
-				return nil, refuse(ch.path, "the value has an anchor (&); removing it would break its aliases")
+				return nil, refuse(ch.Path, "the value has an anchor (&); removing it would break its aliases")
 			}
 			removed[i] = true
 		case addKey:
-			added = append(added, addition{key: ch.path[len(ch.path)-1].(string), value: ch.to, after: len(c.elements) - 1})
+			added = append(added, addition{key: ch.Path[len(ch.Path)-1].(string), value: ch.To, after: len(c.elements) - 1})
 		case insertItem:
-			added = append(added, addition{value: ch.to, after: ch.after})
+			added = append(added, addition{value: ch.To, after: ch.After})
 		}
 	}
 	var edits []textEdit
@@ -374,56 +374,56 @@ func (f *file) insertion(c *collection, adds []addition) (textEdit, error) {
 
 // replace writes a new value in place of the whole node at c.path.
 func (f *file) replace(c change) (textEdit, error) {
-	loc, err := f.locate(c.path)
+	loc, err := f.locate(c.Path)
 	if err != nil {
 		return textEdit{}, err
 	}
-	depth := len(c.path)
+	depth := len(c.Path)
 	if loc.node == nil {
 		// An empty document: the new content goes after any comments.
 		at, nl := len(f.src), f.newline(len(f.src))
-		text := f.valueText(c.to, -1, false, nl)
+		text := f.valueText(c.To, -1, false, nl)
 		if at > 0 && !bytes.HasSuffix(f.src, []byte("\n")) {
 			text = nl + text
 		}
 		return textEdit{start: at, end: at, text: text + nl, depth: depth}, nil
 	}
 	if hasAnchor(loc.node) {
-		return textEdit{}, refuse(c.path, "the value has an anchor (&); replacing it would break its aliases")
+		return textEdit{}, refuse(c.Path, "the value has an anchor (&); replacing it would break its aliases")
 	}
 	if isEmpty(loc.node) && !loc.flow && loc.owner >= 0 {
 		at := loc.owner
 		if !f.emptyAfter(at) {
-			return textEdit{}, refuse(c.path, "the syntax tree's positions do not match the file")
+			return textEdit{}, refuse(c.Path, "the syntax tree's positions do not match the file")
 		}
-		return f.keepLineComment(textEdit{start: at, end: at, text: f.valueText(c.to, loc.indent, loc.dash, f.newline(at)), depth: depth}), nil
+		return f.keepLineComment(textEdit{start: at, end: at, text: f.valueText(c.To, loc.indent, loc.dash, f.newline(at)), depth: depth}), nil
 	}
-	start, err := f.nodeStart(loc.node, c.path)
+	start, err := f.nodeStart(loc.node, c.Path)
 	if err != nil {
 		return textEdit{}, err
 	}
 	nl := f.newline(start)
 	if loc.flow {
-		end, err := f.nodeEnd(loc.node, loc.indent, c.path)
-		return textEdit{start: start, end: end, text: f.flowText(c.to), depth: depth}, err
+		end, err := f.nodeEnd(loc.node, loc.indent, c.Path)
+		return textEdit{start: start, end: end, text: f.flowText(c.To), depth: depth}, err
 	}
 	if loc.owner < 0 {
 		// The document root.
-		end, err := f.nodeEnd(loc.node, 0, c.path)
-		return textEdit{start: start, end: end, text: f.valueText(c.to, -1, false, nl), depth: depth}, err
+		end, err := f.nodeEnd(loc.node, 0, c.Path)
+		return textEdit{start: start, end: end, text: f.valueText(c.To, -1, false, nl), depth: depth}, err
 	}
 	ownerEnd := loc.owner
 	if start < ownerEnd {
-		return textEdit{}, refuse(c.path, "the syntax tree's positions do not match the file")
+		return textEdit{}, refuse(c.Path, "the syntax tree's positions do not match the file")
 	}
 	if bytes.IndexByte(f.src[ownerEnd:start], '#') >= 0 {
-		return textEdit{}, refuse(c.path, "a comment sits between the entry and its value")
+		return textEdit{}, refuse(c.Path, "a comment sits between the entry and its value")
 	}
-	end, err := f.nodeEnd(loc.node, loc.indent, c.path)
+	end, err := f.nodeEnd(loc.node, loc.indent, c.Path)
 	if err != nil {
 		return textEdit{}, err
 	}
-	return f.keepLineComment(textEdit{start: ownerEnd, end: end, text: f.valueText(c.to, loc.indent, loc.dash, nl), depth: depth}), nil
+	return f.keepLineComment(textEdit{start: ownerEnd, end: end, text: f.valueText(c.To, loc.indent, loc.dash, nl), depth: depth}), nil
 }
 
 // keepLineComment keeps a comment that follows the edited span on its line on the first line of

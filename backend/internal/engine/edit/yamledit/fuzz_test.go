@@ -95,7 +95,7 @@ func mutate(doc any, target uint, op uint8, s string, n int64) (any, bool) {
 	case 6: // add an entry or insert an item
 		switch v := valueAt(doc, p).(type) {
 		case map[string]any:
-			return with(doc, p.key(s), n), true
+			return with(doc, p.Key(s), n), true
 		case []any:
 			return with(doc, p, slices.Insert(slices.Clone(v), int(uint64(n)%uint64(len(v)+1)), any(s))), true
 		}
@@ -113,11 +113,11 @@ func nodePaths(doc any, p path, out []path) []path {
 	switch d := doc.(type) {
 	case map[string]any:
 		for _, k := range sortedKeys(d) {
-			out = nodePaths(d[k], p.key(k), out)
+			out = nodePaths(d[k], p.Key(k), out)
 		}
 	case []any:
 		for i, item := range d {
-			out = nodePaths(item, p.index(i), out)
+			out = nodePaths(item, p.Index(i), out)
 		}
 	}
 	return out

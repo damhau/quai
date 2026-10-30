@@ -31,6 +31,8 @@ type RefusalError struct {
 	// refusal is about the whole file.
 	Path   string
 	Reason string
+	// At is Path as a document path, nil for the whole file.
+	At document.Path
 }
 
 func (e *RefusalError) Error() string {
@@ -44,7 +46,7 @@ func (e *RefusalError) Error() string {
 func refuse(p document.Path, format string, args ...any) error {
 	e := &RefusalError{Reason: fmt.Sprintf(format, args...)}
 	if p != nil {
-		e.Path = p.String()
+		e.Path, e.At = p.String(), p
 	}
 	return e
 }

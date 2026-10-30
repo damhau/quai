@@ -27,6 +27,8 @@ export type SchemaFormProps = {
   hidden?: Set<string>
   /** Fields shown but not editable. */
   locked?: string[]
+  /** Fields defined in code (an HCL expression), by path, with the expression: shown, never edited. */
+  code?: Record<string, string>
   /** Called when a field loses focus, to show its errors from then on. */
   onTouch?: (path: string) => void
 }
@@ -38,7 +40,7 @@ type Ctx = Required<Omit<SchemaFormProps, "schema" | "propertyOrder" | "ui" | "o
   set: (path: string, v: unknown) => void
 }
 
-export function SchemaForm({ schema, propertyOrder, ui, value, onChange, errors, hidden, locked, onTouch }: SchemaFormProps) {
+export function SchemaForm({ schema, propertyOrder, ui, value, onChange, errors, hidden, locked, code, onTouch }: SchemaFormProps) {
   const ctx: Ctx = {
     root: schema,
     rank: new Map((propertyOrder ?? []).map((k, i) => [k, i])),
@@ -47,6 +49,7 @@ export function SchemaForm({ schema, propertyOrder, ui, value, onChange, errors,
     errors: errors ?? {},
     hidden: hidden ?? new Set(),
     locked: locked ?? [],
+    code: code ?? {},
     onTouch: onTouch ?? (() => {}),
     set: (path, v) => onChange(setPath(value, path, v)),
   }
@@ -113,6 +116,20 @@ function Field({ schema, path, name, required, ctx }: { schema: JsonSchema; path
     </>
   )
 
+  // A value defined in code is not in the document: the form shows the expression and leaves it.
+  const expression = ctx.code[path]
+  if (expression !== undefined) {
+    return (
+      <div className="grid gap-2">
+        <p className="flex items-center gap-1.5 text-sm font-medium">
+          {title}
+          <Badge variant="outline">defined in code</Badge>
+        </p>
+        <code className="bg-muted rounded px-2 py-1.5 font-mono text-xs break-all">{expression}</code>
+        <p className="text-muted-foreground text-xs">An expression, not a value: Quai keeps it as it is. Change it in the repository.</p>
+      </div>
+    )
+  }
   if (typeOf(schema) === "object" && schema.properties) {
     const inner = locked ? { ...ctx, locked: [...ctx.locked, ...Object.keys(schema.properties).map((k) => join(path, k))] } : ctx
     return (

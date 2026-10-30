@@ -409,7 +409,7 @@ func entry(n *yaml.Node, step any, p path) (k, v *yaml.Node, err error) {
 			return k, n.Content[i+1], nil
 		}
 	}
-	return nil, nil, refuse(p.key(key), "the value is not in the syntax tree")
+	return nil, nil, refuse(p.Key(key), "the value is not in the syntax tree")
 }
 
 // checkUntangled refuses nodes whose edit would reach beyond themselves (anchors and aliases) or
@@ -936,26 +936,26 @@ type textEdit struct {
 
 // setScalar turns a scalar change into a text edit.
 func (f *file) setScalar(c change) (textEdit, error) {
-	loc, err := f.locate(c.path)
+	loc, err := f.locate(c.Path)
 	if err != nil {
 		return textEdit{}, err
 	}
-	if loc.node == nil && len(c.path) == 0 && c.from == nil {
+	if loc.node == nil && len(c.Path) == 0 && c.From == nil {
 		// An empty document, which may hold comments.
 		return f.replace(c)
 	}
 	// The node must hold the value the document decoded to, or the tree and the decoder disagree
 	// about what is where.
-	if v, ok := scalarValue(loc.node); !ok || !equal(v, c.from) {
-		return textEdit{}, refuse(c.path, "the syntax tree and the decoded document disagree")
+	if v, ok := scalarValue(loc.node); !ok || !equal(v, c.From) {
+		return textEdit{}, refuse(c.Path, "the syntax tree and the decoded document disagree")
 	}
-	s, err := f.slot(loc, c.path)
+	s, err := f.slot(loc, c.Path)
 	if err != nil {
 		return textEdit{}, err
 	}
-	text := f.render(c.to, s)
+	text := f.render(c.To, s)
 	if s.insert {
 		text = " " + text
 	}
-	return f.keepLineComment(textEdit{start: s.start, end: s.end, text: text, depth: len(c.path)}), nil
+	return f.keepLineComment(textEdit{start: s.start, end: s.end, text: text, depth: len(c.Path)}), nil
 }

@@ -202,7 +202,7 @@ spec:
 `,
 	})
 	wantProblems(t, problems,
-		"a.yaml: spec.locate.path: must end in .yaml, .yml or .json",
+		"a.yaml: spec.locate.path: must end in .yaml, .yml, .json, .tfvars or .hcl",
 		"a.yaml: spec.locate.path: params must be separated by a literal",
 		"a.yaml: spec.stack: {nope} is not a param",
 		"a.yaml: spec.approval.rules[0]: approvers are required",
@@ -328,7 +328,7 @@ func TestLocatorsAndGenerators(t *testing.T) {
 		"bad-entry.yaml: spec.params[1].pattern:",
 		"bad-entry.yaml: spec.params[2].name: cluster is declared twice",
 		"bad-entry.yaml: spec.params[0]: an enum param needs options or discover: true",
-		"bad-entry.yaml: spec.locate.path: must end in .yaml, .yml or .json",
+		"bad-entry.yaml: spec.locate.path: must end in .yaml, .yml, .json, .tfvars or .hcl",
 		"bad-entry.yaml: spec.locate.collection: must be a dotted field path",
 		"bad-entry.yaml: spec.locate.keyParam: must name a param",
 		"bad-entry.yaml: spec.locate.fields: is required for the field strategy",

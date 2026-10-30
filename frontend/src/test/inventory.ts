@@ -14,7 +14,7 @@ export const resources: ResourceView[] = [
 
 const raw = "owner: bob\ntemplate: ubuntu-24.04\ncpu: 4          # bumped in INC-4411\nmemory_gb: 16\ndisks:\n  - size_gb: 80\n    tier: ssd\nnetwork:\n  vlan: 120\nbackup: true\n"
 
-function detail(r: ResourceView, user: string | null): ResourceDetail {
+export function detail(r: ResourceView, user: string | null): ResourceDetail {
   return {
     ...r,
     commit: "abc123",

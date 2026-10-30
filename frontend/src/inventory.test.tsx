@@ -107,3 +107,28 @@ test("only the owner of a deployment, or an operator, runs its actions", async (
   expect(await screen.findByRole("heading", { name: "shop-dev" })).toBeInTheDocument()
   expect(screen.queryByRole("toolbar", { name: "Day-2 actions" })).not.toBeInTheDocument()
 })
+
+test("a value defined in code is shown as its expression and left out of the edit", async () => {
+  const { http, HttpResponse } = await import("msw")
+  const { server } = await import("@/test/server")
+  const { detail, resources } = await import("@/test/inventory")
+  server.use(
+    http.get("*/api/v1/resource", () => {
+      const d = detail(resources.find((r) => r.id === "infra-live/vm/prod/web01")!, "bob")
+      const document = { ...d.document }
+      delete document.cpu
+      return HttpResponse.json({ ...d, document, definedInCode: [{ field: "cpu", text: "var.default_cpu" }] })
+    }),
+  )
+  const user = userEvent.setup()
+  renderApp("/resources/infra-live/vm/prod/web01")
+  await user.click(await screen.findByRole("button", { name: "Edit" }))
+  expect(within(dialog()).getByText("defined in code")).toBeInTheDocument()
+  expect(within(dialog()).getByText("var.default_cpu")).toBeInTheDocument()
+  expect(within(dialog()).queryByRole("spinbutton", { name: /vCPUs/ })).not.toBeInTheDocument()
+  const memory = within(dialog()).getByRole("spinbutton", { name: /Memory/ })
+  await user.clear(memory)
+  await user.type(memory, "64")
+  await waitFor(() => expect(sent.plans.at(-1)).toMatchObject({ kind: "update", values: { memory_gb: 64 } }))
+  expect(sent.plans.at(-1)?.values).not.toHaveProperty("cpu")
+})

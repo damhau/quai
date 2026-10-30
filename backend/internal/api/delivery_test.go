@@ -27,11 +27,11 @@ import (
 // pushExample commits the example GitOps repository to main through git, with auth.
 func pushExample(t *testing.T, url string, auth func(context.Context) (gitx.Credentials, error), proxy func(*url.URL) (*url.URL, error)) {
 	t.Helper()
-	pushEdited(t, url, auth, proxy, nil)
+	pushEdited(t, url, auth, proxy, nil, nil)
 }
 
-// pushEdited is pushExample with edit changing files first, by path.
-func pushEdited(t *testing.T, url string, auth func(context.Context) (gitx.Credentials, error), proxy func(*url.URL) (*url.URL, error), edit func(path string, b []byte) []byte) {
+// pushEdited is pushExample with edit changing files first, by path, and extra files added.
+func pushEdited(t *testing.T, url string, auth func(context.Context) (gitx.Credentials, error), proxy func(*url.URL) (*url.URL, error), edit func(path string, b []byte) []byte, extra map[string]string) {
 	t.Helper()
 	ctx := context.Background()
 	m, err := gitx.OpenMirror(ctx, url, filepath.Join(t.TempDir(), "seed.git"), gitx.Options{Committer: gitx.Signature{Name: "Seed", Email: "seed@example.com"}, Auth: auth, Proxy: proxy})
@@ -51,6 +51,9 @@ func pushEdited(t *testing.T, url string, auth func(context.Context) (gitx.Crede
 		changes = append(changes, plan.Change{Op: plan.OpCreate, Path: p, After: b})
 		return err
 	})
+	for p, content := range extra {
+		changes = append(changes, plan.Change{Op: plan.OpCreate, Path: p, After: []byte(content)})
+	}
 	if _, err := m.CommitAndPush(ctx, gitx.Commit{Branch: "main", Message: "The existing infrastructure\n", Author: gitx.Signature{Name: "Alice", Email: "alice@example.com"}, Changes: changes}); err != nil {
 		t.Fatal(err)
 	}
@@ -66,9 +69,15 @@ func giteaHarness(t *testing.T, merge string) (*harness, *giteatest.Repo) {
 // giteaHarnessWith is giteaHarness with more spec lines and the example's files edited.
 func giteaHarnessWith(t *testing.T, merge, spec string, edit func(path string, b []byte) []byte) (*harness, *giteatest.Repo) {
 	t.Helper()
+	return giteaHarnessFiles(t, merge, spec, edit, nil)
+}
+
+// giteaHarnessFiles is giteaHarnessWith with extra files in the repository, by path.
+func giteaHarnessFiles(t *testing.T, merge, spec string, edit func(path string, b []byte) []byte, extra map[string]string) (*harness, *giteatest.Repo) {
+	t.Helper()
 	g := giteatest.Get(t)
 	r := g.Repo(t, "infra")
-	pushEdited(t, r.CloneURL, func(context.Context) (gitx.Credentials, error) { return gitx.Credentials{Header: g.GitHeader()}, nil }, nil, edit)
+	pushEdited(t, r.CloneURL, func(context.Context) (gitx.Credentials, error) { return gitx.Credentials{Header: g.GitHeader()}, nil }, nil, edit, extra)
 	if err := r.Protect("main", "quai/approval"); err != nil {
 		t.Fatal(err)
 	}

@@ -15,7 +15,7 @@ import (
 	"strings"
 
 	"github.com/damhau/quai/backend/internal/engine/definitions"
-	"github.com/damhau/quai/backend/internal/engine/edit/yamledit"
+	"github.com/damhau/quai/backend/internal/engine/edit"
 	"github.com/damhau/quai/backend/internal/engine/generate"
 	"github.com/damhau/quai/backend/internal/engine/locate"
 	"github.com/damhau/quai/backend/internal/engine/schema"
@@ -102,7 +102,7 @@ func (r *Report) checkFile(fsys fs.FS, t *definitions.ResourceType, region locat
 		r.problem(region.Path, "", "cannot read: %v", err)
 		return
 	}
-	decoded, err := yamledit.Decode(src)
+	decoded, code, err := edit.Decode(region.Path, src)
 	if err != nil {
 		r.problem(region.Path, "", "%v", err)
 		return
@@ -118,18 +118,21 @@ func (r *Report) checkFile(fsys fs.FS, t *definitions.ResourceType, region locat
 			r.problem(region.Path, "", "%v", err)
 			return
 		}
-		for _, f := range slices.Sorted(maps.Keys(ve.Fields)) {
-			r.problem(region.Path, f, "%s (schema %s)", ve.Fields[f], t.FileSchema.Path())
+		fields := edit.OutsideCode(ve.Fields, code)
+		for _, f := range slices.Sorted(maps.Keys(fields)) {
+			r.problem(region.Path, f, "%s (schema %s)", fields[f], t.FileSchema.Path())
 		}
-		return
+		if len(fields) > 0 {
+			return
+		}
 	}
 	// Round trip: read the file as form values and write them back.
-	written, err := generate.Identity(t, generate.Request{Kind: generate.Update, Params: region.Params, Current: doc, Values: doc})
+	written, err := generate.Identity(t, generate.Request{Kind: generate.Update, Params: region.Params, Current: doc, Values: doc, Code: code})
 	if err != nil {
 		r.problem(region.Path, "", "round trip: %v", err)
 		return
 	}
-	out, err := yamledit.Edit(src, written)
+	out, err := edit.Edit(region.Path, src, written)
 	if err != nil {
 		r.problem(region.Path, "", "round trip: Quai cannot edit this file: %v", err)
 		return
