@@ -18,6 +18,16 @@ gh issue list --repo damhau/quai --label phase:3 --label type:task --state open 
 Commit as `P3-NN: <summary> (closes #<issue>)`. A task may take a few commits; the last one
 closes it.
 
+The Playwright scenarios and the live tests run every night, not on each push (`e2e.yml`,
+`live.yml`). So:
+- **Before taking a task,** read the last nightly runs (`gh run list --workflow e2e.yml` and
+  `--workflow live.yml`). A red run is fixed first, in a commit of its own
+  (`Fix: <summary> (nightly <workflow>)`).
+- **A task's local gates** are `make check` and the frontend's checks. The Playwright scenarios
+  run locally only when the task changes them or the request flows they cover; the live tests
+  only when it changes a connector or the runs. A task that changes `e2e/` dispatches the
+  workflow (`gh workflow run e2e.yml`) and waits for it before closing.
+
 The order follows the dependencies:
 - **The editors:** JSON, HCL, then formats in the pipeline (P3-01 to P3-03).
 - **The shared-file locators** (P3-04 to P3-07).

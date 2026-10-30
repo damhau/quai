@@ -1,9 +1,11 @@
 name: e2e
 
+# Nightly, and on demand (gh workflow run e2e.yml): the scenarios take minutes, so pushes do not
+# wait for them (docs/engineering/testing.md).
 on:
-  push:
-    branches: [main]
-  pull_request:
+  schedule:
+    - cron: "47 1 * * *"
+  workflow_dispatch:
 
 permissions:
   contents: read

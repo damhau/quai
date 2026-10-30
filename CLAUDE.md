@@ -56,7 +56,7 @@ Local stack and end-to-end tests (from the repository root, Docker):
 
 ```bash
 docker compose up --build --wait            # Quai on :8080 (QUAI_PORT), Gitea on :3000 (GITEA_PORT), the fake runner on :8090
-docker compose --profile e2e run --rm e2e   # the Playwright scenarios in e2e/, against that stack
+docker compose --profile e2e run --rm e2e   # the Playwright scenarios in e2e/, against that stack (nightly in CI)
 docker compose down -v
 ```
 
