@@ -23,7 +23,17 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: backend/go.mod
-          cache-dependency-path: backend/go.sum
+          cache: false # the cache below, kept per commit
+      # Go's build and module caches, and staticcheck's, saved after every commit and restored from
+      # the latest one: a push recompiles and re-analyses only what changed.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+            ~/.cache/staticcheck
+          key: go-build-${{ runner.os }}-static-${{ github.sha }}
+          restore-keys: go-build-${{ runner.os }}-static-
       # staticcheck, gosec, govulncheck and sqlc, built once per version and toolchain by
       # tools/tool.sh: the key follows the versions the Makefile pins and the toolchain go.mod
       # selects.
@@ -52,7 +62,16 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: backend/go.mod
-          cache-dependency-path: backend/go.sum
+          cache: false # the cache below, kept per commit
+      # Go's build and module caches, saved after every commit and restored from the latest one: a
+      # push compiles (with -race) only what changed.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-build-${{ runner.os }}-test-${{ matrix.half }}-${{ github.sha }}
+          restore-keys: go-build-${{ runner.os }}-test-${{ matrix.half }}-
       # The binaries tests start (PostgreSQL, the Kubernetes API server, Gitea), checksum-verified
       # when downloaded and kept by version. The key follows the packages that pin the versions;
       # a change there restores the previous cache, so only a new version is downloaded.
