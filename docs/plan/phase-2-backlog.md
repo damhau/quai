@@ -46,3 +46,68 @@ sandbox with its rules for the PAT and for cleaning up. Phase 2 adds:
 The rules of [when to stop and ask](phase-0-backlog.md#when-to-stop-and-ask) apply unchanged.
 Open questions 7 and 8 ([open questions](open-questions.md)) have defaults the tasks follow until
 the owner answers them.
+
+## Phase 2 review (P2-14)
+
+2026-10-30, after P2-13. The [Phase 2 exit (M1 Pilot)](roadmap.md#phase-2-runs-and-status-4-weeks)
+against the tests that show it:
+- **On Gitea, on every push:** the backend tests, and the Playwright scenarios with the compose
+  stack's fake runner.
+- **On the Azure DevOps Services sandbox:** the live tests, nightly since 2026-10-30
+  (`.github/workflows/live.yml`) and run locally after each task.
+- **On a stand-in for the pilot's repository:** the P2-13 rehearsal on `pilot-infra`.
+
+**The exit, part by part.**
+
+| Exit | Gitea | Azure DevOps Services |
+| --- | --- | --- |
+| The pilot's users request | e2e `type-request`, `runs` | `TestAzureDevOpsRuns`; on `pilot-infra`, bob created and resized VMs (!122–!124) |
+| They approve with the plan in front of them: the plan by resource, what it destroys, its cost and policies; rules on the plan | `TestRunPlans`, `TestPlanRules`, `TestNewPlanNeedsApproval`, `TestPlanBeforeItsPullRequest`, `TestCostAfterThePlan`; e2e `runs` (a costly plan brings FinOps in) | Build validation runs are plans: `TestAzureDevOpsPipelineRuns`. With the `quai report` step's plan and cost, a rule on the cost brings FinOps in: `TestAzureDevOpsRuns`, the test standing in for the step. On `pilot-infra`, the plans' state only (the step cannot reach a local Quai) |
+| They see the apply result: the request and the resource Applied or Failed | `TestRequestsAfterMerge`, `TestPipelinesRunner`, `TestResourceStatus`; e2e `runs` (applied, and a failed apply) | `TestAzureDevOpsRuns`: apply pipelines succeeding and failing, their run handed to Quai as the service hook would. On `pilot-infra`, not seen: nothing reaches a local Quai ([open question 10](open-questions.md)) |
+| On their own repository and pipeline | — | A stand-in only: `pilot-infra`, with the onboarding pull requests (!119–!121) and pipelines that plan, apply and lint. The pilot's own repository waits (below) |
+
+**Also delivered.**
+- **Run reports and `quai report`:** the run report protocol and `quai report`, with plan JSON
+  parsing and per-resource mapping (`internal/engine/tfplan`, `quai lint --plan`).
+- **The Azure Pipelines adapter:** service hooks, build validation, artifacts, and its drift
+  checks (`TestDriftChecks`, `TestAzureDevOpsDrift`).
+- **Runner templates** for Azure Pipelines, GitHub Actions, GitLab CI, Argo CD and Flux
+  (`TestArgoCDTemplate`, `TestFluxEvents`).
+- **The compose stack's fake runner.**
+- **The onboarding steps** for an Azure DevOps repository
+  ([operations](../operations/deployment-and-operations.md#onboarding-an-azure-devops-repository)).
+
+**Moved out of Phase 2.**
+- **#100**, codeowners (P2-01): to Phase 4, after M1 (owner, 2026-10-29). Open question 9 stays
+  open with it.
+- **#98**, Azure DevOps Server 2022: in the
+  [future improvements](roadmap.md#future-improvements) since Phase 1, so the pilot's own Server
+  repository is not reachable yet.
+
+**Not done, for the owner to decide or schedule.**
+
+1. **The pilot's own repository.** The pilot runs Azure DevOps Server (#98). M1 is accepted on
+   Services, so it needs their VM files on a Services repository, or a Server to run on. The
+   onboarding steps are the ones rehearsed on `pilot-infra`.
+2. **Apply results without inbound access (open question 10).**
+   - **The gap:** with Quai inside the pilot's network, neither the service hooks from Services
+     nor `quai report` from Microsoft-hosted agents reach it. Merged requests then stay
+     *Applying*, and plans show their state but not their details.
+   - **The default:** no fallback. Quai is reachable from Azure DevOps, or the pipelines run on
+     self-hosted agents.
+   - **The alternative:** Quai polls the apply pipelines' runs. Needed by M1.
+3. **Defaults to confirm.**
+   - **Open question 7:** rules on the plan. P2-12 decides at once a condition whose result does
+     not depend on the plan.
+   - **Open question 8:** `spec.runner.pipelines`.
+4. **The M1 deployment, beyond Phase 2's tasks.**
+   - **Entra ID login:** OIDC is tested against a fake identity provider (`TestOIDCLogin`), not
+     against Entra ID.
+   - **OpenShift:** the chart is installed and upgraded on kind (`kind.yml`), not on OpenShift. A
+     `Route` and the UBI image variant are in the
+     [operations](../operations/deployment-and-operations.md#packaging) doc, not built.
+5. **The stand-in's resources** in the sandbox organization: keep or delete them.
+   - The `pilot-infra` repository.
+   - Its pipelines (45, 46).
+   - Its policies (68–70).
+6. **The epics #41–#45** have every task done or moved; they can be closed with this issue.
