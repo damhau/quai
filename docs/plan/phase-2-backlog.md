@@ -86,9 +86,9 @@ against the tests that show it:
 
 **Not done, for the owner to decide or schedule.**
 
-1. **The pilot's own repository.** The pilot runs Azure DevOps Server (#98). M1 is accepted on
-   Services, so it needs their VM files on a Services repository, or a Server to run on. The
-   onboarding steps are the ones rehearsed on `pilot-infra`.
+1. **The pilot's own repository.** Decided (owner, 2026-10-30): with no real repository
+   available, M1 is accepted on the stand-in `pilot-infra`. A real repository is onboarded with
+   the steps rehearsed there when one is available.
 2. **Apply results without inbound access (open question 10).**
    - **The gap:** with Quai inside the pilot's network, neither the service hooks from Services
      nor `quai report` from Microsoft-hosted agents reach it. Merged requests then stay
@@ -106,8 +106,6 @@ against the tests that show it:
    - **OpenShift:** the chart is installed and upgraded on kind (`kind.yml`), not on OpenShift. A
      `Route` and the UBI image variant are in the
      [operations](../operations/deployment-and-operations.md#packaging) doc, not built.
-5. **The stand-in's resources** in the sandbox organization: keep or delete them.
-   - The `pilot-infra` repository.
-   - Its pipelines (45, 46).
-   - Its policies (68–70).
+5. **The stand-in's resources** in the sandbox organization stay, with item 1: the
+   `pilot-infra` repository, its pipelines (45, 46) and its policies (68–70).
 6. **The epics #41–#45** have every task done or moved; they can be closed with this issue.
