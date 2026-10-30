@@ -103,7 +103,9 @@ failure on a rejection or a cancellation (the pull request is then closed and it
 deleted), not-applicable when stale (failure on Gitea, which has no such state). Once approved,
 with `merge: auto`, Quai waits for the `waitForChecks` (the pull request's statuses, and its
 policy evaluations on Azure DevOps), then asks the platform to merge when its own policies pass
-(auto-complete on Azure DevOps, merge-when-checks-succeed on Gitea) with the approved head pinned;
+(auto-complete on Azure DevOps; on Gitea a merge, or merge-when-checks-succeed when a required
+check is still pending, since Gitea merges a scheduled pull request only when a check changes)
+with the approved head pinned;
 with `merge: manual` it stops at the status. The merge, seen by the job, a webhook or a poll (a
 poll re-reads every pull request Quai waits on), applies the request; one merged before Quai's
 approval is recorded as such (`merged_without_approval`). A pull request closed outside Quai

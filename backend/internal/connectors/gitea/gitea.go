@@ -330,6 +330,8 @@ func (p *pullRequests) merge(ctx context.Context, id string, o connectors.MergeO
 			return fmt.Errorf("%w: %s", connectors.ErrBlocked, message)
 		case status == http.StatusNotFound:
 			return fmt.Errorf("%w: pull request %s", connectors.ErrNotFound, id)
+		case auto && status == http.StatusConflict && strings.Contains(strings.ToLower(message), "already scheduled"):
+			return nil // an earlier request scheduled it
 		default:
 			return fmt.Errorf("gitea: merge pull request %s: %d %s", id, status, message)
 		}
@@ -379,8 +381,15 @@ func (p *pullRequests) Merge(ctx context.Context, id string, o connectors.MergeO
 	return p.Get(ctx, id)
 }
 
-// AutoComplete asks Gitea to merge once the required checks succeed.
+// AutoComplete merges now when the required checks pass, and otherwise asks Gitea to merge once
+// they succeed. Gitea merges a scheduled pull request when a check's status changes: one
+// scheduled after the last check succeeded would wait for a change that never comes, and racing
+// a scheduled merge with another merge can leave a second commit on the base.
 func (p *pullRequests) AutoComplete(ctx context.Context, id string, o connectors.MergeOptions) error {
+	err := p.merge(ctx, id, o, false)
+	if !errors.Is(err, connectors.ErrBlocked) {
+		return err
+	}
 	return p.merge(ctx, id, o, true)
 }
 
