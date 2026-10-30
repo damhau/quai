@@ -74,10 +74,12 @@ type Repo struct {
 	changes     *ChangeIndex // the last change index built
 }
 
-// HasRunner reports whether the repository's runs are reported (spec.runner): without a runner,
-// a merged change is applied and resources stay in the repository.
+// HasRunner reports whether the repository's runs are reported (spec.runner): a report token, a
+// runner kind, or an apply pipeline whose runs Quai reads. Without a runner, a merged change is
+// applied and resources stay in the repository.
 func (r *Repo) HasRunner() bool {
-	return r.Document.Spec.Runner.ReportToken.Ref != "" || r.Document.Spec.Runner.Kind != ""
+	rn := r.Document.Spec.Runner
+	return rn.ReportToken.Ref != "" || rn.Kind != "" || slices.ContainsFunc(rn.Pipelines, func(p Pipeline) bool { return p.Kind == "apply" })
 }
 
 // Snapshot is a repository at one commit: its files and the definitions read from them.

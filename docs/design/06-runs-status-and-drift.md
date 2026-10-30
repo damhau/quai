@@ -66,7 +66,7 @@ Content-Type: application/json
 
 | Runner | How results reach Quai |
 | --- | --- |
-| Azure Pipelines (first) | A `quai report` step (or task) after plan and apply. `spec.runner.pipelines` names the pipelines, each with its kind and the stacks it covers ([repository connections](01-repository-connections.md)). Their runs' state changes arrive through a service hook (`ms.vss-pipelines.run-state-changed-event`), and a pull request's build validation runs are read through its policy evaluations when Quai polls; Quai reads each run again and records it as a run of each stack its pipeline covers (a pattern: each stack of the repository's resources it matches), named by its results page, the page `quai report` names: both describe one run. Drift checks are queued with the Pipelines runs API. |
+| Azure Pipelines (first) | A `quai report` step (or task) after plan and apply. `spec.runner.pipelines` names the pipelines, each with its kind and the stacks it covers ([repository connections](01-repository-connections.md)). Their runs' state changes arrive through a service hook (`ms.vss-pipelines.run-state-changed-event`), and a pull request's build validation runs are read through its policy evaluations when Quai polls, and once more when it merges; Quai reads each run again and records it as a run of each stack its pipeline covers (a pattern: each stack of the repository's resources it matches), named by its results page, the page `quai report` names: both describe one run. Drift checks are queued with the Pipelines runs API. |
 | GitHub Actions, GitLab CI, Jenkins | A `quai report` step after plan and apply (container image or binary): a composite action and a job template in `deploy/runners/`. Quai also reads check and pipeline status from platform webhooks as a fallback. |
 | Atlantis | A custom workflow step calling `quai report`; Quai also reads the `atlantis/plan` and `atlantis/apply` statuses. |
 | Spacelift | Spacelift webhooks for run state changes; plan JSON through its API. |
@@ -102,8 +102,8 @@ repository's page lists the latest runs of each stack.
 
 ## Runs and requests
 
-With `spec.runner`, a merged request (its pull request merged, or its direct commit made) is
-*Applying*. It waits for an apply of each stack its change is in (the stack of the resource,
+With `spec.runner` (a report token, a runner kind, or an apply pipeline in `pipelines`), a
+merged request (its pull request merged, or its direct commit made) is *Applying*. It waits for an apply of each stack its change is in (the stack of the resource,
 or of each resource of a blueprint) that includes the commit that landed it: the latest such
 apply of each stack decides, *Applied* when each succeeded, *Failed* when one failed. An apply
 Quai receives before it sees the merge counts too; a request whose resources have no stack is

@@ -32,6 +32,10 @@ sandbox with its rules for the PAT and for cleaning up. Phase 2 adds:
 
 ## STOP tasks
 
+- **P2-13** was rehearsed, with the owner's go-ahead, on a stand-in for the pilot in the sandbox
+  organization (`pilot-infra`: synthetic VM files, Terraform stacks and pipelines), as the pilot
+  runs Azure DevOps Server and M1 is accepted on Services; the steps are in
+  [onboarding an Azure DevOps repository](../operations/deployment-and-operations.md#onboarding-an-azure-devops-repository).
 - **P2-08** (pipelines on the sandbox) and **P2-13** (pilot onboarding) need something only the
   owner can provide (named in the issue). If the issue has no comment from the owner saying it is
   in place, comment what is missing and **stop**. When it is there, implement the task and close

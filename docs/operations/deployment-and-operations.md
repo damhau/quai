@@ -127,6 +127,41 @@ A step that runs when the plan or apply fails reports `--status failed`.
 | `argocd/notifications.yaml` | Argo CD's notifications: each sync of a subscribed Application posted as a `sync` run, with the repository and the stack from its annotations |
 | `flux/alert.yaml` | Flux's notification controller: a generic provider posting the events of the Kustomizations an Alert follows to `/api/v1/runs/flux` |
 
+### Onboarding an Azure DevOps repository
+
+Rehearsed in P2-13 on a stand-in for the pilot (`pilot-infra` in the sandbox organization: VM
+files in `vms/<env>/`, a Terraform stack per environment in `stacks/<env>/`), in this order:
+
+1. **Policies on the default branch.** A *Status check* requiring `quai/approval`, from Quai's
+   identity only and reset when the source branch changes (Quai's
+   [enforcement](../design/05-delivery-and-approvals.md)); *Build validation* by the plan
+   pipeline; *Automatically included reviewers* for `/.quai/*`, the platform owners, so that the
+   definitions change only through their review (trust). No minimum number of reviewers:
+   approvals are Quai's, and the pull requests Quai opens complete once `quai/approval` and the
+   build pass. The status check goes last if the onboarding pull requests below are to complete
+   without a policy bypass.
+2. **The type, in a pull request the platform owners merge.** `.quai/types/<type>.yaml` and its
+   JSON Schema, written from the repository's files and the Terraform variables they feed: the
+   schema follows the variables' validations, `locate`, `stack` and `address` follow the stacks.
+   `quai lint <dir>` loads them and checks every file; `quai lint --plan plan.json --stack <stack>
+   <dir>`, on the plan of a change, checks that every Terraform resource it changes belongs to
+   exactly one resource.
+3. **`quai lint` in the plan pipeline**, before the plan and, with `--plan` and `--stack`, after
+   each stack's plan, from the image pinned to a commit (`ghcr.io/damhau/quai:sha-<commit>`).
+4. **`quai report` after each plan and apply** ([runners](#runners)), with the condition
+   `and(always(), ne(variables['quaiUrl'], ''))` until the agents can reach Quai.
+5. **The repository connection**: `connector: azure-devops`, the repository's URL, a PAT with
+   Code (read and write), Pull Request Threads (read and write) and Build (read and execute),
+   `delivery: { mode: pull-request, merge: auto }`, and `runner.pipelines` naming the plan and
+   apply pipelines with the stacks they cover.
+
+What reaches Quai depends on the network. Quai reaching Azure DevOps Services and polling it is
+enough to request, approve and merge, and to read pull requests' build validation runs as plans
+(their state, without the plan's details). The plan's details and the apply's result need the
+service hooks (`ms.vss-pipelines.run-state-changed-event`) or the `quai report` step to reach
+Quai: from Microsoft-hosted agents and from Services, over the internet (`webhooks.host`); from
+self-hosted agents, inside the network ([open question 10](../plan/open-questions.md)).
+
 ## Network
 
 Egress needed, all configurable through an HTTP proxy (`HTTPS_PROXY`, `NO_PROXY`), with an internal CA trusted through `network.caFile`:

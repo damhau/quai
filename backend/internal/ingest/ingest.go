@@ -352,8 +352,9 @@ func (s *Service) handle(ctx context.Context, repo *repositories.Repo, pr connec
 	if err := s.handler.PullRequest(ctx, repo, pr); err != nil {
 		return err
 	}
-	// Its build validation runs are plans: also read when service hooks cannot reach Quai.
-	if pr.State == connectors.PROpen {
+	// Its build validation runs are plans: also read when service hooks cannot reach Quai, and
+	// once more when it merges, for a plan that finished after the last poll.
+	if pr.State == connectors.PROpen || pr.State == connectors.PRMerged {
 		if err := s.pullRequestRuns(ctx, repo, pr.ID); err != nil {
 			s.log.WarnContext(ctx, "the pull request's build validation", slog.String("repository", repo.Name), slog.String("pull_request", pr.ID), slog.Any("error", err))
 		}

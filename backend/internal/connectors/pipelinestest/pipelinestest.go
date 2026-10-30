@@ -1,6 +1,7 @@
 // Package pipelinestest gives tests a platform's pipelines without a platform: Connector wraps
 // any connector with Pipelines, which record what is triggered and answer with the runs they
-// queued, their pages under https://ci.example.com.
+// queued, their pages under https://ci.example.com, and with the build validation runs a test
+// gives a pull request.
 package pipelinestest
 
 import (
@@ -16,8 +17,9 @@ import (
 
 // Pipelines are fake pipelines.
 type Pipelines struct {
-	mu   sync.Mutex
-	runs []connectors.Run
+	mu        sync.Mutex
+	runs      []connectors.Run
+	validated map[string][]string // a pull request's build validation runs, by ID
 }
 
 // Trigger queues a run.
@@ -38,6 +40,32 @@ func (p *Pipelines) Triggered() []connectors.Run {
 	return append([]connectors.Run(nil), p.runs...)
 }
 
+// Finish completes a run queued or validating, at commit, with result (succeeded, failed, …).
+func (p *Pipelines) Finish(id, result, commit string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for i := range p.runs {
+		if p.runs[i].ID == id {
+			p.runs[i].State, p.runs[i].Result, p.runs[i].Commit = "completed", result, commit
+		}
+	}
+}
+
+// Validate starts a run of pipeline as the build validation of a pull request, at commit.
+func (p *Pipelines) Validate(pipeline, pullRequest, commit string) connectors.Run {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	id := strconv.Itoa(len(p.runs) + 1)
+	run := connectors.Run{Pipeline: pipeline, ID: id, State: "running", Commit: commit, Branch: "refs/pull/" + pullRequest + "/merge",
+		PullRequest: pullRequest, URL: "https://ci.example.com/_build/results?buildId=" + id}
+	p.runs = append(p.runs, run)
+	if p.validated == nil {
+		p.validated = map[string][]string{}
+	}
+	p.validated[pullRequest] = append(p.validated[pullRequest], id)
+	return run
+}
+
 // Get returns a run queued.
 func (p *Pipelines) Get(_ context.Context, id string) (connectors.Run, error) {
 	p.mu.Lock()
@@ -50,8 +78,20 @@ func (p *Pipelines) Get(_ context.Context, id string) (connectors.Run, error) {
 	return connectors.Run{}, fmt.Errorf("run %s: %w", id, connectors.ErrNotFound)
 }
 
-// PullRequestRuns returns none.
-func (p *Pipelines) PullRequestRuns(context.Context, string) ([]connectors.Run, error) { return nil, nil }
+// PullRequestRuns returns the build validation runs of a pull request.
+func (p *Pipelines) PullRequestRuns(_ context.Context, pullRequest string) ([]connectors.Run, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	var out []connectors.Run
+	for _, id := range p.validated[pullRequest] {
+		for _, r := range p.runs {
+			if r.ID == id {
+				out = append(out, r)
+			}
+		}
+	}
+	return out, nil
+}
 
 // Artifact has none.
 func (p *Pipelines) Artifact(context.Context, string, string, string) ([]byte, error) {

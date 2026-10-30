@@ -11,6 +11,7 @@ import (
 	"github.com/damhau/quai/backend/internal/connectors"
 	"github.com/damhau/quai/backend/internal/connectors/generic"
 	"github.com/damhau/quai/backend/internal/connectors/pipelinestest"
+	"github.com/damhau/quai/backend/internal/ingest"
 	"github.com/damhau/quai/backend/internal/repositories"
 	"github.com/damhau/quai/backend/internal/secrets"
 )
@@ -107,5 +108,37 @@ func TestNoDriftCheck(t *testing.T) {
 	h := newHarnessRunner(t, "")
 	if status, _ := h.as("alice").do(http.MethodPost, Prefix+"/repositories/infra-live/drift-checks", map[string]any{}, nil); status != http.StatusConflict {
 		t.Errorf("queue without a drift-check pipeline = %d", status)
+	}
+}
+
+// TestPipelinesRunner: a repository whose runner is its pipelines (no report token): a committed
+// request waits for the apply pipeline's run, which Quai reads when a service hook names it.
+func TestPipelinesRunner(t *testing.T) {
+	dir := t.TempDir()
+	bare, _ := localRemote(t, dir)
+	fake := &pipelinestest.Pipelines{}
+	h := start(t, dir, `connector: generic
+  url: `+bare+`
+  runner:
+    pipelines: [{ name: infra-apply, kind: apply, stacks: "envs/{env}" }]
+  sync: { minInterval: 1ns }`, repositories.Options{
+		Connectors: &connectors.Registry{Factories: map[string]connectors.Factory{"generic": pipelinestest.Factory(generic.New, fake)}},
+	})
+	bob := h.as("bob")
+	var r RequestView
+	if status, body := bob.do(http.MethodPost, Prefix+"/requests/type", newVM("dev", "api01", 2), &r); status != http.StatusCreated {
+		t.Fatalf("submit = %d %s", status, body)
+	}
+	bob.await(r.ID, "applying")
+	run, _ := fake.Trigger(t.Context(), "infra-apply", "main", nil) // main changed: the apply pipeline runs
+	fake.Finish(run.ID, "succeeded", strings.TrimSpace(git(t, bare, "rev-parse", "main")))
+	if err := h.ingest.Process(t.Context(), "infra-live", []ingest.Event{{Run: &connectors.PipelineRunChanged{Run: connectors.Run{ID: run.ID}}}}); err != nil {
+		t.Fatal(err)
+	}
+	bob.await(r.ID, "applied")
+	var res ResourceDetail
+	bob.do(http.MethodGet, Prefix+"/resource?id=infra-live/vm/dev/api01", nil, &res)
+	if res.State != "applied" {
+		t.Errorf("api01 is %s", res.State)
 	}
 }

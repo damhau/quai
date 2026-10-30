@@ -90,3 +90,31 @@ func TestDriftSchedule(t *testing.T) {
 		t.Error(err)
 	}
 }
+
+// TestMergedPullRequestRuns: a pull request's build validation runs are read again when it
+// merges, so that a plan that finished after the last poll is recorded; an abandoned one's are
+// not.
+func TestMergedPullRequestRuns(t *testing.T) {
+	ctx := context.Background()
+	fake := &pipelinestest.Pipelines{}
+	e := start(t, "infra", `connector: generic
+  url: `+exampleRemote(t)+`
+  runner:
+    pipelines: [{ name: infra-plan, kind: plan, stacks: "envs/{env}" }]`, repositories.Options{
+		Connectors: &connectors.Registry{Factories: map[string]connectors.Factory{"generic": pipelinestest.Factory(generic.New, fake)}},
+	})
+	for _, pr := range []string{"7", "8"} {
+		run := fake.Validate("infra-plan", pr, "abcdef1")
+		fake.Finish(run.ID, "succeeded", "abcdef1")
+	}
+	if err := e.svc.handle(ctx, e.repo(), connectors.PullRequest{ID: "7", State: connectors.PRMerged}); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.svc.handle(ctx, e.repo(), connectors.PullRequest{ID: "8", State: connectors.PRAbandoned}); err != nil {
+		t.Fatal(err)
+	}
+	plans, _ := e.store.ListRuns(ctx, db.ListRunsParams{Repository: "infra", Kind: "plan", MaxRows: 10})
+	if len(plans) != 2 || plans[0].PullRequest != "7" || plans[1].PullRequest != "7" || plans[0].Status != "succeeded" {
+		t.Errorf("the plans = %+v", plans)
+	}
+}
