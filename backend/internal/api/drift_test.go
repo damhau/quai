@@ -112,7 +112,8 @@ func TestNoDriftCheck(t *testing.T) {
 }
 
 // TestPipelinesRunner: a repository whose runner is its pipelines (no report token): a committed
-// request waits for the apply pipeline's run, which Quai reads when a service hook names it.
+// request waits for the apply pipeline's run, which Quai reads when a service hook names it, or
+// when it polls.
 func TestPipelinesRunner(t *testing.T) {
 	dir := t.TempDir()
 	bare, _ := localRemote(t, dir)
@@ -141,4 +142,16 @@ func TestPipelinesRunner(t *testing.T) {
 	if res.State != "applied" {
 		t.Errorf("api01 is %s", res.State)
 	}
+
+	// Without the service hook: the next poll reads the apply pipeline's latest runs.
+	if status, body := bob.do(http.MethodPost, Prefix+"/requests/type", newVM("dev", "api02", 2), &r); status != http.StatusCreated {
+		t.Fatalf("submit = %d %s", status, body)
+	}
+	bob.await(r.ID, "applying")
+	run, _ = fake.Trigger(t.Context(), "infra-apply", "main", nil)
+	fake.Finish(run.ID, "failed", strings.TrimSpace(git(t, bare, "rev-parse", "main")))
+	if err := h.ingest.Poll(t.Context(), "infra-live"); err != nil {
+		t.Fatal(err)
+	}
+	bob.await(r.ID, "failed")
 }

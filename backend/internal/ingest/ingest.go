@@ -399,6 +399,9 @@ func (s *Service) Poll(ctx context.Context, name string) error {
 		if err := s.checkTrust(ctx, repo); err != nil {
 			s.log.WarnContext(ctx, "trust cannot be checked", slog.String("repository", name), slog.Any("error", err))
 		}
+		if err := s.pollPipelineRuns(ctx, repo); err != nil {
+			s.log.WarnContext(ctx, "the pipelines' runs", slog.String("repository", name), slog.Any("error", err))
+		}
 		prs := repo.Connector.PullRequests()
 		if prs == nil {
 			return nil

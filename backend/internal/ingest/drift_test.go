@@ -118,3 +118,42 @@ func TestMergedPullRequestRuns(t *testing.T) {
 		t.Errorf("the plans = %+v", plans)
 	}
 }
+
+// TestPolledPipelineRuns: each poll reads the latest runs of the apply and drift-check pipelines
+// on the default branch, for when their service hooks cannot reach Quai. A run already recorded
+// changes nothing; plan pipelines and other branches are not read.
+func TestPolledPipelineRuns(t *testing.T) {
+	ctx := context.Background()
+	fake := &pipelinestest.Pipelines{}
+	e := start(t, "infra", `connector: generic
+  url: `+exampleRemote(t)+`
+  runner:
+    pipelines:
+      - { name: infra-plan, kind: plan, stacks: "envs/{env}" }
+      - { name: infra-apply, kind: apply, stacks: "envs/{env}" }`, repositories.Options{
+		Connectors: &connectors.Registry{Factories: map[string]connectors.Factory{"generic": pipelinestest.Factory(generic.New, fake)}},
+	})
+	apply, _ := fake.Trigger(ctx, "infra-apply", "main", nil)
+	_, _ = fake.Trigger(ctx, "infra-apply", "release", nil)
+	_, _ = fake.Trigger(ctx, "infra-plan", "main", nil)
+	poll := func() []db.Run {
+		t.Helper()
+		if err := e.svc.Poll(ctx, "infra"); err != nil {
+			t.Fatal(err)
+		}
+		runs, _ := e.store.ListRuns(ctx, db.ListRunsParams{Repository: "infra", MaxRows: 20})
+		return runs
+	}
+	if runs := poll(); len(runs) != 2 || runs[0].Kind != "apply" || runs[0].Status != "running" || runs[1].Status != "running" {
+		t.Fatalf("after the first poll, the runs = %+v", runs)
+	}
+	fake.Finish(apply.ID, "failed", "abcdef1")
+	if runs := poll(); len(runs) != 2 || runs[0].Status != "failed" || runs[0].Commit != "abcdef1" || runs[1].Status != "failed" {
+		t.Errorf("once it failed, the runs = %+v", runs)
+	}
+	reported := len(e.handler.reported())
+	poll()
+	if again := len(e.handler.reported()); again != reported {
+		t.Errorf("the same runs again were handed on: %d, then %d", reported, again)
+	}
+}

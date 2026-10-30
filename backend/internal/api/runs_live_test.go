@@ -74,9 +74,9 @@ func (u *user) awaitRuns(id, what string, ok func(RequestView) bool) RequestView
 	}
 }
 
-// apply runs an apply pipeline on main and hands Quai its run as the service hook would: Azure
-// DevOps cannot reach the test.
-func (h *harness) apply(sb *adotest.Sandbox, pipeline int) {
+// apply runs an apply pipeline on main. With hook, it hands Quai the run as the service hook
+// would (Azure DevOps cannot reach the test); without, Quai finds it when it polls.
+func (h *harness) apply(sb *adotest.Sandbox, pipeline int, hook bool) {
 	h.t.Helper()
 	ctx := context.Background()
 	run, err := sb.Run(ctx, pipeline, "main")
@@ -84,6 +84,9 @@ func (h *harness) apply(sb *adotest.Sandbox, pipeline int) {
 		h.t.Fatal(err)
 	}
 	sb.Await(h.t, pipeline, run.ID, 10*time.Minute)
+	if !hook {
+		return
+	}
 	if err := h.ingest.Process(ctx, "infra-live", []ingest.Event{{Run: &connectors.PipelineRunChanged{Run: connectors.Run{ID: strconv.Itoa(run.ID)}}}}); err != nil {
 		h.t.Fatal(err)
 	}
@@ -104,7 +107,8 @@ func (u *user) resource(id string) ResourceDetail {
 // the approvals wait and decides a floor rule on the cost; once merged, the request and its
 // resource are applied by the apply pipeline's run, and failed by a failing one's. The quai
 // report step, like the service hook, cannot reach the test from Azure DevOps: the test sends
-// what they would. Skipped without the sandbox's PAT.
+// what they would, apart from the failing apply, which Quai finds when it polls. Skipped without
+// the sandbox's PAT.
 func TestAzureDevOpsRuns(t *testing.T) {
 	sb := adotest.New(t)
 	ctx := context.Background()
@@ -184,7 +188,7 @@ func TestAzureDevOpsRuns(t *testing.T) {
 		t.Fatalf("FinOps approval = %d %s", status, body)
 	}
 	bob.awaitRuns(r.ID, "merged", func(v RequestView) bool { return v.State == "applying" })
-	h.apply(sb, applyID)
+	h.apply(sb, applyID, true)
 	r = bob.awaitRuns(r.ID, "applied", func(v RequestView) bool { return v.State == "applied" })
 	if !slices.ContainsFunc(r.Events, func(e EventView) bool { return e.Kind == "applied" }) {
 		t.Errorf("no applied event: %+v", r.Events)
@@ -199,7 +203,7 @@ func TestAzureDevOpsRuns(t *testing.T) {
 		t.Fatalf("submit = %d %s", status, body)
 	}
 	bob.awaitRuns(dev.ID, "merged", func(v RequestView) bool { return v.State == "applying" })
-	h.apply(sb, failID)
+	h.apply(sb, failID, false) // found by polling
 	dev = bob.awaitRuns(dev.ID, "failed", func(v RequestView) bool { return v.State == "failed" })
 	if !slices.ContainsFunc(dev.Events, func(e EventView) bool { return e.Kind == "apply_failed" }) {
 		t.Errorf("no apply_failed event: %+v", dev.Events)

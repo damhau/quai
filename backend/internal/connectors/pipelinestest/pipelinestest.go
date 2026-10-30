@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -88,6 +89,19 @@ func (p *Pipelines) PullRequestRuns(_ context.Context, pullRequest string) ([]co
 			if r.ID == id {
 				out = append(out, r)
 			}
+		}
+	}
+	return out, nil
+}
+
+// Runs returns the latest runs of pipeline on branch, newest first.
+func (p *Pipelines) Runs(_ context.Context, pipeline, branch string, limit int) ([]connectors.Run, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	var out []connectors.Run
+	for _, r := range slices.Backward(p.runs) {
+		if r.Pipeline == pipeline && r.Branch == "refs/heads/"+strings.TrimPrefix(branch, "refs/heads/") && len(out) < limit {
+			out = append(out, r)
 		}
 	}
 	return out, nil

@@ -269,6 +269,9 @@ type Pipelines interface {
 	Get(ctx context.Context, id string) (Run, error)
 	// PullRequestRuns returns the runs of a pull request's build validation.
 	PullRequestRuns(ctx context.Context, pullRequest string) ([]Run, error)
+	// Runs returns the latest runs of the pipeline named pipeline on branch, newest first, at
+	// most limit.
+	Runs(ctx context.Context, pipeline, branch string, limit int) ([]Run, error)
 	// Artifact returns a file of one of a run's artifacts.
 	Artifact(ctx context.Context, run, artifact, file string) ([]byte, error)
 	// Check verifies that the pipeline named pipeline exists and that its runs can be read.

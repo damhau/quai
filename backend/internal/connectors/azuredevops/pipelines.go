@@ -151,6 +151,35 @@ func (p *pipelines) Trigger(ctx context.Context, pipeline, branch string, parame
 	return p.Get(ctx, strconv.Itoa(run.ID))
 }
 
+// Runs returns the latest runs of the pipeline named pipeline on branch, newest first, through
+// the Builds API.
+func (p *pipelines) Runs(ctx context.Context, pipeline, branch string, limit int) ([]connectors.Run, error) {
+	c := (*Connector)(p)
+	repo, err := c.Resolve(ctx)
+	if err != nil {
+		return nil, err
+	}
+	id, err := p.find(ctx, repo, pipeline)
+	if err != nil {
+		return nil, err
+	}
+	var list struct {
+		Value []build `json:"value"`
+	}
+	q := url.Values{"definitions": {strconv.Itoa(id)}, "branchName": {"refs/heads/" + strings.TrimPrefix(branch, "refs/heads/")},
+		"queryOrder": {"queueTimeDescending"}, "$top": {strconv.Itoa(limit)}}
+	if err := c.client.Do(ctx, http.MethodGet, path(repo.ProjectID, "_apis", "build", "builds"), APIVersion, q, nil, &list); err != nil {
+		return nil, err
+	}
+	var out []connectors.Run
+	for _, b := range list.Value {
+		if strings.EqualFold(b.Repository.ID, repo.ID) {
+			out = append(out, c.run(repo, b))
+		}
+	}
+	return out, nil
+}
+
 // PullRequestRuns returns the runs of the pull request's "Build validation" policies, from its
 // policy evaluations: those started.
 func (p *pipelines) PullRequestRuns(ctx context.Context, pullRequest string) ([]connectors.Run, error) {

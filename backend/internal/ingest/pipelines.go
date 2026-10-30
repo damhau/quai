@@ -3,6 +3,7 @@ package ingest
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"slices"
 	"time"
@@ -28,6 +29,34 @@ func (s *Service) pipelineRun(ctx context.Context, repo *repositories.Repo, id s
 		return err
 	}
 	return s.recordRun(ctx, repo, run)
+}
+
+// polledRuns is how many of a pipeline's latest runs a poll reads.
+const polledRuns = 5
+
+// pollPipelineRuns records the latest runs of the repository's apply and drift-check pipelines on its
+// default branch, oldest first: what their service hooks say, for when those cannot reach Quai
+// (docs/design/06-runs-status-and-drift.md#adapters). A run already recorded changes nothing.
+func (s *Service) pollPipelineRuns(ctx context.Context, repo *repositories.Repo) error {
+	p := repo.Connector.Pipelines()
+	if p == nil {
+		return nil
+	}
+	var errs []error
+	for _, pl := range repo.Document.Spec.Runner.Pipelines {
+		if pl.Kind != "apply" && pl.Kind != "drift-check" {
+			continue
+		}
+		list, err := p.Runs(ctx, pl.Name, repo.Branch, polledRuns)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("the runs of %s: %w", pl.Name, err))
+			continue
+		}
+		for _, run := range slices.Backward(list) {
+			errs = append(errs, s.recordRun(ctx, repo, run))
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // pullRequestRuns records the runs of a pull request's build validation.

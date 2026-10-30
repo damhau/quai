@@ -61,6 +61,13 @@ func TestLivePipelines(t *testing.T) {
 		got.URL != RunURL(s.Collection, s.Project, runID) || got.Pipeline != name+"-azure-pipelines" || got.Finished.IsZero() {
 		t.Errorf("the run = %+v", got)
 	}
+	// The pipeline's latest runs on main, as a poll reads them; none on another branch.
+	if latest, err := p.Runs(ctx, name+"-azure-pipelines", "main", 5); err != nil || len(latest) != 1 || latest[0].ID != run.ID || latest[0].State != "completed" {
+		t.Errorf("the runs on main = %+v, %v", latest, err)
+	}
+	if other, err := p.Runs(ctx, name+"-azure-pipelines", "release", 5); err != nil || len(other) != 0 {
+		t.Errorf("the runs on release = %+v, %v", other, err)
+	}
 	planFile, err := p.Artifact(ctx, run.ID, "plan", "plan.json")
 	if err != nil || !strings.Contains(string(planFile), `"format_version": "1.2"`) {
 		t.Errorf("the artifact = %q, %v", planFile, err)

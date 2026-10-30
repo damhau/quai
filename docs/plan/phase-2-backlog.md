@@ -63,7 +63,7 @@ against the tests that show it:
 | --- | --- | --- |
 | The pilot's users request | e2e `type-request`, `runs` | `TestAzureDevOpsRuns`; on `pilot-infra`, bob created and resized VMs (!122–!124) |
 | They approve with the plan in front of them: the plan by resource, what it destroys, its cost and policies; rules on the plan | `TestRunPlans`, `TestPlanRules`, `TestNewPlanNeedsApproval`, `TestPlanBeforeItsPullRequest`, `TestCostAfterThePlan`; e2e `runs` (a costly plan brings FinOps in) | Build validation runs are plans: `TestAzureDevOpsPipelineRuns`. With the `quai report` step's plan and cost, a rule on the cost brings FinOps in: `TestAzureDevOpsRuns`, the test standing in for the step. On `pilot-infra`, the plans' state only (the step cannot reach a local Quai) |
-| They see the apply result: the request and the resource Applied or Failed | `TestRequestsAfterMerge`, `TestPipelinesRunner`, `TestResourceStatus`; e2e `runs` (applied, and a failed apply) | `TestAzureDevOpsRuns`: apply pipelines succeeding and failing, their run handed to Quai as the service hook would. On `pilot-infra`, not seen: nothing reaches a local Quai ([open question 10](open-questions.md)) |
+| They see the apply result: the request and the resource Applied or Failed | `TestRequestsAfterMerge`, `TestPipelinesRunner`, `TestResourceStatus`; e2e `runs` (applied, and a failed apply) | `TestAzureDevOpsRuns`: apply pipelines succeeding and failing, their run handed to Quai as the service hook would. Since P2-15, also by polling: in `TestAzureDevOpsRuns` the failed apply, and on `pilot-infra` a resize (!131) Applied with its VM when Quai polled after apply run 108, nothing reaching Quai |
 | On their own repository and pipeline | — | A stand-in only: `pilot-infra`, with the onboarding pull requests (!119–!121) and pipelines that plan, apply and lint. The pilot's own repository waits (below) |
 
 **Also delivered.**
@@ -89,13 +89,9 @@ against the tests that show it:
 1. **The pilot's own repository.** Decided (owner, 2026-10-30): with no real repository
    available, M1 is accepted on the stand-in `pilot-infra`. A real repository is onboarded with
    the steps rehearsed there when one is available.
-2. **Apply results without inbound access (open question 10).**
-   - **The gap:** with Quai inside the pilot's network, neither the service hooks from Services
-     nor `quai report` from Microsoft-hosted agents reach it. Merged requests then stay
-     *Applying*, and plans show their state but not their details.
-   - **The default:** no fallback. Quai is reachable from Azure DevOps, or the pipelines run on
-     self-hosted agents.
-   - **The alternative:** Quai polls the apply pipelines' runs. Needed by M1.
+2. **Apply results without inbound access (open question 10).** Decided (owner, 2026-10-30):
+   Quai polls the apply and drift-check pipelines' runs, built in P2-15 (#114). A plan's details
+   still need the `quai report` step, or the service hooks, to reach Quai.
 3. **Defaults to confirm.**
    - **Open question 7:** rules on the plan. P2-12 decides at once a condition whose result does
      not depend on the plan.

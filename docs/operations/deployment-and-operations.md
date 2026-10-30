@@ -156,11 +156,13 @@ files in `vms/<env>/`, a Terraform stack per environment in `stacks/<env>/`), in
    apply pipelines with the stacks they cover.
 
 What reaches Quai depends on the network. Quai reaching Azure DevOps Services and polling it is
-enough to request, approve and merge, and to read pull requests' build validation runs as plans
-(their state, without the plan's details). The plan's details and the apply's result need the
-service hooks (`ms.vss-pipelines.run-state-changed-event`) or the `quai report` step to reach
-Quai: from Microsoft-hosted agents and from Services, over the internet (`webhooks.host`); from
-self-hosted agents, inside the network ([open question 10](../plan/open-questions.md)).
+enough to request, approve and merge; to read pull requests' build validation runs as plans
+(their state, without the plan's details); and to read the apply and drift-check pipelines'
+runs, so that merged requests settle and drift checks finish, at the next poll. The plan's
+details, and results within seconds, need the service hooks
+(`ms.vss-pipelines.run-state-changed-event`) or the `quai report` step to reach Quai: from
+Microsoft-hosted agents and from Services, over the internet (`webhooks.host`); from self-hosted
+agents, inside the network.
 
 ## Network
 
