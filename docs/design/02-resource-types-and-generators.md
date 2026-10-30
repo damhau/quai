@@ -261,6 +261,8 @@ generate:
 - `write`: the template is evaluated as data (never as text) and merged into the region. Only paths the template defines are **managed**; anything else in the file (hand-added keys, comments) is left alone.
 - `read`: inputs bound directly (`template: ${{ inputs.os }}`) are read back automatically from the same path. Computed fields need an explicit `read` expression. An input with neither is reported by `quai lint` as unrecoverable, so the type cannot be published until it is fixed.
 - A binding that evaluates to null removes the key; one that evaluates to an absent value leaves the key as it is.
+- The form's values, with the input schema's defaults and without the fields `visibleIf` hides, are checked against the input schema (`spec.inputs`); the template sees them as `inputs`, the locator params as `params` and the region as it is as `doc`. A mapping in the template merges into the region's mapping key by key; a list or a scalar replaces the value. The result gets the managed fields (owner, param mirrors, labels) and is checked against the file schema: a failure there is the type's, not the form's. New files list their keys in the file schema's order.
+- Approval rules of a mapping type read the form's values as `inputs` and the file as `doc`. Actions set fields of the region as for `identity`. It works with every locator and format; a list entry's key field is set by Quai, as a param mirror.
 - Use when the form should be simpler than the file: t-shirt sizes, derived names, defaults hidden from users.
 
 ### `component`: built-in renderers for Kubernetes

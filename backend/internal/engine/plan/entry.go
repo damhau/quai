@@ -257,15 +257,16 @@ func addEntry(cs *ChangeSet, fsys fs.FS, t *definitions.ResourceType, region loc
 	e := Entry{Op: OpUpdate, Collection: lo.Collection, KeyField: lo.Key, Item: region.Item, Sorted: lo.Order == "key"}
 	e.KeyOrder = t.FileSchema.PropertyOrder()
 	if lo.Key != "" {
-		// A list's items are named by their key field: it comes first, and it is the item's key.
+		// A list's items are named by their key field: it comes first, and it mirrors the key
+		// param, so that the generator sets it and keeps it.
 		e.KeyOrder = append([]string{lo.Key}, slices.DeleteFunc(slices.Clone(e.KeyOrder), func(k string) bool { return k == lo.Key })...)
-		if r.Kind == generate.Create || r.Kind == generate.Update {
-			r.Values = maps.Clone(r.Values)
-			if r.Values == nil {
-				r.Values = map[string]any{}
-			}
-			r.Values[lo.Key] = region.Item
+		keyed := *t
+		keyed.Spec.ParamFields = maps.Clone(t.Spec.ParamFields)
+		if keyed.Spec.ParamFields == nil {
+			keyed.Spec.ParamFields = map[string]string{}
 		}
+		keyed.Spec.ParamFields[lo.KeyParam] = lo.Key
+		t = &keyed
 	}
 	switch {
 	case r.Kind == generate.Create:
@@ -283,7 +284,7 @@ func addEntry(cs *ChangeSet, fsys fs.FS, t *definitions.ResourceType, region loc
 		}
 	}
 	if e.Op != OpDelete {
-		doc, err := generate.Identity(t, r)
+		doc, err := generate.Document(t, r)
 		if err != nil {
 			return err
 		}
@@ -321,7 +322,7 @@ func addFields(cs *ChangeSet, fsys fs.FS, t *definitions.ResourceType, region lo
 	if r.Current, r.Code, err = entryDocument(region, base); err != nil {
 		return err
 	}
-	doc, err := generate.Identity(t, r)
+	doc, err := generate.Document(t, r)
 	if err != nil {
 		return err
 	}

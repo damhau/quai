@@ -133,7 +133,7 @@ func addType(cs *ChangeSet, fsys fs.FS, t *definitions.ResourceType, r generate.
 		if fp != locate.Absent {
 			return locate.Region{}, fmt.Errorf("%s: %s %w", id, region.Path, ErrExists)
 		}
-		doc, err := generate.Identity(t, r)
+		doc, err := generate.Document(t, r)
 		if err != nil {
 			return locate.Region{}, err
 		}
@@ -165,7 +165,7 @@ func addType(cs *ChangeSet, fsys fs.FS, t *definitions.ResourceType, r generate.
 		return locate.Region{}, fmt.Errorf("%s does not hold a mapping, so Quai will not edit it", region.Path)
 	}
 	r.Current, r.Code = current, code
-	doc, err := generate.Identity(t, r)
+	doc, err := generate.Document(t, r)
 	if err != nil {
 		return locate.Region{}, err
 	}

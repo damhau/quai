@@ -1,9 +1,10 @@
 // Package generate turns form values into the content of a resource's region and back
-// (docs/design/02-resource-types-and-generators.md#generators). Phase 0 implements the identity
-// generator: the file is the form. Managed fields (the owner, fields that mirror locator params,
-// fixed labels) are set by Quai; fields the schema does not describe are kept on update; locked
-// fields cannot change after creation; fields hidden by `visibleIf` are dropped; and the result
-// is validated against the type's file schema.
+// (docs/design/02-resource-types-and-generators.md#generators): the identity generator (the file
+// is the form) and the mapping generator (a template evaluated with the form's values and merged
+// into the file). Managed fields (the owner, fields that mirror locator params, fixed labels) are
+// set by Quai; fields the schema does not describe are kept on update; locked fields cannot change
+// after creation; fields hidden by `visibleIf` are dropped; and the result is validated against
+// the type's file schema.
 //
 // Errors about what a person entered are *schema.ValidationError, keyed by field path, so that a
 // form can show them next to the fields.
@@ -50,11 +51,109 @@ type Request struct {
 	Owner string
 }
 
+// Document returns the region's content after the request, by the type's generator. It returns
+// nil for a delete.
+func Document(t *definitions.ResourceType, r Request) (map[string]any, error) {
+	if t.Spec.Generate.Kind == definitions.GenerateMapping {
+		return Mapping(t, r)
+	}
+	return Identity(t, r)
+}
+
+// Mapping returns the region's content after the request, for a type with the mapping generator:
+// the form's values, with the input schema's defaults, are checked against the input schema and
+// bound into the template, which is merged into the region. Only the template's paths are
+// managed: a binding that evaluates to null removes its key, an absent one leaves it, a mapping
+// merges key by key, and everything the template does not name stays as it is. Actions set
+// fields of the region as for the identity generator. It returns nil for a delete.
+func Mapping(t *definitions.ResourceType, r Request) (map[string]any, error) {
+	g := t.Spec.Generate
+	if g.Kind != definitions.GenerateMapping || g.TemplateValue == nil {
+		return nil, fmt.Errorf("type %s does not use the mapping generator", t.Metadata.Name)
+	}
+	if r.Kind != Create && r.Kind != Update {
+		return Identity(t, r)
+	}
+	inputs := Inputs(t, r.Values)
+	vars := expr.Vars{Inputs: inputs, Params: anyMap(r.Params), Doc: r.Current, Request: expr.Request{Kind: r.Kind}}
+	visible := map[string]*expr.Program{}
+	for p, f := range t.Spec.UI.Fields {
+		if f.Visible != nil {
+			visible[p] = f.Visible
+		}
+	}
+	pruned, err := schema.PruneHidden(inputs, visible, vars)
+	if err != nil {
+		return nil, err
+	}
+	if err := t.InputSchema.Validate(pruned); err != nil {
+		return nil, err
+	}
+	vars.Inputs = pruned
+	set, err := g.TemplateValue.Eval(vars)
+	if err != nil {
+		return nil, fmt.Errorf("spec.generate.template: %w", err)
+	}
+	template, _ := set.(map[string]any)
+	doc := merge(map[string]any{}, template)
+	if r.Kind == Update {
+		doc = merge(r.Current, template)
+		if err := keepLocked(t, r.Current, doc); err != nil {
+			return nil, err
+		}
+	}
+	managed(t, doc, r.Params)
+	if f := ownerField(t); f != "" && r.Owner != "" && r.Kind == Create {
+		setPath(doc, f, r.Owner)
+	}
+	if err := t.FileSchema.Validate(doc); err != nil {
+		var ve *schema.ValidationError
+		if !errors.As(err, &ve) {
+			return nil, err
+		}
+		if fields := edit.OutsideCode(ve.Fields, r.Code); len(fields) > 0 {
+			// The template wrote what the file's schema refuses: the type's mistake, not the form's.
+			return nil, fmt.Errorf("type %s: the template writes a file its schema refuses: %v", t.Metadata.Name, &schema.ValidationError{Fields: fields})
+		}
+	}
+	return doc, nil
+}
+
+// Inputs returns the form's values with the input schema's defaults for those it leaves out.
+func Inputs(t *definitions.ResourceType, values map[string]any) map[string]any {
+	inputs := map[string]any{}
+	if d, ok := t.InputSchema.Defaults().(map[string]any); ok {
+		inputs = d
+	}
+	maps.Copy(inputs, values)
+	return inputs
+}
+
+// merge returns base with the evaluated template merged in: each of its keys set, a mapping into
+// a mapping key by key, a null one removed; the keys it does not name are left as they are.
+func merge(base, template map[string]any) map[string]any {
+	out := clone(base)
+	for k, v := range template {
+		switch v := v.(type) {
+		case nil:
+			delete(out, k)
+		case map[string]any:
+			sub, _ := out[k].(map[string]any)
+			out[k] = merge(sub, v)
+		default:
+			out[k] = cloneValue(v)
+		}
+	}
+	return out
+}
+
 // Identity returns the region's content after the request, for a type with the identity
-// generator. It returns nil for a delete.
+// generator, or an action's on a type with the mapping generator. It returns nil for a delete.
 func Identity(t *definitions.ResourceType, r Request) (map[string]any, error) {
-	if t.Spec.Generate.Kind != definitions.GenerateIdentity {
-		return nil, fmt.Errorf("type %s uses the %s generator, which is not available yet", t.Metadata.Name, t.Spec.Generate.Kind)
+	switch kind := t.Spec.Generate.Kind; {
+	case kind == definitions.GenerateMapping && (r.Kind == Action || r.Kind == Delete):
+	case kind != definitions.GenerateIdentity:
+		return nil, fmt.Errorf("type %s uses the %s generator, which is not available yet", t.Metadata.Name, kind)
 	}
 	var doc map[string]any
 	switch r.Kind {
