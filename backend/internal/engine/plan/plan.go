@@ -111,7 +111,7 @@ func addType(cs *ChangeSet, fsys fs.FS, t *definitions.ResourceType, r generate.
 		return locate.Region{}, err
 	}
 	if _, ok := edit.FormatOf(region.Path); !ok {
-		return locate.Region{}, fmt.Errorf("%s: Quai edits YAML, JSON and HCL files (.yaml, .yml, .json, .tfvars, .hcl)", region.Path)
+		return locate.Region{}, fmt.Errorf("%s: Quai edits YAML, JSON and HCL files (.yaml, .yml, .json, .tfvars, .hcl, the locals of .tf)", region.Path)
 	}
 	if region.Strategy == locate.Entry {
 		return region, addEntry(cs, fsys, t, region, r)

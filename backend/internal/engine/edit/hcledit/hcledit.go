@@ -164,7 +164,10 @@ func Elements(src []byte, block string, p document.Path) ([]document.Element, er
 // Create returns a new `*.tfvars` file whose attributes are doc, an object in the JSON data model,
 // written as Edit writes new content and formatted. Keys listed in keyOrder come first, in that
 // order; the others follow in sorted order. The result is verified to decode to doc.
-func Create(doc any, keyOrder []string) ([]byte, error) {
+func Create(doc any, keyOrder []string) ([]byte, error) { return CreateIn(doc, "", keyOrder) }
+
+// CreateIn is Create, with the attributes in a block of that type (locals) when block is set.
+func CreateIn(doc any, block string, keyOrder []string) ([]byte, error) {
 	want, err := document.Normalize(doc)
 	if err != nil {
 		return nil, fmt.Errorf("hcledit: %v", err)
@@ -181,11 +184,19 @@ func Create(doc any, keyOrder []string) ([]byte, error) {
 	}
 	s := style{nl: "\n", unit: "  "}
 	var b strings.Builder
+	ind := ""
+	if block != "" {
+		b.WriteString(block + " {\n")
+		ind = s.unit
+	}
 	for _, k := range s.keys(m, rank) {
-		b.WriteString(key(k) + " = " + s.render(m[k], "", true, rank) + "\n")
+		b.WriteString(ind + key(k) + " = " + s.render(m[k], ind, true, rank) + "\n")
+	}
+	if block != "" {
+		b.WriteString("}\n")
 	}
 	out := hclwrite.Format([]byte(b.String()))
-	got, code, err := Decode(out, "")
+	got, code, err := Decode(out, block)
 	if err != nil || len(code) > 0 || !document.Equal(got, want) {
 		return nil, fmt.Errorf("hcledit: %s: the new file does not decode to the intent (%v)", internalError, err)
 	}

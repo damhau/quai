@@ -86,3 +86,44 @@ func TestEntryRequestsConcurrently(t *testing.T) {
 		t.Errorf("orders after the outside edit: %s", orders.State)
 	}
 }
+
+// TestTfvarsMapRequests: a type over a map in a *.tfvars file, requested through pull requests on
+// Gitea: a new entry and an update around a value defined in code.
+func TestTfvarsMapRequests(t *testing.T) {
+	t.Parallel()
+	records := "# DNS records of prod.\nrecords = {\n  api = {\n    type = \"A\"\n    ttl  = var.default_ttl\n  }\n  www = { type = \"CNAME\", ttl = 300 }\n}\n"
+	h, remote := giteaHarnessFiles(t, "auto", "", nil, map[string]string{
+		".quai/types/record.yaml": "apiVersion: quai.dev/v1beta1\nkind: ResourceType\nmetadata: { name: record, title: DNS record }\nspec:\n" +
+			"  locate: { strategy: entry, path: \"dns/{env}.tfvars\", collection: records, keyParam: name }\n" +
+			"  params:\n    - { name: env, title: Environment }\n    - { name: name, title: Name }\n" +
+			"  schema: catalog/schemas/record.schema.json\n  generate: { kind: identity }\n  ownership: { team: shop }\n" +
+			"  approval:\n    rules: [{ name: platform, when: \"true\", approvers: [group:platform-admins] }]\n",
+		"catalog/schemas/record.schema.json": `{"type": "object", "required": ["type", "ttl"], "properties": {"type": {"type": "string"}, "ttl": {"type": "integer"}}}`,
+		"dns/prod.tfvars":                    records,
+	})
+	bob, alice := h.as("bob"), h.as("alice")
+	var api ResourceDetail
+	if status, body := bob.do(http.MethodGet, Prefix+"/resource?id=infra-live/record/prod/api", nil, &api); status != http.StatusOK ||
+		api.Status != "conforming" || len(api.DefinedInCode) != 1 || api.DefinedInCode[0].Field != "ttl" || api.DefinedInCode[0].Text != "var.default_ttl" {
+		t.Fatalf("api = %d %s", status, body)
+	}
+
+	submit := func(body map[string]any) {
+		t.Helper()
+		body["repository"], body["type"], body["reason"] = "infra-live", "record", "mail"
+		var r RequestView
+		if status, out := bob.do(http.MethodPost, Prefix+"/requests/type", body, &r); status != http.StatusCreated {
+			t.Fatalf("submit = %d %s", status, out)
+		}
+		r = bob.awaitDelivery(r.ID, "opened", func(v RequestView) bool { return v.Delivery.PullRequest != "" })
+		alice.approve(r.ID)
+		bob.awaitDelivery(r.ID, "merged", func(v RequestView) bool { return v.Delivery.MergeCommit != "" })
+	}
+	submit(map[string]any{"kind": "create", "params": map[string]string{"env": "prod", "name": "mail"}, "values": map[string]any{"type": "MX", "ttl": 3600}})
+	submit(map[string]any{"kind": "update", "key": "prod/api", "values": map[string]any{"type": "AAAA"}})
+	content, _, err := giteatest.Get(t).Client.GetFile(remote.Owner, remote.Name, "main", "dns/prod.tfvars")
+	want := "# DNS records of prod.\nrecords = {\n  api = {\n    type = \"AAAA\"\n    ttl  = var.default_ttl\n  }\n  www  = { type = \"CNAME\", ttl = 300 }\n  mail = { type = \"MX\", ttl = 3600 }\n}\n"
+	if err != nil || string(content) != want {
+		t.Errorf("main after both requests: %v\n%s", err, content)
+	}
+}

@@ -55,6 +55,11 @@ func TestEntries(t *testing.T) {
 	if regions, _ := dns.Scan(fsys); len(regions) != 2 || regions[1].Key != "prod/www" {
 		t.Errorf("HCL map entries = %+v", regions)
 	}
+	fsys["apps/prod/locals.tf"] = &fstest.MapFile{Data: []byte("locals {\n  apps = {\n    shop = { replicas = 2 }\n    api  = { replicas = local.default }\n  }\n}\n")}
+	apps, _ := NewEntry("apps/{env}/locals.tf", "apps", "", "name")
+	if regions, _ := apps.Scan(fsys); len(regions) != 2 || regions[0].Key != "prod/api" || regions[1].Key != "prod/shop" {
+		t.Errorf("entries of a locals block = %+v", regions)
+	}
 	if _, problem := ns.Elements("x.yaml", []byte("namespaces: { a: 1 }\n")); !strings.Contains(problem, "is not a list") {
 		t.Errorf("a map where a list is expected: %q", problem)
 	}

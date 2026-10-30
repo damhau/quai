@@ -1,7 +1,7 @@
 // Package edit picks a file's editor by its name and edits it through one interface
 // (docs/design/02-resource-types-and-generators.md#formats): YAML (*.yaml, *.yml), JSON
 // (*.json, *.tfvars.json) and HCL (*.tfvars, *.hcl, whose top-level attributes are the
-// document). The editors are yamledit, jsonedit and hcledit; they change only the bytes of the
+// document, and *.tf, whose one locals block's attributes are). The editors are yamledit, jsonedit and hcledit; they change only the bytes of the
 // values that differ and verify every write (docs/design/03-file-editing.md).
 package edit
 
@@ -34,10 +34,19 @@ func FormatOf(name string) (Format, bool) {
 		return YAML, true
 	case ".json":
 		return JSON, true
-	case ".tfvars", ".hcl":
+	case ".tfvars", ".hcl", ".tf":
 		return HCL, true
 	}
 	return "", false
+}
+
+// block returns the HCL block whose attributes are a file's document: the locals block of a
+// Terraform configuration (*.tf), or none (the top-level attributes).
+func block(name string) string {
+	if strings.ToLower(path.Ext(name)) == ".tf" {
+		return "locals"
+	}
+	return ""
 }
 
 // Code is a value defined in code (an HCL expression or heredoc): the document leaves it out,
@@ -54,7 +63,7 @@ func Decode(name string, src []byte) (doc any, code []Code, err error) {
 	case JSON:
 		doc, err = jsonedit.Decode(src)
 	case HCL:
-		return hcledit.Decode(src, "")
+		return hcledit.Decode(src, block(name))
 	default:
 		doc, err = yamledit.Decode(src)
 	}
@@ -70,7 +79,7 @@ func Edit(name string, src []byte, want any) ([]byte, error) {
 	case f == JSON:
 		return jsonedit.Edit(src, want)
 	case f == HCL:
-		return hcledit.Edit(src, "", want)
+		return hcledit.Edit(src, block(name), want)
 	default:
 		return yamledit.Edit(src, want)
 	}
@@ -85,7 +94,7 @@ func EditWith(name string, src []byte, want any, opts document.Options) ([]byte,
 	case f == JSON:
 		return jsonedit.EditWith(src, want, opts)
 	case f == HCL:
-		return hcledit.EditWith(src, "", want, opts)
+		return hcledit.EditWith(src, block(name), want, opts)
 	default:
 		return yamledit.EditWith(src, want, opts)
 	}
@@ -99,7 +108,7 @@ func Create(name string, doc any, keyOrder []string) ([]byte, error) {
 	case f == JSON:
 		return jsonedit.Create(doc, keyOrder)
 	case f == HCL:
-		return hcledit.Create(doc, keyOrder)
+		return hcledit.CreateIn(doc, block(name), keyOrder)
 	default:
 		return yamledit.Create(doc, keyOrder)
 	}
@@ -114,7 +123,7 @@ func Elements(name string, src []byte, p document.Path) ([]document.Element, err
 	case f == JSON:
 		return jsonedit.Elements(src, p)
 	case f == HCL:
-		return hcledit.Elements(src, "", p)
+		return hcledit.Elements(src, block(name), p)
 	default:
 		return yamledit.Elements(src, p)
 	}
@@ -129,7 +138,7 @@ func Keys(name string, src []byte) (map[string][]string, error) {
 	case f == JSON:
 		return jsonedit.Keys(src)
 	case f == HCL:
-		return hcledit.Keys(src, "")
+		return hcledit.Keys(src, block(name))
 	default:
 		return yamledit.Keys(src)
 	}
@@ -138,7 +147,7 @@ func Keys(name string, src []byte) (map[string][]string, error) {
 func format(name string) (Format, error) {
 	f, ok := FormatOf(name)
 	if !ok {
-		return "", fmt.Errorf("%s: Quai edits YAML, JSON and HCL files (.yaml, .yml, .json, .tfvars, .hcl)", name)
+		return "", fmt.Errorf("%s: Quai edits YAML, JSON and HCL files (.yaml, .yml, .json, .tfvars, .hcl, the locals of .tf)", name)
 	}
 	return f, nil
 }

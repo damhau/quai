@@ -205,7 +205,7 @@ namespaces:
 - Fingerprint: only the item. Two requests on two namespaces in the same file do not conflict; a human edit to `shop` does not invalidate an approval on `orders`.
 - Duplicate keys in the collection make the whole file non-conforming; Quai refuses to edit it until fixed. So does an item without a valid key, or a collection that is not a list (with `key`) or a map (without it).
 - Inventory: every entry of every file matching the path, keyed by the path's params and `keyParam` (`prod-1/orders`). A file without the collection has none; a file that cannot be read lists none, and `quai lint` reports it. The resource page shows the entry's value and its own bytes; its history and its status are its file's.
-- The same in YAML, JSON (an array of objects, or an object) and HCL (a map attribute of a `*.tfvars` file).
+- The same in YAML, JSON (an array of objects, or an object) and HCL (a map attribute of a `*.tfvars` file, or of the `locals` block of a `.tf` file: `path: modules/apps/locals.tf`, `collection: apps`).
 - Fits: namespace lists, firewall rules, user and group lists, DNS records kept in one file.
 
 ### `field`: fields of something owned by someone else
@@ -302,7 +302,9 @@ generate:
 | TOML, INI, XML | via plugin | via plugin | — |
 
 The format of a type's files follows their extension (`locate.path`): `.yaml` and `.yml`,
-`.json` (with `.tfvars.json`), `.tfvars` and `.hcl`, whose top-level attributes are the document.
+`.json` (with `.tfvars.json`), `.tfvars` and `.hcl`, whose top-level attributes are the document,
+and `.tf`, whose document is the attributes of its one `locals` block (a file without one, or with
+several, cannot be read; a new `.tf` file holds a `locals` block).
 Inventory, forms, requests and `quai lint` read and write every format the same way
 (`internal/engine/edit`). A value an HCL file defines in code (an expression or a heredoc) is not
 in the document: the form shows the expression and leaves it, the schema does not count it as

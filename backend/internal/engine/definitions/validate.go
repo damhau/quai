@@ -19,7 +19,7 @@ var (
 	approverRe   = regexp.MustCompile(`^(group|user):[^\s:]+$`)
 	digestRe     = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 	durationRe   = regexp.MustCompile(`^[0-9]+[mhd]$`)
-	dataFileRe   = regexp.MustCompile(`\.(ya?ml|json|tfvars|hcl)$`)
+	dataFileRe   = regexp.MustCompile(`\.(ya?ml|json|tfvars|hcl|tf)$`)
 	reservedDirs = []string{".git", ".quai", BlueprintsDir}
 
 	// Built-in actions every resource has; definitions cannot redefine them.
@@ -268,7 +268,7 @@ func (c *check) locate(lo Locate, params map[string]bool) {
 			c.add("spec.locate.path", "needs at least one {param}")
 		}
 		if !dataFileRe.MatchString(lo.Path) {
-			c.add("spec.locate.path", "must end in .yaml, .yml, .json, .tfvars or .hcl")
+			c.add("spec.locate.path", "must end in .yaml, .yml, .json, .tfvars, .hcl or .tf")
 		}
 	case LocateDir:
 		if len(inPath) == 0 {
@@ -276,7 +276,7 @@ func (c *check) locate(lo Locate, params map[string]bool) {
 		}
 	case LocateEntry, LocateField:
 		if !dataFileRe.MatchString(lo.Path) {
-			c.add("spec.locate.path", "must end in .yaml, .yml, .json, .tfvars or .hcl")
+			c.add("spec.locate.path", "must end in .yaml, .yml, .json, .tfvars, .hcl or .tf")
 		}
 		if lo.Collection == "" || !fieldPathRe.MatchString(lo.Collection) {
 			c.add("spec.locate.collection", "must be a dotted field path")
