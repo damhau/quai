@@ -101,7 +101,7 @@ func Get(snap *repositories.Snapshot, typeName, key string) (Resource, error) {
 	if _, err := fs.Stat(snap.FS, region.Path); errors.Is(err, fs.ErrNotExist) {
 		return Resource{}, fs.ErrNotExist
 	}
-	if region.Strategy == locate.Entry {
+	if region.Collection != nil {
 		// The entry is there unless the file is read and does not hold it; a problem with the
 		// file is listed with the entries the inventory finds.
 		src, err := fs.ReadFile(snap.FS, region.Path)
@@ -147,21 +147,13 @@ func read(snap *repositories.Snapshot, t *definitions.ResourceType, r locate.Reg
 		res.Status, res.Error = Unparseable, err.Error()
 		return res
 	}
-	if r.Strategy == locate.Entry {
-		// An entry's document is its value; its values defined in code are under it.
-		value, at, ok := locate.Value(decoded, r)
-		if !ok {
-			res.Status, res.Error = Unparseable, "the file does not hold the entry"
-			return res
-		}
-		decoded, code = value, edit.Under(code, at)
-	}
-	res.Code = code
-	doc, ok := decoded.(map[string]any)
-	if !ok {
-		res.Status, res.Error = Unparseable, "the file does not hold a mapping"
+	// An entry's document is its value, a field region's its listed fields.
+	doc, code, err := locate.Document(decoded, code, r)
+	if err != nil {
+		res.Status, res.Error = Unparseable, err.Error()
 		return res
 	}
+	res.Code = code
 	res.Document = doc
 	if o := t.Spec.Ownership; o != nil && o.Field != "" {
 		if v, ok := lookup(doc, o.Field).(string); ok {

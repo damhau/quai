@@ -220,8 +220,10 @@ locate:
   fields: [quota]               # the only paths this type may write inside the entry
 ```
 
-- Region: only the listed fields inside the item.
-- There is no create or delete: the item must exist. The resource exists while the item does.
+- Region: only the listed fields inside the item; without `collection` (and `key`, `keyParam`), the listed fields of each whole file matching the path (`path: envs/{env}/vms/{name}.yaml`, `fields: [backup]`).
+- There is no create or delete: the item must exist. The resource exists while the item does. The catalog does not list field types; their resources are in the inventory, with their own page.
+- The resource's document is the listed fields only, and the type's schema describes only them (a property of the schema that is not a listed field, or a parent of one, is a definitions problem): the form shows only those. A request that writes a path the type does not list is refused for that path.
+- Fingerprint: the listed fields' bytes only. A request on the fields does not conflict with a change to the entry's other fields: on a new base it is made again, setting only its fields. The owning type's region is the whole entry, so a change to the fields makes an open request of the owning type on that entry stale.
 - Used for "request a quota increase" on a namespace another team manages, or "toggle backup" on a VM file without owning the VM.
 - Approval rules usually differ from the owning type; both can coexist on the same file.
 

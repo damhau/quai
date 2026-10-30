@@ -2,27 +2,30 @@ package plan
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
 	"maps"
 	"slices"
+	"strings"
 
 	"github.com/damhau/quai/backend/internal/engine/definitions"
 	"github.com/damhau/quai/backend/internal/engine/edit"
 	"github.com/damhau/quai/backend/internal/engine/edit/document"
 	"github.com/damhau/quai/backend/internal/engine/generate"
 	"github.com/damhau/quai/backend/internal/engine/locate"
+	"github.com/damhau/quai/backend/internal/engine/schema"
 )
 
-// Entry is a change to one entry of a shared file (the `entry` locator). A change to such a file
-// keeps its entries' changes, so that delivery can make them again on the file as it is then: two
-// requests on two entries of one file do not conflict
-// (docs/design/03-file-editing.md#concurrency-and-fingerprints).
+// Entry is a change to one entry of a shared file (the `entry` locator), or to the listed fields
+// of an entry or of a whole file (the `field` locator). A change to such a file keeps these
+// changes, so that delivery can make them again on the file as it is then: two requests on two
+// entries of one file do not conflict (docs/design/03-file-editing.md#concurrency-and-fingerprints).
 type Entry struct {
 	Op         string `json:"op"`                 // create, update or delete
-	Collection string `json:"collection"`         // the dotted path of the list or map
+	Collection string `json:"collection"`         // the dotted path of the list or map; empty: the file
 	KeyField   string `json:"keyField,omitempty"` // the field naming a list's items; empty for a map
 	Item       string `json:"item"`
 	Value      any    `json:"value,omitempty"` // the entry's new value, for create and update
@@ -30,6 +33,20 @@ type Entry struct {
 	Sorted bool `json:"sorted,omitempty"`
 	// KeyOrder is the order of a new entry's keys.
 	KeyOrder []string `json:"keyOrder,omitempty"`
+	// Fields, for an update of a field region, are the only fields it writes: Value holds them.
+	Fields []string `json:"fields,omitempty"`
+}
+
+// region returns the region the change is made in, in the file named name.
+func (e Entry) region(name string) locate.Region {
+	r := locate.Region{Strategy: locate.File, Path: name}
+	if e.Collection != "" {
+		r = locate.EntryRegion(name, e.Collection, e.KeyField, e.Item)
+	}
+	if len(e.Fields) > 0 {
+		r.Strategy, r.Fields = locate.Field, e.Fields
+	}
+	return r
 }
 
 // DecodeEntries reads the entry changes of a file change as stored, numbers as json.Number so
@@ -66,9 +83,10 @@ func (c Change) On(current []byte) ([]byte, error) {
 }
 
 // apply makes the change on src, the file named name (nil when it does not exist), and checks
-// that every other entry of the collection keeps its bytes and its place.
+// that every other entry of the collection keeps its bytes and its place, and that a change to
+// fields changes nothing else.
 func (e Entry) apply(name string, src []byte) ([]byte, error) {
-	r := locate.EntryRegion(name, e.Collection, e.KeyField, e.Item)
+	r := e.region(name)
 	var doc any = map[string]any{}
 	var before []locate.Element
 	if src != nil {
@@ -80,17 +98,29 @@ func (e Entry) apply(name string, src []byte) ([]byte, error) {
 			doc = d
 		}
 		var problem string
-		if before, problem = r.Elements(src); problem != "" {
-			return nil, fmt.Errorf("%s: %s, so Quai will not edit it", name, problem)
+		if r.Collection != nil {
+			if before, problem = r.Elements(src); problem != "" {
+				return nil, fmt.Errorf("%s: %s, so Quai will not edit it", name, problem)
+			}
 		}
 	}
-	coll, err := e.collection(document.ValueAt(doc, r.Collection))
-	if err != nil {
-		return nil, fmt.Errorf("%s: %s: %w", name, e.Collection, err)
-	}
-	want, err := with(doc, r.Collection, coll)
-	if err != nil {
-		return nil, fmt.Errorf("%s: %s: %w", name, e.Collection, err)
+	var want any
+	if len(e.Fields) > 0 {
+		value, _ := e.Value.(map[string]any)
+		var err error
+		if want, err = locate.Put(doc, r, value); src == nil || errors.Is(err, locate.ErrNoEntry) {
+			return nil, fmt.Errorf("%s %w", cmp.Or(e.Item, name), ErrNotFound)
+		} else if err != nil {
+			return nil, fmt.Errorf("%s: %w", name, err)
+		}
+	} else {
+		coll, err := e.collection(document.ValueAt(doc, r.Collection))
+		if err != nil {
+			return nil, fmt.Errorf("%s: %s: %w", name, e.Collection, err)
+		}
+		if want, err = document.Set(doc, r.Collection, coll); err != nil {
+			return nil, fmt.Errorf("%s: %s: %w", name, e.Collection, err)
+		}
 	}
 	if src == nil {
 		return edit.Create(name, want, e.KeyOrder)
@@ -102,6 +132,12 @@ func (e Entry) apply(name string, src []byte) ([]byte, error) {
 	out, err := edit.EditWith(name, src, want, opts)
 	if err != nil {
 		return nil, err
+	}
+	if len(e.Fields) > 0 && !e.fieldsOnly(name, doc, out) {
+		return nil, fmt.Errorf("%s: the change would touch more than %s, so Quai will not make it", name, strings.Join(e.Fields, ", "))
+	}
+	if r.Collection == nil {
+		return out, nil
 	}
 	after, problem := r.Elements(out)
 	if problem != "" {
@@ -123,6 +159,19 @@ func (e Entry) apply(name string, src []byte) ([]byte, error) {
 		return nil, fmt.Errorf("%s: the change to %s would touch other entries, so Quai will not make it", name, e.Item)
 	}
 	return out, nil
+}
+
+// fieldsOnly reports whether out, the file after a change to fields, differs from doc, the
+// document before, in those fields only.
+func (e Entry) fieldsOnly(name string, doc any, out []byte) bool {
+	r := e.region(name)
+	got, _, err := edit.Decode(name, out)
+	if err != nil {
+		return false
+	}
+	was, err1 := locate.Put(doc, r, map[string]any{})
+	is, err2 := locate.Put(got, r, map[string]any{})
+	return err1 == nil && err2 == nil && document.Equal(was, is)
 }
 
 // collection returns the list or map with the change made.
@@ -188,41 +237,6 @@ func (e Entry) check(exists bool) error {
 	return nil
 }
 
-// with returns doc with v at p, creating the objects missing on the way.
-func with(doc any, p document.Path, v any) (any, error) {
-	if len(p) == 0 {
-		return v, nil
-	}
-	switch d := doc.(type) {
-	case nil:
-		k, ok := p[0].(string)
-		if !ok {
-			return nil, fmt.Errorf("item %v does not exist", p[0])
-		}
-		next, err := with(nil, p[1:], v)
-		return map[string]any{k: next}, err
-	case map[string]any:
-		k, ok := p[0].(string)
-		if !ok {
-			return nil, errors.New("is not a list")
-		}
-		next, err := with(d[k], p[1:], v)
-		out := maps.Clone(d)
-		out[k] = next
-		return out, err
-	case []any:
-		i, ok := p[0].(int)
-		if !ok || i >= len(d) {
-			return nil, errors.New("is not an object")
-		}
-		next, err := with(d[i], p[1:], v)
-		out := slices.Clone(d)
-		out[i] = next
-		return out, err
-	}
-	return nil, errors.New("is not an object")
-}
-
 // addEntry plans a request on an entry of a shared file. Another entry of the same request may
 // have changed the file already: the change is made on top, and the file's change keeps both.
 func addEntry(cs *ChangeSet, fsys fs.FS, t *definitions.ResourceType, region locate.Region, r generate.Request) error {
@@ -235,16 +249,9 @@ func addEntry(cs *ChangeSet, fsys fs.FS, t *definitions.ResourceType, region loc
 		return fmt.Errorf("%s is written twice by the same request", ref)
 	}
 	id := t.Metadata.Name + "/" + region.Key
-	base, err := fs.ReadFile(fsys, region.Path)
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+	base, src, prev, err := fileSoFar(cs, fsys, region.Path)
+	if err != nil {
 		return err
-	}
-	src, prev := base, slices.IndexFunc(cs.Changes, func(c Change) bool { return c.Path == region.Path })
-	if prev >= 0 {
-		if len(cs.Changes[prev].Entries) == 0 {
-			return fmt.Errorf("%s is written twice by the same request", region.Path)
-		}
-		src = cs.Changes[prev].After
 	}
 	lo := t.Spec.Locate
 	e := Entry{Op: OpUpdate, Collection: lo.Collection, KeyField: lo.Key, Item: region.Item, Sorted: lo.Order == "key"}
@@ -285,6 +292,73 @@ func addEntry(cs *ChangeSet, fsys fs.FS, t *definitions.ResourceType, region loc
 		}
 		e.Value = doc
 	}
+	return record(cs, region, fp, base, src, prev, e)
+}
+
+// addFields plans a request on a field region: an update, or an action, that writes the listed
+// fields of an entry or of a whole file and nothing else. The region exists while its entry or
+// file does: it is never created or deleted.
+func addFields(cs *ChangeSet, fsys fs.FS, t *definitions.ResourceType, region locate.Region, r generate.Request) error {
+	id := t.Metadata.Name + "/" + region.Key
+	if r.Kind == generate.Create || r.Kind == generate.Delete {
+		return fmt.Errorf("%s: type %s writes fields of something it does not own: it has no %s", id, t.Metadata.Name, r.Kind)
+	}
+	fp, err := locate.Fingerprint(fsys, region)
+	if err != nil {
+		return err
+	}
+	ref := region.Ref()
+	switch _, dup := cs.Fingerprints[ref]; {
+	case dup:
+		return fmt.Errorf("%s is written twice by the same request", ref)
+	case fp == locate.Absent:
+		return fmt.Errorf("%s: %s %w", id, ref, ErrNotFound)
+	}
+	base, src, prev, err := fileSoFar(cs, fsys, region.Path)
+	if err != nil {
+		return err
+	}
+	if r.Current, r.Code, err = entryDocument(region, base); err != nil {
+		return err
+	}
+	doc, err := generate.Identity(t, r)
+	if err != nil {
+		return err
+	}
+	if unlisted := locate.Unlisted(region.Fields, doc); len(unlisted) > 0 {
+		fields := map[string]string{}
+		for _, f := range unlisted {
+			fields[f] = fmt.Sprintf("type %s may write only %s", t.Metadata.Name, strings.Join(region.Fields, ", "))
+		}
+		return &schema.ValidationError{Fields: fields}
+	}
+	lo := t.Spec.Locate
+	e := Entry{Op: OpUpdate, Collection: lo.Collection, KeyField: lo.Key, Item: region.Item, Value: doc, Fields: region.Fields,
+		KeyOrder: t.FileSchema.PropertyOrder()}
+	return record(cs, region, fp, base, src, prev, e)
+}
+
+// fileSoFar returns a file at the base commit (nil when it does not exist) and as the change set
+// has it so far, and the index of the change set's change to it, or -1: another entry of the same
+// request may have changed the file already.
+func fileSoFar(cs *ChangeSet, fsys fs.FS, path string) (base, src []byte, prev int, err error) {
+	base, err = fs.ReadFile(fsys, path)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return nil, nil, -1, err
+	}
+	src, prev = base, slices.IndexFunc(cs.Changes, func(c Change) bool { return c.Path == path })
+	if prev >= 0 {
+		if len(cs.Changes[prev].Entries) == 0 {
+			return nil, nil, -1, fmt.Errorf("%s is written twice by the same request", path)
+		}
+		src = cs.Changes[prev].After
+	}
+	return base, src, prev, nil
+}
+
+// record makes the change e on src and adds it to the change set, with the region's fingerprint:
+// on its change to the file, or as a new change.
+func record(cs *ChangeSet, region locate.Region, fp string, base, src []byte, prev int, e Entry) error {
 	after, err := e.apply(region.Path, src)
 	if err != nil {
 		return err
@@ -292,7 +366,7 @@ func addEntry(cs *ChangeSet, fsys fs.FS, t *definitions.ResourceType, region loc
 	if bytes.Equal(after, src) {
 		return ErrNoChange
 	}
-	cs.Fingerprints[ref] = fp
+	cs.Fingerprints[region.Ref()] = fp
 	if prev >= 0 {
 		cs.Changes[prev].After = after
 		cs.Changes[prev].Entries = append(cs.Changes[prev].Entries, e)
@@ -306,19 +380,19 @@ func addEntry(cs *ChangeSet, fsys fs.FS, t *definitions.ResourceType, region loc
 	return nil
 }
 
-// entryDocument returns an entry's value in its file, and its values defined in code.
+// entryDocument returns a resource's document in src, its file (the entry's value, or the listed
+// fields of a field region), and its values defined in code.
 func entryDocument(region locate.Region, src []byte) (map[string]any, []edit.Code, error) {
 	decoded, code, err := edit.Decode(region.Path, src)
 	if err != nil {
 		return nil, nil, fmt.Errorf("%s cannot be read, so Quai will not edit it: %w", region.Path, err)
 	}
-	value, at, ok := locate.Value(decoded, region)
-	if !ok {
+	doc, code, err := locate.Document(decoded, code, region)
+	switch {
+	case errors.Is(err, locate.ErrNoEntry):
 		return nil, nil, fmt.Errorf("%s: %s %w", region.Path, region.Item, ErrNotFound)
+	case err != nil:
+		return nil, nil, fmt.Errorf("%s: %w, so Quai will not edit it", region.Path, err)
 	}
-	doc, ok := value.(map[string]any)
-	if !ok {
-		return nil, nil, fmt.Errorf("%s: the entry %s does not hold a mapping, so Quai will not edit it", region.Path, region.Item)
-	}
-	return doc, edit.Under(code, at), nil
+	return doc, code, nil
 }

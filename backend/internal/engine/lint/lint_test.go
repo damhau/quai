@@ -175,3 +175,20 @@ func TestEntries(t *testing.T) {
 		t.Errorf("%d resources, problems:\n%s", r.Resources, text)
 	}
 }
+
+// TestFields: the fields a field type writes are checked against its schema in each entry, and
+// round-trip without touching the rest of the entry.
+func TestFields(t *testing.T) {
+	fsys := copyExamples(t)
+	fsys[".quai/types/quota.yaml"] = &fstest.MapFile{Data: []byte("apiVersion: quai.dev/v1beta1\nkind: ResourceType\n" +
+		"metadata: { name: quota, title: Quota }\nspec:\n" +
+		"  locate: { strategy: field, path: \"clusters/{cluster}/namespaces.yaml\", collection: namespaces, key: name, keyParam: name, fields: [quota] }\n" +
+		"  params:\n    - { name: cluster, title: Cluster }\n    - { name: name, title: Name }\n" +
+		"  schema: catalog/schemas/quota.schema.json\n  generate: { kind: identity }\n")}
+	fsys["catalog/schemas/quota.schema.json"] = &fstest.MapFile{Data: []byte(`{"type": "object", "properties": {"quota": {"type": "object", "properties": {"cpu": {"type": "string"}}}}}`)}
+	fsys["clusters/prod-1/namespaces.yaml"] = &fstest.MapFile{Data: []byte("namespaces:\n  - name: shop\n    labels: { team: shop }\n    quota: { cpu: \"8\" }\n  - name: orders\n    quota: { cpu: 4 }\n  - name: search\n")}
+	r := Run(fsys)
+	if len(r.Problems) != 1 || r.Problems[0].String() != "clusters/prod-1/namespaces.yaml (orders): quota.cpu: must be a string (schema catalog/schemas/quota.schema.json)" || r.Resources != 7 {
+		t.Errorf("%d resources, problems:\n%s", r.Resources, r.Problems.Error())
+	}
+}

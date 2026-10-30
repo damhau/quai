@@ -80,8 +80,11 @@ type Locate struct {
 
 // Locator returns the locator the spec describes.
 func (lo Locate) Locator() (*locate.Locator, error) {
-	if lo.Strategy == LocateEntry {
+	switch lo.Strategy {
+	case LocateEntry:
 		return locate.NewEntry(lo.Path, lo.Collection, lo.Key, lo.KeyParam)
+	case LocateField:
+		return locate.NewField(lo.Path, lo.Collection, lo.Key, lo.KeyParam, lo.Fields)
 	}
 	return locate.New(lo.Strategy, lo.Path)
 }

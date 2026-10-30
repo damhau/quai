@@ -29,6 +29,7 @@ const (
 	File  = "file"
 	Dir   = "dir"
 	Entry = "entry"
+	Field = "field"
 )
 
 var (
@@ -189,6 +190,8 @@ type Locator struct {
 	collection document.Path
 	keyField   string
 	keyParam   string
+	// A field locator's fields: dotted paths in the entry, or in the file without a collection.
+	fields []string
 }
 
 // New returns the locator for a strategy and path pattern.
@@ -249,6 +252,9 @@ type Region struct {
 	// Problem says why an entry cannot be edited, such as a key that appears twice in its
 	// collection.
 	Problem string
+	// Fields are the only fields a field region holds: dotted paths in its entry, or in its file
+	// when it has no collection.
+	Fields []string
 	// keyField names a list's items, for an entry the locator returned.
 	keyField string
 }
@@ -263,8 +269,8 @@ func (l *Locator) Region(params map[string]string) (Region, error) {
 	for _, name := range l.pattern.params {
 		clean[name] = params[name]
 	}
-	r := Region{Strategy: l.strategy, Path: p, Key: l.pattern.Key(clean), Params: clean}
-	if l.strategy == Entry {
+	r := Region{Strategy: l.strategy, Path: p, Key: l.pattern.Key(clean), Params: clean, Fields: l.fields}
+	if l.collection != nil {
 		item := params[l.keyParam]
 		if !SafeSegment(item) {
 			return Region{}, fmt.Errorf("{%s} is not a valid key: %q", l.keyParam, item)
@@ -285,7 +291,7 @@ func joinKey(fileKey, item string) string {
 // ParseKey returns the params of a resource key: its file's params, and for an entry the key
 // param, its last part.
 func (l *Locator) ParseKey(key string) (map[string]string, error) {
-	if l.strategy != Entry {
+	if l.collection == nil {
 		return l.pattern.ParseKey(key)
 	}
 	fileKey, item := "", key
@@ -367,7 +373,7 @@ func field(p document.Path) string { return edit.Field(p) }
 // of such files (for `entry`). Symbolic links and .git directories are skipped. The entries of a
 // file that cannot hold them safely carry its problem; a file that cannot be read has none.
 func (l *Locator) Scan(fsys fs.FS) ([]Region, error) {
-	if l.strategy == Entry {
+	if l.collection != nil {
 		files, err := l.files(fsys)
 		if err != nil {
 			return nil, err
@@ -385,14 +391,20 @@ func (l *Locator) Scan(fsys fs.FS) ([]Region, error) {
 			for _, el := range els {
 				params := maps(file.Params)
 				params[l.keyParam] = el.Key
-				out = append(out, Region{Strategy: Entry, Path: file.Path, Key: joinKey(file.Key, el.Key), Params: params,
-					Collection: l.collection, Item: el.Key, Problem: problem, keyField: l.keyField})
+				out = append(out, Region{Strategy: l.strategy, Path: file.Path, Key: joinKey(file.Key, el.Key), Params: params,
+					Collection: l.collection, Item: el.Key, Problem: problem, Fields: l.fields, keyField: l.keyField})
 			}
 		}
 		slices.SortFunc(out, func(a, b Region) int { return strings.Compare(a.Key, b.Key) })
 		return out, nil
 	}
-	return l.files(fsys)
+	out, err := l.files(fsys)
+	if l.strategy == Field {
+		for i := range out {
+			out[i].Strategy, out[i].Fields = Field, l.fields
+		}
+	}
+	return out, err
 }
 
 // Files returns the files the locator's pattern matches (for `dir`, the directories), as file
@@ -483,7 +495,7 @@ func (l *Locator) files(fsys fs.FS) ([]Region, error) {
 			return nil
 		}
 		strategy := l.strategy
-		if strategy == Entry {
+		if strategy == Entry || strategy == Field {
 			strategy = File
 		}
 		out = append(out, Region{Strategy: strategy, Path: p, Key: l.pattern.Key(params), Params: params})
@@ -503,8 +515,16 @@ func (l *Locator) files(fsys fs.FS) ([]Region, error) {
 // being created: if the file appears before the request is delivered, the request is stale.
 const Absent = "absent"
 
-// Bytes returns an entry's bytes in its file, or nil when the file or the entry does not exist.
+// Bytes returns an entry's bytes in its file (for a field region, its entry's, or its whole
+// file's without a collection), or nil when the file or the entry does not exist.
 func Bytes(fsys fs.FS, r Region) ([]byte, error) {
+	if r.Collection == nil {
+		b, err := readRegular(fsys, r.Path)
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, nil
+		}
+		return b, err
+	}
 	src, el, err := entry(fsys, r)
 	if el == nil || err != nil {
 		return nil, err
@@ -515,13 +535,10 @@ func Bytes(fsys fs.FS, r Region) ([]byte, error) {
 // entry returns an entry's file and its element there, or a nil element when the file or the
 // entry does not exist.
 func entry(fsys fs.FS, r Region) ([]byte, *Element, error) {
-	if r.Strategy != Entry {
+	if r.Collection == nil {
 		return nil, nil, fmt.Errorf("%s is not an entry", r.Path)
 	}
-	if info, err := fs.Lstat(fsys, r.Path); err == nil && info.Mode()&fs.ModeSymlink != 0 {
-		return nil, nil, fmt.Errorf("%s is a symbolic link; Quai does not follow links", r.Path)
-	}
-	src, err := fs.ReadFile(fsys, r.Path)
+	src, err := readRegular(fsys, r.Path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil, nil
 	}
@@ -557,41 +574,74 @@ func (r Region) Elements(src []byte) ([]Element, string) {
 // KeyField returns the field naming the items of an entry's list, or "" for a map.
 func (r Region) KeyField() string { return r.keyField }
 
-// Ref returns how a change set names the region in its fingerprints: its path, and for an entry
-// '#' and its collection and key, such as clusters/prod-1/namespaces.yaml#namespaces[name=orders]
-// for an item of a list or zones/prod.json#spec.zones[shop.example.com] for an entry of a map.
+// Ref returns how a change set names the region in its fingerprints: its path; for an entry '#'
+// and its collection and key, such as clusters/prod-1/namespaces.yaml#namespaces[name=orders] for
+// an item of a list or zones/prod.json#spec.zones[shop.example.com] for an entry of a map; and
+// for a field region its fields in braces after either (namespaces[name=orders]{quota}).
 func (r Region) Ref() string {
-	if r.Strategy != Entry {
-		return r.Path
+	ref := r.Path
+	if r.Collection != nil {
+		key := r.Item
+		if r.keyField != "" {
+			key = r.keyField + "=" + r.Item
+		}
+		ref += "#" + dottedString(r.Collection) + "[" + key + "]"
 	}
-	key := r.Item
-	if r.keyField != "" {
-		key = r.keyField + "=" + r.Item
+	if r.Strategy == Field {
+		ref += "{" + strings.Join(r.Fields, ",") + "}"
 	}
-	return r.Path + "#" + dottedString(r.Collection) + "[" + key + "]"
+	return ref
 }
 
-var refRe = regexp.MustCompile(`^(.+)#([^#\[\]=]+)\[(?:([^#\[\]=]+)=)?([^#\[\]=]+)\]$`)
+var (
+	refRe    = regexp.MustCompile(`^(.+)#([^#\[\]=]+)\[(?:([^#\[\]=]+)=)?([^#\[\]=]+)\]$`)
+	fieldsRe = regexp.MustCompile(`^(.+)\{([A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*(?:,[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*)*)\}$`)
+)
+
+// ParseRef returns the region a reference names in fsys: a field region, an entry, a directory
+// or a file.
+func ParseRef(fsys fs.FS, ref string) Region {
+	var fields []string
+	if m := fieldsRe.FindStringSubmatch(ref); m != nil {
+		ref, fields = m[1], strings.Split(m[2], ",")
+	}
+	var r Region
+	if m := refRe.FindStringSubmatch(ref); m != nil {
+		r = EntryRegion(m[1], m[2], m[3], m[4])
+	} else {
+		r = Region{Strategy: File, Path: ref}
+		if info, err := fs.Lstat(fsys, ref); err == nil && info.IsDir() {
+			r.Strategy = Dir
+		}
+	}
+	if fields != nil {
+		r.Strategy, r.Fields = Field, fields
+	}
+	return r
+}
 
 // RefPath returns the path of the file or directory a reference names.
 func RefPath(ref string) string {
+	if m := fieldsRe.FindStringSubmatch(ref); m != nil {
+		ref = m[1]
+	}
 	if m := refRe.FindStringSubmatch(ref); m != nil {
 		return m[1]
 	}
 	return ref
 }
 
-// FingerprintRef returns the fingerprint of the region a reference names in fsys: an entry, a
-// directory or a file.
+// FingerprintRef returns the fingerprint of the region a reference names in fsys.
 func FingerprintRef(fsys fs.FS, ref string) (string, error) {
-	if m := refRe.FindStringSubmatch(ref); m != nil {
-		return Fingerprint(fsys, EntryRegion(m[1], m[2], m[3], m[4]))
+	return Fingerprint(fsys, ParseRef(fsys, ref))
+}
+
+// readRegular reads a file that is not a symbolic link.
+func readRegular(fsys fs.FS, name string) ([]byte, error) {
+	if info, err := fs.Lstat(fsys, name); err == nil && info.Mode()&fs.ModeSymlink != 0 {
+		return nil, fmt.Errorf("%s is a symbolic link; Quai does not follow links", name)
 	}
-	strategy := File
-	if info, err := fs.Lstat(fsys, ref); err == nil && info.IsDir() {
-		strategy = Dir
-	}
-	return Fingerprint(fsys, Region{Strategy: strategy, Path: ref})
+	return fs.ReadFile(fsys, name)
 }
 
 func dottedString(p document.Path) string {
@@ -604,10 +654,14 @@ func dottedString(p document.Path) string {
 
 // Fingerprint returns "sha256:" and the hex SHA-256 of a region's bytes, or Absent. For an entry
 // it hashes the entry's bytes only, without the padding that aligns it with its neighbours (HCL's
-// `key   = value`), so that a change to another entry of the file does not change it. For a directory it hashes, in path order, each regular file's path relative to the
-// directory and the SHA-256 of its content, so that renaming, adding or removing a file changes
-// it too. Symbolic links are refused.
+// `key   = value`), so that a change to another entry of the file does not change it; for a field
+// region, the listed fields' bytes only. For a directory it hashes, in path order, each regular
+// file's path relative to the directory and the SHA-256 of its content, so that renaming, adding
+// or removing a file changes it too. Symbolic links are refused.
 func Fingerprint(fsys fs.FS, r Region) (string, error) {
+	if r.Strategy == Field {
+		return fieldFingerprint(fsys, r)
+	}
 	if r.Strategy == Entry {
 		src, el, err := entry(fsys, r)
 		if err != nil {

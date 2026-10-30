@@ -114,9 +114,12 @@ Edits from different requests to different regions of the same file are
 independent, because each is re-applied by path on the current base rather than
 replayed as a stored patch. A change set names its regions by reference: a file
 or directory by its path, an entry by its file, collection and key
-(`clusters/prod-1/namespaces.yaml#namespaces[name=orders]`). A change to entries
+(`clusters/prod-1/namespaces.yaml#namespaces[name=orders]`), and a field region
+by either with its fields in braces (`…#namespaces[name=orders]{quota}`,
+`envs/prod/vms/web01.yaml{backup}`); a field region's fingerprint hashes each
+listed field's bytes with its name, an absent field as such. A change to entries
 of a shared file keeps the entry changes that made it (create, update or delete,
-with the entry's new value); when the file is no longer what the request was
+with the entry's new value; for a field region, the new values of its fields); when the file is no longer what the request was
 planned on, delivery makes them again on the file as it is, verified as any edit
 is. The change set's hash and its approvals stay: they are bound to the entry's
 content, which its fingerprint shows unchanged. An entry's fingerprint leaves out

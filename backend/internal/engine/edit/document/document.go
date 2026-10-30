@@ -354,6 +354,45 @@ func SortedKeys(m map[string]any) []string {
 	return keys
 }
 
+// Set returns a copy of doc with v at p, creating the objects missing on the way. A list item
+// must exist.
+func Set(doc any, p Path, v any) (any, error) {
+	if len(p) == 0 {
+		return v, nil
+	}
+	switch d := doc.(type) {
+	case nil:
+		k, ok := p[0].(string)
+		if !ok {
+			return nil, fmt.Errorf("item %v does not exist", p[0])
+		}
+		next, err := Set(nil, p[1:], v)
+		return map[string]any{k: next}, err
+	case map[string]any:
+		k, ok := p[0].(string)
+		if !ok {
+			return nil, fmt.Errorf("%v: an object has no item", p[0])
+		}
+		next, err := Set(d[k], p[1:], v)
+		out := make(map[string]any, len(d)+1)
+		for key, item := range d {
+			out[key] = item
+		}
+		out[k] = next
+		return out, err
+	case []any:
+		i, ok := p[0].(int)
+		if !ok || i < 0 || i >= len(d) {
+			return nil, fmt.Errorf("%v: no such item in the list", p[0])
+		}
+		next, err := Set(d[i], p[1:], v)
+		out := slices.Clone(d)
+		out[i] = next
+		return out, err
+	}
+	return nil, fmt.Errorf("%v: %T is not an object", p[0], doc)
+}
+
 // ValueAt returns the value at p in a normalized document, or nil when there is none.
 func ValueAt(doc any, p Path) any {
 	for _, step := range p {

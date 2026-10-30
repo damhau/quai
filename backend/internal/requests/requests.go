@@ -143,6 +143,9 @@ func (s *Service) PlanType(ctx context.Context, who auth.Identity, in TypeInput)
 	var current map[string]any
 	approval := t.Spec.Approval
 
+	if t.Spec.Locate.Strategy == locate.Field && (in.Kind == generate.Create || in.Kind == generate.Delete) {
+		return nil, fmt.Errorf("%w: type %s writes fields of something it does not own: it has no %s", ErrConflict, t.Metadata.Name, in.Kind)
+	}
 	if in.Kind == generate.Create {
 		p.Authorize, p.Object = authz.CreateRequest, authz.Object{Repository: repo.Name, CatalogItem: t.Metadata.Name}
 		params, err := checkParams(snap, t, in.Params)
@@ -222,11 +225,10 @@ func (s *Service) PlanType(ctx context.Context, who auth.Identity, in TypeInput)
 	next := current
 	if c := cs.Changes[0]; c.After != nil {
 		if doc, _, err := edit.Decode(c.Path, c.After); err == nil {
-			if region.Strategy != locate.Entry {
-				next, _ = doc.(map[string]any)
-			} else if value, _, ok := locate.Value(doc, region); ok {
-				// An entry's document is its value; a deleted one keeps the document it had.
-				next, _ = value.(map[string]any)
+			// An entry's document is its value, a field region's its fields; a deleted entry
+			// keeps the document it had.
+			if value, _, err := locate.Document(doc, nil, region); err == nil {
+				next = value
 			}
 		}
 	}

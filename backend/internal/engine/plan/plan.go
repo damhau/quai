@@ -99,7 +99,7 @@ func Type(fsys fs.FS, t *definitions.ResourceType, r generate.Request) (*ChangeS
 }
 
 func addType(cs *ChangeSet, fsys fs.FS, t *definitions.ResourceType, r generate.Request) (locate.Region, error) {
-	if t.Spec.Locate.Strategy != locate.File && t.Spec.Locate.Strategy != locate.Entry {
+	if t.Spec.Locate.Strategy == locate.Dir {
 		return locate.Region{}, fmt.Errorf("type %s: the %s locator is not available yet", t.Metadata.Name, t.Spec.Locate.Strategy)
 	}
 	loc, err := t.Spec.Locate.Locator()
@@ -113,8 +113,11 @@ func addType(cs *ChangeSet, fsys fs.FS, t *definitions.ResourceType, r generate.
 	if _, ok := edit.FormatOf(region.Path); !ok {
 		return locate.Region{}, fmt.Errorf("%s: Quai edits YAML, JSON and HCL files (.yaml, .yml, .json, .tfvars, .hcl, the locals of .tf)", region.Path)
 	}
-	if region.Strategy == locate.Entry {
+	switch region.Strategy {
+	case locate.Entry:
 		return region, addEntry(cs, fsys, t, region, r)
+	case locate.Field:
+		return region, addFields(cs, fsys, t, region, r)
 	}
 	fp, err := locate.Fingerprint(fsys, region)
 	if err != nil {

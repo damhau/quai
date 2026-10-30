@@ -197,7 +197,7 @@ func readDocument(fsys fs.FS, region locate.Region) (map[string]any, error) {
 
 // documentOf returns the document of a resource in src, its file.
 func documentOf(region locate.Region, src []byte) (map[string]any, error) {
-	if region.Strategy == locate.Entry {
+	if region.Strategy == locate.Entry || region.Strategy == locate.Field {
 		doc, _, err := entryDocument(region, src)
 		return doc, err
 	}

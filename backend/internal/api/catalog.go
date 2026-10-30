@@ -308,7 +308,8 @@ func registerCatalog(a huma.API, reg *repositories.Registry, s *store.Store) {
 			warn := trustOf(ctx, s, repo.Name).Problems
 			for _, name := range slices.Sorted(maps.Keys(snap.Definitions.Types)) {
 				t := snap.Definitions.Types[name]
-				if t.Spec.Catalog == "hidden" {
+				if t.Spec.Catalog == "hidden" || t.Spec.Locate.Strategy == locate.Field {
+					// A field type creates nothing: its resources are reached from the inventory.
 					continue
 				}
 				if _, err := authorize(ctx, authz.ReadCatalog, authz.Object{Repository: repo.Name, CatalogItem: name}); err != nil {
@@ -583,6 +584,9 @@ func typeView(snap *repositories.Snapshot, t *definitions.ResourceType) TypeView
 	if v.Deletion == "" {
 		v.Deletion = "approval"
 	}
+	if t.Spec.Locate.Strategy == locate.Field {
+		v.Deletion = "forbidden" // its resources exist while what holds them does
+	}
 	if o := t.Spec.Ownership; o != nil {
 		v.OwnerField = o.Field
 	}
@@ -688,7 +692,7 @@ func resourceDetail(ctx context.Context, repo *repositories.Repo, snap *reposito
 	for _, c := range r.Code {
 		d.DefinedInCode = append(d.DefinedInCode, CodeView{Field: edit.Field(c.Path), Text: c.Text})
 	}
-	if r.Region.Strategy == locate.Entry {
+	if r.Region.Collection != nil {
 		// An entry's own bytes, not the whole shared file.
 		if raw, err := locate.Bytes(snap.FS, r.Region); err == nil {
 			d.Raw = string(raw)

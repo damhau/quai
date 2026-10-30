@@ -139,6 +139,14 @@ func (l *loader) resourceType(file string) *ResourceType {
 			c.add("spec.schema", "%v", err)
 		}
 		t.FileSchema, t.InputSchema = sch, sch
+		if sch != nil && s.Locate.Strategy == LocateField {
+			// A field type's form shows only the fields it may write.
+			for _, prop := range sch.Properties() {
+				if !slices.ContainsFunc(s.Locate.Fields, func(f string) bool { return f == prop || strings.HasPrefix(f, prop+".") }) {
+					c.add("spec.schema", "describes %s, which is not one of spec.locate.fields", prop)
+				}
+			}
+		}
 	}
 	if s.Inputs != "" && c.relPath("spec.inputs", s.Inputs) {
 		sch, err := l.schemas.Compile(s.Inputs)
@@ -274,19 +282,22 @@ func (c *check) locate(lo Locate, params map[string]bool) {
 		if len(inPath) == 0 {
 			c.add("spec.locate.path", "needs at least one {param}")
 		}
-	case LocateEntry, LocateField:
+	case LocateField:
 		if !dataFileRe.MatchString(lo.Path) {
 			c.add("spec.locate.path", "must end in .yaml, .yml, .json, .tfvars, .hcl or .tf")
 		}
-		if lo.Collection == "" || !fieldPathRe.MatchString(lo.Collection) {
-			c.add("spec.locate.collection", "must be a dotted field path")
+		if lo.Collection == "" {
+			// The fields of whole files.
+			if lo.Key != "" || lo.KeyParam != "" {
+				c.add("spec.locate.collection", "is required with key and keyParam")
+			}
+			if len(inPath) == 0 {
+				c.add("spec.locate.path", "needs at least one {param}")
+			}
+		} else {
+			c.entry(lo, params, inPath)
 		}
-		if !params[lo.KeyParam] {
-			c.add("spec.locate.keyParam", "must name a param")
-		} else if slices.Contains(inPath, lo.KeyParam) {
-			c.add("spec.locate.keyParam", "names the entry, not the file: it cannot be in spec.locate.path")
-		}
-		if lo.Strategy == LocateField && len(lo.Fields) == 0 {
+		if len(lo.Fields) == 0 {
 			c.add("spec.locate.fields", "is required for the field strategy")
 		}
 		for _, f := range lo.Fields {
@@ -294,11 +305,31 @@ func (c *check) locate(lo Locate, params map[string]bool) {
 				c.add("spec.locate.fields", "invalid field path %q", f)
 			}
 		}
+	case LocateEntry:
+		if !dataFileRe.MatchString(lo.Path) {
+			c.add("spec.locate.path", "must end in .yaml, .yml, .json, .tfvars, .hcl or .tf")
+		}
+		c.entry(lo, params, inPath)
+		if len(lo.Fields) > 0 {
+			c.add("spec.locate.fields", "applies only to the field strategy")
+		}
 	}
 	if lo.Strategy != LocateEntry && lo.Order != "" {
 		c.add("spec.locate.order", "applies only to the entry strategy")
 	}
 	oneOf(c, "spec.locate.order", lo.Order, "", "key")
+}
+
+// entry checks the collection and the key of an entry or field locator.
+func (c *check) entry(lo Locate, params map[string]bool, inPath []string) {
+	if lo.Collection == "" || !fieldPathRe.MatchString(lo.Collection) {
+		c.add("spec.locate.collection", "must be a dotted field path")
+	}
+	if !params[lo.KeyParam] {
+		c.add("spec.locate.keyParam", "must name a param")
+	} else if slices.Contains(inPath, lo.KeyParam) {
+		c.add("spec.locate.keyParam", "names the entry, not the file: it cannot be in spec.locate.path")
+	}
 }
 
 func (c *check) generate(g *Generate) {

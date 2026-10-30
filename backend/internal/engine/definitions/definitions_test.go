@@ -288,7 +288,10 @@ func TestLocatorsAndGenerators(t *testing.T) {
   ownership: { team: platform }
   paramFields: { name: name }
 `),
-		".quai/types/bad-entry.yaml": typ("bad-entry", `  locate: { strategy: field, path: "clusters/{cluster}/ns", keyParam: nope, order: key }
+		".quai/types/bad-field.yaml": typ("bad-field", `  locate: { strategy: field, path: "clusters/ns.yaml", key: name, keyParam: name, fields: [quota, "a b"] }
+  params: [{ name: name }]
+`),
+		".quai/types/bad-entry.yaml": typ("bad-entry", `  locate: { strategy: field, path: "clusters/{cluster}/ns", collection: "bad path!", keyParam: nope, order: key }
   params: [{ name: cluster, type: enum }, { name: x, pattern: "(" }, { name: cluster }]
   generate: { kind: identity, template: { a: 1 }, module: x.wasm }
   ownership: { field: owner, team: platform }
@@ -332,6 +335,9 @@ func TestLocatorsAndGenerators(t *testing.T) {
 		"bad-entry.yaml: spec.locate.collection: must be a dotted field path",
 		"bad-entry.yaml: spec.locate.keyParam: must name a param",
 		"bad-entry.yaml: spec.locate.fields: is required for the field strategy",
+		"bad-field.yaml: spec.locate.collection: is required with key and keyParam",
+		"bad-field.yaml: spec.locate.path: needs at least one {param}",
+		"bad-field.yaml: spec.locate.fields: invalid field path \"a b\"",
 		"bad-entry.yaml: spec.locate.order: applies only to the entry strategy",
 		"bad-entry.yaml: spec.generate.template: does not apply to the identity generator",
 		"bad-entry.yaml: spec.generate.module: does not apply to the identity generator",
