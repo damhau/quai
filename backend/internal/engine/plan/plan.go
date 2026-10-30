@@ -99,13 +99,16 @@ func addType(cs *ChangeSet, fsys fs.FS, t *definitions.ResourceType, r generate.
 	if t.Spec.Locate.Strategy != locate.File {
 		return locate.Region{}, fmt.Errorf("type %s: the %s locator is not available yet", t.Metadata.Name, t.Spec.Locate.Strategy)
 	}
-	loc, err := locate.New(t.Spec.Locate.Strategy, t.Spec.Locate.Path)
+	loc, err := t.Spec.Locate.Locator()
 	if err != nil {
 		return locate.Region{}, err
 	}
 	region, err := loc.Region(r.Params)
 	if err != nil {
 		return locate.Region{}, err
+	}
+	if region.Strategy == locate.Entry {
+		return locate.Region{}, fmt.Errorf("%s: Quai does not write the entries of shared files yet", region.Path)
 	}
 	if _, ok := edit.FormatOf(region.Path); !ok {
 		return locate.Region{}, fmt.Errorf("%s: Quai edits YAML, JSON and HCL files (.yaml, .yml, .json, .tfvars, .hcl)", region.Path)

@@ -16,6 +16,7 @@ import (
 
 	"github.com/damhau/quai/backend/internal/engine/definitions"
 	"github.com/damhau/quai/backend/internal/engine/edit"
+	"github.com/damhau/quai/backend/internal/engine/edit/document"
 	"github.com/damhau/quai/backend/internal/engine/generate"
 	"github.com/damhau/quai/backend/internal/engine/locate"
 	"github.com/damhau/quai/backend/internal/engine/schema"
@@ -74,16 +75,34 @@ func (r *Report) problem(file, field, format string, args ...any) {
 }
 
 func (r *Report) checkType(fsys fs.FS, t *definitions.ResourceType) {
-	if t.Spec.Locate.Strategy != locate.File || t.Spec.Generate.Kind != definitions.GenerateIdentity {
+	if t.Spec.Locate.Strategy != locate.File && t.Spec.Locate.Strategy != locate.Entry || t.Spec.Generate.Kind != definitions.GenerateIdentity {
 		r.Notes = append(r.Notes, definitions.Problem{Path: t.Path, Message: fmt.Sprintf(
 			"the files of type %s are not checked: the %s locator with the %s generator is not available yet",
 			t.Metadata.Name, t.Spec.Locate.Strategy, t.Spec.Generate.Kind)})
 		return
 	}
-	loc, err := locate.New(t.Spec.Locate.Strategy, t.Spec.Locate.Path)
+	loc, err := t.Spec.Locate.Locator()
 	if err != nil {
 		r.problem(t.Path, "spec.locate.path", "%v", err)
 		return
+	}
+	if loc.Strategy() == locate.Entry {
+		// A shared file that cannot hold its entries safely is one problem, for the file.
+		files, err := loc.Files(fsys)
+		if err != nil {
+			r.problem(t.Path, "spec.locate", "%v", err)
+			return
+		}
+		for _, file := range files {
+			src, err := fs.ReadFile(fsys, file.Path)
+			if err != nil {
+				r.problem(file.Path, "", "cannot read: %v", err)
+				continue
+			}
+			if _, problem := loc.Elements(file.Path, src); problem != "" {
+				r.problem(file.Path, "", "%s", problem)
+			}
+		}
 	}
 	regions, err := loc.Scan(fsys)
 	if err != nil {
@@ -92,7 +111,9 @@ func (r *Report) checkType(fsys fs.FS, t *definitions.ResourceType) {
 	}
 	for _, region := range regions {
 		r.Resources++
-		r.checkFile(fsys, t, region)
+		if region.Problem == "" {
+			r.checkFile(fsys, t, region)
+		}
 	}
 }
 
@@ -107,9 +128,19 @@ func (r *Report) checkFile(fsys fs.FS, t *definitions.ResourceType, region locat
 		r.problem(region.Path, "", "%v", err)
 		return
 	}
+	// An entry's document is its value in the file; the round trip writes it back there.
+	file, where, at := decoded, region.Path, document.Path(nil)
+	if region.Strategy == locate.Entry {
+		var ok bool
+		if decoded, at, ok = locate.Value(decoded, region); !ok {
+			r.problem(region.Path, "", "the entry %s is not in the file", region.Item)
+			return
+		}
+		code, where = edit.Under(code, at), region.Path+" ("+region.Item+")"
+	}
 	doc, ok := decoded.(map[string]any)
 	if !ok {
-		r.problem(region.Path, "", "must hold a mapping (type %s)", t.Metadata.Name)
+		r.problem(where, "", "must hold a mapping (type %s)", t.Metadata.Name)
 		return
 	}
 	if err := t.FileSchema.Validate(doc); err != nil {
@@ -120,7 +151,7 @@ func (r *Report) checkFile(fsys fs.FS, t *definitions.ResourceType, region locat
 		}
 		fields := edit.OutsideCode(ve.Fields, code)
 		for _, f := range slices.Sorted(maps.Keys(fields)) {
-			r.problem(region.Path, f, "%s (schema %s)", fields[f], t.FileSchema.Path())
+			r.problem(where, f, "%s (schema %s)", fields[f], t.FileSchema.Path())
 		}
 		if len(fields) > 0 {
 			return
@@ -132,13 +163,17 @@ func (r *Report) checkFile(fsys fs.FS, t *definitions.ResourceType, region locat
 		r.problem(region.Path, "", "round trip: %v", err)
 		return
 	}
-	out, err := edit.Edit(region.Path, src, written)
+	whole := any(written)
+	if at != nil {
+		whole = document.With(file, at, written)
+	}
+	out, err := edit.Edit(region.Path, src, whole)
 	if err != nil {
-		r.problem(region.Path, "", "round trip: Quai cannot edit this file: %v", err)
+		r.problem(where, "", "round trip: Quai cannot edit this file: %v", err)
 		return
 	}
 	if !bytes.Equal(out, src) {
-		r.problem(region.Path, "", "round trip: Quai would rewrite this file on its first edit (%s)", changedLines(src, out))
+		r.problem(where, "", "round trip: Quai would rewrite this file on its first edit (%s)", changedLines(src, out))
 	}
 }
 

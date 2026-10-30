@@ -210,7 +210,7 @@ func (s *Service) PlanType(ctx context.Context, who auth.Identity, in TypeInput)
 		return p, schema.Under("values", err)
 	}
 	p.ChangeSet = cs
-	loc, _ := locate.New(t.Spec.Locate.Strategy, t.Spec.Locate.Path)
+	loc, _ := t.Spec.Locate.Locator()
 	region, _ := loc.Region(req.Params)
 	p.Target = locate.ID(repo.Name, t.Metadata.Name, region.Key)
 	p.Stack = stack(t, req.Params)

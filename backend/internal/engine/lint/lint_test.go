@@ -147,3 +147,31 @@ func TestFormats(t *testing.T) {
 		t.Errorf("report = %+v", r)
 	}
 }
+
+// TestEntries: the entries of a shared file are checked one by one, each round trip writing the
+// entry back into the whole file; a file whose keys repeat is one problem.
+func TestEntries(t *testing.T) {
+	fsys := copyExamples(t)
+	fsys[".quai/types/namespace.yaml"] = &fstest.MapFile{Data: []byte("apiVersion: quai.dev/v1beta1\nkind: ResourceType\n" +
+		"metadata: { name: namespace, title: Namespace }\nspec:\n" +
+		"  locate: { strategy: entry, path: \"clusters/{cluster}/namespaces.yaml\", collection: namespaces, key: name, keyParam: name }\n" +
+		"  params:\n    - { name: cluster, title: Cluster }\n    - { name: name, title: Name }\n" +
+		"  schema: catalog/schemas/namespace.schema.json\n  generate: { kind: identity }\n")}
+	fsys["catalog/schemas/namespace.schema.json"] = &fstest.MapFile{Data: []byte(`{"type": "object", "required": ["name"], "additionalProperties": false,
+  "properties": {"name": {"type": "string"}, "quota": {"type": "object", "properties": {"cpu": {"type": "string"}, "memory": {"type": "string"}}}}}`)}
+	fsys["clusters/prod-1/namespaces.yaml"] = &fstest.MapFile{Data: []byte("# Namespaces on prod-1.\nnamespaces:\n  - name: shop\n    quota: { cpu: \"8\", memory: 16Gi }\n  - name: orders\n    quota: { cpu: 4 }\n")}
+	fsys["clusters/prod-2/namespaces.yaml"] = &fstest.MapFile{Data: []byte("namespaces:\n  - name: shop\n  - name: shop\n")}
+	r := Run(fsys)
+	text := r.Problems.Error()
+	for _, want := range []string{
+		"clusters/prod-1/namespaces.yaml (orders): quota.cpu: must be a string",
+		`clusters/prod-2/namespaces.yaml: the key "shop" appears twice in namespaces`,
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("no problem contains %q; problems:\n%s", want, text)
+		}
+	}
+	if len(r.Problems) != 2 || r.Resources != 7 {
+		t.Errorf("%d resources, problems:\n%s", r.Resources, text)
+	}
+}

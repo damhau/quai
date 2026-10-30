@@ -1,7 +1,9 @@
 // Package locate maps resources to their regions in a repository: the part of the repository
 // each resource owns (docs/design/02-resource-types-and-generators.md#locators). It implements
-// the `file` and `dir` strategies: path patterns such as envs/{env}/vms/{name}.yaml, resource
-// keys and IDs, the inventory scan, and region fingerprints (docs/design/03-file-editing.md).
+// the `file`, `dir` and `entry` strategies: path patterns such as envs/{env}/vms/{name}.yaml,
+// resource keys and IDs, the inventory scan, and region fingerprints
+// (docs/design/03-file-editing.md). An entry is a keyed item of a list, or an entry of a map, in
+// a shared file; its region is the item's bytes, read through the file's editor (package edit).
 //
 // Repositories are read through an fs.FS. Symbolic links are never followed, so a link in a
 // repository cannot make Quai read or fingerprint a file outside it.
@@ -15,13 +17,18 @@ import (
 	"io/fs"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
+
+	"github.com/damhau/quai/backend/internal/engine/edit"
+	"github.com/damhau/quai/backend/internal/engine/edit/document"
 )
 
 // Strategies this package implements.
 const (
-	File = "file"
-	Dir  = "dir"
+	File  = "file"
+	Dir   = "dir"
+	Entry = "entry"
 )
 
 var (
@@ -177,6 +184,11 @@ func ParseID(id string) (repository, typeName, key string, err error) {
 type Locator struct {
 	strategy string
 	pattern  *Pattern
+	// An entry locator's collection in each file, the field naming a list's items (empty for a
+	// map, whose keys name its entries), and the param whose value is the item's key.
+	collection document.Path
+	keyField   string
+	keyParam   string
 }
 
 // New returns the locator for a strategy and path pattern.
@@ -191,16 +203,54 @@ func New(strategy, pattern string) (*Locator, error) {
 	return &Locator{strategy: strategy, pattern: p}, nil
 }
 
+// NewEntry returns the locator of the entries of a shared file: in each file matching pattern,
+// the list or map at collection (a dotted path), whose items are named by their keyField (a list)
+// or whose keys name its entries (a map, keyField empty); the key is the value of keyParam.
+func NewEntry(pattern, collection, keyField, keyParam string) (*Locator, error) {
+	p, err := Compile(pattern)
+	if err != nil {
+		return nil, err
+	}
+	if collection == "" || keyParam == "" || slices.Contains(p.params, keyParam) {
+		return nil, fmt.Errorf("an entry locator needs a collection and a key param that is not in its path")
+	}
+	return &Locator{strategy: Entry, pattern: p, collection: dotted(collection), keyField: keyField, keyParam: keyParam}, nil
+}
+
+// dotted returns a dotted field path as a document path: digits are list indices.
+func dotted(field string) document.Path {
+	var p document.Path
+	for _, step := range strings.Split(field, ".") {
+		if i, err := strconv.Atoi(step); err == nil {
+			p = append(p, i)
+		} else {
+			p = append(p, step)
+		}
+	}
+	return p
+}
+
 // Pattern returns the locator's path pattern.
 func (l *Locator) Pattern() *Pattern { return l.pattern }
 
-// Region is the part of the repository one resource owns: a file, or a directory and everything
-// under it.
+// Strategy returns the locator's strategy.
+func (l *Locator) Strategy() string { return l.strategy }
+
+// Region is the part of the repository one resource owns: a file, a directory and everything
+// under it, or an entry of a shared file.
 type Region struct {
 	Strategy string
 	Path     string
 	Key      string
 	Params   map[string]string
+	// An entry's collection in the file and its key there.
+	Collection document.Path
+	Item       string
+	// Problem says why an entry cannot be edited, such as a key that appears twice in its
+	// collection.
+	Problem string
+	// keyField names a list's items, for an entry the locator returned.
+	keyField string
 }
 
 // Region returns the region of the resource with params.
@@ -213,13 +263,201 @@ func (l *Locator) Region(params map[string]string) (Region, error) {
 	for _, name := range l.pattern.params {
 		clean[name] = params[name]
 	}
-	return Region{Strategy: l.strategy, Path: p, Key: l.pattern.Key(clean), Params: clean}, nil
+	r := Region{Strategy: l.strategy, Path: p, Key: l.pattern.Key(clean), Params: clean}
+	if l.strategy == Entry {
+		item := params[l.keyParam]
+		if !SafeSegment(item) {
+			return Region{}, fmt.Errorf("{%s} is not a valid key: %q", l.keyParam, item)
+		}
+		r.Collection, r.Item, r.Key, r.keyField = l.collection, item, joinKey(r.Key, item), l.keyField
+		r.Params[l.keyParam] = item
+	}
+	return r, nil
 }
 
+func joinKey(fileKey, item string) string {
+	if fileKey == "" {
+		return item
+	}
+	return fileKey + "/" + item
+}
+
+// ParseKey returns the params of a resource key: its file's params, and for an entry the key
+// param, its last part.
+func (l *Locator) ParseKey(key string) (map[string]string, error) {
+	if l.strategy != Entry {
+		return l.pattern.ParseKey(key)
+	}
+	fileKey, item := "", key
+	if i := strings.LastIndex(key, "/"); i >= 0 {
+		fileKey, item = key[:i], key[i+1:]
+	}
+	params := map[string]string{}
+	if len(l.pattern.params) > 0 || fileKey != "" {
+		var err error
+		if params, err = l.pattern.ParseKey(fileKey); err != nil {
+			return nil, err
+		}
+	}
+	if !SafeSegment(item) {
+		return nil, fmt.Errorf("key %q: invalid value for {%s}: %q", key, l.keyParam, item)
+	}
+	params[l.keyParam] = item
+	return params, nil
+}
+
+// Element is an entry of a shared file: its key and bytes.
+type Element struct {
+	Key        string
+	Start, End int
+}
+
+// Elements returns the entries of a shared file with their bytes, in file order, and a problem
+// when the file cannot hold them safely: it cannot be read, its collection is not a list or a map,
+// an item has no valid key, or a key appears twice. A file without the collection has none.
+func (l *Locator) Elements(name string, src []byte) ([]Element, string) {
+	doc, _, err := edit.Decode(name, src)
+	if err != nil {
+		return nil, fmt.Sprintf("the file cannot be read: %v", err)
+	}
+	coll := document.ValueAt(doc, l.collection)
+	if coll == nil {
+		return nil, ""
+	}
+	_, isMap := coll.(map[string]any)
+	list, isList := coll.([]any)
+	if !isMap && !isList || isMap != (l.keyField == "") {
+		want := "a list"
+		if l.keyField == "" {
+			want = "a map"
+		}
+		return nil, fmt.Sprintf("%s is not %s", field(l.collection), want)
+	}
+	els, err := edit.Elements(name, src, l.collection)
+	if err != nil {
+		return nil, fmt.Sprintf("the entries of %s cannot be read: %v", field(l.collection), err)
+	}
+	out := make([]Element, 0, len(els))
+	for i, el := range els {
+		key := el.Key
+		if isList {
+			m, _ := list[i].(map[string]any)
+			key, _ = m[l.keyField].(string)
+		}
+		if !SafeSegment(key) {
+			return nil, fmt.Sprintf("entry %d of %s has no valid %s", i, field(l.collection), cmpOr(l.keyField, "key"))
+		}
+		if slices.ContainsFunc(out, func(e Element) bool { return e.Key == key }) {
+			return nil, fmt.Sprintf("the key %q appears twice in %s", key, field(l.collection))
+		}
+		out = append(out, Element{Key: key, Start: el.Start, End: el.End})
+	}
+	return out, ""
+}
+
+func cmpOr(a, b string) string {
+	if a != "" {
+		return a
+	}
+	return b
+}
+
+func field(p document.Path) string { return edit.Field(p) }
+
 // Scan returns the region of every resource in fsys, sorted by key: each regular file (for
-// `file`) or directory (for `dir`) whose path matches the pattern with safe values. Symbolic
-// links and .git directories are skipped.
+// `file`) or directory (for `dir`) whose path matches the pattern with safe values, or each entry
+// of such files (for `entry`). Symbolic links and .git directories are skipped. The entries of a
+// file that cannot hold them safely carry its problem; a file that cannot be read has none.
 func (l *Locator) Scan(fsys fs.FS) ([]Region, error) {
+	if l.strategy == Entry {
+		files, err := l.files(fsys)
+		if err != nil {
+			return nil, err
+		}
+		var out []Region
+		for _, file := range files {
+			src, err := fs.ReadFile(fsys, file.Path)
+			if err != nil {
+				return nil, err
+			}
+			els, problem := l.Elements(file.Path, src)
+			if problem != "" {
+				els, _ = l.lenient(file.Path, src)
+			}
+			for _, el := range els {
+				params := maps(file.Params)
+				params[l.keyParam] = el.Key
+				out = append(out, Region{Strategy: Entry, Path: file.Path, Key: joinKey(file.Key, el.Key), Params: params,
+					Collection: l.collection, Item: el.Key, Problem: problem, keyField: l.keyField})
+			}
+		}
+		slices.SortFunc(out, func(a, b Region) int { return strings.Compare(a.Key, b.Key) })
+		return out, nil
+	}
+	return l.files(fsys)
+}
+
+// Files returns the files the locator's pattern matches (for `dir`, the directories), as file
+// regions.
+func (l *Locator) Files(fsys fs.FS) ([]Region, error) { return l.files(fsys) }
+
+// Value returns an entry's value in its file's document and its path there, and false when the
+// file holds no such entry.
+func Value(doc any, r Region) (any, document.Path, bool) {
+	switch coll := document.ValueAt(doc, r.Collection).(type) {
+	case map[string]any:
+		if v, ok := coll[r.Item]; ok {
+			return v, r.Collection.Key(r.Item), true
+		}
+	case []any:
+		for i, item := range coll {
+			if m, ok := item.(map[string]any); ok && r.keyField != "" && m[r.keyField] == r.Item {
+				return m, r.Collection.Index(i), true
+			}
+		}
+	}
+	return nil, nil, false
+}
+
+// lenient returns the entries of a file that cannot hold them safely, so that they are listed
+// with its problem: each valid key once.
+func (l *Locator) lenient(name string, src []byte) ([]Element, error) {
+	doc, _, err := edit.Decode(name, src)
+	if err != nil {
+		return nil, err
+	}
+	var out []Element
+	add := func(key string) {
+		if SafeSegment(key) && !slices.ContainsFunc(out, func(e Element) bool { return e.Key == key }) {
+			out = append(out, Element{Key: key})
+		}
+	}
+	switch coll := document.ValueAt(doc, l.collection).(type) {
+	case map[string]any:
+		for _, k := range document.SortedKeys(coll) {
+			add(k)
+		}
+	case []any:
+		for _, item := range coll {
+			if m, ok := item.(map[string]any); ok {
+				k, _ := m[l.keyField].(string)
+				add(k)
+			}
+		}
+	}
+	return out, nil
+}
+
+func maps(m map[string]string) map[string]string {
+	out := make(map[string]string, len(m)+1)
+	for k, v := range m {
+		out[k] = v
+	}
+	return out
+}
+
+// files returns the regular files (or, for `dir`, the directories) matching the pattern.
+func (l *Locator) files(fsys fs.FS) ([]Region, error) {
 	root := strings.TrimSuffix(l.pattern.prefix, "/")
 	if root == "" {
 		root = "."
@@ -246,7 +484,11 @@ func (l *Locator) Scan(fsys fs.FS) ([]Region, error) {
 		if !ok {
 			return nil
 		}
-		out = append(out, Region{Strategy: l.strategy, Path: p, Key: l.pattern.Key(params), Params: params})
+		strategy := l.strategy
+		if strategy == Entry {
+			strategy = File
+		}
+		out = append(out, Region{Strategy: strategy, Path: p, Key: l.pattern.Key(params), Params: params})
 		if wantDir {
 			return fs.SkipDir
 		}
@@ -263,11 +505,48 @@ func (l *Locator) Scan(fsys fs.FS) ([]Region, error) {
 // being created: if the file appears before the request is delivered, the request is stale.
 const Absent = "absent"
 
-// Fingerprint returns "sha256:" and the hex SHA-256 of a region's bytes, or Absent. For a
-// directory it hashes, in path order, each regular file's path relative to the directory and the
-// SHA-256 of its content, so that renaming, adding or removing a file changes it too. Symbolic
-// links are refused.
+// Bytes returns an entry's bytes in its file, or nil when the file or the entry does not exist.
+func Bytes(fsys fs.FS, r Region) ([]byte, error) {
+	if r.Strategy != Entry {
+		return nil, fmt.Errorf("%s is not an entry", r.Path)
+	}
+	src, err := fs.ReadFile(fsys, r.Path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	l := &Locator{strategy: Entry, collection: r.Collection, keyField: r.keyField}
+	els, problem := l.Elements(r.Path, src)
+	if problem != "" {
+		return nil, fmt.Errorf("%s: %s", r.Path, problem)
+	}
+	for _, el := range els {
+		if el.Key == r.Item {
+			return src[el.Start:el.End], nil
+		}
+	}
+	return nil, nil
+}
+
+// Fingerprint returns "sha256:" and the hex SHA-256 of a region's bytes, or Absent. For an entry
+// it hashes the entry's bytes only, so that a change to another entry of the file does not
+// change it. For a directory it hashes, in path order, each regular file's path relative to the
+// directory and the SHA-256 of its content, so that renaming, adding or removing a file changes
+// it too. Symbolic links are refused.
 func Fingerprint(fsys fs.FS, r Region) (string, error) {
+	if r.Strategy == Entry {
+		if info, err := fs.Lstat(fsys, r.Path); err == nil && info.Mode()&fs.ModeSymlink != 0 {
+			return "", fmt.Errorf("%s is a symbolic link; Quai does not follow links", r.Path)
+		}
+		b, err := Bytes(fsys, r)
+		if err != nil || b == nil {
+			return Absent, err
+		}
+		sum := sha256.Sum256(b)
+		return "sha256:" + hex.EncodeToString(sum[:]), nil
+	}
 	info, err := fs.Lstat(fsys, r.Path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return Absent, nil

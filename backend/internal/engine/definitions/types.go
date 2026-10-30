@@ -2,6 +2,7 @@ package definitions
 
 import (
 	"github.com/damhau/quai/backend/internal/engine/expr"
+	"github.com/damhau/quai/backend/internal/engine/locate"
 	"github.com/damhau/quai/backend/internal/engine/schema"
 )
 
@@ -75,6 +76,14 @@ type Locate struct {
 	KeyParam   string   `json:"keyParam,omitempty"`
 	Fields     []string `json:"fields,omitempty"`
 	Order      string   `json:"order,omitempty"`
+}
+
+// Locator returns the locator the spec describes.
+func (lo Locate) Locator() (*locate.Locator, error) {
+	if lo.Strategy == LocateEntry {
+		return locate.NewEntry(lo.Path, lo.Collection, lo.Key, lo.KeyParam)
+	}
+	return locate.New(lo.Strategy, lo.Path)
 }
 
 // Param is a locator parameter, such as the environment and the name in envs/{env}/vms/{name}.yaml.

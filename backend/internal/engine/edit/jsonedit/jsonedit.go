@@ -106,6 +106,27 @@ func Decode(src []byte) (any, error) {
 	return f.root.value, nil
 }
 
+// Elements returns the entries of the object, or the items of the array, at p in src, with their
+// bytes (an entry's from its key), in file order.
+func Elements(src []byte, p document.Path) ([]document.Element, error) {
+	f, err := parse(src)
+	if err != nil {
+		return nil, err
+	}
+	n := f.at(p)
+	if n == nil || !n.object && !n.array {
+		return nil, refuse(p, "the value is not an object or an array")
+	}
+	var out []document.Element
+	for _, m := range n.members {
+		out = append(out, document.Element{Key: m.key, Start: m.keyStart, End: m.value.end})
+	}
+	for _, item := range n.items {
+		out = append(out, document.Element{Start: item.start, End: item.end})
+	}
+	return out, nil
+}
+
 // Create returns a new JSON document for doc, a value in the JSON data model, written as Edit
 // writes new content: two-space indentation, one entry or item per line. Object keys listed in
 // keyOrder come first, in that order; the others follow in sorted order. The result ends with a

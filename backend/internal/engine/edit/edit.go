@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"path"
+	"slices"
 	"strings"
 
 	"github.com/damhau/quai/backend/internal/engine/edit/document"
@@ -89,6 +90,21 @@ func Create(name string, doc any, keyOrder []string) ([]byte, error) {
 	}
 }
 
+// Elements returns the entries of the object, or the items of the list, at p in a file, with their
+// bytes, in file order.
+func Elements(name string, src []byte, p document.Path) ([]document.Element, error) {
+	switch f, err := format(name); {
+	case err != nil:
+		return nil, err
+	case f == JSON:
+		return jsonedit.Elements(src, p)
+	case f == HCL:
+		return hcledit.Elements(src, "", p)
+	default:
+		return yamledit.Elements(src, p)
+	}
+}
+
 // Keys returns, for each object of a file, its keys in the order they are written, by JSON
 // pointer.
 func Keys(name string, src []byte) (map[string][]string, error) {
@@ -138,6 +154,18 @@ func OutsideCode(fields map[string]string, code []Code) map[string]string {
 	}
 	for _, c := range code {
 		delete(out, Field(c.Path))
+	}
+	return out
+}
+
+// Under returns the values defined in code under at, relative to it: those of an entry of a
+// shared file, say.
+func Under(code []Code, at document.Path) []Code {
+	var out []Code
+	for _, c := range code {
+		if len(c.Path) > len(at) && slices.Equal(c.Path[:len(at)], at) {
+			out = append(out, Code{Path: c.Path[len(at):], Text: c.Text})
+		}
 	}
 	return out
 }

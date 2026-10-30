@@ -127,6 +127,28 @@ func Edit(src []byte, block string, want any) (out []byte, err error) {
 	return f.verified(edits, want, s, block)
 }
 
+// Elements returns the entries of the object, or the items of the tuple, at p in the body block
+// selects, with their bytes (an entry's from its key), in file order. Entries defined in code
+// are included.
+func Elements(src []byte, block string, p document.Path) ([]document.Element, error) {
+	f, err := parse(src, block)
+	if err != nil {
+		return nil, err
+	}
+	n := f.at(p)
+	if n == nil || n.code || !n.object && !n.tuple {
+		return nil, refuse(p, "the value is not an object or a tuple")
+	}
+	var out []document.Element
+	for _, m := range n.members {
+		out = append(out, document.Element{Key: m.key, Start: m.keyStart, End: m.value.end})
+	}
+	for _, item := range n.items {
+		out = append(out, document.Element{Start: item.start, End: item.end})
+	}
+	return out, nil
+}
+
 // Create returns a new `*.tfvars` file whose attributes are doc, an object in the JSON data model,
 // written as Edit writes new content and formatted. Keys listed in keyOrder come first, in that
 // order; the others follow in sorted order. The result is verified to decode to doc.

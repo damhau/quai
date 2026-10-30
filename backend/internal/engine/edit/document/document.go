@@ -196,6 +196,12 @@ const (
 	RemoveItem                    // remove the list item at Path
 )
 
+// Element is an entry of a mapping or an item of a list, as a file writes it.
+type Element struct {
+	Key        string // the entry's key; empty for a list item
+	Start, End int    // its bytes: from its key (or a block item's '-') to the end of its value
+}
+
 // Change is one difference between the current and the intended document.
 type Change struct {
 	Kind     ChangeKind

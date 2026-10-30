@@ -688,7 +688,12 @@ func resourceDetail(ctx context.Context, repo *repositories.Repo, snap *reposito
 	for _, c := range r.Code {
 		d.DefinedInCode = append(d.DefinedInCode, CodeView{Field: edit.Field(c.Path), Text: c.Text})
 	}
-	if raw, err := fs.ReadFile(snap.FS, r.Path); err == nil {
+	if r.Region.Strategy == locate.Entry {
+		// An entry's own bytes, not the whole shared file.
+		if raw, err := locate.Bytes(snap.FS, r.Region); err == nil {
+			d.Raw = string(raw)
+		}
+	} else if raw, err := fs.ReadFile(snap.FS, r.Path); err == nil {
 		d.Raw = string(raw)
 	}
 	t := snap.Definitions.Types[r.Type]

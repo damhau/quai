@@ -64,6 +64,24 @@ func Edit(src []byte, want any) (out []byte, err error) {
 	return out, nil
 }
 
+// Elements returns the entries of the mapping, or the items of the list, at p in src, with their
+// bytes, in file order.
+func Elements(src []byte, p document.Path) ([]document.Element, error) {
+	f, err := parse(src)
+	if err != nil {
+		return nil, err
+	}
+	c, err := f.collectionAt(p)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]document.Element, len(c.elements))
+	for i, el := range c.elements {
+		out[i] = document.Element{Key: el.key, Start: el.start, End: el.end}
+	}
+	return out, nil
+}
+
 // Decode returns the first document of src in the JSON data model, as Edit reads it: nil, bool,
 // string, int64, uint64, float64, []any and map[string]any. Dates stay text, keys are their
 // text, merge keys are merged, and duplicate keys or values outside the data model are errors.

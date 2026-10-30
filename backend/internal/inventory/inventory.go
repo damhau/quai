@@ -45,6 +45,8 @@ type Resource struct {
 	// Code are the values of the file defined in code (an HCL expression): left out of Document,
 	// shown read-only, never written.
 	Code []edit.Code
+	// Region is the part of the repository the resource owns.
+	Region locate.Region
 }
 
 // Scan returns every resource of every type in the snapshot, sorted by ID.
@@ -63,7 +65,7 @@ func Scan(snap *repositories.Snapshot) ([]Resource, error) {
 // ScanType returns the resources of one type. Types whose locator is not implemented yet have
 // none.
 func ScanType(snap *repositories.Snapshot, t *definitions.ResourceType) ([]Resource, error) {
-	loc, err := locate.New(t.Spec.Locate.Strategy, t.Spec.Locate.Path)
+	loc, err := t.Spec.Locate.Locator()
 	if err != nil {
 		return nil, nil //nolint:nilerr // entry and field locators come later
 	}
@@ -84,11 +86,11 @@ func Get(snap *repositories.Snapshot, typeName, key string) (Resource, error) {
 	if t == nil {
 		return Resource{}, fs.ErrNotExist
 	}
-	loc, err := locate.New(t.Spec.Locate.Strategy, t.Spec.Locate.Path)
+	loc, err := t.Spec.Locate.Locator()
 	if err != nil {
 		return Resource{}, err
 	}
-	params, err := loc.Pattern().ParseKey(key)
+	params, err := loc.ParseKey(key)
 	if err != nil {
 		return Resource{}, fs.ErrNotExist
 	}
@@ -99,13 +101,31 @@ func Get(snap *repositories.Snapshot, typeName, key string) (Resource, error) {
 	if _, err := fs.Stat(snap.FS, region.Path); errors.Is(err, fs.ErrNotExist) {
 		return Resource{}, fs.ErrNotExist
 	}
+	if region.Strategy == locate.Entry {
+		// The entry is there unless the file is read and does not hold it; a problem with the
+		// file is listed with the entries the inventory finds.
+		src, err := fs.ReadFile(snap.FS, region.Path)
+		if err != nil {
+			return Resource{}, err
+		}
+		doc, _, err := edit.Decode(region.Path, src)
+		if err != nil {
+			return Resource{}, fs.ErrNotExist
+		}
+		if _, _, ok := locate.Value(doc, region); !ok {
+			return Resource{}, fs.ErrNotExist
+		}
+		if _, problem := loc.Elements(region.Path, src); problem != "" {
+			region.Problem = problem
+		}
+	}
 	return read(snap, t, region), nil
 }
 
 func read(snap *repositories.Snapshot, t *definitions.ResourceType, r locate.Region) Resource {
 	res := Resource{
 		ID: locate.ID(snap.Repository, t.Metadata.Name, r.Key), Repository: snap.Repository, Type: t.Metadata.Name,
-		Key: r.Key, Path: r.Path, Params: r.Params, Status: Conforming,
+		Key: r.Key, Path: r.Path, Params: r.Params, Status: Conforming, Region: r,
 	}
 	if t.Spec.Stack != "" {
 		if p, err := locate.Compile(t.Spec.Stack); err == nil {
@@ -127,6 +147,15 @@ func read(snap *repositories.Snapshot, t *definitions.ResourceType, r locate.Reg
 		res.Status, res.Error = Unparseable, err.Error()
 		return res
 	}
+	if r.Strategy == locate.Entry {
+		// An entry's document is its value; its values defined in code are under it.
+		value, at, ok := locate.Value(decoded, r)
+		if !ok {
+			res.Status, res.Error = Unparseable, "the file does not hold the entry"
+			return res
+		}
+		decoded, code = value, edit.Under(code, at)
+	}
 	res.Code = code
 	doc, ok := decoded.(map[string]any)
 	if !ok {
@@ -147,6 +176,10 @@ func read(snap *repositories.Snapshot, t *definitions.ResourceType, r locate.Reg
 		case len(edit.OutsideCode(ve.Fields, code)) > 0:
 			res.Status, res.Problems = NonConforming, edit.OutsideCode(ve.Fields, code)
 		}
+	}
+	if r.Problem != "" {
+		// The file cannot hold its entries safely (a key twice): none can be edited until fixed.
+		res.Status, res.Error = NonConforming, r.Problem
 	}
 	return res
 }

@@ -122,11 +122,11 @@ func applyTo(cs *ChangeSet, fsys fs.FS, repo *definitions.Repository, r Blueprin
 	if t == nil {
 		return fmt.Errorf("type %s is not defined", typeName)
 	}
-	loc, err := locate.New(t.Spec.Locate.Strategy, t.Spec.Locate.Path)
+	loc, err := t.Spec.Locate.Locator()
 	if err != nil {
 		return err
 	}
-	params, err := loc.Pattern().ParseKey(key)
+	params, err := loc.ParseKey(key)
 	if err != nil {
 		return err
 	}

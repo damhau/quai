@@ -283,6 +283,8 @@ func (c *check) locate(lo Locate, params map[string]bool) {
 		}
 		if !params[lo.KeyParam] {
 			c.add("spec.locate.keyParam", "must name a param")
+		} else if slices.Contains(inPath, lo.KeyParam) {
+			c.add("spec.locate.keyParam", "names the entry, not the file: it cannot be in spec.locate.path")
 		}
 		if lo.Strategy == LocateField && len(lo.Fields) == 0 {
 			c.add("spec.locate.fields", "is required for the field strategy")
