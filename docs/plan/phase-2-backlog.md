@@ -53,8 +53,9 @@ the owner answers them.
 against the tests that show it:
 - **On Gitea, on every push:** the backend tests, and the Playwright scenarios with the compose
   stack's fake runner.
-- **On the Azure DevOps Services sandbox:** the live tests, nightly since 2026-10-30
-  (`.github/workflows/live.yml`) and run locally after each task.
+- **On the Azure DevOps Services sandbox:** the live tests, run locally after each task. The
+  nightly workflow (`.github/workflows/live.yml`) passes without running them, because the
+  `AZURE_DEVOPS_PAT` secret is not set (item 7 below).
 - **On a stand-in for the pilot's repository:** the P2-13 rehearsal on `pilot-infra`.
 
 **The exit, part by part.**
@@ -105,3 +106,6 @@ against the tests that show it:
 5. **The stand-in's resources** in the sandbox organization stay, with item 1: the
    `pilot-infra` repository, its pipelines (45, 46) and its policies (68–70).
 6. **The epics #41–#45** have every task done or moved; they can be closed with this issue.
+7. **Nightly live tests.** `live.yml` runs every night but skips the tests: the repository has no
+   `AZURE_DEVOPS_PAT` secret, so it only prints a notice. Until the owner adds it, the live tests
+   run only locally.
