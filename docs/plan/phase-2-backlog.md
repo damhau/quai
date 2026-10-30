@@ -1,6 +1,6 @@
 # Phase 2: how autonomous sessions work
 
-Status: Active · 2026-10-29
+Status: Done · 2026-10-30 (Phase 3: [Phase 3 backlog](phase-3-backlog.md))
 
 The tasks for [Phase 2](roadmap.md#phase-2-runs-and-status-4-weeks) are GitHub issues in
 milestone [M1 Pilot](https://github.com/damhau/quai/milestones) labelled `phase:2` and

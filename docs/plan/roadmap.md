@@ -82,7 +82,7 @@ Goal: Quai fits repositories that are not one-file-per-resource. See
 [resource types and generators](../design/02-resource-types-and-generators.md)
 and [file editing](../design/03-file-editing.md).
 
-Epics: [GitHub issues labelled `phase:3`](https://github.com/damhau/quai/issues?q=is%3Aissue%20label%3Aphase%3A3). Each epic is broken into task issues when the phase starts.
+Epics: [GitHub issues labelled `phase:3`](https://github.com/damhau/quai/issues?q=is%3Aissue%20label%3Aphase%3A3). Tasks: issues #115–#135 (`P3-01` to `P3-21`); the loop procedure and the test infrastructure are in the [Phase 3 backlog](phase-3-backlog.md).
 
 **Exit:** the pilot's namespace-and-quota, DNS record and firewall rule types (including those backed by HCL) pass round-trip lint on the pilot's repository and are live in their Quai; concurrent requests on two entries of one file do not conflict.
 
