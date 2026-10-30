@@ -1,0 +1,7 @@
+# A locals block mixing literals and expressions: the literals change, the expressions stay.
+block: locals
+set:
+  - path: [sizes, medium]
+    value: {cpu: 4, memory_gb: 16}
+  - path: [sizes, large, memory_gb]
+    value: 64

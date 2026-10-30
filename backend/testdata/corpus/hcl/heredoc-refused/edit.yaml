@@ -1,0 +1,4 @@
+# A heredoc's layout cannot be rewritten in place: Quai refuses to write it.
+set:
+  - path: [motd]
+    value: Welcome.

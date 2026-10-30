@@ -169,6 +169,7 @@ type style struct {
 	nl    string // "\n" or "\r\n"
 	unit  string // one level of indentation; empty for a file written on one line
 	colon string // between a key and its value, such as ": "
+	pad   bool   // a one-line object has a space inside its braces: { "a": 1 }
 }
 
 // detect reads the file's line ending, indentation unit and key separator. A file holding only
@@ -320,6 +321,9 @@ func (s style) render(v any, ind string, multiline bool, rank map[string]int) st
 		slices.SortStableFunc(keys, func(a, b string) int { return byRank(rank, a, b) })
 		var b strings.Builder
 		b.WriteString("{")
+		if !multiline && s.pad {
+			b.WriteString(" ")
+		}
 		for i, k := range keys {
 			if i > 0 {
 				b.WriteString(comma)
@@ -329,8 +333,11 @@ func (s style) render(v any, ind string, multiline bool, rank map[string]int) st
 			}
 			b.WriteString(scalar(k) + s.colon + s.render(v[k], ind+s.unit, multiline, rank))
 		}
-		if multiline {
+		switch {
+		case multiline:
 			b.WriteString(s.nl + ind)
+		case s.pad:
+			b.WriteString(" ")
 		}
 		return b.String() + "}"
 	case []any:
@@ -469,7 +476,14 @@ func (f *file) edits(changes []document.Change, want any) ([]textEdit, error) {
 		childIndent := indent(f.src, starts[0])
 		multiline := f.multiline(n)
 		for _, c := range g.added {
-			text := s.render(c.To, childIndent, multiline, nil)
+			// Like the entry it follows: on one line when that one is an object or array on one line.
+			sibling := len(starts) - 1
+			if c.Kind == document.InsertItem {
+				sibling = max(c.After, 0)
+			}
+			es := s
+			es.pad = f.padded(n, sibling)
+			text := es.render(c.To, childIndent, multiline && !f.oneLineContainer(n, sibling), nil)
 			if c.Kind == document.AddKey {
 				text = scalar(c.Path[len(c.Path)-1]) + s.colon + text
 				out = append(out, textEdit{start: ends[len(ends)-1], end: ends[len(ends)-1], text: "," + sep + text})
@@ -483,6 +497,35 @@ func (f *file) edits(changes []document.Change, want any) ([]textEdit, error) {
 		}
 	}
 	return out, nil
+}
+
+// oneLineContainer reports whether the i-th entry of n is an object or an array written on one
+// line.
+func (f *file) oneLineContainer(n *node, i int) bool {
+	var v *node
+	switch {
+	case i < len(n.members):
+		v = n.members[i].value
+	case i < len(n.items):
+		v = n.items[i]
+	default:
+		return false
+	}
+	return (v.object || v.array) && !bytes.ContainsAny(f.src[v.start:v.end], "\n")
+}
+
+// padded reports whether the i-th entry of n is an object written { like this }.
+func (f *file) padded(n *node, i int) bool {
+	var v *node
+	switch {
+	case i < len(n.members):
+		v = n.members[i].value
+	case i < len(n.items):
+		v = n.items[i]
+	default:
+		return false
+	}
+	return v.object && bytes.HasPrefix(f.src[v.start:v.end], []byte("{ "))
 }
 
 // inMultiline reports whether the value at p sits in a multi-line object or array, so that new

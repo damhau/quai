@@ -5,8 +5,6 @@
     "vmSize": { "value": "Standard_D4s_v5" },
     "adminUsername": { "value": "azureuser" },
     "tags": { "value": { "env": "prod" } },
-    "osDiskSizeGb": {
-      "value": 128
-    }
+    "osDiskSizeGb": { "value": 128 }
   }
 }

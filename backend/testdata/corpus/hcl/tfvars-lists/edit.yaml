@@ -1,0 +1,8 @@
+# A one-line list gains an item; a multi-line list of one-line objects loses one and gains one.
+set:
+  - path: [allowed_cidrs, 2]
+    value: 192.168.0.0/16
+  - path: [dns_records]
+    value:
+      - {name: www, type: CNAME, value: booking.example.com}
+      - {name: mail, type: MX, value: mx.example.com}

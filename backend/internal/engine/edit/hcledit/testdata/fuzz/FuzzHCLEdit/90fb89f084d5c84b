@@ -1,0 +1,7 @@
+go test fuzz v1
+[]byte("locals{\nA={A={A=A}}\n}")
+bool(true)
+uint(1)
+byte('\a')
+string("0")
+int64(7)

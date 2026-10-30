@@ -46,6 +46,7 @@ make generate  # regenerate internal/store/db after changing queries or migratio
 go test ./internal/engine/...            # fast loop on the engine
 go test -fuzz=FuzzYAMLEdit -fuzztime=60s ./internal/engine/edit/yamledit
 go test -fuzz=FuzzJSONEdit -fuzztime=60s ./internal/engine/edit/jsonedit
+go test -fuzz=FuzzHCLEdit -fuzztime=60s ./internal/engine/edit/hcledit
 ```
 
 Frontend (from `frontend/`, Node 22.12+):

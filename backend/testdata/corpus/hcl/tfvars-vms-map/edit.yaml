@@ -1,0 +1,8 @@
+# web01 resized, legacy01 removed with its comment, app01 added after the last VM.
+set:
+  - path: [vms, web01, cpu]
+    value: 8
+  - path: [vms, app01]
+    value: {cpu: 2, memory_gb: 8, disks: [{size_gb: 40}]}
+delete:
+  - path: [vms, legacy01]

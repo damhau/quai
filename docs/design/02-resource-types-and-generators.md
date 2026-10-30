@@ -296,7 +296,7 @@ generate:
 | YAML (single and multi-document) | ✅ | ✅ | `go.yaml.in/yaml/v3` node tree with positions; minimal-diff splicing |
 | JSON | ✅ | ✅ | A parser that keeps every value's byte range; text edits that keep formatting and key order |
 | `*.tfvars.json` | ✅ | ✅ | As JSON |
-| HCL `*.tfvars`, `locals` blocks | ✅ | ✅ | `hashicorp/hcl/v2/hclwrite`, which keeps comments and formatting |
+| HCL `*.tfvars`, `locals` blocks | ✅ | ✅ | `hashicorp/hcl/v2`: `hclsyntax` for every value's byte range, text edits, `hclwrite` to render values and keep `terraform fmt`'s formatting |
 | TOML, INI, XML | via plugin | via plugin | — |
 
 The editors and their safety checks are specified in [03-file-editing.md](03-file-editing.md).

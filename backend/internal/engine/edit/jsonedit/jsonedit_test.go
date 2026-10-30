@@ -59,7 +59,7 @@ func TestEdit(t *testing.T) {
 		{"two adjacent entries removed", pretty, del(p{"name"}, p{"cpu"}),
 			"{\n  \"tags\": {\n    \"app\": \"shop\"\n  },\n  \"disks\": [\n    { \"size_gb\": 80 },\n    { \"size_gb\": 200 }\n  ]\n}\n"},
 		{"an item appended", pretty, set(p{"disks", 2}, map[string]any{"size_gb": 10}),
-			"{\n  \"name\": \"web01\",\n  \"cpu\": 4,\n  \"tags\": {\n    \"app\": \"shop\"\n  },\n  \"disks\": [\n    { \"size_gb\": 80 },\n    { \"size_gb\": 200 },\n    {\n      \"size_gb\": 10\n    }\n  ]\n}\n"},
+			"{\n  \"name\": \"web01\",\n  \"cpu\": 4,\n  \"tags\": {\n    \"app\": \"shop\"\n  },\n  \"disks\": [\n    { \"size_gb\": 80 },\n    { \"size_gb\": 200 },\n    { \"size_gb\": 10 }\n  ]\n}\n"},
 		{"an item removed", pretty, del(p{"disks", 0}),
 			"{\n  \"name\": \"web01\",\n  \"cpu\": 4,\n  \"tags\": {\n    \"app\": \"shop\"\n  },\n  \"disks\": [\n    { \"size_gb\": 200 }\n  ]\n}\n"},
 		{"a value changing type", pretty, set(p{"tags"}, []any{"a", "b"}),
@@ -80,7 +80,7 @@ func TestEdit(t *testing.T) {
 			"{\n\t\"a\": {\n\t\t\"b\": 1,\n\t\t\"c\": {\n\t\t\t\"d\": 1\n\t\t}\n\t}\n}\n"},
 		{"a tfvars.json map of objects", "{\n  \"vms\": {\n    \"web01\": { \"cpu\": 4 },\n    \"db01\": { \"cpu\": 8 }\n  }\n}\n",
 			set(p{"vms", "web01", "cpu"}, 6, p{"vms", "app01"}, map[string]any{"cpu": 2}),
-			"{\n  \"vms\": {\n    \"web01\": { \"cpu\": 6 },\n    \"db01\": { \"cpu\": 8 },\n    \"app01\": {\n      \"cpu\": 2\n    }\n  }\n}\n"},
+			"{\n  \"vms\": {\n    \"web01\": { \"cpu\": 6 },\n    \"db01\": { \"cpu\": 8 },\n    \"app01\": { \"cpu\": 2 }\n  }\n}\n"},
 		{"an empty file", "", set(p{}, map[string]any{"a": 1}), "{\n  \"a\": 1\n}\n"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

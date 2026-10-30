@@ -1,0 +1,7 @@
+go test fuzz v1
+[]byte("A=[\"\"]\nB=[{A=!\"\"}]")
+bool(false)
+uint(3)
+byte('O')
+string("0")
+int64(74)

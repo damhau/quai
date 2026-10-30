@@ -1,0 +1,6 @@
+# A file terraform fmt would change stays as it is around the edit: Quai does not format it.
+set:
+  - path: [vm_size]
+    value: Standard_D4s_v5
+  - path: [zone]
+    value: "2"

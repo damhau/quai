@@ -87,9 +87,12 @@ After applying the edits, the engine checks all of these. Any failure refuses th
 
 ## HCL (`*.tfvars`, `locals`, simple module inputs)
 
-- Library: `github.com/hashicorp/hcl/v2/hclwrite`, HashiCorp's own editor, which keeps comments and formatting. Quai uses `SetAttributeValue`, `RemoveAttribute` and block body edits, then formats only the touched lines with `hclwrite.Format` rules.
-- **Only literal values are managed.** If an attribute's current value is an expression (`cpu = var.default_cpu`, `name = "${local.prefix}-web"`), Quai shows it as "defined in code" and refuses to edit it. Overwriting it with a literal would change the meaning of the configuration.
-- Verification decodes the edited file with `hclsyntax` and compares literal values; non-literal attributes must be byte-identical.
+- Library: `github.com/hashicorp/hcl/v2` (`internal/engine/edit/hcledit`). `hclsyntax` parses the file and keeps the byte range of every attribute, object key and value; changes are text edits on those ranges, as for YAML and JSON (`hclwrite`'s `SetAttributeValue` rewrites a whole attribute, so it cannot change one value of a nested object). `hclwrite` renders new scalars, quoting and escaping strings (`${` becomes `$${`).
+- The document is a body's attributes: a `*.tfvars` file's top-level attributes, or the attributes of a file's one `locals` block.
+- **Only literal values are managed:** numbers, quoted strings without interpolation, booleans, null, and objects and tuples of literals. If a value is an expression (`cpu = var.default_cpu`, `name = "${local.prefix}-web"`, a function call) or a heredoc, Quai shows it as "defined in code", keeps it as it is and refuses to write it: overwriting it with a literal would change the meaning of the configuration. A tuple with code in any item is code as a whole, so that no code sits at an index that shifts; an object with code in it is edited key by key around it.
+- New entries go on a line of their own after their siblings in a multi-line object, tuple or body, with a blank line before them when the siblings are separated by one, and in the style of the entry they follow (an object written on one line, a tuple of one-line objects). A removed entry takes its lines and its own comment lines, and the blank line above it when it was the last.
+- **A formatted file stays formatted.** When `hclwrite.Format` (what `terraform fmt` runs) leaves the original as it is, the result is formatted too, which realigns the equals signs of the touched groups; verification checks that formatting changed only spaces. A file `terraform fmt` would change is left as it is around the edit.
+- Verification decodes the edited file with `hclsyntax` and compares literal values; values defined in code must be byte-identical.
 - Typical use: an `entry` locator on a map in `terraform.tfvars` (`vms = { web01 = { cpu = 4 } }`) or a `locals` block.
 
 ## Concurrency and fingerprints

@@ -1,0 +1,4 @@
+# cpu is defined in code: overwriting it with a literal would change the configuration's meaning.
+set:
+  - path: [cpu]
+    value: 4
