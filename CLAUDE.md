@@ -45,6 +45,7 @@ make check     # tier 2, as CI runs it: build, vet, staticcheck, gosec, govulnch
 make generate  # regenerate internal/store/db after changing queries or migrations
 go test ./internal/engine/...            # fast loop on the engine
 go test -fuzz=FuzzYAMLEdit -fuzztime=60s ./internal/engine/edit/yamledit
+go test -fuzz=FuzzJSONEdit -fuzztime=60s ./internal/engine/edit/jsonedit
 ```
 
 Frontend (from `frontend/`, Node 22.12+):

@@ -1,0 +1,6 @@
+# A minified file stays minified: the value changes in place, the new key is appended compactly.
+set:
+  - path: [data, LOG_LEVEL]
+    value: debug
+  - path: [metadata, labels, tier]
+    value: web

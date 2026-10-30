@@ -80,9 +80,10 @@ After applying the edits, the engine checks all of these. Any failure refuses th
 
 ## JSON and `*.tfvars.json`
 
-- Library: `github.com/tidwall/gjson` to read paths and their raw byte ranges, `github.com/tidwall/sjson` to set and delete by path. Both leave the rest of the document byte-identical.
-- Inserted values are pretty-printed with the file's detected indentation, so a new key in an indented file is indented like its siblings.
-- Key order is preserved; new keys are appended to their object.
+- A parser of its own (`internal/engine/edit/jsonedit`) keeps the byte range of every key and value; the standard library decodes each string and number. Changes are text edits on those ranges, as for YAML, so the rest of the document stays byte-identical. (`tidwall/gjson` and `sjson`, the first plan, neither validate a file nor report duplicate keys, and `sjson` writes a new key without the file's indentation.)
+- Inserted values follow their container: on a line of their own with the siblings' indentation in a multi-line object or array, with the siblings' spacing in a one-line one. New objects and arrays are written on several lines, indented by the file's unit (two spaces, four, a tab), or on one line in a file written on one line. Line endings follow the file.
+- Key order is preserved; new keys are appended to their object, in sorted order. A removed entry takes its separator with it.
+- Refused: duplicate keys (which value counts depends on the reader) and a byte-order mark.
 
 ## HCL (`*.tfvars`, `locals`, simple module inputs)
 

@@ -1,0 +1,7 @@
+# CRLF line endings: the VM size changes in place, a new parameter keeps the CRLF and the
+# indentation of its siblings.
+set:
+  - path: [parameters, vmSize, value]
+    value: Standard_D4s_v5
+  - path: [parameters, osDiskSizeGb]
+    value: {value: 128}

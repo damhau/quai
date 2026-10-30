@@ -1,0 +1,24 @@
+{
+  "region": "westeurope",
+  "vms": {
+    "web01": {
+      "cpu": 8,
+      "memory_gb": 16,
+      "disks": [{ "size_gb": 80, "tier": "ssd" }]
+    },
+    "db01": {
+      "cpu": 8,
+      "memory_gb": 64,
+      "disks": [{ "size_gb": 100, "tier": "ssd" }, { "size_gb": 500, "tier": "ssd" }]
+    },
+    "app01": {
+      "cpu": 2,
+      "disks": [
+        {
+          "size_gb": 40
+        }
+      ],
+      "memory_gb": 8
+    }
+  }
+}

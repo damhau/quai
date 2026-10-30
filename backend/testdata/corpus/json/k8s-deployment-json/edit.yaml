@@ -1,0 +1,9 @@
+# Four-space indentation: replicas and the image change in place; a new label joins the one-line
+# labels object.
+set:
+  - path: [spec, replicas]
+    value: 3
+  - path: [spec, template, spec, containers, 0, image]
+    value: registry.example.com/booking-api:1.9.0
+  - path: [metadata, labels, tier]
+    value: backend

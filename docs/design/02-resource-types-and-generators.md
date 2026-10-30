@@ -294,7 +294,7 @@ generate:
 | Format | Read | Write | Editor |
 | --- | --- | --- | --- |
 | YAML (single and multi-document) | ✅ | ✅ | `go.yaml.in/yaml/v3` node tree with positions; minimal-diff splicing |
-| JSON | ✅ | ✅ | `tidwall/gjson` / `sjson`: path edits that keep formatting and key order |
+| JSON | ✅ | ✅ | A parser that keeps every value's byte range; text edits that keep formatting and key order |
 | `*.tfvars.json` | ✅ | ✅ | As JSON |
 | HCL `*.tfvars`, `locals` blocks | ✅ | ✅ | `hashicorp/hcl/v2/hclwrite`, which keeps comments and formatting |
 | TOML, INI, XML | via plugin | via plugin | — |

@@ -1,0 +1,4 @@
+# A duplicate key: which value counts depends on the reader, so Quai refuses the file.
+set:
+  - path: [b]
+    value: 4
