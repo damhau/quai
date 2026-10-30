@@ -313,10 +313,14 @@ func (s *Service) deliverPR(ctx context.Context, job *river.Job[DeliverArgs], r 
 	if pr.State == connectors.PRMerged {
 		return s.merged(ctx, r, d, pr)
 	}
-	if r.State == Approved {
+	if r.State == Approved || r.State == Merging {
+		// quai/approval succeeds before every attempt: a status job that read the request before
+		// its approval may have published pending after the success.
 		if err := s.publish(ctx, repo, r, d, ""); err != nil {
 			return err
 		}
+	}
+	if r.State == Approved {
 		// When the merge keeps Quai's commit (a rebase), or a person merges, the approvals are a
 		// final comment on the pull request; otherwise the merge's message carries them.
 		if spec.Merge == "manual" || spec.MergeMethod == string(connectors.Rebase) {
@@ -364,8 +368,13 @@ func (s *Service) deliverPR(ctx context.Context, job *river.Job[DeliverArgs], r 
 	if pr, err := prs.Get(ctx, d.PullRequest); err == nil && pr.State == connectors.PRMerged {
 		return s.merged(ctx, r, d, pr)
 	}
-	return nil // the platform merges once its policies pass; webhooks or the poll tell
+	// The platform merges once its policies pass, and webhooks or the poll tell. Quai asks again
+	// meanwhile: a merge the platform scheduled may wait for a check that has already passed.
+	return river.JobSnooze(mergeRecheck)
 }
+
+// mergeRecheck is how long a merging request waits before Quai asks the platform again.
+const mergeRecheck = 20 * time.Second
 
 // mergeMessage is the message of the merge or squash commit: the request's, with its
 // Approved-by trailers.

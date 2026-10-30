@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"io/fs"
 	"net/http"
 	"net/url"
@@ -20,6 +21,7 @@ import (
 	"github.com/damhau/quai/backend/internal/engine/plan"
 	"github.com/damhau/quai/backend/internal/giteatest"
 	"github.com/damhau/quai/backend/internal/gitx"
+	"github.com/damhau/quai/backend/internal/jobs"
 	"github.com/damhau/quai/backend/internal/repositories"
 	"github.com/damhau/quai/backend/internal/secrets"
 )
@@ -96,6 +98,22 @@ func giteaHarnessFiles(t *testing.T, merge, spec string, edit func(path string, 
 		Connectors: &connectors.Registry{Factories: map[string]connectors.Factory{"gitea": giteaconn.New}},
 	})
 	return h, r
+}
+
+// poll polls the repository as the scheduler would: again while a job holds its lock.
+func (h *harness) poll() {
+	h.t.Helper()
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		err := h.ingest.Poll(context.Background(), "infra-live")
+		if err == nil {
+			return
+		}
+		if !errors.Is(err, jobs.ErrLocked) || time.Now().After(deadline) {
+			h.t.Fatal(err)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 }
 
 // awaitDelivery waits until the request's delivery satisfies ok, polling the repository as the

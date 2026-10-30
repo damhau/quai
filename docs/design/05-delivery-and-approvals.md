@@ -105,7 +105,9 @@ with `merge: auto`, Quai waits for the `waitForChecks` (the pull request's statu
 policy evaluations on Azure DevOps), then asks the platform to merge when its own policies pass
 (auto-complete on Azure DevOps; on Gitea a merge, or merge-when-checks-succeed when a required
 check is still pending, since Gitea merges a scheduled pull request only when a check changes)
-with the approved head pinned;
+with the approved head pinned. Until the platform has merged, Quai publishes its status again and
+asks again every 20 seconds: a status published out of order, or a merge scheduled after the last
+check passed, does not leave the request merging;
 with `merge: manual` it stops at the status. The merge, seen by the job, a webhook or a poll (a
 poll re-reads every pull request Quai waits on), applies the request; one merged before Quai's
 approval is recorded as such (`merged_without_approval`). A pull request closed outside Quai

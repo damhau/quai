@@ -153,8 +153,6 @@ func TestPipelinesRunner(t *testing.T) {
 	bob.await(r.ID, "applying")
 	run, _ = fake.Trigger(t.Context(), "infra-apply", "main", nil)
 	fake.Finish(run.ID, "failed", strings.TrimSpace(git(t, bare, "rev-parse", "main")))
-	if err := h.ingest.Poll(t.Context(), "infra-live"); err != nil {
-		t.Fatal(err)
-	}
+	h.poll()
 	bob.await(r.ID, "failed")
 }

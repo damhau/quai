@@ -122,9 +122,7 @@ func TestHealthAndRunToken(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	alice := h.as("alice")
-	if err := h.ingest.Poll(t.Context(), "infra-live"); err != nil {
-		t.Fatal(err)
-	}
+	h.poll()
 	var v HealthView
 	if status, body := alice.do(http.MethodGet, Prefix+"/repositories/infra-live/health", nil, &v); status != http.StatusOK {
 		t.Fatalf("health = %d %s", status, body)
