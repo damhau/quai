@@ -222,11 +222,17 @@ func (f *file) flowText(v any) string {
 		for _, k := range f.keys(v) {
 			parts = append(parts, f.renderKey(k, true)+": "+f.flowText(v[k]))
 		}
+		if f.pad && len(parts) > 0 {
+			return "{ " + strings.Join(parts, ", ") + " }"
+		}
 		return "{" + strings.Join(parts, ", ") + "}"
 	case []any:
 		parts := make([]string, len(v))
 		for i, item := range v {
 			parts[i] = f.flowText(item)
+		}
+		if f.pad && len(parts) > 0 {
+			return "[ " + strings.Join(parts, ", ") + " ]"
 		}
 		return "[" + strings.Join(parts, ", ") + "]"
 	}
@@ -249,13 +255,20 @@ func isCollection(v any) bool {
 // order.
 func (f *file) blockText(v any, indent int, nl string) string {
 	var lines []string
+	like := f.like
+	defer func() { f.like = like }()
 	switch v := v.(type) {
 	case map[string]any:
 		for _, k := range f.keys(v) {
+			f.like = childLike(like, k)
 			lines = append(lines, f.entryText(k, v[k], indent, nl))
 		}
 	case []any:
 		for _, item := range v {
+			f.like = nil
+			if like != nil && like.Kind == yaml.SequenceNode && len(like.Content) > 0 {
+				f.like = like.Content[0]
+			}
 			lines = append(lines, f.itemText(item, indent, nl))
 		}
 	}
@@ -264,12 +277,47 @@ func (f *file) blockText(v any, indent int, nl string) string {
 
 // entryText writes the mapping entry k: v with its key at indent.
 func (f *file) entryText(k string, v any, indent int, nl string) string {
+	if text, ok := f.flowLike(v); ok {
+		return strings.Repeat(" ", indent) + f.renderKey(k, false) + ": " + text
+	}
 	return strings.Repeat(" ", indent) + f.renderKey(k, false) + ":" + f.valueText(v, indent, false, nl)
 }
 
 // itemText writes the sequence item v with its '-' at indent.
 func (f *file) itemText(v any, indent int, nl string) string {
+	if text, ok := f.flowLike(v); ok {
+		return strings.Repeat(" ", indent) + "-" + strings.Repeat(" ", f.item-1) + text
+	}
 	return strings.Repeat(" ", indent) + "-" + f.valueText(v, indent, true, nl)
+}
+
+// flowLike writes v in flow style when the sibling node it is written like is a collection of
+// the same kind in flow style, with brackets padded as the sibling's are.
+func (f *file) flowLike(v any) (string, bool) {
+	n := f.like
+	if n == nil || n.Style&yaml.FlowStyle == 0 || !isCollection(v) {
+		return "", false
+	}
+	if _, isMap := v.(map[string]any); isMap != (n.Kind == yaml.MappingNode) || !isMap && n.Kind != yaml.SequenceNode {
+		return "", false
+	}
+	off, ok := f.offset(n)
+	f.pad = ok && off+1 < len(f.src) && f.src[off+1] == ' '
+	defer func() { f.pad = false }()
+	return f.flowText(v), true
+}
+
+// childLike returns the value of key k in the mapping node n, or nil.
+func childLike(n *yaml.Node, k string) *yaml.Node {
+	if n == nil || n.Kind != yaml.MappingNode {
+		return nil
+	}
+	for i := 0; i+1 < len(n.Content); i += 2 {
+		if n.Content[i].Value == k {
+			return n.Content[i+1]
+		}
+	}
+	return nil
 }
 
 // valueText writes v as the value of an entry at indent: after "key:" or, when dash is set,

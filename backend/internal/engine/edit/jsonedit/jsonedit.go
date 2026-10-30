@@ -60,7 +60,11 @@ const internalError = "internal error"
 // want, Edit returns src itself; a file holding only whitespace gets want written as Create
 // writes it. An edit that cannot be made safely returns a *RefusalError; any other error means
 // src is not valid JSON or want is not a valid document.
-func Edit(src []byte, want any) (out []byte, err error) {
+func Edit(src []byte, want any) ([]byte, error) { return EditWith(src, want, document.Options{}) }
+
+// EditWith is Edit, with opts saying where new keys go and in which order new objects list
+// theirs.
+func EditWith(src []byte, want any, opts document.Options) (out []byte, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			out, err = nil, refuse(nil, "%s: %v", internalError, r)
@@ -79,13 +83,13 @@ func Edit(src []byte, want any) (out []byte, err error) {
 			return src, nil
 		}
 		s := detect(f)
-		return verified(src, []textEdit{{start: 0, end: len(src), text: s.render(want, "", true, nil) + s.nl}}, want)
+		return verified(src, []textEdit{{start: 0, end: len(src), text: s.render(want, "", true, opts.Rank()) + s.nl}}, want)
 	}
 	changes := document.Diff(f.root.value, want)
 	if len(changes) == 0 {
 		return src, nil
 	}
-	edits, err := f.edits(changes, want)
+	edits, err := f.edits(changes, want, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -419,8 +423,9 @@ type textEdit struct {
 
 // edits turns the changes into text edits on the original bytes. Entries added to or removed from
 // one container are handled together, so that their separators stay right.
-func (f *file) edits(changes []document.Change, want any) ([]textEdit, error) {
+func (f *file) edits(changes []document.Change, want any, opts document.Options) ([]textEdit, error) {
 	s := detect(f)
+	rank := opts.Rank()
 	type group struct {
 		parent  document.Path
 		removed map[int]bool
@@ -436,7 +441,7 @@ func (f *file) edits(changes []document.Change, want any) ([]textEdit, error) {
 			if n == nil {
 				return nil, refuse(c.Path, "%s: no node at the path", internalError)
 			}
-			out = append(out, textEdit{start: n.start, end: n.end, text: s.render(c.To, indent(f.src, n.start), f.inMultiline(c.Path), nil)})
+			out = append(out, textEdit{start: n.start, end: n.end, text: s.render(c.To, indent(f.src, n.start), f.inMultiline(c.Path), rank)})
 		default:
 			parent := c.Path[:len(c.Path)-1]
 			key := parent.String()
@@ -471,7 +476,7 @@ func (f *file) edits(changes []document.Change, want any) ([]textEdit, error) {
 		if len(starts) == 0 {
 			// An empty object or array gets its new entries written whole.
 			out = append(out, textEdit{start: n.start, end: n.end,
-				text: s.render(document.ValueAt(want, g.parent), indent(f.src, n.start), f.inMultiline(g.parent), nil)})
+				text: s.render(document.ValueAt(want, g.parent), indent(f.src, n.start), f.inMultiline(g.parent), rank)})
 			continue
 		}
 		if len(g.removed) == len(starts) {
@@ -498,24 +503,27 @@ func (f *file) edits(changes []document.Change, want any) ([]textEdit, error) {
 		sep := f.separator(n, s)
 		childIndent := indent(f.src, starts[0])
 		multiline := f.multiline(n)
+		keys := make([]string, len(n.members))
+		for i, m := range n.members {
+			keys[i] = m.key
+		}
 		for _, c := range g.added {
-			// Like the entry it follows: on one line when that one is an object or array on one line.
-			sibling := len(starts) - 1
-			if c.Kind == document.InsertItem {
-				sibling = max(c.After, 0)
+			after := c.After
+			if c.Kind == document.AddKey {
+				after = opts.After(g.parent, keys, func(i int) bool { return g.removed[i] }, c.Path[len(c.Path)-1].(string))
 			}
+			// Like the entry it follows: on one line when that one is an object or array on one line.
+			sibling := max(after, 0)
 			es := s
 			es.pad = f.padded(n, sibling)
-			text := es.render(c.To, childIndent, multiline && !f.oneLineContainer(n, sibling), nil)
+			text := es.render(c.To, childIndent, multiline && !f.oneLineContainer(n, sibling), rank)
 			if c.Kind == document.AddKey {
 				text = scalar(c.Path[len(c.Path)-1]) + s.colon + text
-				out = append(out, textEdit{start: ends[len(ends)-1], end: ends[len(ends)-1], text: "," + sep + text})
-				continue
 			}
-			if c.After < 0 {
+			if after < 0 {
 				out = append(out, textEdit{start: starts[0], end: starts[0], text: text + "," + sep})
 			} else {
-				out = append(out, textEdit{start: ends[c.After], end: ends[c.After], text: "," + sep + text})
+				out = append(out, textEdit{start: ends[after], end: ends[after], text: "," + sep + text})
 			}
 		}
 	}

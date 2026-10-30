@@ -9,6 +9,7 @@ import (
 	"slices"
 
 	"github.com/damhau/quai/backend/internal/engine/definitions"
+	"github.com/damhau/quai/backend/internal/engine/edit"
 	"github.com/damhau/quai/backend/internal/engine/edit/yamledit"
 	"github.com/damhau/quai/backend/internal/engine/expr"
 	"github.com/damhau/quai/backend/internal/engine/generate"
@@ -130,7 +131,11 @@ func applyTo(cs *ChangeSet, fsys fs.FS, repo *definitions.Repository, r Blueprin
 	if err != nil {
 		return err
 	}
-	current, err := readDocument(fsys, loc, params)
+	region, err := loc.Region(params)
+	if err != nil {
+		return err
+	}
+	current, err := readDocument(fsys, region)
 	if err != nil {
 		return err
 	}
@@ -161,7 +166,7 @@ func applyTo(cs *ChangeSet, fsys fs.FS, repo *definitions.Repository, r Blueprin
 		}
 		req.Kind, req.Values = generate.Update, merge(current, values)
 	}
-	region, err := addType(cs, fsys, t, req)
+	region, err = addType(cs, fsys, t, req)
 	if errors.Is(err, ErrNoChange) {
 		return nil
 	}
@@ -169,21 +174,17 @@ func applyTo(cs *ChangeSet, fsys fs.FS, repo *definitions.Repository, r Blueprin
 		return err
 	}
 	next := current
-	if after := cs.Changes[len(cs.Changes)-1].After; after != nil {
-		if doc, err := yamledit.Decode(after); err == nil {
-			next, _ = doc.(map[string]any)
+	if i := slices.IndexFunc(cs.Changes, func(c Change) bool { return c.Path == region.Path }); i >= 0 && cs.Changes[i].After != nil {
+		if doc, err := documentOf(region, cs.Changes[i].After); err == nil {
+			next = doc
 		}
 	}
 	cs.Resources = append(cs.Resources, Planned{ID: id, Type: t.Metadata.Name, Key: region.Key, Params: params, Values: next})
 	return nil
 }
 
-// readDocument reads the document of a resource of a file type.
-func readDocument(fsys fs.FS, loc *locate.Locator, params map[string]string) (map[string]any, error) {
-	region, err := loc.Region(params)
-	if err != nil {
-		return nil, err
-	}
+// readDocument reads the document of a resource: its file, or its entry in a shared file.
+func readDocument(fsys fs.FS, region locate.Region) (map[string]any, error) {
 	src, err := fs.ReadFile(fsys, region.Path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, fmt.Errorf("%s: %w", region.Path, ErrNotFound)
@@ -191,7 +192,16 @@ func readDocument(fsys fs.FS, loc *locate.Locator, params map[string]string) (ma
 	if err != nil {
 		return nil, err
 	}
-	decoded, err := yamledit.Decode(src)
+	return documentOf(region, src)
+}
+
+// documentOf returns the document of a resource in src, its file.
+func documentOf(region locate.Region, src []byte) (map[string]any, error) {
+	if region.Strategy == locate.Entry {
+		doc, _, err := entryDocument(region, src)
+		return doc, err
+	}
+	decoded, _, err := edit.Decode(region.Path, src)
 	if err != nil {
 		return nil, fmt.Errorf("%s cannot be read, so Quai will not edit it: %w", region.Path, err)
 	}

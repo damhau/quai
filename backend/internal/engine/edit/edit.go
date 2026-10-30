@@ -76,6 +76,21 @@ func Edit(name string, src []byte, want any) ([]byte, error) {
 	}
 }
 
+// EditWith is Edit, with opts saying where new keys go and in which order new objects list
+// theirs.
+func EditWith(name string, src []byte, want any, opts document.Options) ([]byte, error) {
+	switch f, err := format(name); {
+	case err != nil:
+		return nil, err
+	case f == JSON:
+		return jsonedit.EditWith(src, want, opts)
+	case f == HCL:
+		return hcledit.EditWith(src, "", want, opts)
+	default:
+		return yamledit.EditWith(src, want, opts)
+	}
+}
+
 // Create returns a new file holding doc, its object keys listed in keyOrder first.
 func Create(name string, doc any, keyOrder []string) ([]byte, error) {
 	switch f, err := format(name); {

@@ -4,8 +4,8 @@ VALUES ($1, $2, $3, $4, $5)
 RETURNING *;
 
 -- name: CreateChange :exec
-INSERT INTO changes (change_set_id, path, op, before, after)
-VALUES ($1, $2, $3, $4, $5);
+INSERT INTO changes (change_set_id, path, op, before, after, entries)
+VALUES ($1, $2, $3, $4, $5, $6);
 
 -- name: ListChangeSets :many
 SELECT * FROM change_sets WHERE request_id = $1 ORDER BY repository;

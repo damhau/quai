@@ -222,7 +222,12 @@ func (s *Service) PlanType(ctx context.Context, who auth.Identity, in TypeInput)
 	next := current
 	if c := cs.Changes[0]; c.After != nil {
 		if doc, _, err := edit.Decode(c.Path, c.After); err == nil {
-			next, _ = doc.(map[string]any)
+			if region.Strategy != locate.Entry {
+				next, _ = doc.(map[string]any)
+			} else if value, _, ok := locate.Value(doc, region); ok {
+				// An entry's document is its value; a deleted one keeps the document it had.
+				next, _ = value.(map[string]any)
+			}
 		}
 	}
 	p.Inputs = next
@@ -405,7 +410,13 @@ func (s *Service) Submit(ctx context.Context, who auth.Identity, p *Plan, reason
 			return err
 		}
 		for _, c := range p.ChangeSet.Changes {
-			if err := q.CreateChange(ctx, db.CreateChangeParams{ChangeSetID: cs.ID, Path: c.Path, Op: c.Op, Before: c.Before, After: c.After}); err != nil {
+			var entries []byte
+			if c.Entries != nil {
+				if entries, err = json.Marshal(c.Entries); err != nil {
+					return err
+				}
+			}
+			if err := q.CreateChange(ctx, db.CreateChangeParams{ChangeSetID: cs.ID, Path: c.Path, Op: c.Op, Before: c.Before, After: c.After, Entries: entries}); err != nil {
 				return err
 			}
 		}
@@ -707,7 +718,11 @@ func (s *Service) commit(ctx context.Context, r db.Request, cs db.ChangeSet, rep
 	}
 	c := gitx.Commit{Branch: repo.Branch, Message: message(r, cs, approved...), Author: author(r), Fingerprints: fps}
 	for _, ch := range changes {
-		c.Changes = append(c.Changes, plan.Change{Path: ch.Path, Op: ch.Op, Before: ch.Before, After: ch.After})
+		entries, err := plan.DecodeEntries(ch.Entries)
+		if err != nil {
+			return gitx.Commit{}, fmt.Errorf("the entry changes of %s: %w", ch.Path, err)
+		}
+		c.Changes = append(c.Changes, plan.Change{Path: ch.Path, Op: ch.Op, Before: ch.Before, After: ch.After, Entries: entries})
 	}
 	return c, nil
 }
@@ -766,7 +781,7 @@ func (s *Service) stale(ctx context.Context, sets []db.ChangeSet) (string, error
 		var fps map[string]string
 		_ = json.Unmarshal(cs.Fingerprints, &fps)
 		for _, p := range slices.Sorted(maps.Keys(fps)) {
-			now, err := locate.Fingerprint(snap.FS, locate.Region{Strategy: locate.File, Path: p})
+			now, err := locate.FingerprintRef(snap.FS, p)
 			if err != nil {
 				return "", err
 			}

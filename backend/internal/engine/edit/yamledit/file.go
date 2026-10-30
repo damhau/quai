@@ -9,6 +9,8 @@ import (
 	"unicode/utf8"
 
 	"go.yaml.in/yaml/v3"
+
+	"github.com/damhau/quai/backend/internal/engine/edit/document"
 )
 
 // file is a parsed original: its bytes, syntax tree and decoded document, plus the conventions
@@ -22,7 +24,12 @@ type file struct {
 	width int            // indentation step of nested mappings, in columns
 	seq   int            // indentation of a block sequence under its key: width, or 0 for `key:\n- item`
 	item  int            // offset from an item's '-' to its content, usually 2 for "- "
-	rank  map[string]int // the order of new keys, from Create; nil for sorted order
+	rank  map[string]int // the order of new keys, from Create or the options; nil for sorted order
+	opts  document.Options
+	// like is the sibling node a new entry or item follows while it is written: what the sibling
+	// writes in flow style, the new one does too. pad: flowText pads brackets with spaces.
+	like *yaml.Node
+	pad  bool
 }
 
 func parse(src []byte) (*file, error) {

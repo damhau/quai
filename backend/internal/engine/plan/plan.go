@@ -62,6 +62,9 @@ type Change struct {
 	Op     string
 	Before []byte // nil for a create
 	After  []byte // nil for a delete
+	// Entries are the changes to entries of a shared file that make After from Before, for the
+	// entry locator; nil when the change replaces the whole file.
+	Entries []Entry
 }
 
 // ChangeSet is what a request writes to one repository.
@@ -96,7 +99,7 @@ func Type(fsys fs.FS, t *definitions.ResourceType, r generate.Request) (*ChangeS
 }
 
 func addType(cs *ChangeSet, fsys fs.FS, t *definitions.ResourceType, r generate.Request) (locate.Region, error) {
-	if t.Spec.Locate.Strategy != locate.File {
+	if t.Spec.Locate.Strategy != locate.File && t.Spec.Locate.Strategy != locate.Entry {
 		return locate.Region{}, fmt.Errorf("type %s: the %s locator is not available yet", t.Metadata.Name, t.Spec.Locate.Strategy)
 	}
 	loc, err := t.Spec.Locate.Locator()
@@ -107,11 +110,11 @@ func addType(cs *ChangeSet, fsys fs.FS, t *definitions.ResourceType, r generate.
 	if err != nil {
 		return locate.Region{}, err
 	}
-	if region.Strategy == locate.Entry {
-		return locate.Region{}, fmt.Errorf("%s: Quai does not write the entries of shared files yet", region.Path)
-	}
 	if _, ok := edit.FormatOf(region.Path); !ok {
 		return locate.Region{}, fmt.Errorf("%s: Quai edits YAML, JSON and HCL files (.yaml, .yml, .json, .tfvars, .hcl)", region.Path)
+	}
+	if region.Strategy == locate.Entry {
+		return region, addEntry(cs, fsys, t, region, r)
 	}
 	fp, err := locate.Fingerprint(fsys, region)
 	if err != nil {

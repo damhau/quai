@@ -201,7 +201,7 @@ namespaces:
 ```
 
 - Region: one item of the collection (`namespaces[name=orders]`). Other items, the comment and the file's layout are outside the region and never touched.
-- Create: append an item (at the end, or sorted by key if the type says `order: key`). Delete: remove the item and nothing else. Update: edit inside the item.
+- Create: append an item (at the end, or sorted by key if the type says `order: key`: before the first item or entry whose key sorts after it), in its siblings' style; a list item's key field comes first and always holds the key. A file or collection that does not exist yet is created. Delete: remove the item, with its own comments, and nothing else; the file stays. Update: edit inside the item; its key field cannot change. One request may change several entries of one file (a blueprint): they make one file change.
 - Fingerprint: only the item. Two requests on two namespaces in the same file do not conflict; a human edit to `shop` does not invalidate an approval on `orders`.
 - Duplicate keys in the collection make the whole file non-conforming; Quai refuses to edit it until fixed. So does an item without a valid key, or a collection that is not a list (with `key`) or a map (without it).
 - Inventory: every entry of every file matching the path, keyed by the path's params and `keyParam` (`prod-1/orders`). A file without the collection has none; a file that cannot be read lists none, and `quai lint` reports it. The resource page shows the entry's value and its own bytes; its history and its status are its file's.

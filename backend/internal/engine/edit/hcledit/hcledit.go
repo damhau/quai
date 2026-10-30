@@ -90,7 +90,13 @@ func Decode(src []byte, block string) (doc any, code []Code, err error) {
 // is refused. When the body already decodes to want, Edit returns src itself. An edit that cannot
 // be made safely returns a *RefusalError; any other error means src is not valid HCL or want is
 // not a valid document.
-func Edit(src []byte, block string, want any) (out []byte, err error) {
+func Edit(src []byte, block string, want any) ([]byte, error) {
+	return EditWith(src, block, want, document.Options{})
+}
+
+// EditWith is Edit, with opts saying where new keys go and in which order new objects list
+// theirs.
+func EditWith(src []byte, block string, want any, opts document.Options) (out []byte, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			out, err = nil, refuse(nil, "%s: %v", internalError, r)
@@ -120,6 +126,7 @@ func Edit(src []byte, block string, want any) (out []byte, err error) {
 		return src, nil
 	}
 	s := detect(f)
+	s.rank, s.opts = opts.Rank(), opts
 	edits, err := f.edits(changes, want, s)
 	if err != nil {
 		return nil, err
@@ -141,7 +148,12 @@ func Elements(src []byte, block string, p document.Path) ([]document.Element, er
 	}
 	var out []document.Element
 	for _, m := range n.members {
-		out = append(out, document.Element{Key: m.key, Start: m.keyStart, End: m.value.end})
+		// The spaces after a key are padding that formatting aligns with the neighbours.
+		pad := m.keyEnd
+		for pad < m.value.start && (f.src[pad] == ' ' || f.src[pad] == '\t') {
+			pad++
+		}
+		out = append(out, document.Element{Key: m.key, Start: m.keyStart, End: m.value.end, PadStart: m.keyEnd, PadEnd: pad})
 	}
 	for _, item := range n.items {
 		out = append(out, document.Element{Start: item.start, End: item.end})
@@ -293,6 +305,8 @@ type style struct {
 	nl        string // "\n" or "\r\n"
 	unit      string // one level of indentation
 	formatted bool   // hclwrite.Format leaves the file as it is: the result is formatted too
+	rank      map[string]int
+	opts      document.Options
 }
 
 func detect(f *file) style {
@@ -526,7 +540,7 @@ func (f *file) edits(changes []document.Change, want any, s style) ([]textEdit, 
 			if n == nil || n.code {
 				return nil, refuse(c.Path, "%s: no literal value at the path", internalError)
 			}
-			out = append(out, textEdit{start: n.start, end: n.end, text: s.render(c.To, indent(f.src, n.start), f.inMultiline(c.Path), nil)})
+			out = append(out, textEdit{start: n.start, end: n.end, text: s.render(c.To, indent(f.src, n.start), f.inMultiline(c.Path), s.rank)})
 		default:
 			parent := c.Path[:len(c.Path)-1]
 			k := parent.String()
@@ -579,13 +593,13 @@ func (f *file) containerEdits(n *node, at document.Path, removed map[int]bool, a
 		if n.body {
 			return f.fillBody(n, at, want, s), nil
 		}
-		return []textEdit{{start: n.start, end: n.end, text: s.render(document.ValueAt(want, at), indent(f.src, n.start), f.inMultiline(at), nil)}}, nil
+		return []textEdit{{start: n.start, end: n.end, text: s.render(document.ValueAt(want, at), indent(f.src, n.start), f.inMultiline(at), s.rank)}}, nil
 	}
 	var out []textEdit
 	multiline := f.multiline(n)
 	if !multiline && len(removed) == len(starts) {
 		// Nothing of a one-line container stays, code included: it is written anew.
-		return []textEdit{{start: n.start, end: n.end, text: s.render(document.ValueAt(want, at), indent(f.src, n.start), f.inMultiline(at), nil)}}, nil
+		return []textEdit{{start: n.start, end: n.end, text: s.render(document.ValueAt(want, at), indent(f.src, n.start), f.inMultiline(at), s.rank)}}, nil
 	}
 	if multiline {
 		// A removed entry takes its lines, and the comment lines right above it unless it is the
@@ -634,13 +648,20 @@ func (f *file) containerEdits(n *node, at document.Path, removed map[int]bool, a
 		}
 	}
 	childIndent := indent(f.src, starts[0])
+	keys := make([]string, len(n.members))
+	for i, m := range n.members {
+		keys[i] = m.key
+	}
 	for _, c := range added {
 		after := last
-		if c.Kind == document.InsertItem {
+		switch c.Kind {
+		case document.InsertItem:
 			after = c.After
+		case document.AddKey:
+			after = s.opts.After(at, keys, func(i int) bool { return removed[i] }, c.Path[len(c.Path)-1].(string))
 		}
 		// Like the entry it follows: on one line when that one is an object or tuple on one line.
-		entry := s.render(c.To, childIndent, multiline && !f.oneLineContainer(n, max(after, 0)), nil)
+		entry := s.render(c.To, childIndent, multiline && !f.oneLineContainer(n, max(after, 0)), s.rank)
 		blankBefore := ""
 		if c.Kind == document.AddKey {
 			entry = key(c.Path[len(c.Path)-1].(string)) + " = " + entry
@@ -708,7 +729,7 @@ func (f *file) fillBody(n *node, at document.Path, want any, s style) []textEdit
 			b.WriteString(s.nl)
 		}
 		for _, k := range s.keys(m, nil) {
-			b.WriteString(key(k) + " = " + s.render(m[k], "", true, nil) + s.nl)
+			b.WriteString(key(k) + " = " + s.render(m[k], "", true, s.rank) + s.nl)
 		}
 		return []textEdit{{start: len(f.src), end: len(f.src), text: b.String()}}
 	}
@@ -716,7 +737,7 @@ func (f *file) fillBody(n *node, at document.Path, want any, s style) []textEdit
 	var b strings.Builder
 	b.WriteString("{" + s.nl)
 	for _, k := range s.keys(m, nil) {
-		b.WriteString(ind + s.unit + key(k) + " = " + s.render(m[k], ind+s.unit, true, nil) + s.nl)
+		b.WriteString(ind + s.unit + key(k) + " = " + s.render(m[k], ind+s.unit, true, s.rank) + s.nl)
 	}
 	return []textEdit{{start: n.start, end: n.end, text: b.String() + ind + "}"}}
 }

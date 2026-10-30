@@ -29,7 +29,11 @@ import (
 // json.Number, []any and map[string]any, nested freely. When src already decodes to want, Edit
 // returns src itself. An edit that cannot be made safely returns a *RefusalError; any other error
 // means want is not a valid document.
-func Edit(src []byte, want any) (out []byte, err error) {
+func Edit(src []byte, want any) ([]byte, error) { return EditWith(src, want, document.Options{}) }
+
+// EditWith is Edit, with opts saying where new keys go and in which order new mappings list
+// theirs.
+func EditWith(src []byte, want any, opts document.Options) (out []byte, err error) {
 	// The parser's positions are not trustworthy on every input. A bug that lets one through as
 	// an out-of-range offset must refuse the edit, not crash the caller; the fuzz target treats
 	// such a refusal as a failure.
@@ -46,6 +50,7 @@ func Edit(src []byte, want any) (out []byte, err error) {
 	if err != nil {
 		return nil, err
 	}
+	f.rank, f.opts = opts.Rank(), opts
 	changes := document.Diff(f.value, want)
 	if len(changes) == 0 {
 		return src, nil

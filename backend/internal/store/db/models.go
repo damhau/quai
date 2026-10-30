@@ -31,6 +31,7 @@ type Change struct {
 	Op          string
 	Before      []byte
 	After       []byte
+	Entries     []byte
 }
 
 type ChangeSet struct {

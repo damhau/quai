@@ -262,8 +262,8 @@ type Commit struct {
 	Changes []plan.Change
 	Message string
 	Author  Signature
-	// Fingerprints are the regions' fingerprints when the request was planned, by path; each
-	// must still hold on the branch's head.
+	// Fingerprints are the regions' fingerprints when the request was planned, by reference
+	// (locate.Region.Ref); each must still hold on the branch's head.
 	Fingerprints map[string]string
 }
 
@@ -311,7 +311,10 @@ func (m *Mirror) commitOnce(ctx context.Context, c Commit, attempt int) (string,
 		return "", err
 	}
 	// Only the regions to check and the files to change are checked out.
-	sparse := slices.Collect(maps.Keys(c.Fingerprints))
+	var sparse []string
+	for ref := range c.Fingerprints {
+		sparse = append(sparse, locate.RefPath(ref))
+	}
 	for _, ch := range c.Changes {
 		sparse = append(sparse, ch.Path)
 	}
@@ -323,11 +326,7 @@ func (m *Mirror) commitOnce(ctx context.Context, c Commit, attempt int) (string,
 	defer func() { _ = wt.Close() }()
 
 	for _, p := range slices.Sorted(maps.Keys(c.Fingerprints)) {
-		strategy := locate.File
-		if info, err := os.Lstat(filepath.Join(wt.dir, filepath.FromSlash(p))); err == nil && info.IsDir() {
-			strategy = locate.Dir
-		}
-		now, err := locate.Fingerprint(wt.FS(), locate.Region{Strategy: strategy, Path: p})
+		now, err := locate.FingerprintRef(wt.FS(), p)
 		if err != nil {
 			return "", err
 		}
@@ -345,10 +344,21 @@ func (m *Mirror) commitOnce(ctx context.Context, c Commit, attempt int) (string,
 				return "", err
 			}
 		default:
+			// A change to entries of a shared file is made again on the file as it is now.
+			after := ch.After
+			if len(ch.Entries) > 0 {
+				current, err := fs.ReadFile(wt.FS(), ch.Path)
+				if err != nil && !errors.Is(err, fs.ErrNotExist) {
+					return "", err
+				}
+				if after, err = ch.On(current); err != nil {
+					return "", fmt.Errorf("%w: %s: %v", ErrStale, ch.Path, err)
+				}
+			}
 			if err := os.MkdirAll(filepath.Dir(full), 0o750); err != nil {
 				return "", err
 			}
-			if err := os.WriteFile(full, ch.After, 0o600); err != nil {
+			if err := os.WriteFile(full, after, 0o600); err != nil {
 				return "", err
 			}
 		}

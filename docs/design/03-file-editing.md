@@ -37,7 +37,7 @@ never writes a whole file it did not create. Instead:
 | Scalar inside a flow collection (`{ vlan: 130, ip: 10.0.13.20 }`) | Same: replace the scalar's bytes inside the braces. |
 | Key added to a block mapping | Insert `key: value` lines after the mapping's last entry, with the indentation of its siblings. |
 | Key removed | Remove the entry's lines, including its own comments, and nothing else. |
-| List item added | Insert after the last item, matching the sibling items' style (`- ` offset, indentation). |
+| List item added | Insert after the last item, matching the sibling items' style (`- ` offset, indentation, and the flow style of the values the sibling writes in flow: `quota: { cpu: "4" }`). |
 | List item removed | Remove that item's lines. |
 | Nested value added (`network.ip` where `network` has no `ip`) | Insert into the nearest existing mapping. |
 | Value changes type (scalar to mapping) | Replace the whole node; render the new subtree in block style with the detected indentation. |
@@ -53,6 +53,7 @@ Details the table leaves open:
 - **Flow collections** get the same changes inside their brackets: new entries after the last one with `, `, removed ones with their separator. A removal that would take a comment with it is refused.
 - **Lists** are compared item by item: equal items at both ends are kept, the items in between are compared pairwise (so a changed item is edited in place), and the surplus is inserted or removed. When no original item survives, the whole list is replaced. Mappings that share no key with the intended value are replaced the same way.
 - **Emptied collections** become `{}` or `[]`.
+- **Placement options**, for the `entry` locator: a new entry of a mapping can go in key order (before the first remaining entry whose key sorts after it) instead of at the end, and the keys of new mappings can be ranked like a new file's. The three editors take the same options.
 - **A line comment after a value** that becomes several lines stays on the first line (`key: # note` followed by the new block), so it never ends up inside a block scalar's content.
 
 ### Scalars
@@ -67,7 +68,7 @@ After applying the edits, the engine checks all of these. Any failure refuses th
 
 1. The edited file parses without errors or warnings.
 2. Decoding it yields exactly the intended document (deep equality in the JSON data model, with type-aware comparison so `8` and `"8"` differ; numbers compare by value, so `8` and `8.0` are equal).
-3. Every byte outside the region's span is unchanged. For `entry` and `field` regions this is checked against the original byte ranges of the other items.
+3. Every byte outside the region's span is unchanged. For `entry` and `field` regions this is checked against the original byte ranges of the other items: each other entry keeps its content and its place. In HCL the padding after a key that aligns the `=` signs is the collection's layout, not the entry's: formatting realigns the neighbours of a new or longer key, and their content, without that padding, stays.
 4. Within the region, the changed lines are only those that contain changed paths (computed from node positions).
 5. For YAML: no anchor or alias is involved in a changed node. Editing a node that other nodes alias would silently change them too.
 
@@ -111,7 +112,15 @@ on the current base:
 
 Edits from different requests to different regions of the same file are
 independent, because each is re-applied by path on the current base rather than
-replayed as a stored patch.
+replayed as a stored patch. A change set names its regions by reference: a file
+or directory by its path, an entry by its file, collection and key
+(`clusters/prod-1/namespaces.yaml#namespaces[name=orders]`). A change to entries
+of a shared file keeps the entry changes that made it (create, update or delete,
+with the entry's new value); when the file is no longer what the request was
+planned on, delivery makes them again on the file as it is, verified as any edit
+is. The change set's hash and its approvals stay: they are bound to the entry's
+content, which its fingerprint shows unchanged. An entry's fingerprint leaves out
+HCL's alignment padding (see verification), so realigning it is not a change.
 
 ## Testing
 

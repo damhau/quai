@@ -200,6 +200,60 @@ const (
 type Element struct {
 	Key        string // the entry's key; empty for a list item
 	Start, End int    // its bytes: from its key (or a block item's '-') to the end of its value
+	// Pad is the padding after an entry's key that formatting aligns with its neighbours (HCL's
+	// `key   = value`), empty elsewhere: it belongs to the layout of the collection, not to the
+	// entry, so Content leaves it out.
+	PadStart, PadEnd int
+}
+
+// Content returns the element's bytes in src without its alignment padding: what changes only
+// when the element does.
+func (e Element) Content(src []byte) []byte {
+	if e.PadEnd <= e.PadStart {
+		return src[e.Start:e.End]
+	}
+	return append(slices.Clone(src[e.Start:e.PadStart]), src[e.PadEnd:e.End]...)
+}
+
+// Options say where an editor puts what it adds.
+type Options struct {
+	// KeyOrder ranks the keys of new objects: those listed come first, in that order; the others
+	// follow in sorted order.
+	KeyOrder []string
+	// Sorted are the objects that keep their keys in order: a new key goes before the first
+	// remaining entry whose key sorts after it, instead of after the last entry.
+	Sorted []Path
+}
+
+// Rank returns KeyOrder as the rank of each key, or nil.
+func (o Options) Rank() map[string]int {
+	if len(o.KeyOrder) == 0 {
+		return nil
+	}
+	rank := make(map[string]int, len(o.KeyOrder))
+	for i, k := range o.KeyOrder {
+		if _, ok := rank[k]; !ok {
+			rank[k] = i
+		}
+	}
+	return rank
+}
+
+// After returns the index of the entry a new key goes after in the object at p, whose keys are
+// written in the order keys lists them: the last one when the object is not Sorted; otherwise the
+// last remaining entry before the first one that sorts after key, or -1 for the start.
+func (o Options) After(p Path, keys []string, removed func(int) bool, key string) int {
+	after := -1
+	for i, k := range keys {
+		if removed(i) {
+			continue
+		}
+		if k > key && slices.ContainsFunc(o.Sorted, func(s Path) bool { return slices.Equal(s, p) }) {
+			break
+		}
+		after = i
+	}
+	return after
 }
 
 // Change is one difference between the current and the intended document.

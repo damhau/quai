@@ -210,7 +210,13 @@ func (f *file) collectionEdits(p path, changes []change) ([]textEdit, error) {
 			}
 			removed[i] = true
 		case addKey:
-			added = append(added, addition{key: ch.Path[len(ch.Path)-1].(string), value: ch.To, after: len(c.elements) - 1})
+			key := ch.Path[len(ch.Path)-1].(string)
+			keys := make([]string, len(c.elements))
+			for i, el := range c.elements {
+				keys[i] = el.key
+			}
+			after := f.opts.After(p, keys, func(i int) bool { return removed[i] }, key)
+			added = append(added, addition{key: key, value: ch.To, after: after})
 		case insertItem:
 			added = append(added, addition{value: ch.To, after: ch.After})
 		}
@@ -224,6 +230,7 @@ func (f *file) collectionEdits(p path, changes []change) ([]textEdit, error) {
 	if err != nil {
 		return nil, err
 	}
+	slices.SortStableFunc(added, func(a, b addition) int { return a.after - b.after })
 	for len(added) > 0 {
 		n := 1
 		for n < len(added) && added[n].after == added[0].after {
@@ -349,6 +356,10 @@ func (f *file) insertion(c *collection, adds []addition) (textEdit, error) {
 	indent := c.elements[0].indent
 	nl := f.newline(c.elements[max(after, 0)].start)
 	lines := make([]string, len(adds))
+	// New elements are written like the one they follow (the first one, at the start).
+	sibling := c.elements[max(after, 0)].nodes
+	f.like = sibling[len(sibling)-1]
+	defer func() { f.like = nil }()
 	for i, a := range adds {
 		if c.mapping {
 			lines[i] = f.entryText(a.key, a.value, indent, nl)

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io/fs"
 	"log/slog"
 	"maps"
 	"slices"
@@ -131,11 +130,7 @@ func changedRegion(ctx context.Context, repo *repositories.Repo, cs db.ChangeSet
 		return "", err
 	}
 	for _, p := range slices.Sorted(maps.Keys(fps)) {
-		strategy := locate.File
-		if entries, err := fs.ReadDir(files, p); err == nil && entries != nil {
-			strategy = locate.Dir
-		}
-		now, err := locate.Fingerprint(files, locate.Region{Strategy: strategy, Path: p})
+		now, err := locate.FingerprintRef(files, p)
 		if err != nil {
 			return "", err
 		}
@@ -283,7 +278,8 @@ func (s *Service) owned(ctx context.Context, cs db.ChangeSet) (func(string) bool
 		if paths[p] {
 			return true
 		}
-		for region := range fps {
+		for ref := range fps {
+			region := locate.RefPath(ref)
 			if p == region || strings.HasPrefix(p, strings.TrimSuffix(region, "/")+"/") {
 				return true
 			}

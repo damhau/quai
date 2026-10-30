@@ -13,8 +13,8 @@ import (
 )
 
 const createChange = `-- name: CreateChange :exec
-INSERT INTO changes (change_set_id, path, op, before, after)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO changes (change_set_id, path, op, before, after, entries)
+VALUES ($1, $2, $3, $4, $5, $6)
 `
 
 type CreateChangeParams struct {
@@ -23,6 +23,7 @@ type CreateChangeParams struct {
 	Op          string
 	Before      []byte
 	After       []byte
+	Entries     []byte
 }
 
 func (q *Queries) CreateChange(ctx context.Context, arg CreateChangeParams) error {
@@ -32,6 +33,7 @@ func (q *Queries) CreateChange(ctx context.Context, arg CreateChangeParams) erro
 		arg.Op,
 		arg.Before,
 		arg.After,
+		arg.Entries,
 	)
 	return err
 }
@@ -113,7 +115,7 @@ func (q *Queries) ListChangeSets(ctx context.Context, requestID uuid.UUID) ([]Ch
 }
 
 const listChanges = `-- name: ListChanges :many
-SELECT change_set_id, path, op, before, after FROM changes WHERE change_set_id = $1 ORDER BY path
+SELECT change_set_id, path, op, before, after, entries FROM changes WHERE change_set_id = $1 ORDER BY path
 `
 
 func (q *Queries) ListChanges(ctx context.Context, changeSetID uuid.UUID) ([]Change, error) {
@@ -131,6 +133,7 @@ func (q *Queries) ListChanges(ctx context.Context, changeSetID uuid.UUID) ([]Cha
 			&i.Op,
 			&i.Before,
 			&i.After,
+			&i.Entries,
 		); err != nil {
 			return nil, err
 		}
