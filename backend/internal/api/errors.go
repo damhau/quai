@@ -51,7 +51,7 @@ func Problem(err error, prefix string) huma.StatusError {
 		return huma.Error409Conflict(err.Error())
 	case errors.Is(err, requests.ErrNotApprover):
 		return huma.Error403Forbidden(err.Error())
-	case errors.Is(err, plan.ErrExists):
+	case errors.Is(err, plan.ErrExists), errors.Is(err, plan.ErrPin):
 		return huma.Error409Conflict(err.Error())
 	case errors.Is(err, plan.ErrNoChange):
 		return huma.Error422UnprocessableEntity(err.Error())

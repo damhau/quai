@@ -8,6 +8,7 @@ require (
 	cel.dev/cel-go v0.33.0
 	cel.dev/expr v0.25.2
 	code.gitea.io/sdk/gitea v0.25.1
+	github.com/Masterminds/semver/v3 v3.5.0
 	github.com/alexedwards/scs/pgxstore v0.0.0-20251002162104-209de6e426de
 	github.com/alexedwards/scs/v2 v2.9.0
 	github.com/coreos/go-oidc/v3 v3.21.0

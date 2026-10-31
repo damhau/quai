@@ -138,9 +138,9 @@ func goldenToRequest(fsys fs.FS, t *definitions.ResourceType, in goldenRequest) 
 	switch in.Kind {
 	case generate.Create:
 		return req, nil
-	case generate.Update, generate.Delete, generate.Action:
+	case generate.Update, generate.Delete, generate.Action, generate.Migrate:
 	default:
-		return req, fmt.Errorf("kind: must be create, update, delete or action, not %q", in.Kind)
+		return req, fmt.Errorf("kind: must be create, update, delete, action or migrate, not %q", in.Kind)
 	}
 	loc, err := t.Spec.Locate.Locator()
 	if err != nil {

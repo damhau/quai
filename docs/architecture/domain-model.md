@@ -44,7 +44,7 @@ erDiagram
 | **Catalog** | What users can request: blueprints, plus every type not hidden from the catalog. | Catalog repository, DB index |
 | **Blueprint** | A catalog item that composes one or more resources, possibly across repositories, behind one form and one approval. See [blueprints and change sets](../design/04-blueprints-and-change-sets.md). | Catalog repository |
 | **Instance** | One deployment of a blueprint: the set of resources it created, under one name. | Instance record in Git |
-| **Request** | A user's ask: create, update, delete, or a day-2 action. Holds the reason, the plan and the approval state. | DB |
+| **Request** | A user's ask: create, update, delete, a day-2 action, or the migration of a type's non-conforming resources. Holds the reason, the plan and the approval state. | DB |
 | **Change set** | The rendered change of a request: per repository, the file operations, the region fingerprints and a content hash. | DB |
 | **Delivery** | How a change reaches a repository: a pull request (default) or a direct commit. | DB, Git platform |
 | **Connector** | The per-platform integration (Azure DevOps first) that Quai uses for pull requests, statuses, policies, webhooks and pipelines. See [Git connectors](../design/12-git-connectors.md). | Code |

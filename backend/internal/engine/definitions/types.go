@@ -1,6 +1,10 @@
 package definitions
 
 import (
+	"fmt"
+
+	"github.com/Masterminds/semver/v3"
+
 	"github.com/damhau/quai/backend/internal/engine/expr"
 	"github.com/damhau/quai/backend/internal/engine/locate"
 	"github.com/damhau/quai/backend/internal/engine/schema"
@@ -57,6 +61,11 @@ type TypeSpec struct {
 	UI          UI                `json:"ui"`
 	Approval    Approval          `json:"approval"`
 	Actions     []Action          `json:"actions,omitempty"`
+	// Migrate is a CEL binding that sees a resource's values as doc and its params, and gives a
+	// JSON merge patch of the values (docs/design/02, schema evolution): a migrate request applies
+	// it to every non-conforming resource of the type that it makes conform.
+	Migrate         string         `json:"migrate,omitempty"`
+	MigrateTemplate *expr.Template `json:"-"`
 }
 
 // Locator strategies.
@@ -262,6 +271,43 @@ type TypeRef struct {
 	Repository string `json:"repository,omitempty"`
 	Name       string `json:"name"`
 	Version    string `json:"version,omitempty"`
+}
+
+// Pin checks the range the reference pins (Version) against the type's metadata.version: it
+// returns why the type is outside it, or "" when it is in it or the reference pins none. A type
+// with a new major version is outside the ranges of the blueprints written for the old one, and
+// the catalog flags them (docs/design/02, schema evolution).
+func (r TypeRef) Pin(t *ResourceType) string {
+	if r.Version == "" || t == nil {
+		return ""
+	}
+	c, err := semver.NewConstraint(r.Version)
+	if err != nil {
+		return fmt.Sprintf("type %s: %q is not a version range: %v", r.Name, r.Version, err)
+	}
+	if t.Metadata.Version == "" {
+		return fmt.Sprintf("pins type %s %s, which has no metadata.version", r.Name, r.Version)
+	}
+	v, err := semver.NewVersion(t.Metadata.Version)
+	if err != nil || !c.Check(v) {
+		return fmt.Sprintf("pins type %s %s, and the type is at %s", r.Name, r.Version, t.Metadata.Version)
+	}
+	return ""
+}
+
+// Pins returns why the blueprint's references are outside the versions of the types in repo
+// that they pin: one message per resource, prefixed with its id.
+func (b *Blueprint) Pins(repo *Repository) []string {
+	var out []string
+	for _, r := range b.Spec.Resources {
+		if r.Type.Repository != "" {
+			continue // resolved with multi-repository change sets
+		}
+		if msg := r.Type.Pin(repo.Types[r.Type.Name]); msg != "" {
+			out = append(out, r.ID+": "+msg)
+		}
+	}
+	return out
 }
 
 // BlueprintAction is a day-2 action of a blueprint, fanned out to its resources.

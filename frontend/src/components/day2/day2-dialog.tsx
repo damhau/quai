@@ -16,8 +16,12 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { fieldErrors, hasFieldErrors, problemMessage } from "@/lib/problems"
 import { useLivePlan } from "@/lib/use-live-plan"
 
-/** Day2 is a change to an existing resource: edit its settings, run one of its actions, or delete it. */
-export type Day2 = { kind: "update" } | { kind: "delete" } | { kind: "action"; action: ActionView }
+/**
+ * Day2 is a change to an existing resource: edit its settings, run one of its actions, or delete
+ * it; or, for a resource its type's migration fixes, migrate every non-conforming resource of the
+ * type.
+ */
+export type Day2 = { kind: "update" } | { kind: "delete" } | { kind: "action"; action: ActionView } | { kind: "migrate" }
 
 export function Day2Dialog({ resource, type, day2, onClose }: { resource: ResourceDetail; type: TypeView; day2: Day2 | null; onClose: () => void }) {
   return (
@@ -37,6 +41,8 @@ function title(day2: Day2, name: string) {
       return `Delete ${name}`
     case "action":
       return `${day2.action.title ?? day2.action.name}: ${name}`
+    case "migrate":
+      return `Migrate ${name}`
   }
 }
 
@@ -68,11 +74,13 @@ function Day2Form({ resource, type, day2 }: { resource: ResourceDetail; type: Ty
   const locked = action ? [] : Object.entries(type.ui.fields ?? {}).flatMap(([p, f]) => (f.immutable ? [p] : []))
   const code = useMemo(() => Object.fromEntries((resource.definedInCode ?? []).map((c) => [c.field, c.text])), [resource.definedInCode])
 
+  const migrate = day2.kind === "migrate"
+  const form = day2.kind === "update" || day2.kind === "action"
   const body: TypeRequestInputBody = {
     repository: resource.repository,
     type: resource.type,
     kind: day2.kind,
-    key: resource.key,
+    ...(!migrate && { key: resource.key }),
     ...(day2.kind === "update" && { values }),
     ...(action && { action: action.name, actionInputs: values }),
   }
@@ -89,9 +97,10 @@ function Day2Form({ resource, type, day2 }: { resource: ResourceDetail; type: Ty
   useEffect(() => reset(), [settled, reset]) // a submit error is about the form as it was
 
   const problem = submit.error ?? plan.error
-  const local = day2.kind === "delete" ? {} : localErrors(schema as JsonSchema, schema, values, hidden)
+  const local = form ? localErrors(schema as JsonSchema, schema, values, hidden) : {}
   const errors = { ...Object.fromEntries(Object.entries(local).filter(([p]) => touched.has(p))), ...fieldErrors(problem, action ? "body.actionInputs" : "body.values") }
-  const name = resource.params.name ?? resource.key
+  const name = migrate ? `every ${type.title}` : (resource.params.name ?? resource.key)
+  const unmigrated = plan.data?.unmigrated ?? []
 
   return (
     <>
@@ -99,7 +108,11 @@ function Day2Form({ resource, type, day2 }: { resource: ResourceDetail; type: Ty
         <DialogTitle>{title(day2, name)}</DialogTitle>
         <DialogDescription>
           {action?.description ??
-            (day2.kind === "delete" ? (
+            (migrate ? (
+              <>
+                Applies the type&apos;s migration to every {type.title} that does not match its schema, in one change set reviewed like any other.
+              </>
+            ) : day2.kind === "delete" ? (
               <>
                 Removes <code className="font-mono">{resource.path}</code> from the repository; the stack then destroys what it describes.
               </>
@@ -119,7 +132,7 @@ function Day2Form({ resource, type, day2 }: { resource: ResourceDetail; type: Ty
             submit.mutate({ body: { ...body, reason } })
           }}
         >
-          {day2.kind !== "delete" && (
+          {form && (
             <SchemaForm
               schema={schema}
               propertyOrder={action ? ui.order : type.propertyOrder}
@@ -132,6 +145,18 @@ function Day2Form({ resource, type, day2 }: { resource: ResourceDetail; type: Ty
               code={action ? undefined : code}
               onTouch={touch}
             />
+          )}
+          {unmigrated.length > 0 && (
+            <div className="grid gap-1 text-sm" role="region" aria-label="Left as they are">
+              <p className="font-medium">Left as they are, to fix in Git</p>
+              <ul className="list-disc pl-4">
+                {unmigrated.map((u) => (
+                  <li key={u.key}>
+                    <code className="font-mono">{u.key}</code>: {u.reason}
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
           <ReasonField value={reason} onChange={setReason} needsApproval={(plan.data?.rules?.length ?? 0) > 0} error={fieldErrors(problem, "body").reason} />
           {submit.isError && !hasFieldErrors(submit.error) && (

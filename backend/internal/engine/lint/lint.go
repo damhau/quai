@@ -29,6 +29,11 @@ type Report struct {
 	Blueprints int
 	Resources  int
 	Tests      int // golden examples
+	// NonConforming counts, by type, the resources whose files do not conform to its schema
+	// (docs/design/02, schema evolution); Migratable those of them the type's migration fixes,
+	// which a migrate request will, and which are not problems.
+	NonConforming map[string]int
+	Migratable    map[string]int
 	// Problems fail the check.
 	Problems definitions.Problems
 }
@@ -36,9 +41,16 @@ type Report struct {
 // Run checks the repository fsys.
 func Run(fsys fs.FS) Report {
 	repo, problems := definitions.Load(fsys)
-	r := Report{Types: len(repo.Types), Blueprints: len(repo.Blueprints), Problems: problems}
+	r := Report{Types: len(repo.Types), Blueprints: len(repo.Blueprints), Problems: problems,
+		NonConforming: map[string]int{}, Migratable: map[string]int{}}
 	for _, name := range slices.Sorted(maps.Keys(repo.Types)) {
 		r.checkType(fsys, repo.Types[name])
+	}
+	for _, name := range slices.Sorted(maps.Keys(repo.Blueprints)) {
+		b := repo.Blueprints[name]
+		for _, msg := range b.Pins(repo) {
+			r.problem(b.Path, "spec.resources", "%s", msg)
+		}
 	}
 	r.checkTests(fsys, repo)
 	sortProblems(r.Problems)
@@ -188,6 +200,24 @@ func (r *Report) conforms(where string, t *definitions.ResourceType, doc map[str
 	return len(fields) == 0
 }
 
+// conformsOrMigrates is conforms for a resource of a type with a migration: a file that does not
+// conform but that the migration makes conform is counted, not a problem.
+func (r *Report) conformsOrMigrates(where string, t *definitions.ResourceType, region locate.Region, doc map[string]any, code []edit.Code) bool {
+	err := t.FileSchema.Validate(doc)
+	var ve *schema.ValidationError
+	if err == nil || (errors.As(err, &ve) && len(edit.OutsideCode(ve.Fields, code)) == 0) {
+		return true
+	}
+	r.NonConforming[t.Metadata.Name]++
+	if t.Spec.MigrateTemplate != nil {
+		if _, err := generate.Identity(t, generate.Request{Kind: generate.Migrate, Params: region.Params, Current: doc, Code: code}); err == nil {
+			r.Migratable[t.Metadata.Name]++
+			return false
+		}
+	}
+	return r.conforms(where, t, doc, code)
+}
+
 func (r *Report) checkFile(fsys fs.FS, t *definitions.ResourceType, region locate.Region) {
 	src, err := fs.ReadFile(fsys, region.Path)
 	if err != nil {
@@ -210,7 +240,7 @@ func (r *Report) checkFile(fsys fs.FS, t *definitions.ResourceType, region locat
 		r.problem(where, "", "must hold a mapping (type %s): %v", t.Metadata.Name, err)
 		return
 	}
-	if !r.conforms(where, t, doc, code) {
+	if !r.conformsOrMigrates(where, t, region, doc, code) {
 		return
 	}
 	// Round trip: read the file as form values and write them back.

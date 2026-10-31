@@ -61,6 +61,7 @@ Rules:
 - `values` are validated against each type's input schema at catalog load (`quai lint`) and again at plan time.
 - A blueprint's approval rules add to each type's rules and each repository's floor rules; they never replace them. The approval shown to users is the union, de-duplicated by approver group.
 - `when` includes or excludes a resource. Changing an input that flips `when` on day-2 adds or removes that resource.
+- `type.version`, optional, pins a range of the type's `metadata.version` (`"^1.2"`, `">=1.2 <2"`). A blueprint whose pin the type has left is flagged and cannot create instances until it is updated ([schema evolution](02-resource-types-and-generators.md#schema-evolution)).
 
 ### What the designer becomes
 

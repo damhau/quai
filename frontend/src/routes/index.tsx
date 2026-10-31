@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react"
 import { createFileRoute, Link } from "@tanstack/react-router"
 import { useQuery } from "@tanstack/react-query"
-import { Search, ShieldAlert } from "lucide-react"
+import { History, Search, ShieldAlert } from "lucide-react"
 import { listCatalogOptions } from "@/api/generated/@tanstack/react-query.gen"
 import type { CatalogItem } from "@/api/generated/types.gen"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -71,6 +71,11 @@ function Catalog() {
                   {(item.trust ?? []).length > 0 && (
                     <Badge variant="destructive" title={(item.trust ?? []).join("\n")}>
                       <ShieldAlert aria-hidden /> Unreviewed definitions
+                    </Badge>
+                  )}
+                  {(item.pins ?? []).length > 0 && (
+                    <Badge variant="destructive" title={(item.pins ?? []).join("\n")}>
+                      <History aria-hidden /> Needs an update
                     </Badge>
                   )}
                   <span className="text-muted-foreground text-xs">

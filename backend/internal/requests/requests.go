@@ -86,8 +86,8 @@ func (s *Service) UseJobs(c *jobs.Client) { s.jobs = c }
 type TypeInput struct {
 	Repository   string            `json:"repository"`
 	Type         string            `json:"type"`
-	Kind         string            `json:"kind" enum:"create,update,delete,action"`
-	Key          string            `json:"key,omitempty" doc:"The resource's key, for update, delete and action"`
+	Kind         string            `json:"kind" enum:"create,update,delete,action,migrate"`
+	Key          string            `json:"key,omitempty" doc:"The resource's key, for update, delete and action; a migrate request is on every non-conforming resource of the type"`
 	Params       map[string]string `json:"params,omitempty" doc:"The locator params, for create"`
 	Values       map[string]any    `json:"values,omitempty" doc:"The form values, for create and update"`
 	Action       string            `json:"action,omitempty"`
@@ -120,9 +120,13 @@ type Plan struct {
 	Rules                                                    []policy.Rule
 	Owners                                                   []string
 	Inputs                                                   map[string]any
-	// Authorize is the access question the caller must answer yes before showing or submitting.
+	// Unmigrated are the non-conforming resources a migrate request leaves as they are, and why.
+	Unmigrated []plan.Unmigrated
+	// Authorize is the access question the caller must answer yes before showing or submitting:
+	// on Object, and on each of Also (a migrate request operates every resource it covers).
 	Authorize authz.Action
 	Object    authz.Object
+	Also      []authz.Object
 }
 
 // PlanType plans a change to a resource of a type. Once it knows what the change is on, it
@@ -143,6 +147,9 @@ func (s *Service) PlanType(ctx context.Context, who auth.Identity, in TypeInput)
 	var current map[string]any
 	approval := t.Spec.Approval
 
+	if in.Kind == generate.Migrate {
+		return s.planMigrate(ctx, who, repo, snap, t, p)
+	}
 	if t.Spec.Locate.Strategy == locate.Field && (in.Kind == generate.Create || in.Kind == generate.Delete) {
 		return nil, fmt.Errorf("%w: type %s writes fields of something it does not own: it has no %s", ErrConflict, t.Metadata.Name, in.Kind)
 	}
@@ -161,6 +168,9 @@ func (s *Service) PlanType(ctx context.Context, who auth.Identity, in TypeInput)
 		}
 		p.Authorize, p.Object = authz.OperateResource, objectOf(r)
 		if r.Status != inventory.Conforming {
+			if Migratable(t, r) {
+				return p, fmt.Errorf("%w: %s is %s; fix it in Git, or with a migrate request on type %s, before Quai edits it", ErrConflict, r.Path, r.Status, t.Metadata.Name)
+			}
 			return p, fmt.Errorf("%w: %s is %s; fix it in Git before Quai edits it", ErrConflict, r.Path, r.Status)
 		}
 		current = r.Document
@@ -305,6 +315,86 @@ func (s *Service) PlanBlueprint(ctx context.Context, who auth.Identity, in Bluep
 		Stacks: stacksOf(snap, cs.Resources), Commit: snap.Commit, ChangeSet: cs, Rules: rules, Owners: []string{who.Principal.Name}, Inputs: inputs,
 		Authorize: authz.CreateRequest, Object: authz.Object{Repository: repo.Name, CatalogItem: b.Metadata.Name},
 	}, s.deliverable(ctx, repo)
+}
+
+// Migratable reports whether a resource does not conform to its type's schema and the type's
+// migration makes it conform: a migrate request on the type fixes it.
+func Migratable(t *definitions.ResourceType, r inventory.Resource) bool {
+	if t == nil || t.Spec.MigrateTemplate == nil || r.Status != inventory.NonConforming || r.Error != "" {
+		return false
+	}
+	_, err := generate.Identity(t, generate.Request{Kind: generate.Migrate, Params: r.Params, Current: r.Document, Code: r.Code})
+	return err == nil
+}
+
+// planMigrate plans a migrate request (docs/design/02, schema evolution): the type's migration
+// over every non-conforming resource of the type, in one change set, reviewed like any other. It
+// changes resources whoever owns them, so it needs operator access to the type's resources, and
+// their owners approve it.
+func (s *Service) planMigrate(ctx context.Context, who auth.Identity, repo *repositories.Repo, snap *repositories.Snapshot, t *definitions.ResourceType, p *Plan) (*Plan, error) {
+	p.Target = repo.Name + "/" + t.Metadata.Name
+	if t.Spec.MigrateTemplate == nil {
+		return p, fmt.Errorf("%w: type %s has no migration (spec.migrate)", ErrConflict, t.Metadata.Name)
+	}
+	rs, err := inventory.ScanType(snap, t)
+	if err != nil {
+		return p, err
+	}
+	todo := map[string]map[string]string{}
+	byKey := map[string]inventory.Resource{}
+	for _, r := range rs {
+		// Schema problems only: a file Quai cannot read safely is fixed in Git.
+		if r.Status == inventory.NonConforming && r.Error == "" {
+			todo[r.Key], byKey[r.Key] = r.Params, r
+		}
+	}
+	if len(todo) == 0 {
+		return p, fmt.Errorf("type %s: every resource Quai can read conforms to its schema: %w", t.Metadata.Name, plan.ErrNoChange)
+	}
+	// The request operates every resource it covers (docs/design/08: the operator role and
+	// ownership of each, or a platform admin).
+	for i, key := range slices.Sorted(maps.Keys(byKey)) {
+		if i == 0 {
+			p.Authorize, p.Object = authz.OperateResource, objectOf(byKey[key])
+		} else {
+			p.Also = append(p.Also, objectOf(byKey[key]))
+		}
+	}
+	cs, left, err := plan.Migrate(snap.FS, t, todo)
+	p.Unmigrated = left
+	if err != nil {
+		return p, err
+	}
+	p.ChangeSet = cs
+	for _, u := range left {
+		delete(byKey, u.Key)
+	}
+	user := expr.User{Name: who.Principal.Name, Groups: who.Principal.Groups}
+	var sets []policy.RuleSet
+	var owners []string
+	for _, key := range slices.Sorted(maps.Keys(byKey)) {
+		r := byKey[key]
+		if r.Owner != "" {
+			owners = append(owners, r.Owner)
+		}
+		if st := stack(t, r.Params); st != "" && !slices.Contains(p.Stacks, st) {
+			p.Stacks = append(p.Stacks, st)
+		}
+		// The rules see each resource as the migration leaves it, and as it was.
+		next, _ := generate.Migrated(t, r.Document, r.Params)
+		vars := expr.Vars{Inputs: next, Previous: r.Document, Params: anyMap(r.Params), User: user, Request: expr.Request{Kind: generate.Migrate}}
+		sets = append(sets, policy.RuleSet{Source: policy.SourceFloor, Rules: repo.FloorRules, Vars: vars},
+			policy.RuleSet{Source: policy.SourceType, Rules: t.Spec.Approval.Rules, Vars: vars})
+	}
+	slices.Sort(owners)
+	p.Owners = slices.Compact(owners)
+	if len(p.Stacks) == 1 {
+		p.Stack = p.Stacks[0]
+	}
+	if p.Rules, err = policy.Match(sets...); err != nil {
+		return p, err
+	}
+	return p, s.deliverable(ctx, repo)
 }
 
 // Submit records a planned request. Without rules to satisfy it is approved at once and its

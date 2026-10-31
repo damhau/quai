@@ -32,6 +32,9 @@ const (
 	Update = "update"
 	Action = "action"
 	Delete = "delete"
+	// Migrate applies the type's migrate expression to a resource (docs/design/02, schema
+	// evolution).
+	Migrate = "migrate"
 )
 
 // Request is a change to one resource of a type.
@@ -172,6 +175,24 @@ func Inputs(t *definitions.ResourceType, values map[string]any) map[string]any {
 
 // merge returns base with the evaluated template merged in: each of its keys set, a mapping into
 // a mapping key by key, a null one removed; the keys it does not name are left as they are.
+// Migrated returns a resource's values, doc, after the type's migrate expression: the merge patch
+// it gives (RFC 7386: null removes a key, a mapping merges key by key, anything else replaces)
+// applied to them. It does not check them against the schema.
+func Migrated(t *definitions.ResourceType, doc map[string]any, params map[string]string) (map[string]any, error) {
+	if t.Spec.MigrateTemplate == nil {
+		return nil, fmt.Errorf("type %s has no migration (spec.migrate)", t.Metadata.Name)
+	}
+	patch, err := t.Spec.MigrateTemplate.Eval(expr.Vars{Doc: doc, Params: anyMap(params)})
+	if err != nil {
+		return nil, fmt.Errorf("spec.migrate: %w", err)
+	}
+	p, ok := patch.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("spec.migrate gives %v, not a merge patch of the values (a mapping)", patch)
+	}
+	return merge(doc, p), nil
+}
+
 func merge(base, template map[string]any) map[string]any {
 	out := clone(base)
 	for k, v := range template {
@@ -242,6 +263,12 @@ func Identity(t *definitions.ResourceType, r Request) (map[string]any, error) {
 		managed(t, doc, r.Params)
 	case Delete:
 		return nil, nil
+	case Migrate:
+		var err error
+		if doc, err = Migrated(t, r.Current, r.Params); err != nil {
+			return nil, err
+		}
+		managed(t, doc, r.Params)
 	default:
 		return nil, fmt.Errorf("unknown request kind %q", r.Kind)
 	}

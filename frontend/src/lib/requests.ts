@@ -33,6 +33,8 @@ export function requestTitle(r: Pick<RequestView, "kind" | "action" | "target">)
       return `Delete ${r.target}`
     case "action":
       return `${r.action ?? "Action"} on ${r.target}`
+    case "migrate":
+      return `Migrate ${r.target}`
   }
   return r.target
 }

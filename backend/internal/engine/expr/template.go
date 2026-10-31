@@ -136,6 +136,9 @@ func isIdentChar(c byte) bool {
 // String returns the template's source.
 func (t *Template) String() string { return t.src }
 
+// Binding reports whether the template is exactly one binding, whose value keeps its type.
+func (t *Template) Binding() bool { return t != nil && t.whole != nil }
+
 // Eval evaluates the template. A whole binding returns its value, which may be Absent; any other
 // template returns a string.
 func (t *Template) Eval(v Vars) (any, error) {

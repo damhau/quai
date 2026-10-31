@@ -548,3 +548,39 @@ func TestPluginTypes(t *testing.T) {
 		t.Errorf("problems of the ini type:\n%s", problems.Error())
 	}
 }
+
+// TestMigrations: spec.migrate is one binding, for the generators whose files are the form; a
+// blueprint's version pin is a range of versions.
+func TestMigrations(t *testing.T) {
+	typ := func(name, extra string) string {
+		return "apiVersion: quai.dev/v1beta1\nkind: ResourceType\nmetadata: { name: " + name + ", title: T }\nspec:\n  schema: catalog/vm.schema.json\n  params: [{ name: name }]\n" +
+			"  locate: { strategy: file, path: \"" + name + "/{name}.yaml\" }\n" + extra
+	}
+	repo, problems := load(t, map[string]string{
+		".quai/types/good.yaml":    typ("good", "  migrate: \"${{ has(doc.cores) ? {'cpu': doc.cores, 'cores': null} : {} }}\"\n"),
+		".quai/types/text.yaml":    typ("text", "  migrate: \"cpu: ${{ doc.cores }}\"\n"),
+		".quai/types/broken.yaml":  typ("broken", "  migrate: \"${{ doc.( }}\"\n"),
+		".quai/types/mapping.yaml": typ("mapping", "  generate: { kind: mapping, template: { cpu: \"${{ inputs.cpu }}\" } }\n  inputs: catalog/vm.schema.json\n  migrate: \"${{ {} }}\"\n"),
+		"blueprints/pinned.yaml": `apiVersion: quai.dev/v1beta1
+kind: Blueprint
+metadata: { name: pinned, title: Pinned }
+spec:
+  inputs: { type: object }
+  resources:
+    - { id: a, type: { name: good, version: "^1.2" }, params: { name: a } }
+    - { id: b, type: { name: good, version: "one or two" }, params: { name: b } }
+`,
+	})
+	if g := repo.Types["good"]; g == nil || !g.Spec.MigrateTemplate.Binding() {
+		t.Errorf("the good type = %+v", g)
+	}
+	wantProblems(t, problems,
+		"text.yaml: spec.migrate: must be one binding, ${{ … }}, that gives a merge patch of the values",
+		"broken.yaml: spec.migrate: ",
+		"mapping.yaml: spec.migrate: does not apply to the mapping generator: a migration rewrites files that are the form (identity, plugin)",
+		"pinned.yaml: spec.resources[1].type.version: must be a range of the type's metadata.version",
+	)
+	if strings.Contains(problems.Error(), "spec.resources[0]") {
+		t.Errorf("a valid range is a problem:\n%s", problems)
+	}
+}

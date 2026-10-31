@@ -222,6 +222,16 @@
           "path": {
             "type": "string"
           },
+          "pins": {
+            "description": "For a blueprint: the resources that pin a range of their type's versions the type has left, a major version; its requests are refused until it is updated",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "propertyOrder": {
             "items": {
               "type": "string"
@@ -309,6 +319,16 @@
           },
           "name": {
             "type": "string"
+          },
+          "pins": {
+            "description": "For a blueprint: the resources that pin a range of their type's versions the type has left, a major version; its requests are refused until it is updated",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
           },
           "repository": {
             "type": "string"
@@ -1695,6 +1715,16 @@
           },
           "type": {
             "type": "string"
+          },
+          "unmigrated": {
+            "description": "For a migrate request: the non-conforming resources the type's migration does not fix, and why",
+            "items": {
+              "$ref": "#/components/schemas/UnmigratedView"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
           }
         },
         "required": [
@@ -2154,6 +2184,10 @@
           "lastApply": {
             "$ref": "#/components/schemas/RunView",
             "description": "The latest apply reported for the resource's stack"
+          },
+          "migratable": {
+            "description": "Whether the resource does not conform to its type's schema and the type's migration makes it conform: a migrate request on the type fixes it",
+            "type": "boolean"
           },
           "owner": {
             "type": "string"
@@ -3049,7 +3083,7 @@
             "type": "object"
           },
           "key": {
-            "description": "The resource's key, for update, delete and action",
+            "description": "The resource's key, for update, delete and action; a migrate request is on every non-conforming resource of the type",
             "type": "string"
           },
           "kind": {
@@ -3057,7 +3091,8 @@
               "create",
               "update",
               "delete",
-              "action"
+              "action",
+              "migrate"
             ],
             "type": "string"
           },
@@ -3107,7 +3142,7 @@
             "type": "object"
           },
           "key": {
-            "description": "The resource's key, for update, delete and action",
+            "description": "The resource's key, for update, delete and action; a migrate request is on every non-conforming resource of the type",
             "type": "string"
           },
           "kind": {
@@ -3115,7 +3150,8 @@
               "create",
               "update",
               "delete",
-              "action"
+              "action",
+              "migrate"
             ],
             "type": "string"
           },
@@ -3220,6 +3256,16 @@
           "path": {
             "type": "string"
           },
+          "pins": {
+            "description": "For a blueprint: the resources that pin a range of their type's versions the type has left, a major version; its requests are refused until it is updated",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "propertyOrder": {
             "items": {
               "type": "string"
@@ -3319,6 +3365,22 @@
         "required": [
           "order",
           "fields"
+        ],
+        "type": "object"
+      },
+      "UnmigratedView": {
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "reason"
         ],
         "type": "object"
       },

@@ -394,6 +394,48 @@ Quai resource. With it, Quai can map `terraform show -json` output (parsed with
 | A field renamed | The type ships a `migrate` CEL expression; Quai offers a bulk "migrate" change set, reviewed like any other. |
 | `metadata.version` major bump | Blueprints that pin an older range are flagged in the catalog. |
 
+A non-conforming resource keeps its page, with its file and the fields that do not conform;
+Edit, actions and Delete are refused ("fix it in Git before Quai edits it") until its file
+conforms again. `quai lint` prints one line per type with non-conforming resources, and how many
+of them its migration fixes, before the summary:
+
+```text
+type team: 2 resources do not conform to its schema; its migration fixes 1, by a migrate request once merged
+```
+
+**`migrate`** is one `${{ … }}` binding over `doc`, the file's values as Quai reads them, and
+`params`. It gives a JSON merge patch (RFC 7386) of the values: a key set to `null` is removed,
+an object merges into the object it replaces, anything else replaces the value.
+
+```yaml
+spec:
+  migrate: "${{ has(doc.size) ? {'tier': doc.size, 'size': null} : {} }}"
+```
+
+It applies to the generators whose file is the form, `identity` and `plugin`; `quai lint` refuses
+it on the others. The patched values go through the same steps as an update (managed fields,
+hidden fields, the file schema) and are written by the same editor, so comments and the fields
+the patch leaves alone keep their bytes. Lint counts a non-conforming resource that the migration
+makes conform, without reporting it as a problem, so a type change with its migration can merge;
+the resources it does not fix stay problems.
+
+A **migrate request** (`kind: migrate`, on the type, no key) is one change set over every
+non-conforming resource of the type that the migration fixes, delivered and reviewed like any
+other request: each resource's approval rules apply (floor rules and the type's, with
+`request.kind == 'migrate'`, `inputs` the migrated values and `previous` the current ones), and
+its owners are the resources' owners. A resource the migration does not change or leaves
+non-conforming is listed in the plan, with why, and left as it is; a file Quai cannot read is
+not migrated. The request operates every non-conforming resource of the type, so it needs the
+right to operate each of them ([access](08-identity-access-tenancy.md#evaluation)): their
+owning team, or a platform admin. A type has one open migrate request at a time (its target is
+`repository/type`), and it shows on the page of each resource it fixes.
+
+A blueprint pins a type with `type.version`, a range of its `metadata.version`
+(`"^1.2"`, `">=1.2 <2"`). When the type leaves the range, a new major version, `quai lint`
+reports the pin as a problem of the blueprint, the catalog flags the blueprint ("Needs an
+update", with the pins it breaks), and new instances are refused until the blueprint is
+updated; day-2 actions on existing instances still work.
+
 ## Deletion
 
 | `deletion` | Behaviour |
@@ -412,7 +454,7 @@ destroys, first, as soon as the runner has reported it, before anyone approves.
 - every definition parses, every expression compiles, every referenced schema and plugin exists and matches its digest;
 - every file the locator matches parses and conforms to the file schema;
 - **round trip**: for every existing resource, `write(read(file))` produces zero diff. A type that cannot reproduce existing files would rewrite them on the first edit, so it is rejected;
-- golden examples under `.quai/tests/<type>/` (input values → expected files) still produce the same bytes: each case is a directory, `.quai/tests/<type>/<case>/`, with `request.yaml` (`kind`: create, update, delete or action; `params` for a create, `key` otherwise; `values`, `action`, `actionInputs`, `owner`; and `deleted`, the files the request deletes), the files the case starts from under `before/` (laid over the repository, optional), and the files the request must write under `after/`, compared byte for byte. A file written but not under `after/`, or under `after/` but not written, is a problem;
+- golden examples under `.quai/tests/<type>/` (input values → expected files) still produce the same bytes: each case is a directory, `.quai/tests/<type>/<case>/`, with `request.yaml` (`kind`: create, update, delete, action or migrate; `params` for a create, `key` otherwise; `values`, `action`, `actionInputs`, `owner`; and `deleted`, the files the request deletes), the files the case starts from under `before/` (laid over the repository, optional), and the files the request must write under `after/`, compared byte for byte. A file written but not under `after/`, or under `after/` but not written, is a problem;
 - with `--plan plan.json --stack envs/prod`, every Terraform resource the plan of that stack changes belongs to exactly one resource, through the types' `stack` and `address` patterns.
 
 It prints one line per problem (`file: field: message`) and exits with status 1 when there

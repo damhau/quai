@@ -26,6 +26,7 @@ import (
 	"github.com/damhau/quai/backend/internal/engine/locate"
 	"github.com/damhau/quai/backend/internal/inventory"
 	"github.com/damhau/quai/backend/internal/repositories"
+	"github.com/damhau/quai/backend/internal/requests"
 	"github.com/damhau/quai/backend/internal/store"
 	"github.com/damhau/quai/backend/internal/store/db"
 )
@@ -81,6 +82,7 @@ type CatalogItem struct {
 	Version     string   `json:"version,omitempty"`
 	Tags        []string `json:"tags"`
 	Trust       []string `json:"trust,omitempty" doc:"Why the item's definitions may change without review, shown as a warning: its repository's trust problems"`
+	Pins        []string `json:"pins,omitempty" doc:"For a blueprint: the resources that pin a range of their type's versions the type has left, a major version; its requests are refused until it is updated"`
 }
 
 // ParamView is a locator param, with the values found in the repository for discovered ones.
@@ -203,6 +205,7 @@ type ResourceDetail struct {
 	Actions    []ActionView     `json:"actions"`
 	History    []CommitView     `json:"history"`
 	CanOperate bool             `json:"canOperate" doc:"Whether the caller may change the resource through requests"`
+	Migratable bool             `json:"migratable,omitempty" doc:"Whether the resource does not conform to its type's schema and the type's migration makes it conform: a migrate request on the type fixes it"`
 	Requests   []RequestSummary `json:"requests" doc:"The latest requests on the resource that the caller may read, newest first"`
 	Applies    []EventView      `json:"applies,omitempty" doc:"The applies of the requests on the resource, newest first: applied and apply_failed events"`
 	// DefinedInCode are the fields whose value is an expression (an HCL file): the document
@@ -330,6 +333,7 @@ func registerCatalog(a huma.API, reg *repositories.Registry, s *store.Store) {
 				}
 				it := item("blueprint", repo.Name, b.Metadata)
 				it.Trust = warn
+				it.Pins = b.Pins(snap.Definitions)
 				items = append(items, it)
 			}
 		}
@@ -453,6 +457,19 @@ func registerCatalog(a huma.API, reg *repositories.Registry, s *store.Store) {
 		d.CanOperate = allowed(ctx, authz.OperateResource, resourceObject(r))
 		if d.Requests, err = requestSummaries(ctx, s, r.Repository, r.ID); err != nil {
 			return nil, err
+		}
+		if d.Migratable {
+			// A migrate request is on the type: it changes this resource too.
+			typed, err := requestSummaries(ctx, s, r.Repository, r.Repository+"/"+r.Type)
+			if err != nil {
+				return nil, err
+			}
+			for _, q := range typed {
+				if q.Kind == generate.Migrate {
+					d.Requests = append(d.Requests, q)
+				}
+			}
+			slices.SortStableFunc(d.Requests, func(a, b RequestSummary) int { return b.CreatedAt.Compare(a.CreatedAt) })
 		}
 		if s != nil {
 			evs, _ := s.ListTargetEvents(ctx, db.ListTargetEventsParams{Target: r.ID, MaxRows: 100})
@@ -614,6 +631,7 @@ func typeView(snap *repositories.Snapshot, t *definitions.ResourceType) TypeView
 // blueprintDetail is a blueprint's view with its file as written.
 func blueprintDetail(snap *repositories.Snapshot, b *definitions.Blueprint) BlueprintView {
 	v := blueprintView(snap.Repository, b)
+	v.Pins = b.Pins(snap.Definitions)
 	if src, err := fs.ReadFile(snap.FS, b.Path); err == nil {
 		if doc, err := yamledit.Decode(src); err == nil {
 			v.Definition, _ = doc.(map[string]any)
@@ -707,6 +725,7 @@ func resourceDetail(ctx context.Context, repo *repositories.Repo, snap *reposito
 		d.Raw = string(raw)
 	}
 	t := snap.Definitions.Types[r.Type]
+	d.Migratable = requests.Migratable(t, r)
 	vars := expr.Vars{Inputs: r.Document, Params: anyParams(r.Params)}
 	for _, a := range t.Spec.Actions {
 		if a.Available != nil {

@@ -61,6 +61,15 @@ type PlanView struct {
 	Hash       string       `json:"hash"`
 	Changes    []ChangeView `json:"changes"`
 	Rules      []RuleView   `json:"rules"`
+	// Unmigrated, for a migrate request: the non-conforming resources the migration leaves as
+	// they are, to fix in Git.
+	Unmigrated []UnmigratedView `json:"unmigrated,omitempty" doc:"For a migrate request: the non-conforming resources the type's migration does not fix, and why"`
+}
+
+// UnmigratedView is a non-conforming resource a migrate request leaves as it is.
+type UnmigratedView struct {
+	Key    string `json:"key"`
+	Reason string `json:"reason"`
 }
 
 // ReviewView is a review of a request.
@@ -156,8 +165,10 @@ type reviewInput struct {
 func registerRequests(a huma.API, svc *requests.Service, s *store.Store, log *slog.Logger) {
 	planned := func(ctx context.Context, p *requests.Plan, err error) (*requests.Plan, error) {
 		if p != nil && p.Authorize != "" {
-			if _, err := authorize(ctx, p.Authorize, p.Object); err != nil {
-				return nil, err
+			for _, o := range append([]authz.Object{p.Object}, p.Also...) {
+				if _, err := authorize(ctx, p.Authorize, o); err != nil {
+					return nil, err
+				}
 			}
 		}
 		if err != nil {
@@ -400,6 +411,9 @@ func planView(p *requests.Plan) PlanView {
 		Stack: p.Stack, Commit: p.Commit, Hash: p.ChangeSet.Hash, Changes: []ChangeView{}, Rules: ruleViews(p.Rules, nil)}
 	for _, c := range p.ChangeSet.Changes {
 		v.Changes = append(v.Changes, ChangeView{Path: c.Path, Op: c.Op, Diff: diffView(c)})
+	}
+	for _, u := range p.Unmigrated {
+		v.Unmigrated = append(v.Unmigrated, UnmigratedView{Key: u.Key, Reason: u.Reason})
 	}
 	return v
 }

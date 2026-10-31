@@ -2,7 +2,9 @@ package main
 
 import (
 	"fmt"
+	"maps"
 	"os"
+	"slices"
 
 	"github.com/spf13/cobra"
 
@@ -47,6 +49,15 @@ func newLintCmd() *cobra.Command {
 			for _, p := range r.Problems {
 				fmt.Fprintln(out, p)
 			}
+			// The type author sees what a schema change does to the resources before merging it
+			// (docs/design/02, schema evolution).
+			for _, name := range slices.Sorted(maps.Keys(r.NonConforming)) {
+				line := fmt.Sprintf("type %s: %s not conform to its schema", name, doNot(r.NonConforming[name]))
+				if m := r.Migratable[name]; m > 0 {
+					line += fmt.Sprintf("; its migration fixes %d, by a migrate request once merged", m)
+				}
+				fmt.Fprintln(out, line)
+			}
 			fmt.Fprintf(out, "%d types, %d blueprints, %d resources, %d golden examples checked: %s\n",
 				r.Types, r.Blueprints, r.Resources, r.Tests, plural(len(r.Problems), "problem"))
 			if len(r.Problems) > 0 {
@@ -58,6 +69,14 @@ func newLintCmd() *cobra.Command {
 	cmd.Flags().StringVar(&planFile, "plan", "", "a plan of the repository, from terraform show -json")
 	cmd.Flags().StringVar(&stack, "stack", "", "the stack the plan is for, such as envs/prod")
 	return cmd
+}
+
+// doNot is "1 resource does" or "N resources do".
+func doNot(n int) string {
+	if n == 1 {
+		return "1 resource does"
+	}
+	return fmt.Sprintf("%d resources do", n)
 }
 
 func plural(n int, word string) string {

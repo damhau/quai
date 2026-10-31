@@ -79,6 +79,10 @@ export type BlueprintView = {
     kind: 'type' | 'blueprint';
     name: string;
     path: string;
+    /**
+     * For a blueprint: the resources that pin a range of their type's versions the type has left, a major version; its requests are refused until it is updated
+     */
+    pins?: Array<string> | null;
     propertyOrder: Array<string> | null;
     repository: string;
     resources: Array<BlueprintResourceView> | null;
@@ -99,6 +103,10 @@ export type CatalogItem = {
     icon?: string;
     kind: 'type' | 'blueprint';
     name: string;
+    /**
+     * For a blueprint: the resources that pin a range of their type's versions the type has left, a major version; its requests are refused until it is updated
+     */
+    pins?: Array<string> | null;
     repository: string;
     tags: Array<string> | null;
     title: string;
@@ -603,6 +611,10 @@ export type PlanView = {
     stack?: string;
     target: string;
     type?: string;
+    /**
+     * For a migrate request: the non-conforming resources the type's migration does not fix, and why
+     */
+    unmigrated?: Array<UnmigratedView> | null;
 };
 
 export type PreviewView = {
@@ -753,6 +765,10 @@ export type ResourceDetail = {
      * The latest apply reported for the resource's stack
      */
     lastApply?: RunView;
+    /**
+     * Whether the resource does not conform to its type's schema and the type's migration makes it conform: a migrate request on the type fixes it
+     */
+    migratable?: boolean;
     owner?: string;
     params: {
         [key: string]: string;
@@ -1062,10 +1078,10 @@ export type TypeInput = {
         [key: string]: unknown;
     };
     /**
-     * The resource's key, for update, delete and action
+     * The resource's key, for update, delete and action; a migrate request is on every non-conforming resource of the type
      */
     key?: string;
-    kind: 'create' | 'update' | 'delete' | 'action';
+    kind: 'create' | 'update' | 'delete' | 'action' | 'migrate';
     /**
      * The locator params, for create
      */
@@ -1092,10 +1108,10 @@ export type TypeRequestInputBody = {
         [key: string]: unknown;
     };
     /**
-     * The resource's key, for update, delete and action
+     * The resource's key, for update, delete and action; a migrate request is on every non-conforming resource of the type
      */
     key?: string;
-    kind: 'create' | 'update' | 'delete' | 'action';
+    kind: 'create' | 'update' | 'delete' | 'action' | 'migrate';
     /**
      * The locator params, for create
      */
@@ -1133,6 +1149,10 @@ export type TypeView = {
     ownerField?: string;
     params: Array<ParamView> | null;
     path: string;
+    /**
+     * For a blueprint: the resources that pin a range of their type's versions the type has left, a major version; its requests are refused until it is updated
+     */
+    pins?: Array<string> | null;
     propertyOrder: Array<string> | null;
     repository: string;
     /**
@@ -1160,6 +1180,11 @@ export type UiView = {
         [key: string]: UiFieldView;
     };
     order: Array<string> | null;
+};
+
+export type UnmigratedView = {
+    key: string;
+    reason: string;
 };
 
 export type WebhookView = {
@@ -1221,6 +1246,10 @@ export type BlueprintViewWritable = {
     kind: 'type' | 'blueprint';
     name: string;
     path: string;
+    /**
+     * For a blueprint: the resources that pin a range of their type's versions the type has left, a major version; its requests are refused until it is updated
+     */
+    pins?: Array<string> | null;
     propertyOrder: Array<string> | null;
     repository: string;
     resources: Array<BlueprintResourceView> | null;
@@ -1426,6 +1455,10 @@ export type PlanViewWritable = {
     stack?: string;
     target: string;
     type?: string;
+    /**
+     * For a migrate request: the non-conforming resources the type's migration does not fix, and why
+     */
+    unmigrated?: Array<UnmigratedView> | null;
 };
 
 export type PreviewViewWritable = {
@@ -1531,6 +1564,10 @@ export type ResourceDetailWritable = {
      * The latest apply reported for the resource's stack
      */
     lastApply?: RunViewWritable;
+    /**
+     * Whether the resource does not conform to its type's schema and the type's migration makes it conform: a migrate request on the type fixes it
+     */
+    migratable?: boolean;
     owner?: string;
     params: {
         [key: string]: string;
@@ -1664,10 +1701,10 @@ export type TypeInputWritable = {
         [key: string]: unknown;
     };
     /**
-     * The resource's key, for update, delete and action
+     * The resource's key, for update, delete and action; a migrate request is on every non-conforming resource of the type
      */
     key?: string;
-    kind: 'create' | 'update' | 'delete' | 'action';
+    kind: 'create' | 'update' | 'delete' | 'action' | 'migrate';
     /**
      * The locator params, for create
      */
@@ -1690,10 +1727,10 @@ export type TypeRequestInputBodyWritable = {
         [key: string]: unknown;
     };
     /**
-     * The resource's key, for update, delete and action
+     * The resource's key, for update, delete and action; a migrate request is on every non-conforming resource of the type
      */
     key?: string;
-    kind: 'create' | 'update' | 'delete' | 'action';
+    kind: 'create' | 'update' | 'delete' | 'action' | 'migrate';
     /**
      * The locator params, for create
      */
@@ -1727,6 +1764,10 @@ export type TypeViewWritable = {
     ownerField?: string;
     params: Array<ParamView> | null;
     path: string;
+    /**
+     * For a blueprint: the resources that pin a range of their type's versions the type has left, a major version; its requests are refused until it is updated
+     */
+    pins?: Array<string> | null;
     propertyOrder: Array<string> | null;
     repository: string;
     /**

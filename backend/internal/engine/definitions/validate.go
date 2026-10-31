@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/Masterminds/semver/v3"
 	"io/fs"
 	"maps"
 	"regexp"
@@ -198,6 +199,18 @@ func (l *loader) resourceType(file string) *ResourceType {
 		}
 	}
 	oneOf(c, "spec.deletion", s.Deletion, "", "allowed", "approval", "forbidden")
+	if s.Migrate != "" {
+		switch k := s.Generate.Kind; {
+		case k != GenerateIdentity && k != GeneratePlugin:
+			c.add("spec.migrate", "does not apply to the %s generator: a migration rewrites files that are the form (identity, plugin)", k)
+		default:
+			if m := c.template("spec.migrate", s.Migrate); m != nil && !m.Binding() {
+				c.add("spec.migrate", "must be one binding, ${{ … }}, that gives a merge patch of the values")
+			} else {
+				s.MigrateTemplate = m
+			}
+		}
+	}
 	oneOf(c, "spec.catalog", s.Catalog, "", "visible", "hidden")
 	c.ui("spec.ui", &s.UI)
 	c.approval("spec.approval", &s.Approval)
@@ -605,6 +618,11 @@ func (l *loader) blueprint(file string, types map[string]*ResourceType) *Bluepri
 			c.add(at+".type.name", "must name a resource type")
 		} else if r.Type.Repository == "" && types[r.Type.Name] == nil {
 			c.add(at+".type", "type %s is not defined in this repository", r.Type.Name)
+		}
+		if r.Type.Version != "" {
+			if _, err := semver.NewConstraint(r.Type.Version); err != nil {
+				c.add(at+".type.version", "must be a range of the type's metadata.version, such as \">=1.2 <2\" or \"^1.2\": %v", err)
+			}
 		}
 		r.Params = numbersIn(r.Params)
 		r.Values = numbersIn(r.Values)

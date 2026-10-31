@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { createFileRoute, Link } from "@tanstack/react-router"
 import { useSuspenseQuery } from "@tanstack/react-query"
-import { AlertCircle, Clock, Pencil, ShieldAlert, Trash2, Zap } from "lucide-react"
+import { AlertCircle, Clock, Pencil, ShieldAlert, Trash2, Wand2, Zap } from "lucide-react"
 import { getResourceOptions, getTypeOptions } from "@/api/generated/@tanstack/react-query.gen"
 import { Day2Dialog, type Day2 } from "@/components/day2/day2-dialog"
 import { ResourceStateBadge, ResourceStatusBadge, StateBadge } from "@/components/requests/state-badge"
@@ -72,7 +72,11 @@ function ResourcePage() {
       {r.status === "non-conforming" && (
         <Alert>
           <ShieldAlert />
-          <AlertTitle>The file does not match its schema; fix it in Git before Quai edits it</AlertTitle>
+          <AlertTitle>
+            {r.migratable
+              ? "The file does not match its schema; the type's migration fixes it"
+              : "The file does not match its schema; fix it in Git before Quai edits it"}
+          </AlertTitle>
           <AlertDescription>
             <ul className="list-disc pl-4">
               {Object.entries(r.problems ?? {}).map(([f, m]) => (
@@ -81,6 +85,11 @@ function ResourcePage() {
                 </li>
               ))}
             </ul>
+            {r.migratable && r.canOperate && (
+              <Button variant="outline" size="sm" className="mt-2" disabled={!!open} onClick={() => setDay2({ kind: "migrate" })}>
+                <Wand2 /> Migrate every {t.title}
+              </Button>
+            )}
           </AlertDescription>
         </Alert>
       )}

@@ -43,6 +43,8 @@ var (
 	ErrNotFound = errors.New("does not exist")
 	// ErrNoChange is returned when a request would not change any file.
 	ErrNoChange = errors.New("this change would not modify anything")
+	// ErrPin is returned when a blueprint pins a range of a type's versions the type has left.
+	ErrPin = errors.New("the blueprint must be updated for it")
 )
 
 // ResourceError is a failure to plan one resource of a blueprint: its condition, its params or
@@ -189,6 +191,41 @@ func addType(cs *ChangeSet, fsys fs.FS, t *definitions.ResourceType, r generate.
 	return region, nil
 }
 
+// Unmigrated is a resource a migrate request leaves as it is, and why.
+type Unmigrated struct {
+	Key    string
+	Reason string
+}
+
+// Migrate plans a migrate request (docs/design/02, schema evolution): the type's migrate
+// expression applied to each resource at params, the non-conforming resources of the type, in one
+// change set. A resource the migration does not change, or leaves non-conforming, stays out of
+// it, with its reason. It fails with ErrNoChange when the migration fixes none.
+func Migrate(fsys fs.FS, t *definitions.ResourceType, resources map[string]map[string]string) (*ChangeSet, []Unmigrated, error) {
+	if t.Spec.MigrateTemplate == nil {
+		return nil, nil, fmt.Errorf("type %s has no migration (spec.migrate)", t.Metadata.Name)
+	}
+	cs := &ChangeSet{Fingerprints: map[string]string{}}
+	var left []Unmigrated
+	for _, key := range slices.Sorted(maps.Keys(resources)) {
+		fps := maps.Clone(cs.Fingerprints)
+		_, err := addType(cs, fsys, t, generate.Request{Kind: generate.Migrate, Params: resources[key]})
+		if err != nil {
+			cs.Fingerprints = fps
+			reason := err.Error()
+			if errors.Is(err, ErrNoChange) {
+				reason = "the migration does not change it"
+			}
+			left = append(left, Unmigrated{Key: key, Reason: reason})
+		}
+	}
+	if len(cs.Changes) == 0 {
+		return nil, left, fmt.Errorf("type %s: the migration fixes none of its non-conforming resources: %w", t.Metadata.Name, ErrNoChange)
+	}
+	cs.seal()
+	return cs, left, nil
+}
+
 // BlueprintRequest creates an instance of a blueprint.
 type BlueprintRequest struct {
 	Name       string         // the instance's name
@@ -235,6 +272,10 @@ func Blueprint(fsys fs.FS, repo *definitions.Repository, b *definitions.Blueprin
 		t := repo.Types[res.Type.Name]
 		if t == nil {
 			return nil, &ResourceError{ID: res.ID, Err: fmt.Errorf("type %s is not defined", res.Type.Name)}
+		}
+		if msg := res.Type.Pin(t); msg != "" {
+			// The type changed under the blueprint (docs/design/02, schema evolution).
+			return nil, &ResourceError{ID: res.ID, Err: fmt.Errorf("%s: %w", msg, ErrPin)}
 		}
 		params, err := evalMap(res.ParamsValue, vars)
 		if err != nil {
