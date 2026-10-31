@@ -14,6 +14,7 @@ import (
 
 	"github.com/damhau/quai/backend/internal/engine/definitions"
 	"github.com/damhau/quai/backend/internal/engine/edit"
+	"github.com/damhau/quai/backend/internal/engine/generate"
 	"github.com/damhau/quai/backend/internal/engine/locate"
 	"github.com/damhau/quai/backend/internal/engine/schema"
 	"github.com/damhau/quai/backend/internal/repositories"
@@ -143,7 +144,7 @@ func read(snap *repositories.Snapshot, t *definitions.ResourceType, r locate.Reg
 		res.Status, res.Error = Unparseable, err.Error()
 		return res
 	}
-	decoded, code, err := edit.Decode(r.DocumentFile(), src)
+	decoded, code, err := generate.Decode(snap.FS, t, r.DocumentFile(), r.Params, src)
 	if err != nil {
 		res.Status, res.Error = Unparseable, err.Error()
 		return res

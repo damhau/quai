@@ -9,7 +9,6 @@ import (
 	"slices"
 
 	"github.com/damhau/quai/backend/internal/engine/definitions"
-	"github.com/damhau/quai/backend/internal/engine/edit"
 	"github.com/damhau/quai/backend/internal/engine/edit/yamledit"
 	"github.com/damhau/quai/backend/internal/engine/expr"
 	"github.com/damhau/quai/backend/internal/engine/generate"
@@ -135,7 +134,7 @@ func applyTo(cs *ChangeSet, fsys fs.FS, repo *definitions.Repository, r Blueprin
 	if err != nil {
 		return err
 	}
-	current, err := readDocument(fsys, region)
+	current, err := readDocument(fsys, t, region)
 	if err != nil {
 		return err
 	}
@@ -175,7 +174,7 @@ func applyTo(cs *ChangeSet, fsys fs.FS, repo *definitions.Repository, r Blueprin
 	}
 	next := current
 	if i := slices.IndexFunc(cs.Changes, func(c Change) bool { return c.Path == region.DocumentFile() }); i >= 0 && cs.Changes[i].After != nil {
-		if doc, err := documentOf(region, cs.Changes[i].After); err == nil {
+		if doc, err := documentOf(fsys, t, region, cs.Changes[i].After); err == nil {
 			next = doc
 		}
 	}
@@ -185,7 +184,7 @@ func applyTo(cs *ChangeSet, fsys fs.FS, repo *definitions.Repository, r Blueprin
 
 // readDocument reads the document of a resource: its file, its entry in a shared file, or its
 // directory's record.
-func readDocument(fsys fs.FS, region locate.Region) (map[string]any, error) {
+func readDocument(fsys fs.FS, t *definitions.ResourceType, region locate.Region) (map[string]any, error) {
 	src, err := fs.ReadFile(fsys, region.DocumentFile())
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, fmt.Errorf("%s: %w", region.DocumentFile(), ErrNotFound)
@@ -193,17 +192,17 @@ func readDocument(fsys fs.FS, region locate.Region) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return documentOf(region, src)
+	return documentOf(fsys, t, region, src)
 }
 
-// documentOf returns the document of a resource in src, the file that holds it.
-func documentOf(region locate.Region, src []byte) (map[string]any, error) {
+// documentOf returns the document of a resource of type t in src, the file that holds it.
+func documentOf(fsys fs.FS, t *definitions.ResourceType, region locate.Region, src []byte) (map[string]any, error) {
 	if region.Strategy == locate.Entry || region.Strategy == locate.Field {
 		doc, _, err := entryDocument(region, src)
 		return doc, err
 	}
 	file := region.DocumentFile()
-	decoded, _, err := edit.Decode(file, src)
+	decoded, _, err := generate.Decode(fsys, t, file, region.Params, src)
 	if err != nil {
 		return nil, fmt.Errorf("%s cannot be read, so Quai will not edit it: %w", file, err)
 	}

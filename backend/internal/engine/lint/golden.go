@@ -12,7 +12,6 @@ import (
 	"testing/fstest"
 
 	"github.com/damhau/quai/backend/internal/engine/definitions"
-	"github.com/damhau/quai/backend/internal/engine/edit"
 	"github.com/damhau/quai/backend/internal/engine/edit/yamledit"
 	"github.com/damhau/quai/backend/internal/engine/generate"
 	"github.com/damhau/quai/backend/internal/engine/locate"
@@ -161,7 +160,7 @@ func goldenToRequest(fsys fs.FS, t *definitions.ResourceType, in goldenRequest) 
 	if err != nil {
 		return req, fmt.Errorf("key: %s: %w", in.Key, err)
 	}
-	decoded, code, err := edit.Decode(file, src)
+	decoded, code, err := generate.Decode(fsys, t, file, region.Params, src)
 	if err != nil {
 		return req, fmt.Errorf("%s: %w", file, err)
 	}

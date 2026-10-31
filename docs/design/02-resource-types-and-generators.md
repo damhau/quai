@@ -175,7 +175,7 @@ locate: { strategy: dir, path: deployments/{name} }
 ```
 
 - Region: every file under the directory. Its fingerprint is each file's path and content hash ([design 03](03-file-editing.md#concurrency-and-fingerprints)).
-- Used with the `component` generator for Kubernetes manifests (the prototype's blueprints), where one resource is several manifests plus a `kustomization.yaml` (and later with `plugin`); a type with the `dir` locator and another generator is refused.
+- Used with the `component` generator for Kubernetes manifests (the prototype's blueprints), where one resource is several manifests plus a `kustomization.yaml`; a type with the `dir` locator and another generator is refused (a plugin writes one file).
 - Contents:
   - `quai.yaml`, the record: the form's values, conforming to `spec.schema`, with the managed fields (owner, param mirrors) as for `identity`. Read-back uses it, because rendered manifests cannot be turned back into form values reliably; it is the resource's document. A directory without it cannot be edited.
   - `manifests.yaml`, the rendered manifests, one YAML document each ([multi-document](03-file-editing.md#yaml)), addressed by `kind` and `metadata.name` (and `metadata.namespace`).
@@ -304,17 +304,21 @@ generate:
 ### `plugin`: anything else, in a sandbox
 
 ```yaml
+locate: { strategy: file, path: "apps/{name}.ini" }
 generate:
   kind: plugin
-  module: .quai/plugins/tfvars.wasm
+  module: .quai/plugins/ini.wasm
   digest: sha256:4f1c…                  # the module is refused if the digest differs
-  config: { variable: vms }
+  config: { section: app }              # given to the plugin as it is
 ```
 
-- A WASM module exporting `write(values, current) -> region` and `read(region) -> values`, run with `wazero`.
-- No file system, network, clock or randomness; memory and CPU limits per call. Deterministic by construction.
+- A WebAssembly module for WASI preview 1 (`GOOS=wasip1`, built as a reactor), run with `wazero`. It owns the resource's file: `write(values, current) -> region` writes the values into the file's text before the request (none on create), keeping what it does not manage, and `read(region) -> values` reads them back. Use it for formats Quai cannot parse (TOML, INI, XML) or conventions the built-in generators do not cover. HCL is built in (see below), so plugins should be rare.
+- The values are those of the `identity` generator: the form's values, conforming to `spec.schema` (the form; `spec.inputs` does not apply), with the owner field and param mirrors, and actions setting fields of the values the plugin read. The plugin turns them into text, and back.
+- Only with the `file` locator, of any extension: the format is the plugin's, so `entry` and `field` regions, which Quai finds by parsing the file, do not apply; neither does `dir` (a directory written by a plugin is not built).
+- **ABI.** The module exports `alloc(size i32) -> i32`, `write(ptr, len i32) -> i64` and `read(ptr, len i32) -> i64`, and its memory. The host writes a call's input, JSON, into a buffer from `alloc`; the function returns its output's address in the high 32 bits and its length in the low 32. `write` takes `{values, current, params, config}` and returns `{region}`; `read` takes `{region, params, config}` and returns `{values}`; either returns `{error}` to refuse its input, which Quai shows. A region is UTF-8 text.
+- **Checks.** The module is refused when its SHA-256 differs from `digest`, when it imports anything but WASI preview 1, or when it does not export the ABI. Every write is read back: the request is refused when the plugin does not read the values it was given from what it wrote. `quai lint` checks the module, and runs the round trip and the golden examples through it.
+- **Sandbox.** Each call runs in a new instance: nothing is kept between calls. WASI sees no file system (nothing is mounted), no network, a clock that starts at a fixed time and a fixed random source; arguments and environment are empty, standard output is discarded and standard error is shown when the call fails. Each call has 64 MiB of memory and 2 seconds, from instantiation to output. A call's output depends only on its input. Compiled modules are cached by digest.
 - A small Go plugin SDK with tests and a template repository.
-- Use for formats or conventions the built-in generators do not cover. HCL is built in (see below), so plugins should be rare.
 
 ## Formats
 
@@ -412,10 +416,9 @@ destroys, first, as soon as the runner has reported it, before anyone approves.
 - with `--plan plan.json --stack envs/prod`, every Terraform resource the plan of that stack changes belongs to exactly one resource, through the types' `stack` and `address` patterns.
 
 It prints one line per problem (`file: field: message`) and exits with status 1 when there
-is any. Types whose generator the running version does not implement are listed as not checked
-rather than failing: today the `plugin` generator, and the components not built yet. The round
-trip of a mapping type reads the values back and writes them through the template; that of a
+is any. The round trip of a mapping type reads the values back and writes them through the template; that of a
 `dir` region reads the values from its record (which must conform to the schema) and renders
-them: the record, the manifests and the kustomization must stay byte for byte. A golden case's
+them: the record, the manifests and the kustomization must stay byte for byte; that of a plugin
+type reads the values through the plugin and writes them back through it. A golden case's
 `before/` may hold some of a directory's files: the others are the repository's. The backend CI runs it on `examples/gitops-repo`, whose `.quai/tests/vm/` holds golden
 examples.

@@ -14,7 +14,7 @@ quai/
 │   │   │   ├── expr/                   # CEL environment, ${{ }} bindings
 │   │   │   ├── schema/                 # JSON Schema compile/validate, defaults, form metadata
 │   │   │   ├── locate/                 # file, dir, entry, field locators; params; fingerprints
-│   │   │   ├── generate/               # identity, mapping, component, plugin
+│   │   │   ├── generate/               # identity, mapping, component, plugin (the wazero runtime)
 │   │   │   ├── edit/                   # yamledit, jsonedit, hcledit + verification
 │   │   │   ├── definitions/            # parse/validate types and blueprints (v1beta1)
 │   │   │   ├── plan/                   # values → change set (edits, diff, hash)
@@ -53,7 +53,7 @@ quai/
 
 Rules:
 
-- **`internal/engine` imports nothing outside the standard library and its own format libraries.** No database, network, clock, environment or logging. This keeps it deterministic and lets `quai lint` run anywhere.
+- **`internal/engine` imports nothing outside the standard library and its own format libraries.** No database, network, clock, environment or logging. This keeps it deterministic and lets `quai lint` run anywhere. The one use of the clock is the plugin runtime's time limit per call (`generate/plugin`, with `wazero`): it can make a call fail, never change what it returns.
 - Domain packages own their handlers, queries and jobs. No layer-wide `services/` or `utils/` packages.
 - Packages talk through small interfaces defined by the consumer. The `Connector` interface ([Git connectors](../design/12-git-connectors.md)) is the exception: it is shared by `delivery`, `repositories`, `runs` and webhook ingestion, and lives in `internal/connectors`.
 

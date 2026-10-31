@@ -1,7 +1,11 @@
 package definitions
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
 	"fmt"
+	"io/fs"
 	"maps"
 	"regexp"
 	"slices"
@@ -116,7 +120,7 @@ func (l *loader) resourceType(file string) *ResourceType {
 	s := &t.Spec
 
 	params := c.params(s)
-	c.locate(s.Locate, params)
+	c.locate(s.Locate, params, s.Generate.Kind)
 	for _, f := range []struct{ field, value string }{{"spec.stack", s.Stack}, {"spec.address", s.Address}} {
 		for _, m := range placeholder.FindAllStringSubmatch(f.value, -1) {
 			if !params[m[1]] {
@@ -160,12 +164,15 @@ func (l *loader) resourceType(file string) *ResourceType {
 	switch g := s.Generate.Kind; {
 	case g == GenerateComponent && s.Locate.Strategy != LocateDir:
 		c.add("spec.generate.kind", "the component generator writes a directory: it needs the dir locator")
-	case s.Locate.Strategy == LocateDir && g != GenerateComponent && g != GeneratePlugin:
+	case g == GeneratePlugin && s.Locate.Strategy != LocateFile:
+		c.add("spec.generate.kind", "the plugin generator writes one file, in a format only its plugin reads: it needs the file locator")
+	case s.Locate.Strategy == LocateDir && g != GenerateComponent:
 		c.add("spec.locate.strategy", "a directory is written by the component generator, not the %s generator", g)
 	}
-	if s.Generate.Kind == GenerateComponent && s.Inputs != "" {
-		// The record holds the form's values: one schema describes both.
-		c.add("spec.inputs", "does not apply to the component generator: its form is the record's schema, spec.schema")
+	if g := s.Generate.Kind; (g == GenerateComponent || g == GeneratePlugin) && s.Inputs != "" {
+		// The record, or the values the plugin reads, are the form's values: one schema
+		// describes both.
+		c.add("spec.inputs", "does not apply to the %s generator: its form is spec.schema", g)
 	}
 	if g := s.Generate; g.Kind == GenerateMapping && t.InputSchema != nil {
 		// Every input must be read back for day 2: from where the template binds it, or by a
@@ -260,7 +267,9 @@ func (c *check) params(s *TypeSpec) map[string]bool {
 	return params
 }
 
-func (c *check) locate(lo Locate, params map[string]bool) {
+// locate checks a locator; the files of a type with the generator kind g. A plugin's files are in
+// the formats it reads and writes, whatever their extension.
+func (c *check) locate(lo Locate, params map[string]bool, g string) {
 	oneOf(c, "spec.locate.strategy", lo.Strategy, LocateFile, LocateDir, LocateEntry, LocateField)
 	if !c.relPath("spec.locate.path", lo.Path) {
 		return
@@ -294,7 +303,7 @@ func (c *check) locate(lo Locate, params map[string]bool) {
 		if len(inPath) == 0 {
 			c.add("spec.locate.path", "needs at least one {param}")
 		}
-		if !dataFileRe.MatchString(lo.Path) {
+		if !dataFileRe.MatchString(lo.Path) && g != GeneratePlugin {
 			c.add("spec.locate.path", "must end in .yaml, .yml, .json, .tfvars, .hcl or .tf")
 		}
 	case LocateDir:
@@ -423,9 +432,23 @@ func (c *check) generate(g *Generate) {
 			}
 		}
 	case GeneratePlugin:
-		c.relPath("spec.generate.module", g.Module)
 		if !digestRe.MatchString(g.Digest) {
 			c.add("spec.generate.digest", "must be sha256: followed by 64 hexadecimal digits")
+		}
+		if !c.relPath("spec.generate.module", g.Module) {
+			break
+		}
+		// The module is the one the type pins (quai lint also checks what it imports and exports).
+		src, err := fs.ReadFile(c.l.fsys, g.Module)
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+			c.add("spec.generate.module", "%s does not exist", g.Module)
+		case err != nil:
+			c.add("spec.generate.module", "%v", err)
+		case digestRe.MatchString(g.Digest):
+			if sum := sha256.Sum256(src); "sha256:"+hex.EncodeToString(sum[:]) != g.Digest {
+				c.add("spec.generate.digest", "is not the digest of %s, which is sha256:%x: Quai refuses a module the type does not pin", g.Module, sum)
+			}
 		}
 	}
 }

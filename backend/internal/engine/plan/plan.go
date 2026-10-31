@@ -110,7 +110,8 @@ func addType(cs *ChangeSet, fsys fs.FS, t *definitions.ResourceType, r generate.
 	if region.Strategy == locate.Dir {
 		return region, addDir(cs, fsys, t, region, r)
 	}
-	if _, ok := edit.FormatOf(region.Path); !ok {
+	plugin := t.Spec.Generate.Kind == definitions.GeneratePlugin
+	if _, ok := edit.FormatOf(region.Path); !ok && !plugin {
 		return locate.Region{}, fmt.Errorf("%s: Quai edits YAML, JSON and HCL files (.yaml, .yml, .json, .tfvars, .hcl, the locals of .tf)", region.Path)
 	}
 	switch region.Strategy {
@@ -133,11 +134,15 @@ func addType(cs *ChangeSet, fsys fs.FS, t *definitions.ResourceType, r generate.
 		if fp != locate.Absent {
 			return locate.Region{}, fmt.Errorf("%s: %s %w", id, region.Path, ErrExists)
 		}
-		doc, err := generate.Document(t, r)
-		if err != nil {
-			return locate.Region{}, err
+		var out []byte
+		if plugin {
+			out, err = generate.Plugin(fsys, t, r, nil)
+		} else {
+			var doc map[string]any
+			if doc, err = generate.Document(t, r); err == nil {
+				out, err = edit.Create(region.Path, doc, t.FileSchema.PropertyOrder())
+			}
 		}
-		out, err := edit.Create(region.Path, doc, t.FileSchema.PropertyOrder())
 		if err != nil {
 			return locate.Region{}, err
 		}
@@ -156,7 +161,7 @@ func addType(cs *ChangeSet, fsys fs.FS, t *definitions.ResourceType, r generate.
 		cs.Changes = append(cs.Changes, Change{Path: region.Path, Op: OpDelete, Before: before})
 		return region, nil
 	}
-	decoded, code, err := edit.Decode(region.Path, before)
+	decoded, code, err := generate.Decode(fsys, t, region.Path, region.Params, before)
 	if err != nil {
 		return locate.Region{}, fmt.Errorf("%s cannot be read, so Quai will not edit it: %w", region.Path, err)
 	}
@@ -165,11 +170,15 @@ func addType(cs *ChangeSet, fsys fs.FS, t *definitions.ResourceType, r generate.
 		return locate.Region{}, fmt.Errorf("%s does not hold a mapping, so Quai will not edit it", region.Path)
 	}
 	r.Current, r.Code = current, code
-	doc, err := generate.Document(t, r)
-	if err != nil {
-		return locate.Region{}, err
+	var after []byte
+	if plugin {
+		after, err = generate.Plugin(fsys, t, r, before)
+	} else {
+		var doc map[string]any
+		if doc, err = generate.Document(t, r); err == nil {
+			after, err = edit.Edit(region.Path, before, doc)
+		}
 	}
-	after, err := edit.Edit(region.Path, before, doc)
 	if err != nil {
 		return locate.Region{}, err
 	}

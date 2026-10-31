@@ -29,9 +29,8 @@ type Report struct {
 	Blueprints int
 	Resources  int
 	Tests      int // golden examples
-	// Problems fail the check. Notes report what this version does not check yet.
+	// Problems fail the check.
 	Problems definitions.Problems
-	Notes    definitions.Problems
 }
 
 // Run checks the repository fsys.
@@ -43,7 +42,6 @@ func Run(fsys fs.FS) Report {
 	}
 	r.checkTests(fsys, repo)
 	sortProblems(r.Problems)
-	sortProblems(r.Notes)
 	return r
 }
 
@@ -78,9 +76,12 @@ func (r *Report) problem(file, field, format string, args ...any) {
 
 func (r *Report) checkType(fsys fs.FS, t *definitions.ResourceType) {
 	if t.Spec.Generate.Kind == definitions.GeneratePlugin {
-		r.Notes = append(r.Notes, definitions.Problem{Path: t.Path, Message: fmt.Sprintf(
-			"the files of type %s are not checked: the plugin generator is not available yet", t.Metadata.Name)})
-		return
+		// The module must be the one the type pins, import nothing a plugin may not, and export
+		// the ABI: what Quai checks before running it.
+		if _, err := generate.Module(fsys, t); err != nil {
+			r.problem(t.Path, "spec.generate.module", "%v", err)
+			return
+		}
 	}
 	loc, err := t.Spec.Locate.Locator()
 	if err != nil {
@@ -193,7 +194,7 @@ func (r *Report) checkFile(fsys fs.FS, t *definitions.ResourceType, region locat
 		r.problem(region.Path, "", "cannot read: %v", err)
 		return
 	}
-	decoded, code, err := edit.Decode(region.Path, src)
+	decoded, code, err := generate.Decode(fsys, t, region.Path, region.Params, src)
 	if err != nil {
 		r.problem(region.Path, "", "%v", err)
 		return
@@ -218,25 +219,45 @@ func (r *Report) checkFile(fsys fs.FS, t *definitions.ResourceType, region locat
 		r.problem(where, "", "round trip: %v", err)
 		return
 	}
-	written, err := generate.Document(t, generate.Request{Kind: generate.Update, Params: region.Params, Current: doc, Values: values, Code: code})
-	if err != nil {
-		r.problem(region.Path, "", "round trip: %v", err)
+	out, err := r.roundTrip(fsys, t, region, src, decoded, doc, values, code)
+	var ue uneditable
+	switch {
+	case errors.As(err, &ue):
+		r.problem(where, "", "round trip: Quai cannot edit this file: %v", ue.error)
 		return
-	}
-	whole, err := locate.Put(decoded, region, written)
-	if err != nil {
+	case err != nil:
 		r.problem(where, "", "round trip: %v", err)
-		return
-	}
-	out, err := edit.Edit(region.Path, src, whole)
-	if err != nil {
-		r.problem(where, "", "round trip: Quai cannot edit this file: %v", err)
 		return
 	}
 	if !bytes.Equal(out, src) {
 		r.problem(where, "", "round trip: Quai would rewrite this file on its first edit (%s)", changedLines(src, out))
 	}
 }
+
+// roundTrip writes values back into src, the file of a region whose document is doc, decoded
+// whole: through the type's plugin, or into the region's place in the file with its editor.
+func (r *Report) roundTrip(fsys fs.FS, t *definitions.ResourceType, region locate.Region, src []byte, decoded any, doc, values map[string]any, code []edit.Code) ([]byte, error) {
+	req := generate.Request{Kind: generate.Update, Params: region.Params, Current: doc, Values: values, Code: code}
+	if t.Spec.Generate.Kind == definitions.GeneratePlugin {
+		return generate.Plugin(fsys, t, req, src)
+	}
+	written, err := generate.Document(t, req)
+	if err != nil {
+		return nil, err
+	}
+	whole, err := locate.Put(decoded, region, written)
+	if err != nil {
+		return nil, err
+	}
+	out, err := edit.Edit(region.Path, src, whole)
+	if err != nil {
+		return nil, uneditable{err}
+	}
+	return out, nil
+}
+
+// uneditable is an error of a file's editor: the file is one Quai cannot edit.
+type uneditable struct{ error }
 
 // changedLines describes the lines a rewrite would change, for the message.
 func changedLines(before, after []byte) string {

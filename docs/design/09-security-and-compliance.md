@@ -22,7 +22,7 @@ Status: Draft · 2026-10-26
 | Injection through form input | No text templating; values are data serialized by format libraries; CEL is not Turing-complete and has no I/O; path params are single safe segments. |
 | Path traversal | Locator params validated as segments; every computed path resolved and checked to stay inside the worktree and outside `.git`. |
 | ReDoS through schema `pattern` | JSON Schema validation uses Go's `regexp` (RE2, linear time). |
-| Malicious WASM plugin | Pinned by digest; `wazero` with no WASI file system, network, clock or random; memory and fuel limits; no host functions beyond the generator ABI. |
+| Malicious WASM plugin | Pinned by digest; `wazero`, a new instance per call, with no WASI file system, network, clock or random; a memory and a time limit per call (`wazero` has no fuel metering); no host functions beyond WASI preview 1, which sees that empty world. |
 | Secrets written into Git | Secret inputs are references only (Vault path, ExternalSecret name); rendered output is scanned for secret patterns (gitleaks rules) before commit, and the request is refused on a match. |
 | SSRF through webhooks or executors | Outgoing calls only to admin-configured endpoints; allow-lists per executor; no URLs taken from definitions. |
 | Webhook spoofing | Per-repository secrets, constant-time comparison, delivery IDs de-duplicated, replay window. Platforms that do not sign payloads (Azure DevOps service hooks) are accepted only on the dedicated webhook host with a secret header, and every event is treated as a notification: Quai re-reads the object from the platform API before acting. |

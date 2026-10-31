@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+
+	"github.com/damhau/quai/backend/internal/engine/generate/plugin/plugintest"
 )
 
 const examples = "../../../../examples/gitops-repo"
@@ -40,14 +42,14 @@ func copyTree(t *testing.T, root string) fstest.MapFS {
 // The Kubernetes example: a type per component, its directories and golden examples.
 func TestKubernetesExamplePass(t *testing.T) {
 	r := Run(copyTree(t, "../../../../examples/kubernetes-repo"))
-	if len(r.Problems) > 0 || len(r.Notes) > 0 || r.Types != 5 || r.Resources != 5 || r.Tests != 8 {
+	if len(r.Problems) > 0 || r.Types != 5 || r.Resources != 5 || r.Tests != 8 {
 		t.Errorf("report = %+v", r)
 	}
 }
 
 func TestExamplesPass(t *testing.T) {
 	r := Run(os.DirFS(examples))
-	if len(r.Problems) > 0 || len(r.Notes) > 0 || r.Types != 1 || r.Blueprints != 2 || r.Resources != 4 || r.Tests != 2 {
+	if len(r.Problems) > 0 || r.Types != 1 || r.Blueprints != 2 || r.Resources != 4 || r.Tests != 2 {
 		t.Errorf("report = %+v", r)
 	}
 }
@@ -86,13 +88,13 @@ func TestBrokenCopies(t *testing.T) {
 	}
 }
 
-func TestNotesAndTypeProblems(t *testing.T) {
+func TestTypeProblems(t *testing.T) {
 	typ := func(name, locate, generate string) string {
 		return "apiVersion: quai.dev/v1beta1\nkind: ResourceType\nmetadata: { name: " + name + ", title: T }\nspec:\n  schema: s.json\n  params: [{ name: name }]\n  locate: " + locate + "\n" + generate
 	}
 	fsys := fstest.MapFS{
 		"s.json":                {Data: []byte(`{"type": "object", "properties": {"a": {"type": "string"}}}`)},
-		".quai/types/apps.yaml": {Data: []byte(typ("apps", `{ strategy: dir, path: "apps/{name}" }`, "  generate: { kind: plugin, module: p.wasm, digest: \"sha256:"+strings.Repeat("0", 64)+"\" }\n"))},
+		".quai/types/apps.yaml": {Data: []byte(typ("apps", `{ strategy: file, path: "apps/{name}.ini" }`, "  generate: { kind: plugin, module: p.wasm, digest: \"sha256:"+strings.Repeat("0", 64)+"\" }\n"))},
 		".quai/types/map.yaml":  {Data: []byte(typ("map", `{ strategy: file, path: "m/{name}.yaml" }`, "  generate: { kind: mapping, template: { a: x } }\n"))},
 		".quai/types/item.yaml": {Data: []byte(typ("item", `{ strategy: file, path: "items/{name}.yaml" }`, ""))},
 		".quai/types/flag.yaml": {Data: []byte(typ("flag", `{ strategy: file, path: "flags/{name}.yaml" }`, "  ui: { fields: { a: { visibleIf: inputs.flag } } }\n"))},
@@ -101,11 +103,9 @@ func TestNotesAndTypeProblems(t *testing.T) {
 		"items/two.yaml":        {Data: []byte("a: x\nzz: kept\n")},
 	}
 	r := Run(fsys)
-	if len(r.Notes) != 1 || !strings.Contains(r.Notes.Error(), "the files of type apps are not checked: the plugin generator is not available yet") {
-		t.Errorf("notes = %v", r.Notes)
-	}
-	if len(r.Problems) != 3 || r.Problems[0].String() != ".quai/types/map.yaml: spec.generate.read: input a cannot be read back: the template does not bind it directly and no read expression says how" ||
-		!strings.HasPrefix(r.Problems[1].String(), "flags/f.yaml: round trip: visibleIf of a:") || r.Problems[2].String() != "items/one.yaml: a: must be a string (schema s.json)" {
+	if len(r.Problems) != 4 || r.Problems[0].String() != ".quai/types/apps.yaml: spec.generate.module: p.wasm does not exist" ||
+		r.Problems[1].String() != ".quai/types/map.yaml: spec.generate.read: input a cannot be read back: the template does not bind it directly and no read expression says how" ||
+		!strings.HasPrefix(r.Problems[2].String(), "flags/f.yaml: round trip: visibleIf of a:") || r.Problems[3].String() != "items/one.yaml: a: must be a string (schema s.json)" {
 		t.Errorf("problems = %v", r.Problems)
 	}
 }
@@ -227,9 +227,9 @@ func TestMappingTypes(t *testing.T) {
 		"clusters/prod/ns.yaml": {Data: []byte("namespaces:\n  - name: orders\n    team: orders\n    quota: { cpu: \"2\" }\n")},
 	}
 	r := Run(fsys)
-	if len(r.Notes) > 0 || r.Resources != 3 || len(r.Problems) != 1 ||
+	if r.Resources != 3 || len(r.Problems) != 1 ||
 		r.Problems[0].String() != `apps/prod/odd.yaml: round trip: Quai would rewrite this file on its first edit (removes "quota: { cpu: \"4\" }", adds "quota: { cpu: \"8\" }")` {
-		t.Errorf("notes %v, %d resources, problems:\n%s", r.Notes, r.Resources, r.Problems.Error())
+		t.Errorf("%d resources, problems:\n%s", r.Resources, r.Problems.Error())
 	}
 }
 
@@ -266,8 +266,8 @@ func TestGoldenExamples(t *testing.T) {
 // directories they wrote, in testdata/components.
 func TestComponents(t *testing.T) {
 	r := Run(copyTree(t, "testdata/components"))
-	if len(r.Problems) > 0 || len(r.Notes) > 0 {
-		t.Errorf("problems:\n%v\nnotes:\n%v", r.Problems, r.Notes)
+	if len(r.Problems) > 0 {
+		t.Errorf("problems:\n%v", r.Problems)
 	}
 	if r.Tests != 5 || r.Resources != 2 {
 		t.Errorf("tests = %d, resources = %d, want 5 and 2", r.Tests, r.Resources)
@@ -295,5 +295,64 @@ func TestComponentsBroken(t *testing.T) {
 	fsys["teams/shop/manifests.yaml"] = &fstest.MapFile{Data: []byte(strings.Replace(m, "team: shop", "team: web", 1))}
 	if text := Run(fsys).Problems.Error(); !strings.Contains(text, `teams/shop/manifests.yaml: round trip: Quai would rewrite this file on its first edit`) {
 		t.Errorf("problems:\n%s", text)
+	}
+}
+
+// pluginRepo is a repository with the settings type, whose files the guest plugin writes, its
+// resources and golden examples.
+func pluginRepo(t *testing.T) fstest.MapFS {
+	t.Helper()
+	module := plugintest.Build(t, "guest")
+	files := map[string]string{
+		".quai/plugins/settings.wasm":                         string(module),
+		".quai/types/settings.yaml":                           plugintest.Type(".quai/plugins/settings.wasm", plugintest.Digest(module)),
+		"catalog/schemas/settings.schema.json":                plugintest.Schema,
+		"settings/web.conf":                                   "# The web team's settings.\ncolour = blue\nowner = alice\n",
+		"settings/shop.conf":                                  "colour = red\n",
+		".quai/tests/settings/create/request.yaml":            "kind: create\nparams: { name: new }\nowner: bob\nvalues: { colour: green, size: small }\n",
+		".quai/tests/settings/create/after/settings/new.conf": "colour = green\nowner = bob\nsize = small\n",
+		".quai/tests/settings/paint/request.yaml":             "kind: action\nkey: web\naction: paint\nactionInputs: { colour: red }\n",
+		".quai/tests/settings/paint/after/settings/web.conf":  "# The web team's settings.\ncolour = red\nowner = alice\n",
+	}
+	fsys := fstest.MapFS{}
+	for p, s := range files {
+		fsys[p] = &fstest.MapFile{Data: []byte(s)}
+	}
+	return fsys
+}
+
+// TestPlugins: the files of a plugin type are read by its plugin, checked against the schema
+// and round trip, and its golden examples run through it; its module must be the one the type
+// pins and import nothing a plugin may not.
+func TestPlugins(t *testing.T) {
+	if r := Run(pluginRepo(t)); len(r.Problems) > 0 || r.Types != 1 || r.Resources != 2 || r.Tests != 2 {
+		t.Fatalf("%d types, %d resources, %d tests, problems:\n%v", r.Types, r.Resources, r.Tests, r.Problems)
+	}
+
+	fsys := pluginRepo(t)
+	fsys["settings/pink.conf"] = &fstest.MapFile{Data: []byte("colour = pink\n")}
+	fsys["settings/odd.conf"] = &fstest.MapFile{Data: []byte("colour: blue\n")}
+	fsys["settings/tight.conf"] = &fstest.MapFile{Data: []byte("colour=blue\n")}
+	forbidden := plugintest.Build(t, "forbidden")
+	fsys[".quai/plugins/forbidden.wasm"] = &fstest.MapFile{Data: forbidden}
+	fsys[".quai/types/other.yaml"] = &fstest.MapFile{Data: []byte(strings.NewReplacer("name: settings", "name: other", "settings/{name}", "other/{name}", "settings.wasm", "forbidden.wasm").
+		Replace(plugintest.Type(".quai/plugins/settings.wasm", plugintest.Digest(forbidden))))}
+	fsys[".quai/types/pinned.yaml"] = &fstest.MapFile{Data: []byte(strings.NewReplacer("name: settings", "name: pinned", "settings/{name}", "pinned/{name}").
+		Replace(plugintest.Type(".quai/plugins/settings.wasm", plugintest.Digest(forbidden))))}
+	r := Run(fsys)
+	want := []string{
+		".quai/types/other.yaml: spec.generate.module: plugin .quai/plugins/forbidden.wasm: the module imports a host function plugins may not use: env.fetch (a plugin may import only wasi_snapshot_preview1)",
+		".quai/types/pinned.yaml: spec.generate.digest: is not the digest of .quai/plugins/settings.wasm",
+		"settings/odd.conf: plugin .quai/plugins/settings.wasm: refused: line 1: expected key = value",
+		"settings/pink.conf: colour: must be one of blue, red, green (schema catalog/schemas/settings.schema.json)",
+		`settings/tight.conf: round trip: Quai would rewrite this file on its first edit (removes "colour=blue", adds "colour = blue")`,
+	}
+	if len(r.Problems) != len(want) {
+		t.Fatalf("problems:\n%v", r.Problems)
+	}
+	for i, p := range r.Problems {
+		if !strings.HasPrefix(p.String(), want[i]) {
+			t.Errorf("problem %d = %s\nwant %s…", i, p, want[i])
+		}
 	}
 }

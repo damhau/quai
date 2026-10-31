@@ -227,7 +227,7 @@ func (s *Service) PlanType(ctx context.Context, who auth.Identity, in TypeInput)
 		if c.Path != region.DocumentFile() || c.After == nil {
 			continue
 		}
-		if doc, _, err := edit.Decode(c.Path, c.After); err == nil {
+		if doc, _, err := generate.Decode(snap.FS, t, c.Path, region.Params, c.After); err == nil {
 			// An entry's document is its value, a field region's its fields, a directory's its
 			// record; a deleted entry keeps the document it had.
 			if value, _, err := locate.Document(doc, nil, region); err == nil {

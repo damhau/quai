@@ -44,9 +44,6 @@ func newLintCmd() *cobra.Command {
 				r.Problems = append(r.Problems, lint.Plan(os.DirFS(dir), b, planFile, stack)...)
 			}
 			out := cmd.OutOrStdout()
-			for _, n := range r.Notes {
-				fmt.Fprintln(out, "note:", n)
-			}
 			for _, p := range r.Problems {
 				fmt.Fprintln(out, p)
 			}

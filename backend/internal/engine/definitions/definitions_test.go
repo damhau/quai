@@ -1,8 +1,12 @@
 package definitions
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"maps"
 	"os"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -353,6 +357,8 @@ func TestLocatorsAndGenerators(t *testing.T) {
 		`bad-entry.yaml: spec.ui.fields: invalid field path "bad path!"`,
 		"bad-entry.yaml: spec.ui.fields.bad path!.visibleIf: expression",
 		"gens.yaml: spec.generate.digest: must be sha256:",
+		"gens.yaml: spec.generate.kind: the plugin generator writes one file, in a format only its plugin reads: it needs the file locator",
+		"gens.yaml: spec.generate.module: .quai/plugins/x.wasm does not exist",
 		"gens.yaml: spec.actions[0]: an imperative action needs an executor and an operation",
 		"gens.yaml: spec.actions[0].set: an imperative action does not set fields",
 		"gens.yaml: spec.actions[1].set: is required for a declarative action",
@@ -503,4 +509,42 @@ func TestComponentTypes(t *testing.T) {
 		"with.yaml: spec.generate.with:",
 		"vm.yaml: spec.generate.component: must be one of argocd.application, crossplane.claim, flux.kustomization, k8s.namespace, raw",
 	)
+}
+
+// TestPluginTypes: the plugin generator writes one file, of any extension, in a format only its
+// plugin reads; its form is spec.schema, and its module must be the one it pins.
+func TestPluginTypes(t *testing.T) {
+	module := "a module: definitions check its digest, quai lint what it imports and exports"
+	sum := sha256.Sum256([]byte(module))
+	digest := "sha256:" + hex.EncodeToString(sum[:])
+	other := "sha256:" + strings.Repeat("0", 64)
+	typ := func(name, locate, mod, digest, extra string) string {
+		return "apiVersion: quai.dev/v1beta1\nkind: ResourceType\nmetadata: { name: " + name + ", title: T }\nspec:\n  schema: catalog/vm.schema.json\n  params: [{ name: name }]\n" +
+			"  locate: " + locate + "\n  generate: { kind: plugin, module: " + mod + ", digest: \"" + digest + "\", config: { section: main } }\n" + extra
+	}
+	repo, problems := load(t, map[string]string{
+		".quai/plugins/ini.wasm": module,
+		".quai/types/ini.yaml":   typ("ini", `{ strategy: file, path: "apps/{name}.ini" }`, ".quai/plugins/ini.wasm", digest, ""),
+		".quai/types/wrong.yaml": typ("wrong", `{ strategy: file, path: "w/{name}.ini" }`, ".quai/plugins/ini.wasm", other, ""),
+		".quai/types/gone.yaml":  typ("gone", `{ strategy: file, path: "g/{name}.ini" }`, ".quai/plugins/gone.wasm", digest, ""),
+		".quai/types/form.yaml":  typ("form", `{ strategy: file, path: "f/{name}.ini" }`, ".quai/plugins/ini.wasm", digest, "  inputs: catalog/vm.schema.json\n"),
+		".quai/types/entry.yaml": typ("entry", `{ strategy: entry, path: "e.ini", collection: apps, key: name, keyParam: name }`, ".quai/plugins/ini.wasm", digest, ""),
+		".quai/types/plain.yaml": "apiVersion: quai.dev/v1beta1\nkind: ResourceType\nmetadata: { name: plain, title: T }\nspec:\n  schema: catalog/vm.schema.json\n  params: [{ name: name }]\n  locate: { strategy: file, path: \"p/{name}.ini\" }\n",
+	})
+	if ini := repo.Types["ini"]; ini == nil || ini.Spec.Generate.Config["section"] != "main" {
+		t.Errorf("the ini type = %+v", ini)
+	}
+	if len(repo.Types) != 1 {
+		t.Errorf("types = %v", slices.Sorted(maps.Keys(repo.Types)))
+	}
+	wantProblems(t, problems,
+		"wrong.yaml: spec.generate.digest: is not the digest of .quai/plugins/ini.wasm, which is "+digest+": Quai refuses a module the type does not pin",
+		"gone.yaml: spec.generate.module: .quai/plugins/gone.wasm does not exist",
+		"form.yaml: spec.inputs: does not apply to the plugin generator: its form is spec.schema",
+		"entry.yaml: spec.generate.kind: the plugin generator writes one file, in a format only its plugin reads: it needs the file locator",
+		"plain.yaml: spec.locate.path: must end in .yaml, .yml, .json, .tfvars, .hcl or .tf",
+	)
+	if strings.Contains(problems.Error(), "ini.yaml") {
+		t.Errorf("problems of the ini type:\n%s", problems.Error())
+	}
 }
