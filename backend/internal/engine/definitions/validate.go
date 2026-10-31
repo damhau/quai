@@ -25,7 +25,7 @@ var (
 	// Built-in actions every resource has; definitions cannot redefine them.
 	reservedActions = []string{"create", "update", "delete", "transfer-ownership"}
 	approverKinds   = []string{"owners", "codeowners", "manager"}
-	components      = []string{"kubevirt.vm", "crossplane.claim", "argocd.application", "k8s.namespace", "flux.kustomization", "raw"}
+	components      = []string{"crossplane.claim", "argocd.application", "k8s.namespace", "flux.kustomization", "raw"}
 )
 
 // check collects the problems of one definition file.

@@ -133,6 +133,12 @@ Wanted, but in no phase or milestone yet: each is an issue labelled `enhancement
   [Git connectors](../design/12-git-connectors.md#editions-and-versions). The connector already
   targets API 7.0, authenticates with a PAT and unit-tests Server's URLs. Needs a Server instance
   (a lab VM, or a test project on a customer's Server) and a service account's PAT.
+- **KubeVirt VM component** ([#136](https://github.com/damhau/quai/issues/136)): a `kubevirt.vm`
+  renderer for the `component` generator, writing one directory of plain manifests per VM (the
+  prototype had one). Left out of P3-10 ([open question 12](open-questions.md#decided)): KubeVirt
+  VMs declared as entries of a Helm chart's values are already covered by the `entry` locator.
+  Needs KubeVirt's `VirtualMachine` CRD for the envtest dry runs; KubeVirt publishes no CRD file,
+  so a script installs the pinned operator in kind and saves the CRDs it creates.
 
 ## Risks
 

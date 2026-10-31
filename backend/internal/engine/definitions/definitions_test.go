@@ -369,7 +369,7 @@ func TestLocatorsAndGenerators(t *testing.T) {
 		"gens.yaml: spec.actions[5].inputs[1].pattern:",
 		"gens.yaml: spec.actions[5].inputs[2].name: must start with a lowercase letter",
 		"gens.yaml: spec.actions[5].inputs[2].visibleIf: expression",
-		`comp.yaml: spec.generate.component: must be one of kubevirt.vm, crossplane.claim, argocd.application, k8s.namespace, flux.kustomization, raw, not "helm.chart"`,
+		`comp.yaml: spec.generate.component: must be one of crossplane.claim, argocd.application, k8s.namespace, flux.kustomization, raw, not "helm.chart"`,
 		"comp.yaml: spec.locate.path: needs at least one {param}",
 		"map.yaml: spec.locate.path: cannot be under .quai/",
 		"map.yaml: spec.params: unused is not used by spec.locate",

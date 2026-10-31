@@ -270,7 +270,7 @@ generate:
 ```yaml
 generate:
   kind: component
-  component: kubevirt.vm        # kubevirt.vm | crossplane.claim | argocd.application | k8s.namespace | flux.kustomization | raw
+  component: crossplane.claim   # crossplane.claim | argocd.application | k8s.namespace | flux.kustomization | raw
   with:
     apiVersion: database.platform.acme.ch/v1alpha1   # crossplane.claim takes the XRD's group/kind
     kind: PostgreSQLInstance
@@ -278,6 +278,10 @@ generate:
 
 - Renders one or more manifests into a `dir` region, plus `kustomization.yaml` and the `quai.yaml` record.
 - The prototype's components move here. `crossplane.claim` becomes generic (any XRD) instead of hard-coding two kinds.
+- The prototype's `kubevirt.vm` does not ([open question 12](../plan/open-questions.md#decided)): KubeVirt VMs in
+  a GitOps repository are usually entries of a Helm chart's values, which the `entry` locator edits and the
+  chart renders. A renderer for one directory of manifests per VM is a
+  [future improvement](../plan/roadmap.md#future-improvements).
 - Read-back uses the record file.
 
 ### `plugin`: anything else, in a sandbox

@@ -162,5 +162,5 @@ Quai does not read Terraform state by default: state files contain secrets and
 access to them is the most sensitive permission in an IaC estate. Observed
 state comes from run reports. Two optional, read-only observers are planned:
 
-- **Kubernetes:** status and conditions of the resources a `dir` region renders (KubeVirt VMs, Crossplane claims), through a read-only service account.
+- **Kubernetes:** status and conditions of the resources a `dir` region renders (Crossplane claims, Argo CD Applications), through a read-only service account.
 - **Provider APIs:** per-type observer plugins (vSphere, cloud) for attributes worth showing live, such as power state or IP address.
