@@ -133,6 +133,11 @@ Wanted, but in no phase or milestone yet: each is an issue labelled `enhancement
   [Git connectors](../design/12-git-connectors.md#editions-and-versions). The connector already
   targets API 7.0, authenticates with a PAT and unit-tests Server's URLs. Needs a Server instance
   (a lab VM, or a test project on a customer's Server) and a service account's PAT.
+- **GitHub Enterprise Server** ([#137](https://github.com/damhau/quai/issues/137)): run the GitHub
+  connector on GHES. Check its URL forms, feature detection by version (rulesets, merge queue,
+  auto-merge) and an internal CA; run the conformance suite and fix the differences. M2 is
+  accepted on github.com only ([open question 11](open-questions.md#decided)). Needs a GHES
+  instance (a trial, or a test organization on a customer's GHES).
 - **KubeVirt VM component** ([#136](https://github.com/damhau/quai/issues/136)): a `kubevirt.vm`
   renderer for the `component` generator, writing one directory of plain manifests per VM (the
   prototype had one). Left out of P3-10 ([open question 12](open-questions.md#decided)): KubeVirt

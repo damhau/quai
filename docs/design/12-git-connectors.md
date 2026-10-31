@@ -265,7 +265,7 @@ sequenceDiagram
 | Ownership | `CODEOWNERS` file, parsed by the connector |
 | Webhooks | App webhooks signed with HMAC-SHA256 (`X-Hub-Signature-256`) |
 | Commits | Commits created through the API by the app are shown as verified |
-| Editions | github.com and GitHub Enterprise Server (feature detection by version) |
+| Editions | github.com. GitHub Enterprise Server is a [future improvement](../plan/roadmap.md#future-improvements) ([#137](https://github.com/damhau/quai/issues/137)): the API URL stays configurable, with feature detection by version when it is built |
 
 ## GitLab (third)
 

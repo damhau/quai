@@ -47,6 +47,14 @@ too old or too weak, the UI redirects through the IdP with `max_age` (and
 - Users and their groups are read from ID token claims at each login. Group claims are mapped to Quai teams by a configurable mapping (`groups: [sg-quai-*]` → teams).
 - SCIM 2.0 provisioning (optional) keeps users and groups current between logins and deactivates leavers immediately, which matters for pending approvals.
 - The `manager` attribute (for `approvers: [manager]`) comes from a claim or from SCIM.
+- Owners named by a Git platform (a `CODEOWNERS` entry such as `@alice` or `@org/team`; an Azure
+  DevOps reviewer such as `alice@acme.ch` or `[Project]\Platform`) match Quai users by email:
+  Azure DevOps account names and email entries as written, Gitea users through the email the
+  connector reads. Platform groups match Quai groups only through an explicit mapping in the
+  repository document (platform group → Quai group); unmapped entries match no one and are shown
+  on the request. The reviewer's email is kept with their review. From Phase 4, with the
+  `codeowners` approver kind ([#100](https://github.com/damhau/quai/issues/100);
+  [open question 9](../plan/open-questions.md#decided)).
 
 ### Microsoft Entra ID (the pilot's IdP)
 

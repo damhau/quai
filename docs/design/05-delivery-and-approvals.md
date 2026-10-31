@@ -218,8 +218,8 @@ approval rules of types, blueprints and floor rules only. It holds the request's
 succeeded plan of each stack ([runs](06-runs-status-and-drift.md#run-report-protocol)), summed:
 `add`, `change` and `destroy` (a replace counts in both `add` and `destroy`), `destroys` (the same
 as `destroy`), `cost` (`currency` and `monthlyDelta`, only when every plan reported a cost in the
-same currency) and `policies` (each `name` and `result`). Until the owner decides otherwise
-([open question 7](../plan/open-questions.md)):
+same currency) and `policies` (each `name` and `result`). As decided
+([open question 7](../plan/open-questions.md#decided)):
 
 - **Undecided until a plan reports.** Such a rule is kept apart, never merged with another, and
   the request cannot reach *Approved* while it waits: approvals given in the meantime count for it

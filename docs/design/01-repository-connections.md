@@ -143,7 +143,7 @@ during onboarding.
 | Azure DevOps Services | **1st** | Branch policy "Status check" requiring the `quai/approval` PR status, with Quai as the authorized identity and status reset on new changes |
 | Azure DevOps Server (on-premises) | Future improvement, same connector | Same as Services |
 | Gitea / Forgejo | with the 1st (tests) | Required status check in branch protection |
-| GitHub / GitHub Enterprise Server | 2nd | Required check in branch protection or a ruleset, pinned to the Quai GitHub App |
+| GitHub (github.com; Enterprise Server a future improvement) | 2nd | Required check in branch protection or a ruleset, pinned to the Quai GitHub App |
 | GitLab.com / self-managed | 3rd | External status checks†, an approval rule requiring the Quai bot†, or a protected branch only the Quai bot may merge |
 | Bitbucket Cloud / Data Center | 4th | Required builds or merge checks† |
 | Generic Git | — | Not enforceable; direct delivery only |

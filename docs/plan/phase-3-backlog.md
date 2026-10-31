@@ -70,5 +70,5 @@ pilot repository `pilot-infra`. Phase 3 adds:
   that it is ready, and **stop**. Only the owner closes it.
 
 The rules of [when to stop and ask](phase-0-backlog.md#when-to-stop-and-ask) apply unchanged.
-Open question 11 ([open questions](open-questions.md)) has a default the GitHub tasks follow
-until the owner answers it.
+The GitHub tasks target github.com only; GitHub Enterprise Server is a future improvement
+([#137](https://github.com/damhau/quai/issues/137), [open question 11](open-questions.md#decided)).
