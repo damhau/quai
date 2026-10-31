@@ -778,6 +778,12 @@ export type ResourceDetail = {
     stateRun?: RunView;
     status: 'conforming' | 'non-conforming' | 'unparseable';
     type: string;
+    /**
+     * The form's values the edit form starts from: the document for the identity generator, the values read back from it for the mapping generator
+     */
+    values?: {
+        [key: string]: unknown;
+    };
 };
 
 export type ResourceView = {
@@ -1550,6 +1556,12 @@ export type ResourceDetailWritable = {
     stateRun?: RunViewWritable;
     status: 'conforming' | 'non-conforming' | 'unparseable';
     type: string;
+    /**
+     * The form's values the edit form starts from: the document for the identity generator, the values read back from it for the mapping generator
+     */
+    values?: {
+        [key: string]: unknown;
+    };
 };
 
 export type ResourceViewWritable = {

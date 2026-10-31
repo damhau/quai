@@ -33,7 +33,7 @@ func copyExamples(t *testing.T) fstest.MapFS {
 
 func TestExamplesPass(t *testing.T) {
 	r := Run(os.DirFS(examples))
-	if len(r.Problems) > 0 || len(r.Notes) > 0 || r.Types != 1 || r.Blueprints != 2 || r.Resources != 4 {
+	if len(r.Problems) > 0 || len(r.Notes) > 0 || r.Types != 1 || r.Blueprints != 2 || r.Resources != 4 || r.Tests != 2 {
 		t.Errorf("report = %+v", r)
 	}
 }
@@ -87,10 +87,11 @@ func TestNotesAndTypeProblems(t *testing.T) {
 		"items/two.yaml":        {Data: []byte("a: x\nzz: kept\n")},
 	}
 	r := Run(fsys)
-	if len(r.Notes) != 2 || !strings.Contains(r.Notes.Error(), "the dir locator with the identity generator is not available yet") {
+	if len(r.Notes) != 1 || !strings.Contains(r.Notes.Error(), "the dir locator with the identity generator is not available yet") {
 		t.Errorf("notes = %v", r.Notes)
 	}
-	if len(r.Problems) != 2 || !strings.HasPrefix(r.Problems[0].String(), "flags/f.yaml: round trip: visibleIf of a:") || r.Problems[1].String() != "items/one.yaml: a: must be a string (schema s.json)" {
+	if len(r.Problems) != 3 || r.Problems[0].String() != ".quai/types/map.yaml: spec.generate.read: input a cannot be read back: the template does not bind it directly and no read expression says how" ||
+		!strings.HasPrefix(r.Problems[1].String(), "flags/f.yaml: round trip: visibleIf of a:") || r.Problems[2].String() != "items/one.yaml: a: must be a string (schema s.json)" {
 		t.Errorf("problems = %v", r.Problems)
 	}
 }
@@ -190,5 +191,59 @@ func TestFields(t *testing.T) {
 	r := Run(fsys)
 	if len(r.Problems) != 1 || r.Problems[0].String() != "clusters/prod-1/namespaces.yaml (orders): quota.cpu: must be a string (schema catalog/schemas/quota.schema.json)" || r.Resources != 7 {
 		t.Errorf("%d resources, problems:\n%s", r.Resources, r.Problems.Error())
+	}
+}
+
+// TestMappingTypes: files of a mapping type round-trip through its read and its template, with
+// every locator; one the template would rewrite is a problem.
+func TestMappingTypes(t *testing.T) {
+	typ := func(name, locate string) *fstest.MapFile {
+		return &fstest.MapFile{Data: []byte("apiVersion: quai.dev/v1beta1\nkind: ResourceType\nmetadata: { name: " + name + ", title: T }\nspec:\n" +
+			"  locate: " + locate + "\n  params: [{ name: cluster }, { name: name }]\n  schema: ns.schema.json\n  inputs: size.schema.json\n" +
+			"  generate:\n    kind: mapping\n    template: { quota: { cpu: \"${{ inputs.size == 'small' ? '2' : '8' }}\" }, team: \"${{ inputs.team }}\" }\n" +
+			"    read: { size: \"${{ doc.quota.cpu == '2' ? 'small' : 'large' }}\" }\n")}
+	}
+	fsys := fstest.MapFS{
+		".quai/types/app.yaml":  typ("app", "{ strategy: file, path: \"apps/{cluster}/{name}.yaml\" }"),
+		".quai/types/ns.yaml":   typ("ns", "{ strategy: entry, path: \"clusters/{cluster}/ns.yaml\", collection: namespaces, key: name, keyParam: name }"),
+		"ns.schema.json":        {Data: []byte(`{"type": "object", "properties": {"name": {"type": "string"}, "team": {"type": "string"}, "quota": {"type": "object"}}}`)},
+		"size.schema.json":      {Data: []byte(`{"type": "object", "properties": {"size": {"enum": ["small", "large"]}, "team": {"type": "string"}}}`)},
+		"apps/prod/shop.yaml":   {Data: []byte("# Shop.\nteam: shop\nquota: { cpu: \"8\" } # large\nextra: kept\n")},
+		"apps/prod/odd.yaml":    {Data: []byte("team: odd\nquota: { cpu: \"4\" }\n")},
+		"clusters/prod/ns.yaml": {Data: []byte("namespaces:\n  - name: orders\n    team: orders\n    quota: { cpu: \"2\" }\n")},
+	}
+	r := Run(fsys)
+	if len(r.Notes) > 0 || r.Resources != 3 || len(r.Problems) != 1 ||
+		r.Problems[0].String() != `apps/prod/odd.yaml: round trip: Quai would rewrite this file on its first edit (removes "quota: { cpu: \"4\" }", adds "quota: { cpu: \"8\" }")` {
+		t.Errorf("notes %v, %d resources, problems:\n%s", r.Notes, r.Resources, r.Problems.Error())
+	}
+}
+
+// TestGoldenExamples: a case passes when its request writes exactly the files under after/; any
+// other byte, a missing or an extra file, or a case of no type, is a problem.
+func TestGoldenExamples(t *testing.T) {
+	fsys := copyExamples(t)
+	r := Run(fsys)
+	if len(r.Problems) > 0 || r.Tests != 2 {
+		t.Fatalf("the examples' cases: %d, %v", r.Tests, r.Problems)
+	}
+	created := ".quai/tests/vm/create-dev-vm/after/envs/dev/vms/build-agent-02.yaml"
+	fsys[created].Data = []byte(strings.Replace(string(fsys[created].Data), "cpu: 4", "cpu: 2", 1))
+	fsys[".quai/tests/vm/resize-web01/after/envs/prod/vms/db01.yaml"] = &fstest.MapFile{Data: []byte("x: 1\n")}
+	fsys[".quai/tests/vm/resize-web01/before/envs/prod/vms/web01.yaml"] = &fstest.MapFile{Data: []byte("owner: bob\ntemplate: rhel-9\ncpu: 4\nmemory_gb: 16\ndisks: [{ size_gb: 50 }]\nnetwork: { vlan: 120 }\n")}
+	fsys[".quai/tests/nope/x/request.yaml"] = &fstest.MapFile{Data: []byte("kind: create\n")}
+	fsys[".quai/tests/vm/bad/request.yaml"] = &fstest.MapFile{Data: []byte("kind: create\nparams: { env: dev, name: x }\nvalues: { cpu: 4 }\nsurprise: true\n")}
+	r = Run(fsys)
+	text := r.Problems.Error()
+	for _, want := range []string{
+		`.quai/tests/nope: is not the name of a type`,
+		`.quai/tests/vm/bad/request.yaml: json: unknown field "surprise"`,
+		`.quai/tests/vm/create-dev-vm: after/envs/dev/vms/build-agent-02.yaml: the request writes other bytes (removes "cpu: 2", adds "cpu: 4")`,
+		`.quai/tests/vm/resize-web01: after/envs/prod/vms/db01.yaml: the request does not write this file`,
+		`.quai/tests/vm/resize-web01: after/envs/prod/vms/web01.yaml: the request writes other bytes`,
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("no problem contains %q; problems:\n%s", want, text)
+		}
 	}
 }

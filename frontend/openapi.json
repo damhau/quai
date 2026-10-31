@@ -2219,6 +2219,11 @@
           },
           "type": {
             "type": "string"
+          },
+          "values": {
+            "additionalProperties": {},
+            "description": "The form's values the edit form starts from: the document for the identity generator, the values read back from it for the mapping generator",
+            "type": "object"
           }
         },
         "required": [

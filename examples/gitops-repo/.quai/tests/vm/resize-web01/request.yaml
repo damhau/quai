@@ -1,0 +1,5 @@
+# The resize action on web01: only cpu and memory_gb change; comments and layout stay.
+kind: action
+key: prod/web01
+action: resize
+actionInputs: { cpu: 8, memory_gb: 32 }

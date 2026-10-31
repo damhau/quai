@@ -132,3 +132,19 @@ test("a value defined in code is shown as its expression and left out of the edi
   await waitFor(() => expect(sent.plans.at(-1)).toMatchObject({ kind: "update", values: { memory_gb: 64 } }))
   expect(sent.plans.at(-1)?.values).not.toHaveProperty("cpu")
 })
+
+test("the edit form of a type whose form is not its file starts from the values read back", async () => {
+  const { http, HttpResponse } = await import("msw")
+  const { server } = await import("@/test/server")
+  const { detail, resources } = await import("@/test/inventory")
+  server.use(
+    http.get("*/api/v1/resource", () => {
+      const d = detail(resources.find((r) => r.id === "infra-live/vm/prod/web01")!, "bob")
+      return HttpResponse.json({ ...d, values: { ...d.document, cpu: 12 } })
+    }),
+  )
+  const user = userEvent.setup()
+  renderApp("/resources/infra-live/vm/prod/web01")
+  await user.click(await screen.findByRole("button", { name: "Edit" }))
+  expect(within(dialog()).getByRole("spinbutton", { name: /vCPUs/ })).toHaveValue(12)
+})

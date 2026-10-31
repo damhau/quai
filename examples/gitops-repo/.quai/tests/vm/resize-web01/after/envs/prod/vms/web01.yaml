@@ -1,0 +1,17 @@
+# Front-end for the shop. Pinned to VLAN 120 by the firewall team.
+owner: bob
+description: Shop front-end
+template: ubuntu-24.04
+cpu: 8          # bumped in INC-4411
+memory_gb: 32
+disks:
+  - size_gb: 80
+    tier: ssd
+network:
+  vlan: 120
+  ip: 10.0.12.11
+backup: true
+backup_policy: daily
+tags:
+  cost_center: "4711"
+  app: shop

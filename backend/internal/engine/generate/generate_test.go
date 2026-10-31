@@ -58,6 +58,7 @@ func appType(t *testing.T, override string) *definitions.ResourceType {
 	repo, problems := definitions.Load(fstest.MapFS{
 		".quai/types/app.yaml": {Data: []byte(src)},
 		"app.schema.json":      {Data: []byte(appSchema)},
+		"none.schema.json":     {Data: []byte(`{"type": "object"}`)},
 	})
 	if len(problems) > 0 {
 		t.Fatal(problems)
@@ -164,7 +165,7 @@ func TestActions(t *testing.T) {
 	if _, err := Identity(ty, Request{Kind: "rename"}); err == nil {
 		t.Error("an unknown kind was accepted")
 	}
-	mapping := strings.Replace(app, "  schema: app.schema.json", "  schema: app.schema.json\n  generate: { kind: mapping, template: { region: ch } }", 1)
+	mapping := strings.Replace(app, "  schema: app.schema.json", "  schema: app.schema.json\n  inputs: none.schema.json\n  generate: { kind: mapping, template: { region: ch } }", 1)
 	if _, err := Identity(appType(t, mapping), Request{Kind: Create}); err == nil || !strings.Contains(err.Error(), "not available yet") {
 		t.Errorf("mapping generator: %v", err)
 	}

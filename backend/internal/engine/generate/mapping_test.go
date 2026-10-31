@@ -32,6 +32,9 @@ spec:
       backup: { enabled: true, policy: daily }
       description: "${{ inputs.?description }}"
       note: "${{ has(inputs.note) ? inputs.note : null }}"
+    read:
+      size: "${{ doc.cpu <= 2 ? 'small' : 'large' }}"
+      note: "${{ doc.?note }}"
 `)},
 		"vm.schema.json": {Data: []byte(`{"type": "object", "properties": {"owner": {"type": "string"}, "cpu": {"type": "integer", "maximum": 16},
   "memory_gb": {"type": "integer"}, "hostname": {"type": "string"}, "description": {"type": "string"}, "note": {"type": "string"},
@@ -78,5 +81,25 @@ func TestMappingUpdate(t *testing.T) {
 	}
 	if current["note"] != "dropped" || current["cpu"] != int64(2) {
 		t.Error("the update changed the current document")
+	}
+}
+
+// TestMappingRead: the inputs bound directly are read from where the template writes them, the
+// others through the read expressions; writing what was read changes nothing.
+func TestMappingRead(t *testing.T) {
+	vm := vmType(t)
+	params := map[string]string{"env": "prod", "name": "web01"}
+	doc := map[string]any{"owner": "team:shop", "cpu": int64(8), "memory_gb": int64(32), "hostname": "web01.prod.example.com",
+		"backup": map[string]any{"enabled": true, "policy": "daily"}, "description": "web", "tags": map[string]any{"a": "b"}}
+	values, err := Read(vm, doc, params)
+	if err != nil || !reflect.DeepEqual(values, map[string]any{"size": "large", "description": "web"}) {
+		t.Fatalf("Read() = %#v, %v", values, err)
+	}
+	again, err := Document(vm, Request{Kind: Update, Params: params, Current: doc, Values: values})
+	if err != nil || !reflect.DeepEqual(again, doc) {
+		t.Errorf("write(read(doc)) = %#v, %v", again, err)
+	}
+	if got, _ := Read(appType(t, ""), map[string]any{"replicas": 2}, nil); !reflect.DeepEqual(got, map[string]any{"replicas": 2}) {
+		t.Errorf("identity: %v", got)
 	}
 }

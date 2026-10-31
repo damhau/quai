@@ -157,6 +157,15 @@ func (l *loader) resourceType(file string) *ResourceType {
 	}
 
 	c.generate(&s.Generate)
+	if g := s.Generate; g.Kind == GenerateMapping && t.InputSchema != nil {
+		// Every input must be read back for day 2: from where the template binds it, or by a
+		// read expression.
+		for _, in := range t.InputSchema.Properties() {
+			if _, bound := g.Bindings[in]; !bound && g.ReadTemplates[in] == nil {
+				c.add("spec.generate.read", "input %s cannot be read back: the template does not bind it directly and no read expression says how", in)
+			}
+		}
+	}
 	if o := s.Ownership; o != nil {
 		set := 0
 		for _, b := range []bool{o.Field != "", o.Codeowners, o.Team != ""} {
@@ -332,6 +341,30 @@ func (c *check) entry(lo Locate, params map[string]bool, inPath []string) {
 	}
 }
 
+// directBinding matches a template string that is exactly one input: ${{ inputs.os }}, or
+// ${{ inputs.?os }}.
+var directBinding = regexp.MustCompile(`^\$\{\{\s*inputs\.\??([A-Za-z_][A-Za-z0-9_]*)\s*\}\}$`)
+
+// bindings records, for each input the template binds directly, the dotted path it is written to.
+func bindings(v any, at string, out map[string]string) {
+	switch v := v.(type) {
+	case string:
+		if m := directBinding.FindStringSubmatch(v); m != nil {
+			if _, seen := out[m[1]]; !seen {
+				out[m[1]] = at
+			}
+		}
+	case map[string]any:
+		for _, k := range slices.Sorted(maps.Keys(v)) {
+			p := k
+			if at != "" {
+				p = at + "." + k
+			}
+			bindings(v[k], p, out)
+		}
+	}
+}
+
 func (c *check) generate(g *Generate) {
 	if g.Kind == "" {
 		g.Kind = GenerateIdentity
@@ -358,6 +391,8 @@ func (c *check) generate(g *Generate) {
 			c.add("spec.generate.template", "is required for the mapping generator")
 		}
 		g.TemplateValue = c.value("spec.generate.template", g.Template)
+		g.Bindings = map[string]string{}
+		bindings(g.Template, "", g.Bindings)
 		g.ReadTemplates = map[string]*expr.Template{}
 		for _, k := range slices.Sorted(maps.Keys(g.Read)) {
 			g.ReadTemplates[k] = c.template("spec.generate.read."+k, g.Read[k])

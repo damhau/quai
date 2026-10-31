@@ -76,6 +76,14 @@ func Mapping(t *definitions.ResourceType, r Request) (map[string]any, error) {
 	}
 	inputs := Inputs(t, r.Values)
 	vars := expr.Vars{Inputs: inputs, Params: anyMap(r.Params), Doc: r.Current, Request: expr.Request{Kind: r.Kind}}
+	if r.Kind == Update {
+		// previous: the values before the change, read back from the region.
+		previous, err := Read(t, r.Current, r.Params)
+		if err != nil {
+			return nil, err
+		}
+		vars.Previous = previous
+	}
 	visible := map[string]*expr.Program{}
 	for p, f := range t.Spec.UI.Fields {
 		if f.Visible != nil {
@@ -117,6 +125,38 @@ func Mapping(t *definitions.ResourceType, r Request) (map[string]any, error) {
 		}
 	}
 	return doc, nil
+}
+
+// Read returns the form's values for a resource whose region holds doc (docs/design/02, read):
+// the document itself for the identity generator; for the mapping generator, each input the
+// template binds directly read from where it is written, and the others from the type's read
+// expressions, which see the region as doc. An input with neither is a definitions problem; one
+// whose value the region does not hold is left out.
+func Read(t *definitions.ResourceType, doc map[string]any, params map[string]string) (map[string]any, error) {
+	g := t.Spec.Generate
+	if g.Kind != definitions.GenerateMapping {
+		return clone(doc), nil
+	}
+	values := map[string]any{}
+	for in, at := range g.Bindings {
+		if g.ReadTemplates[in] != nil {
+			continue
+		}
+		if v, ok := getPath(doc, at); ok {
+			values[in] = cloneValue(v)
+		}
+	}
+	vars := expr.Vars{Doc: doc, Params: anyMap(params)}
+	for _, in := range slices.Sorted(maps.Keys(g.ReadTemplates)) {
+		v, err := g.ReadTemplates[in].Eval(vars)
+		if err != nil {
+			return nil, fmt.Errorf("spec.generate.read.%s: %w", in, err)
+		}
+		if v != expr.Absent {
+			values[in] = v
+		}
+	}
+	return values, nil
 }
 
 // Inputs returns the form's values with the input schema's defaults for those it leaves out.

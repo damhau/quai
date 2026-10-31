@@ -235,8 +235,14 @@ func (s *Service) PlanType(ctx context.Context, who auth.Identity, in TypeInput)
 	p.Inputs = next
 	vars.Inputs, vars.Previous, vars.Params = next, current, anyMap(req.Params)
 	if t.Spec.Generate.Kind == definitions.GenerateMapping && (in.Kind == generate.Create || in.Kind == generate.Update) {
-		// The form is not the file: rules read the form's values, and the file as doc.
+		// The form is not the file: rules read the form's values, the values before the change
+		// read back from the file, and the file as doc.
 		vars.Inputs, vars.Doc = generate.Inputs(t, req.Values), next
+		if in.Kind == generate.Update {
+			if previous, err := generate.Read(t, current, req.Params); err == nil {
+				vars.Previous = previous
+			}
+		}
 	}
 	sets := []policy.RuleSet{{Source: policy.SourceFloor, Rules: repo.FloorRules, Vars: vars}, {Source: policy.SourceType, Rules: approval.Rules, Vars: vars}}
 	if p.Rules, err = policy.Match(sets...); err != nil {

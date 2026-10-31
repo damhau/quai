@@ -20,7 +20,7 @@ func runLint(t *testing.T, args ...string) (string, error) {
 
 func TestLintExamples(t *testing.T) {
 	out, err := runLint(t, "../../../examples/gitops-repo")
-	if err != nil || !strings.Contains(out, "1 types, 2 blueprints, 4 resources checked: no problems") {
+	if err != nil || !strings.Contains(out, "1 types, 2 blueprints, 4 resources, 2 golden examples checked: no problems") {
 		t.Errorf("lint = %q, %v", out, err)
 	}
 }
@@ -52,7 +52,7 @@ func TestLintProblems(t *testing.T) {
 	if err == nil || err.Error() != "1 problem in "+dir {
 		t.Errorf("error = %v", err)
 	}
-	if !strings.Contains(out, "envs/dev/vms/a.yaml: cpu: is required (schema catalog/schemas/vm.schema.json)") || !strings.Contains(out, "1 resources checked: 1 problem") {
+	if !strings.Contains(out, "envs/dev/vms/a.yaml: cpu: is required (schema catalog/schemas/vm.schema.json)") || !strings.Contains(out, "1 resources, 0 golden examples checked: 1 problem") {
 		t.Errorf("output = %q", out)
 	}
 	if _, err := runLint(t, filepath.Join(dir, "nope")); err == nil {

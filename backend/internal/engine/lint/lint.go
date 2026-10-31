@@ -27,6 +27,7 @@ type Report struct {
 	Types      int
 	Blueprints int
 	Resources  int
+	Tests      int // golden examples
 	// Problems fail the check. Notes report what this version does not check yet.
 	Problems definitions.Problems
 	Notes    definitions.Problems
@@ -39,6 +40,7 @@ func Run(fsys fs.FS) Report {
 	for _, name := range slices.Sorted(maps.Keys(repo.Types)) {
 		r.checkType(fsys, repo.Types[name])
 	}
+	r.checkTests(fsys, repo)
 	sortProblems(r.Problems)
 	sortProblems(r.Notes)
 	return r
@@ -74,7 +76,7 @@ func (r *Report) problem(file, field, format string, args ...any) {
 }
 
 func (r *Report) checkType(fsys fs.FS, t *definitions.ResourceType) {
-	if t.Spec.Locate.Strategy == locate.Dir || t.Spec.Generate.Kind != definitions.GenerateIdentity {
+	if g := t.Spec.Generate.Kind; t.Spec.Locate.Strategy == locate.Dir || g != definitions.GenerateIdentity && g != definitions.GenerateMapping {
 		r.Notes = append(r.Notes, definitions.Problem{Path: t.Path, Message: fmt.Sprintf(
 			"the files of type %s are not checked: the %s locator with the %s generator is not available yet",
 			t.Metadata.Name, t.Spec.Locate.Strategy, t.Spec.Generate.Kind)})
@@ -153,7 +155,12 @@ func (r *Report) checkFile(fsys fs.FS, t *definitions.ResourceType, region locat
 		}
 	}
 	// Round trip: read the file as form values and write them back.
-	written, err := generate.Identity(t, generate.Request{Kind: generate.Update, Params: region.Params, Current: doc, Values: doc, Code: code})
+	values, err := generate.Read(t, doc, region.Params)
+	if err != nil {
+		r.problem(where, "", "round trip: %v", err)
+		return
+	}
+	written, err := generate.Document(t, generate.Request{Kind: generate.Update, Params: region.Params, Current: doc, Values: values, Code: code})
 	if err != nil {
 		r.problem(region.Path, "", "round trip: %v", err)
 		return

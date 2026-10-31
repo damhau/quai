@@ -259,7 +259,7 @@ generate:
 ```
 
 - `write`: the template is evaluated as data (never as text) and merged into the region. Only paths the template defines are **managed**; anything else in the file (hand-added keys, comments) is left alone.
-- `read`: inputs bound directly (`template: ${{ inputs.os }}`) are read back automatically from the same path. Computed fields need an explicit `read` expression. An input with neither is reported by `quai lint` as unrecoverable, so the type cannot be published until it is fixed.
+- `read`: inputs bound directly (`template: ${{ inputs.os }}`, or `${{ inputs.?os }}`) are read back automatically from the same path. Computed fields need an explicit `read` expression, which sees the region as `doc` and the params as `params`; one that evaluates to an absent value leaves the input out. An input of the input schema with neither is a definitions problem (`spec.generate.read`), which `quai lint` reports, so the type cannot be published until it is fixed. The edit form starts from the values read back (the API's `values`), and `previous` in rules and in the template is those values.
 - A binding that evaluates to null removes the key; one that evaluates to an absent value leaves the key as it is.
 - The form's values, with the input schema's defaults and without the fields `visibleIf` hides, are checked against the input schema (`spec.inputs`); the template sees them as `inputs`, the locator params as `params` and the region as it is as `doc`. A mapping in the template merges into the region's mapping key by key; a list or a scalar replaces the value. The result gets the managed fields (owner, param mirrors, labels) and is checked against the file schema: a failure there is the type's, not the form's. New files list their keys in the file schema's order.
 - Approval rules of a mapping type read the form's values as `inputs` and the file as `doc`. Actions set fields of the region as for `identity`. It works with every locator and format; a list entry's key field is set by Quai, as a param mirror.
@@ -387,9 +387,12 @@ destroys, first, as soon as the runner has reported it, before anyone approves.
 - every definition parses, every expression compiles, every referenced schema and plugin exists and matches its digest;
 - every file the locator matches parses and conforms to the file schema;
 - **round trip**: for every existing resource, `write(read(file))` produces zero diff. A type that cannot reproduce existing files would rewrite them on the first edit, so it is rejected;
-- golden examples under `.quai/tests/<type>/` (input values → expected files) still produce the same bytes;
+- golden examples under `.quai/tests/<type>/` (input values → expected files) still produce the same bytes: each case is a directory, `.quai/tests/<type>/<case>/`, with `request.yaml` (`kind`: create, update, delete or action; `params` for a create, `key` otherwise; `values`, `action`, `actionInputs`, `owner`; and `deleted`, the files the request deletes), the files the case starts from under `before/` (laid over the repository, optional), and the files the request must write under `after/`, compared byte for byte. A file written but not under `after/`, or under `after/` but not written, is a problem;
 - with `--plan plan.json --stack envs/prod`, every Terraform resource the plan of that stack changes belongs to exactly one resource, through the types' `stack` and `address` patterns.
 
 It prints one line per problem (`file: field: message`) and exits with status 1 when there
 is any. Types whose locator or generator the running version does not implement are listed as
-not checked rather than failing. The backend CI runs it on `examples/gitops-repo`.
+not checked rather than failing: today the `dir` locator, and the `component` and `plugin`
+generators. The round trip of a mapping type reads the values back and writes them through the
+template. The backend CI runs it on `examples/gitops-repo`, whose `.quai/tests/vm/` holds golden
+examples.

@@ -45,10 +45,12 @@ function Day2Form({ resource, type, day2 }: { resource: ResourceDetail; type: Ty
   const queryClient = useQueryClient()
   const { data: me } = useQuery(getMeOptions())
   const doc = useMemo(() => resource.document ?? {}, [resource.document])
+  // The form's values as they are: the document itself, or what a mapping type reads back from it.
+  const current = useMemo(() => resource.values ?? doc, [resource.values, doc])
   const action = day2.kind === "action" ? day2.action : undefined
   const [values, setValues] = useState<Values>(() => {
     if (action) return initialInputs(action.inputs ?? [], doc)
-    let v: Values = structuredClone(doc)
+    let v: Values = structuredClone(current)
     for (const f of type.managedFields ?? []) v = setPath(v, f, undefined)
     return v
   })
@@ -59,10 +61,10 @@ function Day2Form({ resource, type, day2 }: { resource: ResourceDetail; type: Ty
   const schema: unknown = action ? inputsSchema(action.inputs ?? []) : type.schema
   const ui = action ? inputsUi(action.inputs ?? []) : type.ui
   const hidden = useMemo(() => {
-    const vars = { params: resource.params, previous: doc, user: { name: me?.name ?? "", groups: me?.groups ?? [] }, request: { kind: day2.kind, action: action?.name ?? "" } }
+    const vars = { params: resource.params, previous: action ? doc : current, user: { name: me?.name ?? "", groups: me?.groups ?? [] }, request: { kind: day2.kind, action: action?.name ?? "" } }
     if (action) return hiddenFields(ui.fields, values, { ...vars, inputs: doc }, "action")
     return new Set([...(type.managedFields ?? []), ...hiddenFields(ui.fields, values, vars)])
-  }, [action, ui, values, resource, doc, me, day2.kind, type])
+  }, [action, ui, values, resource, doc, current, me, day2.kind, type])
   const locked = action ? [] : Object.entries(type.ui.fields ?? {}).flatMap(([p, f]) => (f.immutable ? [p] : []))
   const code = useMemo(() => Object.fromEntries((resource.definedInCode ?? []).map((c) => [c.field, c.text])), [resource.definedInCode])
 

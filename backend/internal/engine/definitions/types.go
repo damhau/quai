@@ -121,6 +121,9 @@ type Generate struct {
 
 	TemplateValue *expr.Value               `json:"-"`
 	ReadTemplates map[string]*expr.Template `json:"-"`
+	// Bindings are the inputs the template binds directly (`path: ${{ inputs.os }}`), each with
+	// the dotted path it is written to: they are read back from there.
+	Bindings map[string]string `json:"-"`
 }
 
 // Ownership says who owns each resource: a field of the file, CODEOWNERS, or a fixed team.

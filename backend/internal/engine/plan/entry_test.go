@@ -219,7 +219,8 @@ func TestMappingEntries(t *testing.T) {
 		".quai/types/ns.yaml": {Data: []byte("apiVersion: quai.dev/v1beta1\nkind: ResourceType\nmetadata: { name: ns, title: Namespace }\nspec:\n" +
 			"  locate: { strategy: entry, path: \"clusters/{cluster}/namespaces.yaml\", collection: namespaces, key: name, keyParam: name }\n" +
 			"  params: [{ name: cluster }, { name: name }]\n  schema: ns.schema.json\n  inputs: size.schema.json\n" +
-			"  generate:\n    kind: mapping\n    template: { quota: { cpu: \"${{ inputs.size == 'small' ? '2' : '8' }}\" } }\n")},
+			"  generate:\n    kind: mapping\n    template: { quota: { cpu: \"${{ inputs.size == 'small' ? '2' : '8' }}\" } }\n" +
+			"    read: { size: \"${{ doc.quota.cpu == '2' ? 'small' : 'large' }}\" }\n")},
 		"ns.schema.json":                  {Data: []byte(`{"type": "object", "required": ["name"], "properties": {"name": {"type": "string"}, "quota": {"type": "object"}, "labels": {"type": "object"}}}`)},
 		"size.schema.json":                {Data: []byte(`{"type": "object", "additionalProperties": false, "properties": {"size": {"enum": ["small", "large"], "default": "small"}}}`)},
 		"clusters/prod-1/namespaces.yaml": {Data: []byte("namespaces:\n  - name: shop\n    labels: { team: shop }\n    quota: { cpu: \"2\" }\n")},

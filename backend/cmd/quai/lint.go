@@ -50,8 +50,8 @@ func newLintCmd() *cobra.Command {
 			for _, p := range r.Problems {
 				fmt.Fprintln(out, p)
 			}
-			fmt.Fprintf(out, "%d types, %d blueprints, %d resources checked: %s\n",
-				r.Types, r.Blueprints, r.Resources, plural(len(r.Problems), "problem"))
+			fmt.Fprintf(out, "%d types, %d blueprints, %d resources, %d golden examples checked: %s\n",
+				r.Types, r.Blueprints, r.Resources, r.Tests, plural(len(r.Problems), "problem"))
 			if len(r.Problems) > 0 {
 				return fmt.Errorf("%s in %s", plural(len(r.Problems), "problem"), dir)
 			}

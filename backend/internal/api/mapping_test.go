@@ -22,6 +22,8 @@ spec:
       resources: { cpu: "${{ inputs.size == 'small' ? '500m' : '2' }}", memory: "${{ inputs.size == 'small' ? '512Mi' : '4Gi' }}" }
       host: "${{ params.name }}.${{ params.env }}.example.com"
       probes: { liveness: /healthz }
+    read:
+      size: "${{ doc.replicas == 1 ? 'small' : 'large' }}"
 `
 
 // TestMappingRequests: requests on a type with the mapping generator write files from its
@@ -38,6 +40,11 @@ func TestMappingRequests(t *testing.T) {
 		"apps/prod/orders.yaml":                  "# Orders API.\nowner: bob\nreplicas: 1\nresources: { cpu: 500m, memory: 512Mi }\nhost: orders.prod.example.com\nprobes:\n  liveness: /healthz\n  readiness: /ready # added by hand\nenv:\n  LOG_LEVEL: info\n",
 	})
 	bob := h.as("bob")
+	var orders ResourceDetail
+	if status, body := bob.do(http.MethodGet, Prefix+"/resource?id=infra-live/app/prod/orders", nil, &orders); status != http.StatusOK ||
+		len(orders.Values) != 1 || orders.Values["size"] != "small" || orders.Document["host"] != "orders.prod.example.com" {
+		t.Errorf("the edit form of orders starts from = %d %s", status, body)
+	}
 
 	var created RequestView
 	if status, body := bob.do(http.MethodPost, Prefix+"/requests/type", map[string]any{"repository": "infra-live", "type": "app", "kind": "create",

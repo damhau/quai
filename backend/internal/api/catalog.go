@@ -20,6 +20,7 @@ import (
 	"github.com/damhau/quai/backend/internal/authz"
 	"github.com/damhau/quai/backend/internal/engine/definitions"
 	"github.com/damhau/quai/backend/internal/engine/edit"
+	"github.com/damhau/quai/backend/internal/engine/generate"
 	"github.com/damhau/quai/backend/internal/engine/edit/yamledit"
 	"github.com/damhau/quai/backend/internal/engine/expr"
 	"github.com/damhau/quai/backend/internal/engine/locate"
@@ -197,6 +198,7 @@ type ResourceDetail struct {
 	ResourceView
 	Commit     string           `json:"commit"`
 	Document   map[string]any   `json:"document,omitempty"`
+	Values     map[string]any   `json:"values,omitempty" doc:"The form's values the edit form starts from: the document for the identity generator, the values read back from it for the mapping generator"`
 	Raw        string           `json:"raw"`
 	Actions    []ActionView     `json:"actions"`
 	History    []CommitView     `json:"history"`
@@ -689,6 +691,9 @@ func resourceView(r inventory.Resource) ResourceView {
 
 func resourceDetail(ctx context.Context, repo *repositories.Repo, snap *repositories.Snapshot, r inventory.Resource) ResourceDetail {
 	d := ResourceDetail{ResourceView: resourceView(r), Commit: snap.Commit, Document: r.Document, Actions: []ActionView{}, History: []CommitView{}}
+	if t := snap.Definitions.Types[r.Type]; t != nil && r.Document != nil {
+		d.Values, _ = generate.Read(t, r.Document, r.Params)
+	}
 	for _, c := range r.Code {
 		d.DefinedInCode = append(d.DefinedInCode, CodeView{Field: edit.Field(c.Path), Text: c.Text})
 	}

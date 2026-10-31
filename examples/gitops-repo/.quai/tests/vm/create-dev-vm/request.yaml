@@ -1,0 +1,12 @@
+# A new VM in dev: the file lists its keys in the schema's order, with the requester as its owner.
+kind: create
+params: { env: dev, name: build-agent-02 }
+owner: carol
+values:
+  description: Second CI build agent
+  template: ubuntu-24.04
+  cpu: 4
+  memory_gb: 8
+  disks: [{ size_gb: 100 }]
+  network: { vlan: 110 }
+  backup: false
