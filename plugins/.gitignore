@@ -1,0 +1,2 @@
+# Built modules: a type pins a module by digest, the repository that uses it commits it.
+*.wasm

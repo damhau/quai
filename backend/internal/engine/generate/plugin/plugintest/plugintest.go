@@ -1,14 +1,16 @@
-// Package plugintest builds the plugins of the tests from their Go sources, in
-// internal/engine/generate/plugin/testdata, as Quai runs them: reactors for WASI preview 1
-// (GOOS=wasip1 GOARCH=wasm, -buildmode=c-shared), with the Go toolchain that runs the tests.
-// Nothing is downloaded and no module is checked in.
+// Package plugintest builds the plugins of the tests from their Go sources as Quai runs them:
+// reactors for WASI preview 1 (GOOS=wasip1 GOARCH=wasm, -buildmode=c-shared), with the Go
+// toolchain that runs the tests. Nothing is downloaded and no module is checked in.
 //
-// The plugins:
+// The test plugins, in internal/engine/generate/plugin/testdata (Build):
 //
 //   - guest writes a flat mapping of single-line strings as `key = value` lines, keeping the
 //     comments and the order of the lines it is given; config.mode makes it misbehave (spin,
 //     hog, lose, panic, clock, files);
 //   - forbidden imports env.fetch, a host function plugins are not given.
+//
+// The plugins of the repository's plugins directory, written with its SDK (Example): ini, the
+// example plugin for INI files, and template, the template's .env plugin.
 package plugintest
 
 import (
@@ -31,15 +33,28 @@ var (
 // Build returns the module built from testdata/<name>, once per test binary.
 func Build(t testing.TB, name string) []byte {
 	t.Helper()
+	_, here, _, _ := runtime.Caller(0)
+	return build(t, filepath.Join(filepath.Dir(here), "..", "testdata", name))
+}
+
+// Example returns the module built from the repository's plugins/<name>, once per test binary.
+func Example(t testing.TB, name string) []byte {
+	t.Helper()
+	_, here, _, _ := runtime.Caller(0)
+	return build(t, filepath.Join(filepath.Dir(here), "..", "..", "..", "..", "..", "..", "plugins", name))
+}
+
+func build(t testing.TB, src string) []byte {
+	t.Helper()
 	mu.Lock()
 	defer mu.Unlock()
-	if b, ok := built[name]; ok {
+	if b, ok := built[src]; ok {
 		return b
 	}
-	_, here, _, _ := runtime.Caller(0)
-	src := filepath.Join(filepath.Dir(here), "..", "testdata", name)
+	name := filepath.Base(src)
 	out := filepath.Join(t.TempDir(), name+".wasm")
-	cmd := exec.Command("go", "build", "-trimpath", "-buildmode=c-shared", "-o", out, ".") // #nosec G204 -- fixed arguments
+	// As plugins/template/Makefile builds a plugin.
+	cmd := exec.Command("go", "build", "-trimpath", "-buildvcs=false", "-buildmode=c-shared", "-o", out, ".") // #nosec G204 -- fixed arguments
 	cmd.Dir = src
 	cmd.Env = append(os.Environ(), "GOOS=wasip1", "GOARCH=wasm", "CGO_ENABLED=0")
 	if b, err := cmd.CombinedOutput(); err != nil {
@@ -49,7 +64,7 @@ func Build(t testing.TB, name string) []byte {
 	if err != nil {
 		t.Fatal(err)
 	}
-	built[name] = b
+	built[src] = b
 	return b
 }
 

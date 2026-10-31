@@ -1,0 +1,1 @@
+{"values": {"MOTD": "two\nlines"}, "error": "MOTD: a .env value is one line of text"}

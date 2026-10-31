@@ -8,8 +8,11 @@ shift
 name=${pkg##*/}
 name=${name%@*}
 version=${pkg##*@}
-dir="${QUAI_TOOLS:-$HOME/.cache/quai-tools}/$(go env GOVERSION)/$name@$version"
+toolchain=$(go env GOVERSION)
+dir="${QUAI_TOOLS:-$HOME/.cache/quai-tools}/$toolchain/$name@$version"
 if [ ! -x "$dir/$name" ]; then
-	GOBIN="$dir" go install "$pkg"
+	# With that toolchain: go install pkg@version would otherwise pick the tool's own minimum
+	# when the go on PATH is older, and the tool could not read this toolchain's packages.
+	GOTOOLCHAIN=$toolchain GOBIN="$dir" go install "$pkg"
 fi
 exec "$dir/$name" "$@"

@@ -44,9 +44,9 @@ quai/
 │   │   ├── store/                      # sqlc queries, generated code, transactions
 │   │   └── config/                     # configuration loading and validation
 │   ├── migrations/                     # goose SQL migrations
-│   ├── pkg/pluginsdk/                  # the only public package: WASM generator plugin SDK
 │   └── testdata/                       # corpus for file editing, golden files, fixtures
 ├── frontend/                           # see frontend.md
+├── plugins/                            # generator plugins: sdk, template, ini (see plugins.md); modules of their own
 ├── deploy/helm/quai/
 └── docs/
 ```

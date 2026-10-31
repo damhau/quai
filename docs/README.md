@@ -25,7 +25,7 @@ repositories; their pipelines apply it.
 | Architecture | [overview](architecture/overview.md) · [domain model](architecture/domain-model.md) |
 | Design | [01 repository connections](design/01-repository-connections.md) · [02 resource types and generators](design/02-resource-types-and-generators.md) · [03 file editing](design/03-file-editing.md) · [04 blueprints and change sets](design/04-blueprints-and-change-sets.md) · [05 delivery and approvals](design/05-delivery-and-approvals.md) · [06 runs, status and drift](design/06-runs-status-and-drift.md) · [07 day-2 actions and executors](design/07-day2-actions-and-executors.md) · [08 identity, access and tenancy](design/08-identity-access-tenancy.md) · [09 security and compliance](design/09-security-and-compliance.md) · [10 onboarding](design/10-onboarding.md) · [11 integrations](design/11-integrations.md) · [12 Git connectors](design/12-git-connectors.md) |
 | Operations | [deployment and operations](operations/deployment-and-operations.md) |
-| Engineering | [backend (Go)](engineering/backend.md) · [frontend (React)](engineering/frontend.md) · [testing](engineering/testing.md) · [migration from the prototype](engineering/migration-from-prototype.md) |
+| Engineering | [backend (Go)](engineering/backend.md) · [frontend (React)](engineering/frontend.md) · [testing](engineering/testing.md) · [writing a plugin](engineering/plugins.md) · [migration from the prototype](engineering/migration-from-prototype.md) |
 | Decisions | [ADR index](#decisions) |
 | Plan | [roadmap](plan/roadmap.md) · [autonomous sessions](plan/phase-0-backlog.md) · [open questions](plan/open-questions.md) · [GitHub milestones](https://github.com/damhau/quai/milestones) |
 

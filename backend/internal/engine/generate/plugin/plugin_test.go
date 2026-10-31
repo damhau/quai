@@ -1,8 +1,11 @@
 package plugin_test
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -162,4 +165,88 @@ func TestRefused(t *testing.T) {
 	if _, err := rt.Load(fsys, ".quai/plugins/missing.wasm", other); err == nil || err.Error() != "plugin .quai/plugins/missing.wasm does not exist" {
 		t.Errorf("a missing module: err = %v", err)
 	}
+}
+
+// TestExamples: the plugins of the repository's plugins directory, built with its SDK, run their
+// golden cases in the runtime as they do natively (plugins/sdk/sdktest): each write gives its
+// after file, which reads back as the values, and each refusal is ErrRefused with its message.
+func TestExamples(t *testing.T) {
+	for _, name := range []string{"ini", "template"} {
+		t.Run(name, func(t *testing.T) {
+			b := plugintest.Example(t, name)
+			m, err := plugin.Default().Load(fstest.MapFS{"p.wasm": {Data: b}}, "p.wasm", digest(b))
+			if err != nil {
+				t.Fatal(err)
+			}
+			dir := filepath.Join("..", "..", "..", "..", "..", "plugins", name, "testdata")
+			cases, err := os.ReadDir(dir)
+			if err != nil || len(cases) == 0 {
+				t.Fatalf("the cases of %s: %v", name, err)
+			}
+			for _, c := range cases {
+				t.Run(c.Name(), func(t *testing.T) { example(t, m, filepath.Join(dir, c.Name())) })
+			}
+		})
+	}
+}
+
+func example(t *testing.T, m *plugin.Module, dir string) {
+	var c struct {
+		Values map[string]any    `json:"values"`
+		Params map[string]string `json:"params"`
+		Config map[string]any    `json:"config"`
+		Error  string            `json:"error"`
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, "request.json")) // #nosec G304 -- the test's cases
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(raw, &c); err != nil {
+		t.Fatal(err)
+	}
+	read := func(prefix string) []byte {
+		matches, _ := filepath.Glob(filepath.Join(dir, prefix+"*"))
+		if len(matches) == 0 {
+			return nil
+		}
+		b, err := os.ReadFile(matches[0]) // #nosec G304 -- the test's cases
+		if err != nil {
+			t.Fatal(err)
+		}
+		return b
+	}
+	before, after := read("before."), read("after.")
+	if c.Error != "" {
+		if c.Values != nil {
+			_, err = m.Write(c.Values, before, c.Params, c.Config)
+		} else {
+			_, err = m.Read(before, c.Params, c.Config)
+		}
+		if !errors.Is(err, plugin.ErrRefused) || !strings.Contains(err.Error(), c.Error) {
+			t.Fatalf("err = %v, want a refusal with %q", err, c.Error)
+		}
+		return
+	}
+	got, err := m.Write(c.Values, before, c.Params, c.Config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(after) {
+		t.Fatalf("write =\n%s\nwant\n%s", got, after)
+	}
+	values, err := m.Read(after, c.Params, c.Config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g, w := asJSON(t, values), asJSON(t, c.Values); g != w {
+		t.Errorf("read = %s, want %s", g, w)
+	}
+}
+
+func asJSON(t *testing.T, v any) string {
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
 }

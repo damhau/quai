@@ -1,0 +1,2 @@
+# The CRLF case must keep its line endings.
+testdata/crlf/* -text

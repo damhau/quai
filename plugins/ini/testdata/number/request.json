@@ -1,0 +1,1 @@
+{"values": {"server": {"port": 8080}}, "error": "server.port: an INI value is text, a string in the type's schema"}

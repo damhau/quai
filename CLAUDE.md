@@ -8,7 +8,8 @@ every request becomes a reviewed change in their Git repositories. Start with
 
 - Go backend in `backend/`, React frontend in `frontend/`
   ([ADR 0006](docs/adr/0006-go-backend-react-frontend.md)), Playwright scenarios in `e2e/`, the demo
-  repository in `examples/gitops-repo`. The TypeScript prototype was removed in P0-29; it is in the
+  repository in `examples/gitops-repo`, the generator plugin SDK, template and example in
+  `plugins/` ([writing a plugin](docs/engineering/plugins.md)). The TypeScript prototype was removed in P0-29; it is in the
   history up to commit `70dfce6`.
 - **Tasks are GitHub issues** in [damhau/quai](https://github.com/damhau/quai/issues), grouped in
   milestones M1–M3 and labelled `phase:N`, `type:task` / `type:epic`, `area:*`. GitHub is the only
@@ -55,6 +56,13 @@ Frontend (from `frontend/`, Node 22.12+):
 npm run typecheck && npm run lint && npm run test && npm run build
 npm run api:openapi && npm run api:gen   # after an API change (the client is generated, never edited)
 npm run cel:cases                        # after a cel-go upgrade: cel-go's conformance cases for src/lib/cel
+```
+
+Plugins (from the repository root; three Go modules, each its own `go.mod`):
+
+```bash
+make -C plugins check        # gofmt, vet and staticcheck (native and wasip1), tests, builds: when plugins/ changed
+make -C plugins/ini build    # the module, and the digest a type pins
 ```
 
 Local stack and end-to-end tests (from the repository root, Docker):
