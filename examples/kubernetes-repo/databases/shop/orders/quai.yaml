@@ -1,0 +1,5 @@
+name: orders
+namespace: shop
+owner: alice
+version: "17"
+storageGB: 50

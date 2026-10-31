@@ -1,0 +1,4 @@
+name: web-policies
+owner: bob
+path: ./policies/web
+targetNamespace: web

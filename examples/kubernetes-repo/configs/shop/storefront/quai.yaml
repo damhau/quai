@@ -1,0 +1,6 @@
+name: storefront
+namespace: shop
+owner: alice
+data:
+  currency: CHF
+  language: fr

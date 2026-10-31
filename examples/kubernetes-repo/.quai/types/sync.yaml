@@ -1,0 +1,26 @@
+apiVersion: quai.dev/v1beta1
+kind: ResourceType
+metadata:
+  name: sync
+  title: Flux sync
+  description: A Flux Kustomization that applies a directory of the platform repository to a namespace.
+  icon: refresh
+  category: Delivery
+  version: 1.0.0
+spec:
+  locate: { strategy: dir, path: "flux/{name}" }
+  params:
+    - { name: name, title: Name, pattern: "[a-z][a-z0-9-]{1,40}" }
+  schema: schemas/sync.schema.json
+  generate:
+    kind: component
+    component: flux.kustomization
+    with:
+      name: ${{ params.name }}
+      source: platform
+      path: ${{ inputs.path }}
+      interval: ${{ inputs.?interval }}
+      targetNamespace: ${{ inputs.targetNamespace }}
+  ownership: { field: owner }
+  paramFields: { name: name }
+  deletion: approval

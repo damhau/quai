@@ -1,0 +1,31 @@
+apiVersion: quai.dev/v1beta1
+kind: ResourceType
+metadata:
+  name: namespace
+  title: Team namespace
+  description: A team's namespace with a quota of CPU and memory requests.
+  icon: box
+  category: Kubernetes
+  version: 1.0.0
+spec:
+  locate: { strategy: dir, path: "namespaces/{name}" }
+  params:
+    - { name: name, title: Name, pattern: "[a-z][a-z0-9-]{1,30}" }
+  schema: schemas/namespace.schema.json
+  generate:
+    kind: component
+    component: k8s.namespace
+    with:
+      name: ${{ params.name }}
+      labels: { team: "${{ inputs.team }}" }
+      quota:
+        requests.cpu: ${{ inputs.?cpu }}
+        requests.memory: ${{ inputs.?memory }}
+  ownership: { field: owner }
+  paramFields: { name: name }
+  deletion: approval
+  approval:
+    rules:
+      - name: quota
+        when: inputs.?cpu != previous.?cpu || inputs.?memory != previous.?memory
+        approvers: [group:platform-admins]

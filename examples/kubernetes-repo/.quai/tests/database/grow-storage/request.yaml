@@ -1,0 +1,4 @@
+# More storage for orders: one parameter of the claim changes, its comment stays.
+kind: update
+key: shop/orders
+values: { name: orders, namespace: shop, owner: alice, version: "17", storageGB: 100, highAvailability: true }

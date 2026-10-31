@@ -1,0 +1,5 @@
+name: shop-policies
+owner: alice
+path: ./policies/shop
+targetNamespace: shop
+interval: 1h

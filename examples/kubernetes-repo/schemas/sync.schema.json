@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Flux sync",
+  "type": "object",
+  "required": ["path", "targetNamespace"],
+  "additionalProperties": false,
+  "properties": {
+    "name": { "type": "string", "title": "Name", "readOnly": true },
+    "owner": { "type": "string", "title": "Owner" },
+    "path": { "type": "string", "title": "Path", "description": "The directory of the platform repository that Flux applies.", "pattern": "^\\./" },
+    "targetNamespace": { "type": "string", "title": "Namespace", "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" },
+    "interval": { "type": "string", "title": "Interval", "enum": ["1m", "10m", "1h"] }
+  }
+}

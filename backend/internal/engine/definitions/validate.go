@@ -26,7 +26,6 @@ var (
 	// Built-in actions every resource has; definitions cannot redefine them.
 	reservedActions = []string{"create", "update", "delete", "transfer-ownership"}
 	approverKinds   = []string{"owners", "codeowners", "manager"}
-	components      = []string{"crossplane.claim", "argocd.application", "k8s.namespace", "flux.kustomization", "raw"}
 )
 
 // check collects the problems of one definition file.
@@ -409,7 +408,7 @@ func (c *check) generate(g *Generate) {
 			g.ReadTemplates[k] = c.template("spec.generate.read."+k, g.Read[k])
 		}
 	case GenerateComponent:
-		oneOf(c, "spec.generate.component", g.Component, components...)
+		oneOf(c, "spec.generate.component", g.Component, component.Names()...)
 		g.WithValue = c.value("spec.generate.with", g.With)
 		if comp := component.Get(g.Component); comp != nil {
 			for _, k := range slices.Sorted(maps.Keys(g.With)) {

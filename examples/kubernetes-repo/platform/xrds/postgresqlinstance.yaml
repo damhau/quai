@@ -1,0 +1,41 @@
+# The platform team's PostgreSQL API: claims of kind PostgreSQLInstance, composed by the
+# compositions labelled with a provider.
+apiVersion: apiextensions.crossplane.io/v1
+kind: CompositeResourceDefinition
+metadata:
+  name: xpostgresqlinstances.database.example.org
+spec:
+  group: database.example.org
+  names:
+    kind: XPostgreSQLInstance
+    plural: xpostgresqlinstances
+  claimNames:
+    kind: PostgreSQLInstance
+    plural: postgresqlinstances
+  connectionSecretKeys: [username, password, endpoint, port]
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              required: [parameters]
+              properties:
+                parameters:
+                  type: object
+                  required: [version, storageGB]
+                  properties:
+                    version:
+                      type: string
+                      enum: ["16", "17"]
+                    storageGB:
+                      type: integer
+                      minimum: 20
+                      maximum: 1024
+                    highAvailability:
+                      type: boolean
+                      default: false

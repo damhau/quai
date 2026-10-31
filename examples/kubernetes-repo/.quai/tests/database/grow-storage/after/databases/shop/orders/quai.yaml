@@ -1,0 +1,6 @@
+name: orders
+namespace: shop
+owner: alice
+version: "17"
+storageGB: 100
+highAvailability: true

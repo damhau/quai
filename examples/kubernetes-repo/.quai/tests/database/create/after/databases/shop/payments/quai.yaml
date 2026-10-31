@@ -1,0 +1,5 @@
+name: payments
+namespace: shop
+owner: carol
+version: "17"
+storageGB: 20

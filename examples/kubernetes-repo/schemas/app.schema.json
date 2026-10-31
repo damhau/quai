@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Application",
+  "type": "object",
+  "required": ["repoURL", "path", "namespace"],
+  "additionalProperties": false,
+  "properties": {
+    "name": { "type": "string", "title": "Name", "readOnly": true },
+    "owner": { "type": "string", "title": "Owner" },
+    "repoURL": { "type": "string", "title": "Repository", "description": "The Git repository of the application's manifests.", "pattern": "^https://" },
+    "path": { "type": "string", "title": "Path", "description": "The directory of the manifests in that repository.", "minLength": 1 },
+    "revision": { "type": "string", "title": "Revision", "description": "A branch, a tag or a commit; HEAD when empty." },
+    "namespace": { "type": "string", "title": "Namespace", "description": "The namespace it deploys to.", "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" },
+    "autoSync": { "type": "boolean", "title": "Sync automatically", "default": true }
+  }
+}

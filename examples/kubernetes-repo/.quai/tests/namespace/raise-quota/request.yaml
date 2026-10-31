@@ -1,0 +1,5 @@
+# More CPU for shop: the record and the quota change in place, the comments stay; the
+# kustomization and the README are left alone.
+kind: update
+key: shop
+values: { name: shop, owner: alice, team: shop, cpu: "12", memory: 16Gi }

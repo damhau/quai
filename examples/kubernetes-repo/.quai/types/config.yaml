@@ -1,0 +1,27 @@
+apiVersion: quai.dev/v1beta1
+kind: ResourceType
+metadata:
+  name: config
+  title: Configuration
+  description: Settings for an application, as a ConfigMap in its namespace.
+  icon: settings
+  category: Kubernetes
+  version: 1.0.0
+spec:
+  locate: { strategy: dir, path: "configs/{namespace}/{name}" }
+  params:
+    - { name: namespace, title: Namespace, type: enum, discover: true }
+    - { name: name, title: Name, pattern: "[a-z][a-z0-9-]{1,30}" }
+  schema: schemas/config.schema.json
+  generate:
+    kind: component
+    component: raw
+    with:
+      manifests:
+        - apiVersion: v1
+          kind: ConfigMap
+          metadata: { name: "${{ params.name }}", namespace: "${{ params.namespace }}" }
+          data: ${{ inputs.data }}
+  ownership: { field: owner }
+  paramFields: { name: name, namespace: namespace }
+  deletion: allowed

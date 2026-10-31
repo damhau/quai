@@ -15,7 +15,7 @@ place. It is in the history up to commit `70dfce6`
 | `packages/core/src/expr.ts` (custom expressions) | `internal/engine/expr` (CEL) | Re-implemented on cel-go ([ADR 0009](../adr/0009-cel-expressions.md)); no converter, the example expressions are rewritten by hand |
 | `inputs.ts`, `blueprint.ts`, `resourcetype.ts` | `internal/engine/schema`, `definitions`, `locate` | Ported; only `v1beta1` is read, `v1alpha1` is refused |
 | `yamlpatch.ts` (minimal-diff YAML) | `internal/engine/edit/yamledit` | Ported to `go.yaml.in/yaml/v3`; TS tests ported first |
-| `components.ts` (K8s renderers) | `internal/engine/generate/component` | Not ported in Phase 0: the examples are VM-first and the prototype's Kubernetes blueprints are not carried over. `raw` and `k8s.namespace` were ported in P3-10, with the `dir` locator; `kubevirt.vm` was not ([open question 12](../plan/open-questions.md#decided)) |
+| `components.ts` (K8s renderers) | `internal/engine/generate/component` | Not ported in Phase 0: the examples are VM-first and the prototype's Kubernetes blueprints are not carried over. `raw` and `k8s.namespace` were ported in P3-10, with the `dir` locator; the prototype's Argo CD application became `argocd.application`, its two Crossplane claims the generic `crossplane.claim`, and `flux.kustomization` was added in P3-11; `kubevirt.vm` and `terraform.module` (tf-controller) were not ([open question 12](../plan/open-questions.md#decided)) |
 | `render.ts`, `policy.ts` | `internal/engine/plan`, `policy` | Ported |
 | `server/src/git.ts` | `internal/gitx` + `internal/delivery` | Re-designed for mirrors, worktrees and PRs |
 | `server/src/service.ts`, `resources.ts` | `requests`, `approvals`, `inventory`, `catalog` | Re-designed for PostgreSQL, jobs and providers |

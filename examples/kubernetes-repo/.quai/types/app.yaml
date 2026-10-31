@@ -1,0 +1,29 @@
+apiVersion: quai.dev/v1beta1
+kind: ResourceType
+metadata:
+  name: app
+  title: Application
+  description: An Argo CD Application that deploys a directory of a team's repository.
+  icon: rocket
+  category: Delivery
+  version: 1.0.0
+spec:
+  locate: { strategy: dir, path: "apps/{name}" }
+  params:
+    - { name: name, title: Name, pattern: "[a-z][a-z0-9-]{1,40}" }
+  schema: schemas/app.schema.json
+  generate:
+    kind: component
+    component: argocd.application
+    with:
+      name: ${{ params.name }}
+      repoURL: ${{ inputs.repoURL }}
+      path: ${{ inputs.path }}
+      targetRevision: ${{ inputs.?revision }}
+      destinationNamespace: ${{ inputs.namespace }}
+      automated: ${{ inputs.?autoSync.orValue(true) }}
+      syncOptions: [CreateNamespace=true]
+      cascadeDelete: true
+  ownership: { field: owner }
+  paramFields: { name: name }
+  deletion: allowed

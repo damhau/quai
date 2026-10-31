@@ -1,0 +1,5 @@
+# A claim of the platform's PostgreSQL API: high availability is off unless the form turns it on.
+kind: create
+params: { namespace: shop, name: payments }
+owner: carol
+values: { version: "17", storageGB: 20 }

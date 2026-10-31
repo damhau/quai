@@ -1,0 +1,5 @@
+# A new team namespace: the record, the namespace and its quota, and a kustomization that lists them.
+kind: create
+params: { name: web }
+owner: bob
+values: { team: web, cpu: "4", memory: 8Gi }

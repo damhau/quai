@@ -1,0 +1,15 @@
+apiVersion: database.example.org/v1alpha1
+kind: PostgreSQLInstance
+metadata:
+  name: orders
+  namespace: shop
+spec:
+  parameters:
+    highAvailability: true
+    storageGB: 100 # about a year of orders
+    version: "17"
+  compositionSelector:
+    matchLabels:
+      provider: example
+  writeConnectionSecretToRef:
+    name: orders-connection

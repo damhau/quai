@@ -1,0 +1,5 @@
+# A ConfigMap from the raw component.
+kind: create
+params: { namespace: shop, name: checkout }
+owner: alice
+values: { data: { provider: example-pay, timeout: 30s } }

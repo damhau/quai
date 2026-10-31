@@ -17,7 +17,6 @@ import (
 	"github.com/damhau/quai/backend/internal/engine/definitions"
 	"github.com/damhau/quai/backend/internal/engine/edit"
 	"github.com/damhau/quai/backend/internal/engine/generate"
-	"github.com/damhau/quai/backend/internal/engine/generate/component"
 	"github.com/damhau/quai/backend/internal/engine/locate"
 	"github.com/damhau/quai/backend/internal/engine/plan"
 	"github.com/damhau/quai/backend/internal/engine/schema"
@@ -78,16 +77,9 @@ func (r *Report) problem(file, field, format string, args ...any) {
 }
 
 func (r *Report) checkType(fsys fs.FS, t *definitions.ResourceType) {
-	missing := ""
-	switch g := t.Spec.Generate; {
-	case g.Kind == definitions.GeneratePlugin:
-		missing = "the plugin generator"
-	case g.Kind == definitions.GenerateComponent && component.Get(g.Component) == nil:
-		missing = "the " + g.Component + " component"
-	}
-	if missing != "" {
+	if t.Spec.Generate.Kind == definitions.GeneratePlugin {
 		r.Notes = append(r.Notes, definitions.Problem{Path: t.Path, Message: fmt.Sprintf(
-			"the files of type %s are not checked: %s is not available yet", t.Metadata.Name, missing)})
+			"the files of type %s are not checked: the plugin generator is not available yet", t.Metadata.Name)})
 		return
 	}
 	loc, err := t.Spec.Locate.Locator()

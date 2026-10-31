@@ -1,0 +1,5 @@
+name: shop-web
+owner: alice
+repoURL: https://git.example.com/shop/web.git
+path: deploy/prod
+namespace: shop

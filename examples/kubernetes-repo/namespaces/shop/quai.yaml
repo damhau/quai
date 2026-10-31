@@ -1,0 +1,5 @@
+name: shop
+owner: alice
+team: shop
+cpu: "8"
+memory: 16Gi

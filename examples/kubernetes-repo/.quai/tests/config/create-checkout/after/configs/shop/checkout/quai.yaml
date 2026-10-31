@@ -1,0 +1,6 @@
+name: checkout
+namespace: shop
+owner: alice
+data:
+  provider: example-pay
+  timeout: 30s

@@ -37,6 +37,14 @@ func copyTree(t *testing.T, root string) fstest.MapFS {
 	return fsys
 }
 
+// The Kubernetes example: a type per component, its directories and golden examples.
+func TestKubernetesExamplePass(t *testing.T) {
+	r := Run(copyTree(t, "../../../../examples/kubernetes-repo"))
+	if len(r.Problems) > 0 || len(r.Notes) > 0 || r.Types != 5 || r.Resources != 5 || r.Tests != 8 {
+		t.Errorf("report = %+v", r)
+	}
+}
+
 func TestExamplesPass(t *testing.T) {
 	r := Run(os.DirFS(examples))
 	if len(r.Problems) > 0 || len(r.Notes) > 0 || r.Types != 1 || r.Blueprints != 2 || r.Resources != 4 || r.Tests != 2 {
@@ -84,7 +92,7 @@ func TestNotesAndTypeProblems(t *testing.T) {
 	}
 	fsys := fstest.MapFS{
 		"s.json":                {Data: []byte(`{"type": "object", "properties": {"a": {"type": "string"}}}`)},
-		".quai/types/apps.yaml": {Data: []byte(typ("apps", `{ strategy: dir, path: "apps/{name}" }`, "  generate: { kind: component, component: argocd.application, with: { name: x } }\n"))},
+		".quai/types/apps.yaml": {Data: []byte(typ("apps", `{ strategy: dir, path: "apps/{name}" }`, "  generate: { kind: plugin, module: p.wasm, digest: \"sha256:"+strings.Repeat("0", 64)+"\" }\n"))},
 		".quai/types/map.yaml":  {Data: []byte(typ("map", `{ strategy: file, path: "m/{name}.yaml" }`, "  generate: { kind: mapping, template: { a: x } }\n"))},
 		".quai/types/item.yaml": {Data: []byte(typ("item", `{ strategy: file, path: "items/{name}.yaml" }`, ""))},
 		".quai/types/flag.yaml": {Data: []byte(typ("flag", `{ strategy: file, path: "flags/{name}.yaml" }`, "  ui: { fields: { a: { visibleIf: inputs.flag } } }\n"))},
@@ -93,7 +101,7 @@ func TestNotesAndTypeProblems(t *testing.T) {
 		"items/two.yaml":        {Data: []byte("a: x\nzz: kept\n")},
 	}
 	r := Run(fsys)
-	if len(r.Notes) != 1 || !strings.Contains(r.Notes.Error(), "the files of type apps are not checked: the argocd.application component is not available yet") {
+	if len(r.Notes) != 1 || !strings.Contains(r.Notes.Error(), "the files of type apps are not checked: the plugin generator is not available yet") {
 		t.Errorf("notes = %v", r.Notes)
 	}
 	if len(r.Problems) != 3 || r.Problems[0].String() != ".quai/types/map.yaml: spec.generate.read: input a cannot be read back: the template does not bind it directly and no read expression says how" ||

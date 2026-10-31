@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PostgreSQL database",
+  "type": "object",
+  "required": ["version", "storageGB"],
+  "additionalProperties": false,
+  "properties": {
+    "name": { "type": "string", "title": "Name", "readOnly": true },
+    "namespace": { "type": "string", "title": "Namespace", "readOnly": true },
+    "owner": { "type": "string", "title": "Owner" },
+    "version": { "type": "string", "title": "PostgreSQL version", "enum": ["16", "17"] },
+    "storageGB": { "type": "integer", "title": "Storage (GB)", "minimum": 20, "maximum": 1024 },
+    "highAvailability": { "type": "boolean", "title": "High availability", "default": false }
+  }
+}

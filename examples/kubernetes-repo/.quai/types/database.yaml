@@ -1,0 +1,37 @@
+apiVersion: quai.dev/v1beta1
+kind: ResourceType
+metadata:
+  name: database
+  title: PostgreSQL database
+  description: A managed PostgreSQL instance, claimed from the platform's Crossplane API.
+  icon: database
+  category: Data
+  version: 1.0.0
+spec:
+  locate: { strategy: dir, path: "databases/{namespace}/{name}" }
+  params:
+    - { name: namespace, title: Namespace, type: enum, discover: true }
+    - { name: name, title: Name, pattern: "[a-z][a-z0-9-]{1,30}" }
+  schema: schemas/database.schema.json
+  generate:
+    kind: component
+    component: crossplane.claim
+    with:
+      apiVersion: database.example.org/v1alpha1
+      kind: PostgreSQLInstance
+      name: ${{ params.name }}
+      namespace: ${{ params.namespace }}
+      spec:
+        parameters:
+          version: ${{ inputs.version }}
+          storageGB: ${{ inputs.storageGB }}
+          highAvailability: ${{ inputs.?highAvailability.orValue(false) }}
+        compositionSelector: { matchLabels: { provider: example } }
+        writeConnectionSecretToRef: { name: "${{ params.name }}-connection" }
+  ownership: { field: owner }
+  paramFields: { name: name, namespace: namespace }
+  deletion: approval
+  ui:
+    order: [version, storageGB, highAvailability]
+    fields:
+      version: { immutable: true }

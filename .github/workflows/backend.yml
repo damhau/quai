@@ -42,8 +42,10 @@ jobs:
           path: ~/.cache/quai-tools
           key: go-tools-${{ runner.os }}-${{ hashFiles('backend/Makefile', 'backend/go.mod') }}
       - run: make static
-      - name: quai lint on the example repository
-        run: go run ./cmd/quai lint ../examples/gitops-repo
+      - name: quai lint on the example repositories
+        run: |
+          go run ./cmd/quai lint ../examples/gitops-repo
+          go run ./cmd/quai lint ../examples/kubernetes-repo
 
   test:
     runs-on: ubuntu-latest

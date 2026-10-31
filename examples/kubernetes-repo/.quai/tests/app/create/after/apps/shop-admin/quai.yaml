@@ -1,0 +1,7 @@
+name: shop-admin
+owner: bob
+repoURL: https://git.example.com/shop/admin.git
+path: deploy
+revision: v1.4.0
+namespace: shop
+autoSync: false

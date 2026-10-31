@@ -1,0 +1,17 @@
+# The shop team: storefront, orders and payments.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: shop
+  labels:
+    team: shop
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: quota
+  namespace: shop
+spec:
+  hard:
+    requests.cpu: "8" # raised for the sales, see PLAT-142
+    requests.memory: 16Gi

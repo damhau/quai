@@ -21,7 +21,7 @@ func Component(t *definitions.ResourceType, r Request) (map[string]any, []map[st
 	}
 	comp := component.Get(g.Component)
 	if comp == nil {
-		return nil, nil, fmt.Errorf("type %s: the %s component is not available yet", t.Metadata.Name, g.Component)
+		return nil, nil, fmt.Errorf("type %s: there is no %s component", t.Metadata.Name, g.Component)
 	}
 	record, err := Identity(t, r)
 	if err != nil || record == nil {

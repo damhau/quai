@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Configuration",
+  "type": "object",
+  "required": ["data"],
+  "additionalProperties": false,
+  "properties": {
+    "name": { "type": "string", "title": "Name", "readOnly": true },
+    "namespace": { "type": "string", "title": "Namespace", "readOnly": true },
+    "owner": { "type": "string", "title": "Owner" },
+    "data": {
+      "type": "object",
+      "title": "Settings",
+      "minProperties": 1,
+      "propertyNames": { "pattern": "^[A-Za-z0-9._-]+$" },
+      "additionalProperties": { "type": "string" }
+    }
+  }
+}

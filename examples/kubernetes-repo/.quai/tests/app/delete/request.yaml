@@ -1,0 +1,7 @@
+# Deleting an Application removes its directory; its finalizer deletes what it deployed.
+kind: delete
+key: shop-web
+deleted:
+  - apps/shop-web/kustomization.yaml
+  - apps/shop-web/manifests.yaml
+  - apps/shop-web/quai.yaml

@@ -1,0 +1,5 @@
+# A Flux Kustomization of the platform source, every ten minutes unless the form says otherwise.
+kind: create
+params: { name: web-policies }
+owner: bob
+values: { path: ./policies/web, targetNamespace: web }

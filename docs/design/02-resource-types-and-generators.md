@@ -278,21 +278,28 @@ generate:
   with:
     apiVersion: database.platform.acme.ch/v1alpha1   # crossplane.claim takes the XRD's group/kind
     kind: PostgreSQLInstance
+    name: ${{ params.name }}
+    namespace: ${{ params.namespace }}
+    spec:
+      parameters: { version: "${{ inputs.version }}", storageGB: "${{ inputs.storageGB }}" }
+      compositionSelector: { matchLabels: { provider: aws } }
 ```
 
 - Renders one or more manifests into a `dir` region, plus `kustomization.yaml` and the `quai.yaml` record. It needs the `dir` locator.
 - The form is the record's schema, `spec.schema`; `spec.inputs` does not apply. `with` is a template, evaluated as data like a mapping template: it sees the record's values as `inputs` and the locator params as `params`, and gives the component's properties. A property the component does not have, or a required one missing, is a definition problem; what the component refuses in the values it is given (a name that is not a DNS label) is the type's, not the form's.
-- The manifests are what the component renders, with no labels or annotations of Quai's own.
-- Built today:
-  - `raw` (`manifests`, required): the manifests as given, each with `apiVersion`, `kind` and `metadata.name`.
-  - `k8s.namespace` (`name`, required; `labels`, `annotations`, `quota`): a `Namespace`, and a `ResourceQuota` named `quota` whose `spec.hard` is the `quota` mapping, when it has any value (a null value is left out, so `${{ inputs.?cpu }}` drops a quota the form leaves empty).
-- `crossplane.claim`, `argocd.application` and `flux.kustomization` are accepted in definitions but not built yet: requests on their types are refused, and `quai lint` lists them as not checked. The prototype's components move here. `crossplane.claim` becomes generic (any XRD) instead of hard-coding two kinds.
+- The manifests are what the component renders, with no labels or annotations of Quai's own. A property whose value is null is not set, so `${{ inputs.?x }}` leaves it out when the form does. Names are checked as Kubernetes checks them: namespaces as DNS labels, objects' names as DNS subdomains.
+- The components (required properties first; every component but `raw` also takes `labels` and `annotations`, mappings of strings):
+  - `raw` (`manifests`): the manifests as given, each with `apiVersion`, `kind` and `metadata.name`.
+  - `k8s.namespace` (`name`; `quota`): a `Namespace`, and a `ResourceQuota` named `quota` whose `spec.hard` is the `quota` mapping, when it has any value (a null value is left out, so `${{ inputs.?cpu }}` drops a quota the form leaves empty).
+  - `crossplane.claim` (`apiVersion`, `kind`, `name`, `namespace`; `spec`): a claim of any XRD, its group/version and kind as the XRD names them, with `spec` as its spec (the XRD's parameters and Crossplane's fields, such as `compositionSelector` or `writeConnectionSecretToRef`). It is generic instead of the prototype's two hard-coded kinds, and renders a Crossplane 2 namespaced composite resource the same way.
+  - `argocd.application` (`name`, `repoURL`; `namespace`, default `argocd`; `project`, default `default`; `path` or `chart`, exactly one; `targetRevision`, default `HEAD`, required with a chart; `values`, a mapping written as the source's `helm.valuesObject`; `server`, default `https://kubernetes.default.svc`, or `cluster`, the name Argo CD knows a cluster by; `destinationNamespace`; `automated`, a sync policy that prunes and heals; `syncOptions`, a list of strings; `cascadeDelete`, Argo CD's resources finalizer, so that deleting the Application deletes what it deployed): an `argoproj.io/v1alpha1` `Application`.
+  - `flux.kustomization` (`name`, `source`; `namespace`, default `flux-system`; `sourceKind`, `GitRepository` (the default), `OCIRepository` or `Bucket`; `sourceNamespace`; `path`; `interval`, default `10m`; `prune`, default true; `targetNamespace`; `dependsOn`, a list of names; `wait`; `timeout`; `substitute`, a mapping of strings, the post-build substitutions): a `kustomize.toolkit.fluxcd.io/v1` `Kustomization`.
 - The prototype's `kubevirt.vm` does not ([open question 12](../plan/open-questions.md#decided)): KubeVirt VMs in
   a GitOps repository are usually entries of a Helm chart's values, which the `entry` locator edits and the
   chart renders. A renderer for one directory of manifests per VM is a
   [future improvement](../plan/roadmap.md#future-improvements).
 - Read-back uses the record file.
-- Tested: golden examples per component, and the Kubernetes API server (envtest) accepts what each renders in a server-side dry run.
+- Tested: golden examples per component, and the Kubernetes API server (envtest), with the CRDs the components render for, accepts what each renders in a server-side dry run. [`examples/kubernetes-repo`](../../examples/kubernetes-repo) has a type per component.
 
 ### `plugin`: anything else, in a sandbox
 

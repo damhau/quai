@@ -58,6 +58,7 @@ you out to switch.
 | `frontend/` | React, TypeScript, TanStack Router and Query, Tailwind, shadcn/ui; the API client is generated |
 | `e2e/` | Playwright scenarios against the compose stack |
 | `examples/gitops-repo` | The demo repository, also the tests' fixture |
+| `examples/kubernetes-repo` | A Kubernetes platform's GitOps repository: a type per component of the `component` generator |
 | `deploy/` | The compose stack's scripts and the Helm chart |
 | `docs/` | Design, decisions (ADRs), engineering, operations and the plan |
 

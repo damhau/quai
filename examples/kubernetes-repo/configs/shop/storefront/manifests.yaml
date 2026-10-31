@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: storefront
+  namespace: shop
+data:
+  currency: CHF
+  language: fr

@@ -3,6 +3,9 @@
 // user cache directory and checked against their SHA-512, then started by controller-runtime's
 // envtest. It runs inside the agents' sandbox: no Docker, no cluster.
 //
+// The API server has the CRDs of crds/ installed: those the components render for, vendored from
+// their upstream releases by crds/refresh.sh.
+//
 // A package that uses it calls Main from TestMain.
 package k8stest
 
@@ -51,7 +54,12 @@ func Main(m *testing.M) int {
 		fmt.Fprintln(os.Stderr, "k8stest:", err)
 		return 1
 	}
-	env := &envtest.Environment{BinaryAssetsDirectory: dir}
+	_, self, _, _ := runtime.Caller(0)
+	env := &envtest.Environment{
+		BinaryAssetsDirectory: dir,
+		CRDDirectoryPaths:     []string{filepath.Join(filepath.Dir(self), "crds")},
+		ErrorIfCRDPathMissing: true,
+	}
 	// Without a default route (a sandbox's network namespace), the API server cannot pick the
 	// address to advertise by itself; a loopback address needs the endpoint reconciler off, which
 	// tests do not use.

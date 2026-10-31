@@ -369,7 +369,7 @@ func TestLocatorsAndGenerators(t *testing.T) {
 		"gens.yaml: spec.actions[5].inputs[1].pattern:",
 		"gens.yaml: spec.actions[5].inputs[2].name: must start with a lowercase letter",
 		"gens.yaml: spec.actions[5].inputs[2].visibleIf: expression",
-		`comp.yaml: spec.generate.component: must be one of crossplane.claim, argocd.application, k8s.namespace, flux.kustomization, raw, not "helm.chart"`,
+		`comp.yaml: spec.generate.component: must be one of argocd.application, crossplane.claim, flux.kustomization, k8s.namespace, raw, not "helm.chart"`,
 		"comp.yaml: spec.locate.path: needs at least one {param}",
 		"map.yaml: spec.locate.path: cannot be under .quai/",
 		"map.yaml: spec.params: unused is not used by spec.locate",
@@ -466,8 +466,11 @@ func TestComponentTypes(t *testing.T) {
 		".quai/types/ns.yaml": typ("ns", `  locate: { strategy: dir, path: "teams/{name}" }
   generate: { kind: component, component: k8s.namespace, with: { name: "${{ params.name }}", quota: { cpu: "${{ inputs.?cpu }}" } } }
 `),
-		".quai/types/later.yaml": typ("later", `  locate: { strategy: dir, path: "dbs/{name}" }
-  generate: { kind: component, component: crossplane.claim, with: { kind: PostgreSQLInstance } }
+		".quai/types/db.yaml": typ("db", `  locate: { strategy: dir, path: "dbs/{name}" }
+  generate:
+    kind: component
+    component: crossplane.claim
+    with: { apiVersion: database.example.org/v1alpha1, kind: PostgreSQLInstance, name: "${{ params.name }}", namespace: shop }
 `),
 	})
 	if len(problems) > 0 {
@@ -483,6 +486,9 @@ func TestComponentTypes(t *testing.T) {
 `),
 		".quai/types/dir.yaml": typ("dir", `  locate: { strategy: dir, path: "apps/{name}" }
 `),
+		".quai/types/vm.yaml": typ("vm", `  locate: { strategy: dir, path: "vms/{name}" }
+  generate: { kind: component, component: kubevirt.vm, with: { name: x } }
+`),
 		".quai/types/with.yaml": typ("with", `  locate: { strategy: dir, path: "teams/{name}" }
   inputs: catalog/vm.schema.json
   generate: { kind: component, component: k8s.namespace, with: { size: small, labels: "${{ (( }}" } }
@@ -495,5 +501,6 @@ func TestComponentTypes(t *testing.T) {
 		"with.yaml: spec.generate.with.size: is not a property of the k8s.namespace component (name, labels, annotations, quota)",
 		"with.yaml: spec.generate.with.name: is required by the k8s.namespace component",
 		"with.yaml: spec.generate.with:",
+		"vm.yaml: spec.generate.component: must be one of argocd.application, crossplane.claim, flux.kustomization, k8s.namespace, raw",
 	)
 }

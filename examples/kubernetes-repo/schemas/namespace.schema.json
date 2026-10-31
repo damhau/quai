@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Team namespace",
+  "type": "object",
+  "required": ["team"],
+  "additionalProperties": false,
+  "properties": {
+    "name": { "type": "string", "title": "Name", "readOnly": true },
+    "owner": { "type": "string", "title": "Owner" },
+    "team": { "type": "string", "title": "Team", "pattern": "^[a-z][a-z0-9-]*$" },
+    "cpu": { "type": "string", "title": "CPU requests", "description": "The namespace's quota of CPU requests, such as 8 or 500m.", "pattern": "^[0-9]+m?$" },
+    "memory": { "type": "string", "title": "Memory requests", "description": "The namespace's quota of memory requests, such as 16Gi.", "pattern": "^[0-9]+(Mi|Gi)$" }
+  }
+}

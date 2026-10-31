@@ -1,0 +1,5 @@
+# An Application on a tag of a team's repository, synced by hand.
+kind: create
+params: { name: shop-admin }
+owner: bob
+values: { repoURL: "https://git.example.com/shop/admin.git", path: deploy, revision: v1.4.0, namespace: shop, autoSync: false }
