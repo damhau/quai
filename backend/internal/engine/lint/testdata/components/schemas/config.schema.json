@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Configuration",
+  "type": "object",
+  "required": ["namespace", "data"],
+  "additionalProperties": false,
+  "properties": {
+    "name": { "type": "string", "title": "Name", "readOnly": true },
+    "owner": { "type": "string", "title": "Owner" },
+    "namespace": { "type": "string", "title": "Namespace" },
+    "data": { "type": "object", "title": "Data", "additionalProperties": { "type": "string" } }
+  }
+}

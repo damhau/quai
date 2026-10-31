@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: banner
+  namespace: web
+data:
+  colour: blue
+  text: Welcome

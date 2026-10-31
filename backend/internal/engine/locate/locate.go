@@ -574,6 +574,19 @@ func (r Region) Elements(src []byte) ([]Element, string) {
 // KeyField returns the field naming the items of an entry's list, or "" for a map.
 func (r Region) KeyField() string { return r.keyField }
 
+// RecordFile is the file of a directory region that holds its values (docs/design/02, dir):
+// what is read back, because rendered manifests cannot be turned back into values reliably.
+const RecordFile = "quai.yaml"
+
+// DocumentFile returns the file that holds a region's document: its file, or a directory's
+// record file.
+func (r Region) DocumentFile() string {
+	if r.Strategy == Dir {
+		return r.Path + "/" + RecordFile
+	}
+	return r.Path
+}
+
 // Ref returns how a change set names the region in its fingerprints: its path; for an entry '#'
 // and its collection and key, such as clusters/prod-1/namespaces.yaml#namespaces[name=orders] for
 // an item of a list or zones/prod.json#spec.zones[shop.example.com] for an entry of a map; and

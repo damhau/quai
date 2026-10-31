@@ -1,0 +1,6 @@
+name: banner
+owner: carol
+namespace: web
+data:
+  colour: blue
+  text: Welcome

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/damhau/quai/backend/internal/engine/expr"
+	"github.com/damhau/quai/backend/internal/engine/generate/component"
 )
 
 var (
@@ -157,6 +158,16 @@ func (l *loader) resourceType(file string) *ResourceType {
 	}
 
 	c.generate(&s.Generate)
+	switch g := s.Generate.Kind; {
+	case g == GenerateComponent && s.Locate.Strategy != LocateDir:
+		c.add("spec.generate.kind", "the component generator writes a directory: it needs the dir locator")
+	case s.Locate.Strategy == LocateDir && g != GenerateComponent && g != GeneratePlugin:
+		c.add("spec.locate.strategy", "a directory is written by the component generator, not the %s generator", g)
+	}
+	if s.Generate.Kind == GenerateComponent && s.Inputs != "" {
+		// The record holds the form's values: one schema describes both.
+		c.add("spec.inputs", "does not apply to the component generator: its form is the record's schema, spec.schema")
+	}
 	if g := s.Generate; g.Kind == GenerateMapping && t.InputSchema != nil {
 		// Every input must be read back for day 2: from where the template binds it, or by a
 		// read expression.
@@ -399,6 +410,19 @@ func (c *check) generate(g *Generate) {
 		}
 	case GenerateComponent:
 		oneOf(c, "spec.generate.component", g.Component, components...)
+		g.WithValue = c.value("spec.generate.with", g.With)
+		if comp := component.Get(g.Component); comp != nil {
+			for _, k := range slices.Sorted(maps.Keys(g.With)) {
+				if !slices.Contains(comp.Props, k) {
+					c.add("spec.generate.with."+k, "is not a property of the %s component (%s)", comp.Name, strings.Join(comp.Props, ", "))
+				}
+			}
+			for _, k := range comp.Required {
+				if _, ok := g.With[k]; !ok {
+					c.add("spec.generate.with."+k, "is required by the %s component", comp.Name)
+				}
+			}
+		}
 	case GeneratePlugin:
 		c.relPath("spec.generate.module", g.Module)
 		if !digestRe.MatchString(g.Digest) {

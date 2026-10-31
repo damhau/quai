@@ -174,7 +174,7 @@ func applyTo(cs *ChangeSet, fsys fs.FS, repo *definitions.Repository, r Blueprin
 		return err
 	}
 	next := current
-	if i := slices.IndexFunc(cs.Changes, func(c Change) bool { return c.Path == region.Path }); i >= 0 && cs.Changes[i].After != nil {
+	if i := slices.IndexFunc(cs.Changes, func(c Change) bool { return c.Path == region.DocumentFile() }); i >= 0 && cs.Changes[i].After != nil {
 		if doc, err := documentOf(region, cs.Changes[i].After); err == nil {
 			next = doc
 		}
@@ -183,11 +183,12 @@ func applyTo(cs *ChangeSet, fsys fs.FS, repo *definitions.Repository, r Blueprin
 	return nil
 }
 
-// readDocument reads the document of a resource: its file, or its entry in a shared file.
+// readDocument reads the document of a resource: its file, its entry in a shared file, or its
+// directory's record.
 func readDocument(fsys fs.FS, region locate.Region) (map[string]any, error) {
-	src, err := fs.ReadFile(fsys, region.Path)
+	src, err := fs.ReadFile(fsys, region.DocumentFile())
 	if errors.Is(err, fs.ErrNotExist) {
-		return nil, fmt.Errorf("%s: %w", region.Path, ErrNotFound)
+		return nil, fmt.Errorf("%s: %w", region.DocumentFile(), ErrNotFound)
 	}
 	if err != nil {
 		return nil, err
@@ -195,19 +196,20 @@ func readDocument(fsys fs.FS, region locate.Region) (map[string]any, error) {
 	return documentOf(region, src)
 }
 
-// documentOf returns the document of a resource in src, its file.
+// documentOf returns the document of a resource in src, the file that holds it.
 func documentOf(region locate.Region, src []byte) (map[string]any, error) {
 	if region.Strategy == locate.Entry || region.Strategy == locate.Field {
 		doc, _, err := entryDocument(region, src)
 		return doc, err
 	}
-	decoded, _, err := edit.Decode(region.Path, src)
+	file := region.DocumentFile()
+	decoded, _, err := edit.Decode(file, src)
 	if err != nil {
-		return nil, fmt.Errorf("%s cannot be read, so Quai will not edit it: %w", region.Path, err)
+		return nil, fmt.Errorf("%s cannot be read, so Quai will not edit it: %w", file, err)
 	}
 	doc, ok := decoded.(map[string]any)
 	if !ok {
-		return nil, fmt.Errorf("%s does not hold a mapping, so Quai will not edit it", region.Path)
+		return nil, fmt.Errorf("%s does not hold a mapping, so Quai will not edit it", file)
 	}
 	return doc, nil
 }

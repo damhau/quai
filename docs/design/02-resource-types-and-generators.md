@@ -174,9 +174,13 @@ This is the strategy the pilot repository needs, and the one the prototype imple
 locate: { strategy: dir, path: deployments/{name} }
 ```
 
-- Region: every file under the directory.
-- Used with the `component` generator for Kubernetes manifests (the prototype's blueprints), where one resource is several manifests plus a `kustomization.yaml`.
-- Read-back uses a record file in the directory (`quai.yaml`), because rendered manifests cannot be turned back into form values reliably.
+- Region: every file under the directory. Its fingerprint is each file's path and content hash ([design 03](03-file-editing.md#concurrency-and-fingerprints)).
+- Used with the `component` generator for Kubernetes manifests (the prototype's blueprints), where one resource is several manifests plus a `kustomization.yaml` (and later with `plugin`); a type with the `dir` locator and another generator is refused.
+- Contents:
+  - `quai.yaml`, the record: the form's values, conforming to `spec.schema`, with the managed fields (owner, param mirrors) as for `identity`. Read-back uses it, because rendered manifests cannot be turned back into form values reliably; it is the resource's document. A directory without it cannot be edited.
+  - `manifests.yaml`, the rendered manifests, one YAML document each ([multi-document](03-file-editing.md#yaml)), addressed by `kind` and `metadata.name` (and `metadata.namespace`).
+  - `kustomization.yaml`, a `Kustomization` whose `resources` list `manifests.yaml` (not the record).
+- Create: write the three files; the directory must not exist. Update and actions: read the values from the record, render, and edit each file in place: the record as `identity` edits a file, the manifests document by document (comments stay, documents no longer rendered are removed), the kustomization so that it lists `manifests.yaml`, keeping its other keys and resources (it is written again if missing). Other files in the directory are left as they are. Delete: remove every file under the directory.
 
 ### `entry`: a keyed item inside a shared file
 
@@ -276,13 +280,19 @@ generate:
     kind: PostgreSQLInstance
 ```
 
-- Renders one or more manifests into a `dir` region, plus `kustomization.yaml` and the `quai.yaml` record.
-- The prototype's components move here. `crossplane.claim` becomes generic (any XRD) instead of hard-coding two kinds.
+- Renders one or more manifests into a `dir` region, plus `kustomization.yaml` and the `quai.yaml` record. It needs the `dir` locator.
+- The form is the record's schema, `spec.schema`; `spec.inputs` does not apply. `with` is a template, evaluated as data like a mapping template: it sees the record's values as `inputs` and the locator params as `params`, and gives the component's properties. A property the component does not have, or a required one missing, is a definition problem; what the component refuses in the values it is given (a name that is not a DNS label) is the type's, not the form's.
+- The manifests are what the component renders, with no labels or annotations of Quai's own.
+- Built today:
+  - `raw` (`manifests`, required): the manifests as given, each with `apiVersion`, `kind` and `metadata.name`.
+  - `k8s.namespace` (`name`, required; `labels`, `annotations`, `quota`): a `Namespace`, and a `ResourceQuota` named `quota` whose `spec.hard` is the `quota` mapping, when it has any value (a null value is left out, so `${{ inputs.?cpu }}` drops a quota the form leaves empty).
+- `crossplane.claim`, `argocd.application` and `flux.kustomization` are accepted in definitions but not built yet: requests on their types are refused, and `quai lint` lists them as not checked. The prototype's components move here. `crossplane.claim` becomes generic (any XRD) instead of hard-coding two kinds.
 - The prototype's `kubevirt.vm` does not ([open question 12](../plan/open-questions.md#decided)): KubeVirt VMs in
   a GitOps repository are usually entries of a Helm chart's values, which the `entry` locator edits and the
   chart renders. A renderer for one directory of manifests per VM is a
   [future improvement](../plan/roadmap.md#future-improvements).
 - Read-back uses the record file.
+- Tested: golden examples per component, and the Kubernetes API server (envtest) accepts what each renders in a server-side dry run.
 
 ### `plugin`: anything else, in a sandbox
 
@@ -395,8 +405,10 @@ destroys, first, as soon as the runner has reported it, before anyone approves.
 - with `--plan plan.json --stack envs/prod`, every Terraform resource the plan of that stack changes belongs to exactly one resource, through the types' `stack` and `address` patterns.
 
 It prints one line per problem (`file: field: message`) and exits with status 1 when there
-is any. Types whose locator or generator the running version does not implement are listed as
-not checked rather than failing: today the `dir` locator, and the `component` and `plugin`
-generators. The round trip of a mapping type reads the values back and writes them through the
-template. The backend CI runs it on `examples/gitops-repo`, whose `.quai/tests/vm/` holds golden
+is any. Types whose generator the running version does not implement are listed as not checked
+rather than failing: today the `plugin` generator, and the components not built yet. The round
+trip of a mapping type reads the values back and writes them through the template; that of a
+`dir` region reads the values from its record (which must conform to the schema) and renders
+them: the record, the manifests and the kustomization must stay byte for byte. A golden case's
+`before/` may hold some of a directory's files: the others are the repository's. The backend CI runs it on `examples/gitops-repo`, whose `.quai/tests/vm/` holds golden
 examples.

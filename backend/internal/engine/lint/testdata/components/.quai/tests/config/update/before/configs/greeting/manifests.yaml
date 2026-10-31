@@ -1,0 +1,8 @@
+# The greeting shown on the shop's home page.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: greeting
+  namespace: shop
+data:
+  message: hello # the default

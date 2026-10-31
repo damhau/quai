@@ -1,7 +1,8 @@
 // Package generate turns form values into the content of a resource's region and back
 // (docs/design/02-resource-types-and-generators.md#generators): the identity generator (the file
-// is the form) and the mapping generator (a template evaluated with the form's values and merged
-// into the file). Managed fields (the owner, fields that mirror locator params, fixed labels) are
+// is the form), the mapping generator (a template evaluated with the form's values and merged
+// into the file) and the component generator (Kubernetes manifests rendered from the values,
+// which a record file keeps). Managed fields (the owner, fields that mirror locator params, fixed labels) are
 // set by Quai; fields the schema does not describe are kept on update; locked fields cannot change
 // after creation; fields hidden by `visibleIf` are dropped; and the result is validated against
 // the type's file schema.
@@ -188,11 +189,12 @@ func merge(base, template map[string]any) map[string]any {
 }
 
 // Identity returns the region's content after the request, for a type with the identity
-// generator, or an action's on a type with the mapping generator. It returns nil for a delete.
+// generator, or an action's on a type with the mapping generator; for the component generator,
+// the record of the values. It returns nil for a delete.
 func Identity(t *definitions.ResourceType, r Request) (map[string]any, error) {
 	switch kind := t.Spec.Generate.Kind; {
 	case kind == definitions.GenerateMapping && (r.Kind == Action || r.Kind == Delete):
-	case kind != definitions.GenerateIdentity:
+	case kind != definitions.GenerateIdentity && kind != definitions.GenerateComponent:
 		return nil, fmt.Errorf("type %s uses the %s generator, which is not available yet", t.Metadata.Name, kind)
 	}
 	var doc map[string]any

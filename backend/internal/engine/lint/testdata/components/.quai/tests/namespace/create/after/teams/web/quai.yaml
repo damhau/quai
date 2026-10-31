@@ -1,0 +1,5 @@
+name: web
+owner: bob
+team: web
+cpu: "4"
+memory: 8Gi

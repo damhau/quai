@@ -1,0 +1,5 @@
+name: greeting
+owner: alice
+namespace: shop
+data:
+  message: hello

@@ -1,0 +1,8 @@
+# Deleting shop removes every file of its directory, the README too.
+kind: delete
+key: shop
+deleted:
+  - teams/shop/README.md
+  - teams/shop/kustomization.yaml
+  - teams/shop/manifests.yaml
+  - teams/shop/quai.yaml

@@ -223,10 +223,13 @@ func (s *Service) PlanType(ctx context.Context, who auth.Identity, in TypeInput)
 
 	// The rules see the document as it will be, and as it was.
 	next := current
-	if c := cs.Changes[0]; c.After != nil {
+	for _, c := range cs.Changes {
+		if c.Path != region.DocumentFile() || c.After == nil {
+			continue
+		}
 		if doc, _, err := edit.Decode(c.Path, c.After); err == nil {
-			// An entry's document is its value, a field region's its fields; a deleted entry
-			// keeps the document it had.
+			// An entry's document is its value, a field region's its fields, a directory's its
+			// record; a deleted entry keeps the document it had.
 			if value, _, err := locate.Document(doc, nil, region); err == nil {
 				next = value
 			}

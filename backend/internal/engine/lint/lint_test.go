@@ -12,8 +12,14 @@ const examples = "../../../../examples/gitops-repo"
 
 func copyExamples(t *testing.T) fstest.MapFS {
 	t.Helper()
+	return copyTree(t, examples)
+}
+
+// copyTree reads the files under root, as a checkout of them has them: without empty directories.
+func copyTree(t *testing.T, root string) fstest.MapFS {
+	t.Helper()
 	fsys := fstest.MapFS{}
-	err := filepath.WalkDir(examples, func(p string, d os.DirEntry, err error) error {
+	err := filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
 		}
@@ -21,7 +27,7 @@ func copyExamples(t *testing.T) fstest.MapFS {
 		if err != nil {
 			return err
 		}
-		rel, _ := filepath.Rel(examples, p)
+		rel, _ := filepath.Rel(root, p)
 		fsys[filepath.ToSlash(rel)] = &fstest.MapFile{Data: b}
 		return nil
 	})
@@ -78,7 +84,7 @@ func TestNotesAndTypeProblems(t *testing.T) {
 	}
 	fsys := fstest.MapFS{
 		"s.json":                {Data: []byte(`{"type": "object", "properties": {"a": {"type": "string"}}}`)},
-		".quai/types/apps.yaml": {Data: []byte(typ("apps", `{ strategy: dir, path: "apps/{name}" }`, ""))},
+		".quai/types/apps.yaml": {Data: []byte(typ("apps", `{ strategy: dir, path: "apps/{name}" }`, "  generate: { kind: component, component: argocd.application, with: { name: x } }\n"))},
 		".quai/types/map.yaml":  {Data: []byte(typ("map", `{ strategy: file, path: "m/{name}.yaml" }`, "  generate: { kind: mapping, template: { a: x } }\n"))},
 		".quai/types/item.yaml": {Data: []byte(typ("item", `{ strategy: file, path: "items/{name}.yaml" }`, ""))},
 		".quai/types/flag.yaml": {Data: []byte(typ("flag", `{ strategy: file, path: "flags/{name}.yaml" }`, "  ui: { fields: { a: { visibleIf: inputs.flag } } }\n"))},
@@ -87,7 +93,7 @@ func TestNotesAndTypeProblems(t *testing.T) {
 		"items/two.yaml":        {Data: []byte("a: x\nzz: kept\n")},
 	}
 	r := Run(fsys)
-	if len(r.Notes) != 1 || !strings.Contains(r.Notes.Error(), "the dir locator with the identity generator is not available yet") {
+	if len(r.Notes) != 1 || !strings.Contains(r.Notes.Error(), "the files of type apps are not checked: the argocd.application component is not available yet") {
 		t.Errorf("notes = %v", r.Notes)
 	}
 	if len(r.Problems) != 3 || r.Problems[0].String() != ".quai/types/map.yaml: spec.generate.read: input a cannot be read back: the template does not bind it directly and no read expression says how" ||
@@ -245,5 +251,41 @@ func TestGoldenExamples(t *testing.T) {
 		if !strings.Contains(text, want) {
 			t.Errorf("no problem contains %q; problems:\n%s", want, text)
 		}
+	}
+}
+
+// TestComponents runs the golden examples of each built component, and the round trip of the
+// directories they wrote, in testdata/components.
+func TestComponents(t *testing.T) {
+	r := Run(copyTree(t, "testdata/components"))
+	if len(r.Problems) > 0 || len(r.Notes) > 0 {
+		t.Errorf("problems:\n%v\nnotes:\n%v", r.Problems, r.Notes)
+	}
+	if r.Tests != 5 || r.Resources != 2 {
+		t.Errorf("tests = %d, resources = %d, want 5 and 2", r.Tests, r.Resources)
+	}
+}
+
+// A directory without its record, or whose manifests are not what Quai would write, fails.
+func TestComponentsBroken(t *testing.T) {
+	fsys := copyTree(t, "testdata/components")
+	delete(fsys, "configs/greeting/quai.yaml")
+	m := string(fsys["teams/shop/manifests.yaml"].Data)
+	fsys["teams/shop/manifests.yaml"] = &fstest.MapFile{Data: []byte(strings.Replace(m, "team: shop", "team: web", 1))}
+	fsys["teams/shop/quai.yaml"] = &fstest.MapFile{Data: []byte("name: shop\nowner: alice\nteam: shop\ncpu: lots\n")}
+	r := Run(fsys)
+	text := r.Problems.Error()
+	for _, want := range []string{
+		"configs/greeting: has no quai.yaml, the record of its values (type config)",
+		"teams/shop/quai.yaml: cpu: must match the pattern",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("no problem contains %q; problems:\n%s", want, text)
+		}
+	}
+	fsys = copyTree(t, "testdata/components")
+	fsys["teams/shop/manifests.yaml"] = &fstest.MapFile{Data: []byte(strings.Replace(m, "team: shop", "team: web", 1))}
+	if text := Run(fsys).Problems.Error(); !strings.Contains(text, `teams/shop/manifests.yaml: round trip: Quai would rewrite this file on its first edit`) {
+		t.Errorf("problems:\n%s", text)
 	}
 }

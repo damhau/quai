@@ -20,9 +20,9 @@ import (
 	"github.com/damhau/quai/backend/internal/authz"
 	"github.com/damhau/quai/backend/internal/engine/definitions"
 	"github.com/damhau/quai/backend/internal/engine/edit"
-	"github.com/damhau/quai/backend/internal/engine/generate"
 	"github.com/damhau/quai/backend/internal/engine/edit/yamledit"
 	"github.com/damhau/quai/backend/internal/engine/expr"
+	"github.com/damhau/quai/backend/internal/engine/generate"
 	"github.com/damhau/quai/backend/internal/engine/locate"
 	"github.com/damhau/quai/backend/internal/inventory"
 	"github.com/damhau/quai/backend/internal/repositories"
@@ -702,7 +702,8 @@ func resourceDetail(ctx context.Context, repo *repositories.Repo, snap *reposito
 		if raw, err := locate.Bytes(snap.FS, r.Region); err == nil {
 			d.Raw = string(raw)
 		}
-	} else if raw, err := fs.ReadFile(snap.FS, r.Path); err == nil {
+	} else if raw, err := fs.ReadFile(snap.FS, r.Region.DocumentFile()); err == nil {
+		// A file's bytes; for a directory, its record's.
 		d.Raw = string(raw)
 	}
 	t := snap.Definitions.Types[r.Type]

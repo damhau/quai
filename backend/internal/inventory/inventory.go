@@ -137,12 +137,13 @@ func read(snap *repositories.Snapshot, t *definitions.ResourceType, r locate.Reg
 	if o := t.Spec.Ownership; o != nil && o.Team != "" {
 		res.Owner = "team:" + o.Team
 	}
-	src, err := fs.ReadFile(snap.FS, r.Path)
+	// A directory's document is its record of the values.
+	src, err := fs.ReadFile(snap.FS, r.DocumentFile())
 	if err != nil {
 		res.Status, res.Error = Unparseable, err.Error()
 		return res
 	}
-	decoded, code, err := edit.Decode(r.Path, src)
+	decoded, code, err := edit.Decode(r.DocumentFile(), src)
 	if err != nil {
 		res.Status, res.Error = Unparseable, err.Error()
 		return res

@@ -1,0 +1,19 @@
+# A ConfigMap, written by the raw component.
+apiVersion: quai.dev/v1beta1
+kind: ResourceType
+metadata: { name: config, title: Configuration }
+spec:
+  locate: { strategy: dir, path: "configs/{name}" }
+  params: [{ name: name, pattern: "[a-z][a-z0-9-]{1,30}" }]
+  schema: schemas/config.schema.json
+  generate:
+    kind: component
+    component: raw
+    with:
+      manifests:
+        - apiVersion: v1
+          kind: ConfigMap
+          metadata: { name: "${{ params.name }}", namespace: "${{ inputs.namespace }}" }
+          data: ${{ inputs.data }}
+  ownership: { field: owner }
+  paramFields: { name: name }

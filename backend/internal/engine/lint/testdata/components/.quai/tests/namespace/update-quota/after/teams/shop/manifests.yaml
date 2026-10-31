@@ -1,0 +1,17 @@
+# The shop team's namespace.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: shop
+  labels:
+    team: shop
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: quota
+  namespace: shop
+spec:
+  hard:
+    requests.cpu: "12" # cores
+    requests.memory: 16Gi

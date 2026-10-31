@@ -455,3 +455,45 @@ func TestUnreadableRepository(t *testing.T) {
 		t.Errorf("empty repository: %+v, %v", repo, problems)
 	}
 }
+
+// TestComponentTypes: the component generator writes a directory, with the properties its
+// component knows; its form is the record's schema.
+func TestComponentTypes(t *testing.T) {
+	typ := func(name, spec string) string {
+		return "apiVersion: quai.dev/v1beta1\nkind: ResourceType\nmetadata: { name: " + name + ", title: T }\nspec:\n  schema: catalog/vm.schema.json\n  params: [{ name: name }]\n" + spec
+	}
+	repo, problems := load(t, map[string]string{
+		".quai/types/ns.yaml": typ("ns", `  locate: { strategy: dir, path: "teams/{name}" }
+  generate: { kind: component, component: k8s.namespace, with: { name: "${{ params.name }}", quota: { cpu: "${{ inputs.?cpu }}" } } }
+`),
+		".quai/types/later.yaml": typ("later", `  locate: { strategy: dir, path: "dbs/{name}" }
+  generate: { kind: component, component: crossplane.claim, with: { kind: PostgreSQLInstance } }
+`),
+	})
+	if len(problems) > 0 {
+		t.Fatal(problems)
+	}
+	if g := repo.Types["ns"].Spec.Generate; g.WithValue == nil {
+		t.Error("with is not compiled")
+	}
+
+	_, problems = load(t, map[string]string{
+		".quai/types/file.yaml": typ("file", `  locate: { strategy: file, path: "teams/{name}.yaml" }
+  generate: { kind: component, component: raw, with: { manifests: [] } }
+`),
+		".quai/types/dir.yaml": typ("dir", `  locate: { strategy: dir, path: "apps/{name}" }
+`),
+		".quai/types/with.yaml": typ("with", `  locate: { strategy: dir, path: "teams/{name}" }
+  inputs: catalog/vm.schema.json
+  generate: { kind: component, component: k8s.namespace, with: { size: small, labels: "${{ (( }}" } }
+`),
+	})
+	wantProblems(t, problems,
+		"file.yaml: spec.generate.kind: the component generator writes a directory: it needs the dir locator",
+		"dir.yaml: spec.locate.strategy: a directory is written by the component generator, not the identity generator",
+		"with.yaml: spec.inputs: does not apply to the component generator",
+		"with.yaml: spec.generate.with.size: is not a property of the k8s.namespace component (name, labels, annotations, quota)",
+		"with.yaml: spec.generate.with.name: is required by the k8s.namespace component",
+		"with.yaml: spec.generate.with:",
+	)
+}

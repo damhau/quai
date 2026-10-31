@@ -156,16 +156,17 @@ func goldenToRequest(fsys fs.FS, t *definitions.ResourceType, in goldenRequest) 
 		return req, fmt.Errorf("key: %v", err)
 	}
 	req.Params = region.Params
-	src, err := fs.ReadFile(fsys, region.Path)
+	file := region.DocumentFile()
+	src, err := fs.ReadFile(fsys, file)
 	if err != nil {
 		return req, fmt.Errorf("key: %s: %w", in.Key, err)
 	}
-	decoded, code, err := edit.Decode(region.Path, src)
+	decoded, code, err := edit.Decode(file, src)
 	if err != nil {
-		return req, fmt.Errorf("%s: %w", region.Path, err)
+		return req, fmt.Errorf("%s: %w", file, err)
 	}
 	if req.Current, req.Code, err = locate.Document(decoded, code, region); err != nil {
-		return req, fmt.Errorf("%s: %w", region.Path, err)
+		return req, fmt.Errorf("%s: %w", file, err)
 	}
 	return req, nil
 }
@@ -191,17 +192,40 @@ func tree(fsys fs.FS, dir string) (fstest.MapFS, error) {
 	return out, err
 }
 
-// overlay reads files from files first, then from base.
+// overlay reads files from files first, then from base. A directory lists the entries of both.
 type overlay struct {
 	base  fs.FS
 	files fstest.MapFS
 }
 
 func (o overlay) Open(name string) (fs.File, error) {
-	if _, ok := o.files[name]; ok {
-		return o.files.Open(name)
+	if f, err := o.files.Open(name); err == nil {
+		if info, err := f.Stat(); err == nil && !info.IsDir() {
+			return f, nil
+		}
+		if _, err := fs.Stat(o.base, name); err != nil {
+			return f, nil // a directory only the overlay has
+		}
+		_ = f.Close()
 	}
 	return o.base.Open(name)
+}
+
+// ReadDir lists a directory's entries in both, those of files first, sorted by name.
+func (o overlay) ReadDir(name string) ([]fs.DirEntry, error) {
+	over, overErr := fs.ReadDir(o.files, name)
+	base, baseErr := fs.ReadDir(o.base, name)
+	if overErr != nil && baseErr != nil {
+		return nil, baseErr
+	}
+	out := over
+	for _, e := range base {
+		if !slices.ContainsFunc(over, func(x fs.DirEntry) bool { return x.Name() == e.Name() }) {
+			out = append(out, e)
+		}
+	}
+	slices.SortFunc(out, func(a, b fs.DirEntry) int { return strings.Compare(a.Name(), b.Name()) })
+	return out, nil
 }
 
 // decodeStrict decodes a YAML document into out, refusing unknown fields.

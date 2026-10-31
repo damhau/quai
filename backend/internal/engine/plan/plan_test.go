@@ -293,7 +293,6 @@ func TestPlanRefusals(t *testing.T) {
 	}
 	fsys := fstest.MapFS{
 		"s.json":                 {Data: []byte(`{"type": "object"}`)},
-		".quai/types/dir.yaml":   {Data: []byte(typ("dir", "{ strategy: dir, path: \"apps/{name}\" }"))},
 		".quai/types/json.yaml":  {Data: []byte(typ("json", "{ strategy: file, path: \"j/{name}.json\" }"))},
 		".quai/types/item.yaml":  {Data: []byte(typ("item", "{ strategy: file, path: \"items/{name}.yaml\" }"))},
 		"items/broken.yaml":      {Data: []byte("a: [1\n")},
@@ -311,9 +310,6 @@ func TestPlanRefusals(t *testing.T) {
 		t.Fatal(problems)
 	}
 	name := map[string]string{"name": "x"}
-	if _, err := Type(fsys, repo.Types["dir"], generate.Request{Kind: generate.Create, Params: name}); err == nil || !strings.Contains(err.Error(), "dir locator is not available yet") {
-		t.Errorf("dir: error = %v", err)
-	}
 	// JSON files are written by their own editor.
 	if cs, err := Type(fsys, repo.Types["json"], generate.Request{Kind: generate.Create, Params: name}); err != nil || len(cs.Changes) != 1 ||
 		cs.Changes[0].Path != "j/x.json" || string(cs.Changes[0].After) != "{}\n" {

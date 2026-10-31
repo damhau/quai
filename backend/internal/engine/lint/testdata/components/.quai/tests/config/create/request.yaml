@@ -1,0 +1,5 @@
+# A ConfigMap from the raw component.
+kind: create
+params: { name: banner }
+owner: carol
+values: { namespace: web, data: { colour: blue, text: Welcome } }

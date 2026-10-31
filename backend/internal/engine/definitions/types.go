@@ -120,6 +120,7 @@ type Generate struct {
 	Config    map[string]any    `json:"config,omitempty"`
 
 	TemplateValue *expr.Value               `json:"-"`
+	WithValue     *expr.Value               `json:"-"` // the component's properties, a template
 	ReadTemplates map[string]*expr.Template `json:"-"`
 	// Bindings are the inputs the template binds directly (`path: ${{ inputs.os }}`), each with
 	// the dotted path it is written to: they are read back from there.

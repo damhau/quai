@@ -1,0 +1,4 @@
+# A new message and a footer: the record and the ConfigMap's data change, its comments stay.
+kind: update
+key: greeting
+values: { name: greeting, owner: alice, namespace: shop, data: { message: bonjour, footer: See you } }

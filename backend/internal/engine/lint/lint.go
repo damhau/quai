@@ -17,7 +17,9 @@ import (
 	"github.com/damhau/quai/backend/internal/engine/definitions"
 	"github.com/damhau/quai/backend/internal/engine/edit"
 	"github.com/damhau/quai/backend/internal/engine/generate"
+	"github.com/damhau/quai/backend/internal/engine/generate/component"
 	"github.com/damhau/quai/backend/internal/engine/locate"
+	"github.com/damhau/quai/backend/internal/engine/plan"
 	"github.com/damhau/quai/backend/internal/engine/schema"
 	"github.com/damhau/quai/backend/internal/engine/tfplan"
 )
@@ -76,10 +78,16 @@ func (r *Report) problem(file, field, format string, args ...any) {
 }
 
 func (r *Report) checkType(fsys fs.FS, t *definitions.ResourceType) {
-	if g := t.Spec.Generate.Kind; t.Spec.Locate.Strategy == locate.Dir || g != definitions.GenerateIdentity && g != definitions.GenerateMapping {
+	missing := ""
+	switch g := t.Spec.Generate; {
+	case g.Kind == definitions.GeneratePlugin:
+		missing = "the plugin generator"
+	case g.Kind == definitions.GenerateComponent && component.Get(g.Component) == nil:
+		missing = "the " + g.Component + " component"
+	}
+	if missing != "" {
 		r.Notes = append(r.Notes, definitions.Problem{Path: t.Path, Message: fmt.Sprintf(
-			"the files of type %s are not checked: the %s locator with the %s generator is not available yet",
-			t.Metadata.Name, t.Spec.Locate.Strategy, t.Spec.Generate.Kind)})
+			"the files of type %s are not checked: %s is not available yet", t.Metadata.Name, missing)})
 		return
 	}
 	loc, err := t.Spec.Locate.Locator()
@@ -112,10 +120,79 @@ func (r *Report) checkType(fsys fs.FS, t *definitions.ResourceType) {
 	}
 	for _, region := range regions {
 		r.Resources++
-		if region.Problem == "" {
+		switch {
+		case region.Strategy == locate.Dir:
+			r.checkDir(fsys, t, region)
+		case region.Problem == "":
 			r.checkFile(fsys, t, region)
 		}
 	}
+}
+
+// checkDir checks a directory region: its record conforms to the type's schema, and planning an
+// update with the values read back from it changes no file.
+func (r *Report) checkDir(fsys fs.FS, t *definitions.ResourceType, region locate.Region) {
+	file := region.DocumentFile()
+	src, err := fs.ReadFile(fsys, file)
+	if errors.Is(err, fs.ErrNotExist) {
+		r.problem(region.Path, "", "has no %s, the record of its values (type %s)", locate.RecordFile, t.Metadata.Name)
+		return
+	}
+	if err != nil {
+		r.problem(file, "", "cannot read: %v", err)
+		return
+	}
+	decoded, code, err := edit.Decode(file, src)
+	if err != nil {
+		r.problem(file, "", "%v", err)
+		return
+	}
+	doc, ok := decoded.(map[string]any)
+	if !ok {
+		r.problem(file, "", "must hold a mapping (type %s)", t.Metadata.Name)
+		return
+	}
+	if !r.conforms(file, t, doc, code) {
+		return
+	}
+	values, err := generate.Read(t, doc, region.Params)
+	if err != nil {
+		r.problem(file, "", "round trip: %v", err)
+		return
+	}
+	cs, err := plan.Type(fsys, t, generate.Request{Kind: generate.Update, Params: region.Params, Current: doc, Values: values, Code: code})
+	switch {
+	case errors.Is(err, plan.ErrNoChange):
+	case err != nil:
+		r.problem(region.Path, "", "round trip: %v", err)
+	default:
+		for _, c := range cs.Changes {
+			if c.Before == nil {
+				r.problem(c.Path, "", "round trip: Quai would write this file on its first edit")
+			} else {
+				r.problem(c.Path, "", "round trip: Quai would rewrite this file on its first edit (%s)", changedLines(c.Before, c.After))
+			}
+		}
+	}
+}
+
+// conforms checks a resource's document against the type's file schema, reporting each field
+// that does not conform, except those defined in code.
+func (r *Report) conforms(where string, t *definitions.ResourceType, doc map[string]any, code []edit.Code) bool {
+	err := t.FileSchema.Validate(doc)
+	if err == nil {
+		return true
+	}
+	var ve *schema.ValidationError
+	if !errors.As(err, &ve) {
+		r.problem(where, "", "%v", err)
+		return false
+	}
+	fields := edit.OutsideCode(ve.Fields, code)
+	for _, f := range slices.Sorted(maps.Keys(fields)) {
+		r.problem(where, f, "%s (schema %s)", fields[f], t.FileSchema.Path())
+	}
+	return len(fields) == 0
 }
 
 func (r *Report) checkFile(fsys fs.FS, t *definitions.ResourceType, region locate.Region) {
@@ -140,19 +217,8 @@ func (r *Report) checkFile(fsys fs.FS, t *definitions.ResourceType, region locat
 		r.problem(where, "", "must hold a mapping (type %s): %v", t.Metadata.Name, err)
 		return
 	}
-	if err := t.FileSchema.Validate(doc); err != nil {
-		var ve *schema.ValidationError
-		if !errors.As(err, &ve) {
-			r.problem(region.Path, "", "%v", err)
-			return
-		}
-		fields := edit.OutsideCode(ve.Fields, code)
-		for _, f := range slices.Sorted(maps.Keys(fields)) {
-			r.problem(where, f, "%s (schema %s)", fields[f], t.FileSchema.Path())
-		}
-		if len(fields) > 0 {
-			return
-		}
+	if !r.conforms(where, t, doc, code) {
+		return
 	}
 	// Round trip: read the file as form values and write them back.
 	values, err := generate.Read(t, doc, region.Params)

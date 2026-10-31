@@ -1,0 +1,19 @@
+# A team's namespace with its quota, written by the k8s.namespace component.
+apiVersion: quai.dev/v1beta1
+kind: ResourceType
+metadata: { name: namespace, title: Team namespace }
+spec:
+  locate: { strategy: dir, path: "teams/{name}" }
+  params: [{ name: name, pattern: "[a-z][a-z0-9-]{1,30}" }]
+  schema: schemas/namespace.schema.json
+  generate:
+    kind: component
+    component: k8s.namespace
+    with:
+      name: ${{ params.name }}
+      labels: { team: "${{ inputs.team }}" }
+      quota:
+        requests.cpu: ${{ inputs.?cpu }}
+        requests.memory: ${{ inputs.?memory }}
+  ownership: { field: owner }
+  paramFields: { name: name }

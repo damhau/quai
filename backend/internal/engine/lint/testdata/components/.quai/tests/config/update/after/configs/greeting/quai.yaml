@@ -1,0 +1,6 @@
+name: greeting
+owner: alice
+namespace: shop
+data:
+  message: bonjour
+  footer: See you
