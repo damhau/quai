@@ -107,13 +107,14 @@ function Editor({ repository, isNew }: { repository: string; isNew: boolean }) {
             <CardHeader>
               <CardTitle className="text-sm">Types in {repository}</CardTitle>
             </CardHeader>
-            <CardContent className="grid gap-1">
+            {/* One column as wide as the card: a long title wraps instead of widening it. */}
+            <CardContent className="grid grid-cols-1 gap-1">
               {types.map((t) => (
                 <Button
                   key={t.name}
                   type="button"
                   variant="ghost"
-                  className="justify-start"
+                  className="h-auto items-start justify-start py-1.5 text-left whitespace-normal"
                   aria-label={`Add ${t.title}`}
                   onClick={() => {
                     let id = ""
@@ -125,7 +126,7 @@ function Editor({ repository, isNew }: { repository: string; isNew: boolean }) {
                     select(id)
                   }}
                 >
-                  <Plus /> <span className="truncate">{t.title}</span>
+                  <Plus className="mt-0.5" /> <span className="wrap-anywhere">{t.title}</span>
                 </Button>
               ))}
               {rs.length > 0 && (
@@ -135,7 +136,7 @@ function Editor({ repository, isNew }: { repository: string; isNew: boolean }) {
                       key={r.id}
                       type="button"
                       aria-pressed={r.id === selected}
-                      className={cn("hover:bg-accent rounded-md px-2 py-1 text-left text-sm", r.id === selected && "bg-accent")}
+                      className={cn("hover:bg-accent rounded-md px-2 py-1 text-left text-sm wrap-anywhere", r.id === selected && "bg-accent")}
                       onClick={() => select(r.id)}
                     >
                       {r.id}
