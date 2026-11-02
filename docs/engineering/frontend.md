@@ -51,6 +51,8 @@ frontend/
 │   │   └── approval/              # approval chain, review box
 │   ├── stores/                    # zustand stores (designer, layout)
 │   └── lib/                       # cel, formatting, auth helpers
+├── public/                        # copied to the build as is: favicon.svg (the source), favicon.ico and
+│                                  # apple-touch-icon.png, rendered from it
 ├── index.html
 └── vite.config.ts
 ```
