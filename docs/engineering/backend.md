@@ -85,7 +85,7 @@ default), but a current local install is preferred.
 | Entra ID tokens | `Azure/azure-sdk-for-go/sdk/azidentity` | Workload identity federation, certificates, managed identity |
 | Azure Key Vault | `Azure/azure-sdk-for-go/sdk/security/keyvault/azsecrets` | `SecretStore` backend for Azure-centric customers |
 | Gitea (test reference) | `code.gitea.io/sdk/gitea` | Official client; runs in a container for the conformance suite |
-| GitHub | `google/go-github` + `bradleyfalzon/ghinstallation` | GitHub App installation tokens |
+| GitHub | `google/go-github`, at the major version `ghinstallation` builds on, + `bradleyfalzon/ghinstallation` | GitHub App installation tokens; one copy of go-github in the build |
 | GitLab | `gitlab.com/gitlab-org/api/client-go` | Official client |
 | Kubernetes | `k8s.io/client-go` (dynamic client) | Executors and observers without pulling every CRD's typed client |
 | Git transport | `git` CLI through `os/exec` | Full protocol support: SSH, partial clone, sparse checkout, worktrees, signing |
