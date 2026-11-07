@@ -228,7 +228,7 @@ func TestLiveAutoComplete(t *testing.T) {
 	if err := c.PullRequests().AutoComplete(ctx, pr.ID, connectors.MergeOptions{Head: head, Method: connectors.Squash, Message: "Resize web01\n", DeleteBranch: true}); err != nil {
 		t.Fatal(err)
 	}
-	// A draft does not complete: publishing it lets auto-complete act.
+	// A draft does not complete, even with auto-complete set.
 	if got, _ := c.PullRequests().Get(ctx, pr.ID); !got.AutoComplete || got.State != connectors.PROpen {
 		t.Errorf("auto-complete on a draft: %+v", got)
 	}
@@ -236,7 +236,19 @@ func TestLiveAutoComplete(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Publishing with auto-complete still set does not reliably let it act: live, some publishes
+	// dropped it, and others left it set and never firing, where setting it again with the same
+	// values does not wake it. Quai opens requests' pull requests ready, so it does not depend on
+	// this: what it depends on is that auto-complete set on a published pull request completes it.
+	// So it is cleared first, which also means nothing can complete before it is set anew.
+	if err := c.(*Connector).client.Do(ctx, http.MethodPatch, at, APIVersion, nil,
+		map[string]any{"autoCompleteSetBy": map[string]string{"id": "00000000-0000-0000-0000-000000000000"}}, nil); err != nil {
+		t.Fatal(err)
+	}
 	if err := c.(*Connector).client.Do(ctx, http.MethodPatch, at, APIVersion, nil, map[string]any{"isDraft": false}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.PullRequests().AutoComplete(ctx, pr.ID, connectors.MergeOptions{Head: head, Method: connectors.Squash, Message: "Resize web01\n", DeleteBranch: true}); err != nil {
 		t.Fatal(err)
 	}
 	deadline := time.Now().Add(CompletionTimeout)
