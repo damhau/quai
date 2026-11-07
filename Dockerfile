@@ -42,7 +42,7 @@ RUN go build -ldflags "-s -w -X main.version=${VERSION}" -o /out/quai ./cmd/quai
 FROM backend AS fakerunner-build
 RUN go build -o /out/fakerunner ./tools/fakerunner
 
-FROM alpine:3.24.3@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a AS fake-runner
+FROM alpine:3.24.4@sha256:93b41ef40b1677fce8fcc64ff4af09daddfacf5040afde618bc46c1e2d1cc7d4 AS fake-runner
 RUN adduser -D -H -u 10001 -G root -s /sbin/nologin runner
 COPY --from=backend /out/quai /usr/local/bin/quai
 COPY --from=fakerunner-build /out/fakerunner /usr/local/bin/fakerunner
@@ -51,9 +51,13 @@ USER 10001
 EXPOSE 8090
 ENTRYPOINT ["/usr/local/bin/fakerunner"]
 
-FROM alpine:3.24.3@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a
+# CI builds this stage without its layer cache (no-cache-filters in packaging.yml), and it upgrades
+# what the base holds: a cached layer would keep the packages of the day it was built, however
+# recently Alpine fixed them.
+FROM alpine:3.24.4@sha256:93b41ef40b1677fce8fcc64ff4af09daddfacf5040afde618bc46c1e2d1cc7d4 AS image
 # The group is root so that OpenShift's arbitrary user ids, which run in it, can write the cache.
-RUN apk add --no-cache git openssh-client openssh-keygen ca-certificates tzdata \
+RUN apk upgrade --no-cache \
+ && apk add --no-cache git openssh-client openssh-keygen ca-certificates tzdata \
  && adduser -D -H -u 10001 -G root -s /sbin/nologin quai \
  && mkdir -p /var/cache/quai \
  && chown 10001:0 /var/cache/quai \

@@ -51,6 +51,9 @@ jobs:
           load: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          # Alpine's packages are fetched afresh in every build, or the scan and the published
+          # image would keep those of the cached layer.
+          no-cache-filters: image
       # The image starts, serves its embedded frontend and answers its health check.
       - run: |
           docker run -d --name quai -p 8080:8080 quai:ci server
