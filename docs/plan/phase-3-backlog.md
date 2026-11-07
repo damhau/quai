@@ -67,8 +67,9 @@ pilot repository `pilot-infra`. Phase 3 adds:
   [open questions](open-questions.md#decided)). Its pull requests are completed in order, as in
   P2-13.
 - **P3-21** (Phase 3 review): write the report the issue describes, commit with `refs`, comment
-  that it is ready, and **stop**. Only the owner closes it.
+  that it is ready, and go on to Phase 4 ([the owner's decision of 2026-11-07](open-questions.md#decided)).
+  Only the owner closes it.
 
-The rules of [when to stop and ask](phase-0-backlog.md#when-to-stop-and-ask) apply unchanged.
+The rules of [when to stop and ask](phase-0-backlog.md#when-to-stop-and-ask) apply.
 The GitHub tasks target github.com only; GitHub Enterprise Server is a future improvement
 ([#137](https://github.com/damhau/quai/issues/137), [open question 11](open-questions.md#decided)).

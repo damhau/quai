@@ -24,6 +24,8 @@ every request becomes a reviewed change in their Git repositories. Start with
 
 - The docs are the spec. If an implementation must deviate, update the relevant document in the
   same commit. If a decision is not covered, add it to `docs/plan/open-questions.md` and stop to ask.
+  Until M2 closes (owner, 2026-11-07), record the default there and go on; stop only for a
+  security-sensitive or hard-to-reverse choice.
 - Commit straight to `main`, one task per commit or a few small commits, message
   `P3-NN: summary (closes #<issue>)` (`refs` for STOP tasks the owner closes).
   Never add `Co-Authored-By` or other attribution trailers. Push after each task without waiting

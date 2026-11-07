@@ -45,7 +45,7 @@ Progress is tracked on GitHub: [milestones M1, M2, M3](https://github.com/damhau
 | Milestone | Target | Meaning |
 | --- | --- | --- |
 | **M1 Pilot** | ~week 14 | The pilot customer uses Quai on a real Azure DevOps **Services** repository for **VMs**: forms from their schema, PRs, approvals enforced by a required status, plan and apply status from Azure Pipelines, Entra ID login, on OpenShift. |
-| **M2 Beta** | ~week 21 | The pilot gets **namespaces and quotas, DNS records and firewall rules**, including the data kept in HCL. Two or three design partners. Mapping generators, shared-file locators, full governance (roles, SoD, change windows, break-glass, ITSM if needed), tamper-evident audit. |
+| **M2 Beta** | ~week 21 | The pilot gets **namespaces and quotas, DNS records and firewall rules**, including the data kept in HCL. Two or three design partners (the owner's; the work is accepted on the stand-in `pilot-infra` until a real repository is available, [decided](open-questions.md#decided)). Mapping generators, shared-file locators, full governance (roles, SoD, change windows, break-glass, ITSM if needed), tamper-evident audit. |
 | **M3 GA** | ~week 37 | Composite blueprints across repositories, imperative actions, drift, onboarding assistant, hardened, load-tested, pentested, documented. |
 
 ## Phase 0: Foundations and port (6 weeks)

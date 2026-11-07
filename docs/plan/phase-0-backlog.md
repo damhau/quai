@@ -38,7 +38,9 @@ Issues labelled `stop` are checkpoints where the owner decides.
 Stop the loop, and comment on the current issue explaining why, when:
 
 - the next issue is a STOP task (see above);
-- a decision is needed that the docs do not settle (also add it to [open questions](open-questions.md));
+- a decision is needed that the docs do not settle (also add it to [open questions](open-questions.md)).
+  Until M2 closes, stop only if it is security-sensitive or hard to reverse; otherwise record the
+  default there and go on ([the owner's decision of 2026-11-07](open-questions.md#decided));
 - the same gate fails three attempts in a row;
 - an action is blocked by policy (Veto) or the sandbox, with no legitimate alternative;
 - no Git identity is configured.

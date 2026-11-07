@@ -1,11 +1,13 @@
 # Open questions
 
-Status: Draft · 2026-10-31
+Status: Draft · 2026-11-07
 
 ## Still open
 
 None. A decision the docs do not settle is added here, with the default the plan assumes until
-the owner answers it. Numbers are not reused: the next question is 13.
+the owner answers it. Until M2 closes, work goes on with that default, unless the choice is
+security-sensitive or hard to reverse (decided below). Numbers are not reused: the next question
+is 13.
 
 | # | Question | Why it matters | Default assumed | Needed by |
 | --- | --- | --- | --- | --- |
@@ -14,6 +16,11 @@ the owner answers it. Numbers are not reused: the next question is 13.
 
 | Question | Decision | Date | Consequences |
 | --- | --- | --- | --- |
+| Who breaks Phase 4 into tasks | **The loop does**, as for Phases 2 and 3, without waiting for the owner's review | 2026-11-07 | `phase-4-backlog.md` and the task issues are written when Phase 4 starts, and the work starts at once |
+| Whether the loop waits for the owner at the Phase 3 review | **No.** The report is written, the issue says it is ready, and the loop goes on to Phase 4 | 2026-11-07 | Only the owner closes #135, whenever they read it; Phase 4 does not wait for that |
+| What the loop does with a question the docs do not settle, until M2 closes | **Takes a default, records it under "Still open", and goes on.** It stops only for a security-sensitive or hard-to-reverse choice | 2026-11-07 | The owner answers the recorded questions in a batch ([when to stop and ask](phase-0-backlog.md#when-to-stop-and-ask)) |
+| How M2 tests services with no account: ServiceNow, Microsoft Teams, Slack and Entra ID step-up | **Fakes built from the vendors' documented APIs**, as `TestOIDCLogin` fakes the identity provider | 2026-11-07 | The Phase 4 review lists each as not verified against the real service; real accounts can be added later without changing the design |
+| What M2 is accepted on, with no pilot repository and no design partners yet | **The stand-in `pilot-infra`**, as M1 was. Design partners stay with the owner | 2026-11-07 | The loop can finish every task and write the reviews; M2 stays open until the owner closes it |
 | Whether GitHub Enterprise Server is part of M2 (open question 11) | **github.com only.** GHES is a future improvement, scheduled when a customer needs it; the connector keeps the API URL configurable | 2026-10-31 | P3-16 to P3-18 are built and accepted on github.com, where the conformance suite runs; epic #52 no longer requires GHES; GHES support is [#137](https://github.com/damhau/quai/issues/137) ([roadmap](roadmap.md#future-improvements)) |
 | Whether Quai's approval is the only authority, or Azure DevOps required-reviewer policies must also pass (open question 3) | **Quai is the sole authority** ([ADR 0002](../adr/0002-quai-is-the-approval-authority.md)) | 2026-10-31 | Branch protection requires `quai/approval` alone; the platform's path-based reviewers count through the `codeowners` approver kind, from Phase 4 (#100) |
 | Which PostgreSQL major version Quai supports (open question 6) | **PostgreSQL 17** | 2026-10-31 | The tests (embedded PostgreSQL), the compose stack and the kind fixtures run 17; another version is added when a customer needs it |
