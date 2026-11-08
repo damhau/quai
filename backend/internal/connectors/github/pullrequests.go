@@ -173,7 +173,8 @@ var methods = map[connectors.MergeMethod]string{
 //   - GitHub has not computed the pull request's mergeability yet: asked again here;
 //   - a 409 while the pull request still shows the approved head, so the merge saw a newer one than
 //     the API does yet: asked again here, until the API settles which it is;
-//   - the repository's settings forbid the method: ErrUnsupported, since waiting will not help.
+//   - the repository's settings forbid the method, or the branch merges only through its merge
+//     queue (AutoComplete's way): ErrUnsupported, since waiting will not help.
 //
 // The merge commit is the response's, which GitHub is sure of, and a pull request found merged
 // already is a success, so a retry finds what the first attempt did.
@@ -212,7 +213,7 @@ func (p *pullRequests) Merge(ctx context.Context, id string, o connectors.MergeO
 			return connectors.PullRequest{}, check(resp, err)
 		}
 		refusal := refusalOf(err)
-		if strings.Contains(refusal, "not allowed on this repository") {
+		if strings.Contains(refusal, "not allowed on this repository") || strings.Contains(refusal, "through the merge queue") {
 			return connectors.PullRequest{}, fmt.Errorf("%w: %s", connectors.ErrUnsupported, refusal)
 		}
 		refused := resp.StatusCode
@@ -259,11 +260,6 @@ func (c *Connector) deleteBranch(ctx context.Context, pr *gh.PullRequest, o conn
 		return
 	}
 	c.cfg.Log.WarnContext(ctx, "the merged pull request's branch was not deleted", slog.Int("pullRequest", pr.GetNumber()), slog.String("branch", pr.GetHead().GetRef()), slog.Any("error", err))
-}
-
-// AutoComplete is not built yet, and Info does not claim it: Quai merges itself (P3-18).
-func (p *pullRequests) AutoComplete(context.Context, string, connectors.MergeOptions) error {
-	return fmt.Errorf("%w: GitHub's auto-merge", connectors.ErrUnsupported)
 }
 
 func (p *pullRequests) Abandon(ctx context.Context, id string) error {

@@ -34,16 +34,16 @@ func liveConnector(t *testing.T, s *githubtest.Sandbox, name string, client *htt
 }
 
 // liveHarness gives the conformance suite repositories of the sandbox, enforced by a ruleset
-// requiring the check from the app, and owned by the sandbox's team. The sandbox has one app and
-// no second identity, so step 4 is skipped; GitHub cannot deliver webhooks here, and the
-// connector has none until P3-18, so step 7 is skipped too.
+// requiring the check from the app, and owned by the sandbox's team. Step 4 publishes the check as
+// the sandbox's second app, and skips without it. GitHub cannot reach this machine: step 7 replays
+// the deliveries the app's history recorded for the repository.
 type liveHarness struct{ s *githubtest.Sandbox }
 
 func (h liveHarness) Setup(t *testing.T, client *http.Client) *conformance.Repository {
-	name, _ := h.s.Repository(t)
+	name, id := h.s.Repository(t)
 	c := liveConnector(t, h.s, name, client)
 	var ruleset int64
-	return &conformance.Repository{Connector: c, URL: h.s.URL(name), DefaultBranch: githubtest.Branch,
+	repo := &conformance.Repository{Connector: c, URL: h.s.URL(name), DefaultBranch: githubtest.Branch,
 		// The ruleset applies to the default branch, which is the one the suite asks for.
 		RequireCheck: func(ctx context.Context, _, check string) (err error) {
 			ruleset, err = h.s.RequireCheck(ctx, name, check)
@@ -56,7 +56,28 @@ func (h liveHarness) Setup(t *testing.T, client *http.Client) *conformance.Repos
 		AddOwner: func(ctx context.Context, pattern string) (string, error) {
 			return addOwner(ctx, h.s, name, c, pattern)
 		},
+		Recorded: func(t *testing.T) []conformance.Recorded {
+			secret := h.s.WebhookSecret(t)
+			var out []conformance.Recorded
+			for _, d := range h.s.Deliveries(t, id, func(ds []githubtest.Delivery) bool {
+				return githubtest.HasEvent(ds, "push", "") && githubtest.HasEvent(ds, "pull_request", "")
+			}) {
+				out = append(out, conformance.Recorded{Header: d.Header, Body: d.Body, Secret: secret.Reveal()})
+			}
+			return out
+		},
 	}
+	if other := h.s.Other(t); other != nil {
+		oc, err := New(connectors.Config{URL: h.s.URL(name), HTTP: client, Credentials: other.PrivateKey, AppID: other.AppID})
+		if err != nil {
+			t.Fatal(err)
+		}
+		repo.Other = oc
+		t.Logf("step 4 publishes as app %d (installation %d)", other.AppID, other.InstallationID)
+	} else {
+		t.Log("step 4 skips: QUAI_TEST_GITHUB_OTHER_APP_KEY_FILE is not set, so there is no second app")
+	}
+	return repo
 }
 
 // addOwner makes the sandbox's team the owner of pattern. Its CODEOWNERS lands on main through a

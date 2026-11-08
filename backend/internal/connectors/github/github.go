@@ -3,8 +3,9 @@
 // the app's ID is spec.credentials.appId) finds the app's installation on the repository and is
 // exchanged for installation tokens, limited to that repository, which the API and git use.
 //
-// It has Git transport, pull requests, quai/approval as the app's check runs, branch protection and
-// rulesets, and CODEOWNERS. Webhooks, auto-merge and the merge queue come with P3-18.
+// It has Git transport, pull requests merged by Quai or by GitHub (auto-merge, the merge queue),
+// quai/approval as the app's check runs, branch protection and rulesets, CODEOWNERS, and signed
+// webhooks. Auto-merge and the merge queue are GraphQL's only.
 package github
 
 import (
@@ -223,14 +224,16 @@ func check(resp *gh.Response, err error) error {
 	return fmt.Errorf("github: %w", err)
 }
 
-// Info reports what the connector supports so far. No auto-complete yet: Quai merges itself. A
-// required check pinned to the app is one only the app satisfies.
+// Info reports what the connector supports. A required check pinned to the app is one only the app
+// satisfies. GitHub merges (auto-complete): through auto-merge, or the merge queue where the base
+// branch has one.
 func (c *Connector) Info() connectors.Info {
 	return connectors.Info{
-		Platform:     "github",
-		Edition:      host,
-		APIVersion:   apiVersion,
-		Capabilities: []connectors.Capability{connectors.CapPullRequests, connectors.CapEnforcedStatus, connectors.CapCodeOwnersFile},
+		Platform:   "github",
+		Edition:    host,
+		APIVersion: apiVersion,
+		Capabilities: []connectors.Capability{connectors.CapPullRequests, connectors.CapEnforcedStatus, connectors.CapAutoComplete,
+			connectors.CapMergeQueue, connectors.CapSignedWebhooks, connectors.CapCodeOwnersFile},
 		MergeMethods: []connectors.MergeMethod{connectors.MergeCommit, connectors.Squash, connectors.Rebase},
 	}
 }
@@ -250,6 +253,6 @@ func (c *Connector) PullRequests() connectors.PullRequests { return (*pullReques
 func (c *Connector) Statuses() connectors.Statuses     { return (*statuses)(c) }
 func (c *Connector) Policies() connectors.Policies     { return (*policies)(c) }
 func (c *Connector) Owners() connectors.Owners         { return (*owners)(c) }
-func (c *Connector) Webhooks() connectors.Webhooks     { return nil } // P3-18
+func (c *Connector) Webhooks() connectors.Webhooks     { return (*webhooks)(c) }
 func (c *Connector) Pipelines() connectors.Pipelines   { return nil }
 func (c *Connector) Identities() connectors.Identities { return nil }

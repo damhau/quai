@@ -287,12 +287,12 @@ fetch and poll, and the head, are recorded for the health page.
 
 The admin flow, in the UI or API:
 
-1. **Platform and URL.** Choose the platform, paste the URL, select a credential reference.
+1. **Platform and URL.** Choose the platform, paste the URL, select a credential reference. On GitHub the credential is the GitHub App's private key, and the form also asks for the app's ID (`spec.credentials.appId`).
 2. **Access test.** Quai checks read access, that it can push a branch under its prefix (then deletes it), open and close a draft pull request, write a check, and read branch protection. Each check shows pass or fail with the missing permission.
 3. **Scan.** Quai looks for `.quai/`. If there is none, it offers the [onboarding assistant](10-onboarding.md), which proposes types from the repository's existing files.
 4. **Delivery and enforcement.** Choose the delivery mode and merge policy. Quai shows exactly what branch protection must look like and verifies it.
 5. **Runner.** Choose how plan and apply results come back and copy the generated report token.
-6. **Webhook.** Installed automatically through the platform API where the credential allows (on Azure DevOps, a service hook subscription), or shown for manual setup.
+6. **Webhook.** Installed automatically through the platform API where the credential allows (on Azure DevOps, a service hook subscription; on GitHub, a repository webhook, when the app has the Webhooks permission), or shown for manual setup.
 
 The API behind it (repository admins, `repositories.manage` on the connection's name):
 

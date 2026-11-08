@@ -133,6 +133,10 @@ type MergeOptions struct {
 	Method       MergeMethod
 	Message      string // the merge or squash commit's message
 	DeleteBranch bool   // delete the source branch afterwards
+	// Approval is quai/approval as it stands (success), for a platform that checks the merge
+	// again on a commit of its own before merging: GitHub's merge queue requires it on the merge
+	// group's commit, so AutoComplete publishes it there. Zero: nothing to publish.
+	Approval Status
 }
 
 // PullRequests manages pull requests (CapPullRequests).

@@ -39,6 +39,7 @@ func (s *Service) Workers(w *river.Workers) {
 	river.AddWorker(w, NewWorker(s))
 	river.AddWorker(w, &openWorker{s: s})
 	river.AddWorker(w, &statusWorker{s: s})
+	river.AddWorker(w, &deleteBranchWorker{s: s})
 }
 
 var slugRe = regexp.MustCompile(`[^a-z0-9]+`)
@@ -220,6 +221,52 @@ func (s *Service) findOrOpen(ctx context.Context, prs connectors.PullRequests, n
 	return prs.Open(ctx, n)
 }
 
+// DeleteBranchArgs deletes the branch of a request whose pull request the platform merged by
+// itself (auto-complete). GitHub refuses for some seconds after its merge queue merged (the branch
+// is still "queued for merging", measured), so the job is tried again every 10 s, for 5 minutes.
+// The merge stands whatever happens to the branch.
+type DeleteBranchArgs struct {
+	RequestID uuid.UUID `json:"requestId"`
+}
+
+// Kind names the job.
+func (DeleteBranchArgs) Kind() string { return "delete_branch" }
+
+// InsertOpts bounds the tries.
+func (DeleteBranchArgs) InsertOpts() river.InsertOpts { return river.InsertOpts{MaxAttempts: 30} }
+
+type deleteBranchWorker struct {
+	river.WorkerDefaults[DeleteBranchArgs]
+	s *Service
+}
+
+// NextRetry is soon: the platform lets the branch go within seconds.
+func (w *deleteBranchWorker) NextRetry(*river.Job[DeleteBranchArgs]) time.Time {
+	return time.Now().Add(10 * time.Second)
+}
+
+func (w *deleteBranchWorker) Work(ctx context.Context, job *river.Job[DeleteBranchArgs]) error {
+	d, err := w.s.store.GetDelivery(ctx, job.Args.RequestID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	repo, err := w.s.reg.Get(d.Repository)
+	if err != nil {
+		return err
+	}
+	if err := repo.Mirror.DeleteBranch(ctx, d.Branch); err != nil {
+		if job.Attempt >= job.MaxAttempts {
+			w.s.log.WarnContext(ctx, "the merged pull request's branch was not deleted", slog.String("request", job.Args.RequestID.String()),
+				slog.String("branch", d.Branch), slog.Any("error", err))
+		}
+		return err
+	}
+	return nil
+}
+
 // StatusArgs publishes quai/approval as the request's state says, and closes the pull request of
 // a request that is over without a merge.
 type StatusArgs struct {
@@ -338,8 +385,10 @@ func (s *Service) deliverPR(ctx context.Context, job *river.Job[DeliverArgs], r 
 	}
 	if r.State == Approved {
 		// When the merge keeps Quai's commit (a rebase), or a person merges, the approvals are a
-		// final comment on the pull request; otherwise the merge's message carries them.
-		if spec.Merge == "manual" || spec.MergeMethod == string(connectors.Rebase) {
+		// final comment on the pull request; otherwise the merge's message carries them. A merge
+		// queue writes its own message, and whether a branch has one can change until it merges,
+		// so with a platform that has one they are a comment as well.
+		if spec.Merge == "manual" || spec.MergeMethod == string(connectors.Rebase) || repo.Connector.Info().Has(connectors.CapMergeQueue) {
 			if err := s.commentApprovals(ctx, prs, r, d); err != nil {
 				return err
 			}
@@ -374,7 +423,8 @@ func (s *Service) deliverPR(ctx context.Context, job *river.Job[DeliverArgs], r 
 		if err != nil {
 			return err
 		}
-		opts := connectors.MergeOptions{Head: d.Head, Method: connectors.MergeMethod(spec.MergeMethod), Message: msg, DeleteBranch: *spec.DeleteBranch}
+		opts := connectors.MergeOptions{Head: d.Head, Method: connectors.MergeMethod(spec.MergeMethod), Message: msg, DeleteBranch: *spec.DeleteBranch,
+			Approval: connectors.Status{Name: repo.Document.Spec.Enforcement.RequiredCheck, State: connectors.StatusSuccess, Description: "Approved in Quai", URL: s.link(r)}}
 		if repo.Connector.Info().Has(connectors.CapAutoComplete) {
 			err = prs.AutoComplete(ctx, d.PullRequest, opts)
 		} else {
@@ -482,7 +532,15 @@ func (s *Service) merged(ctx context.Context, r db.Request, d db.Delivery, pr co
 		// Merged without Quai's approval: the enforcement was bypassed.
 		kind = "merged_without_approval"
 	}
-	err := s.store.Tx(ctx, func(_ pgx.Tx, q *db.Queries) error {
+	// The platform merged on Quai's request (auto-complete): its branch is deleted by a job of its
+	// own, since GitHub's auto-merge and merge queue keep it. Merge deleted it already otherwise.
+	deleteBranch := false
+	if repoErr == nil && !bypass && s.jobs != nil {
+		spec := repo.Document.Spec.Delivery
+		deleteBranch = spec.Merge == "auto" && spec.DeleteBranch != nil && *spec.DeleteBranch &&
+			repo.Connector != nil && repo.Connector.Info().Has(connectors.CapAutoComplete)
+	}
+	err := s.store.Tx(ctx, func(tx pgx.Tx, q *db.Queries) error {
 		if err := q.SetDeliveryMerged(ctx, db.SetDeliveryMergedParams{RequestID: r.ID, MergeCommit: pr.MergeCommit}); err != nil {
 			return err
 		}
@@ -496,6 +554,11 @@ func (s *Service) merged(ctx context.Context, r db.Request, d db.Delivery, pr co
 		r = next
 		if err := event(ctx, q, r, kind, "", data); err != nil {
 			return err
+		}
+		if deleteBranch {
+			if err := jobs.InsertTx(ctx, s.jobs, tx, DeleteBranchArgs{RequestID: r.ID}, nil); err != nil {
+				return err
+			}
 		}
 		if bypass {
 			return alert(ctx, q, d.Repository, "bypass", map[string]any{"request": r.ID.String(), "number": r.Number, "state": from,

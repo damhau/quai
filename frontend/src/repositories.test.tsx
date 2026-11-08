@@ -120,6 +120,44 @@ test("the wizard tests access, shows the branch protection to set and verifies i
   await waitFor(() => expect(router.state.location.pathname).toBe("/admin/repositories/network"))
 })
 
+test("the wizard connects a GitHub repository with its app's ID, and shows the ruleset to set", async () => {
+  state.user = "alice"
+  const user = userEvent.setup()
+  renderApp("/admin/repositories/new")
+  await user.type(await screen.findByRole("textbox", { name: /^Name/ }, slow), "network")
+  const platform = screen.getByRole("combobox", { name: "Platform" })
+  expect(screen.queryByRole("textbox", { name: /^GitHub App ID/ })).not.toBeInTheDocument()
+  await user.selectOptions(platform, "github")
+  expect(screen.getByRole("textbox", { name: /^Repository URL/ })).toHaveAttribute("placeholder", "https://github.com/<owner>/<repository>")
+  await user.type(screen.getByRole("textbox", { name: /^Repository URL/ }), "https://github.com/acme/network")
+  await user.type(screen.getByRole("textbox", { name: /^GitHub App ID/ }), "56a56")
+  expect(screen.getByRole("textbox", { name: /^GitHub App ID/ })).toHaveValue("5656") // digits only
+  await user.type(screen.getByRole("textbox", { name: "Credential reference" }), "env:GITHUB_KEY")
+  await user.click(screen.getByRole("button", { name: /Next/ }))
+  await user.click(screen.getByRole("button", { name: "Test access" }))
+  expect(await screen.findByText(/3 types and 1 blueprints/)).toBeInTheDocument()
+  await user.click(screen.getByRole("button", { name: /Next/ }))
+
+  expect(screen.getByRole("list", { name: "Branch protection to set" })).toHaveTextContent("with the check quai/approval from the source Quai's GitHub App")
+  await user.click(screen.getByRole("button", { name: "Verify the protection" }))
+  await screen.findByRole("alert")
+  const sent = repos.sent.find((s) => s.path === "enforcement")?.body
+  expect(sent?.spec).toMatchObject({ connector: "github", url: "https://github.com/acme/network", credentials: { ref: "env:GITHUB_KEY", appId: 5656 } })
+
+  // Another platform has no app: its ID is not sent.
+  await user.click(screen.getByRole("button", { name: /Back/ }))
+  await user.click(screen.getByRole("button", { name: /Back/ }))
+  await user.selectOptions(screen.getByRole("combobox", { name: "Platform" }), "gitea")
+  expect(screen.queryByRole("textbox", { name: /^GitHub App ID/ })).not.toBeInTheDocument()
+  await user.click(screen.getByRole("button", { name: /Next/ }))
+  await user.click(screen.getByRole("button", { name: "Test access" }))
+  await screen.findByText(/3 types and 1 blueprints/)
+  await user.click(screen.getByRole("button", { name: /Next/ }))
+  await user.click(screen.getByRole("button", { name: "Verify the protection" }))
+  await waitFor(() => expect(repos.sent.filter((s) => s.path === "enforcement")).toHaveLength(2))
+  expect(repos.sent.filter((s) => s.path === "enforcement")[1]?.body?.spec.credentials).toEqual({ ref: "env:GITHUB_KEY" })
+})
+
 test("the health page turns red when approvals are not enforced, and says what to fix", async () => {
   state.user = "alice"
   const user = userEvent.setup()

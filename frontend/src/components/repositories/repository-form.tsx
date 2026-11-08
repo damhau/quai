@@ -72,6 +72,7 @@ export function ConnectionFields({ doc, onChange, disabled, editing }: FieldsPro
         onChange={(v) => {
           let next = set(doc, "spec.connector", v)
           if (v === "generic") next = set(next, "spec.delivery.mode", "direct")
+          if (v !== "github") next = set(next, "spec.credentials.appId", undefined)
           onChange(next)
         }}
       />
@@ -82,10 +83,31 @@ export function ConnectionFields({ doc, onChange, disabled, editing }: FieldsPro
         label="Credential reference"
         value={spec.credentials?.ref ?? ""}
         disabled={disabled}
-        placeholder={spec.connector === "generic" ? "k8s:quai/deploy-key#ssh-privatekey" : "k8s:quai/infra-live-pat"}
+        placeholder={
+          spec.connector === "generic" ? "k8s:quai/deploy-key#ssh-privatekey" : spec.connector === "github" ? "k8s:quai/github-app#private-key" : "k8s:quai/infra-live-pat"
+        }
         onChange={change("spec.credentials.ref")}
-        description="Where the secret is (k8s:<namespace>/<name>#<key> or env:<NAME>), never the secret itself."
+        description={
+          spec.connector === "github"
+            ? "Where the GitHub App's private key is (k8s:<namespace>/<name>#<key> or env:<NAME>), never the key itself."
+            : "Where the secret is (k8s:<namespace>/<name>#<key> or env:<NAME>), never the secret itself."
+        }
       />
+      {spec.connector === "github" && (
+        <TextField
+          id="appId"
+          label="GitHub App ID"
+          required
+          value={spec.credentials?.appId ? String(spec.credentials.appId) : ""}
+          disabled={disabled}
+          placeholder="123456"
+          onChange={(v) => {
+            const digits = v.replace(/\D/g, "")
+            onChange(set(doc, "spec.credentials.appId", digits === "" ? undefined : Number(digits)))
+          }}
+          description="On the app's settings page, under About. Public: it is written in the document. Quai finds the app's installation on the repository itself."
+        />
+      )}
       {spec.connector === "generic" && (
         <div className="grid gap-2 sm:col-span-2">
           <Label htmlFor="knownHosts">Host keys</Label>

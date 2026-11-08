@@ -10,6 +10,11 @@ export const platforms = [
     url: "https://dev.azure.com/<organization>/<project>/_git/<repository>",
   },
   {
+    value: "github",
+    label: "GitHub",
+    url: "https://github.com/<owner>/<repository>",
+  },
+  {
     value: "gitea",
     label: "Gitea",
     url: "https://git.example.com/<owner>/<repository>.git",
@@ -108,6 +113,14 @@ export function protectionGuide(connector: string, branch: string, check: string
         "Set its policy requirement to Required, and leave it applying by default (not only when a status is posted), without a path filter.",
         "Set its authorized identity to Quai's account, the one whose PAT is the connection's credential.",
         `Enable "Reset status whenever there are new changes".`,
+      ]
+    case "github":
+      return [
+        `In the repository's settings, add a branch ruleset for ${branch}, with enforcement Active, or a branch protection rule.`,
+        `Require status checks to pass, with the check ${check} from the source Quai's GitHub App, not any source.`,
+        'Leave the app off the bypass list; with a branch protection rule, enable "Do not allow bypassing the above settings".',
+        "Optionally, require a merge queue: Quai then has the pull request join the queue, and approves the queue's merge group too.",
+        'Enable "Allow auto-merge" in the repository\'s general settings, for GitHub to merge as soon as the checks pass; otherwise Quai merges itself.',
       ]
     case "gitea":
       return [

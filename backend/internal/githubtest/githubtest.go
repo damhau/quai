@@ -8,6 +8,11 @@
 //
 // GitHub cannot reach a test machine: Deliveries reads back, from the app's delivery history, what
 // it tried to deliver, to replay it to Quai.
+//
+// A second app, installed on the organization too, publishes a check the first one does not:
+// QUAI_TEST_GITHUB_OTHER_APP_KEY_FILE names its key's file, QUAI_TEST_GITHUB_OTHER_APP_ID and
+// QUAI_TEST_GITHUB_OTHER_INSTALLATION_ID say which it is. Without them, the tests that need it
+// skip.
 package githubtest
 
 import (
@@ -117,6 +122,36 @@ func (s *Sandbox) WebhookSecret(t *testing.T) secrets.Secret {
 	return secrets.FromValue(strings.TrimSpace(string(b)))
 }
 
+// OtherApp is the sandbox's second app.
+type OtherApp struct {
+	AppID          int64
+	InstallationID int64
+	key            secrets.Secret
+}
+
+// Other returns the sandbox's second app, or nil when QUAI_TEST_GITHUB_OTHER_APP_KEY_FILE is not
+// set. A key without the app's IDs is a mistake, not a reason to skip.
+func (s *Sandbox) Other(t *testing.T) *OtherApp {
+	t.Helper()
+	file := os.Getenv("QUAI_TEST_GITHUB_OTHER_APP_KEY_FILE")
+	if file == "" {
+		return nil
+	}
+	appID, appErr := strconv.ParseInt(os.Getenv("QUAI_TEST_GITHUB_OTHER_APP_ID"), 10, 64)
+	installationID, installationErr := strconv.ParseInt(os.Getenv("QUAI_TEST_GITHUB_OTHER_INSTALLATION_ID"), 10, 64)
+	if appErr != nil || installationErr != nil {
+		t.Fatal("QUAI_TEST_GITHUB_OTHER_APP_KEY_FILE needs QUAI_TEST_GITHUB_OTHER_APP_ID and QUAI_TEST_GITHUB_OTHER_INSTALLATION_ID")
+	}
+	key, err := os.ReadFile(file) // #nosec G304 -- the file the developer named
+	if err != nil {
+		t.Fatalf("the second app's key file: %v", err)
+	}
+	return &OtherApp{AppID: appID, InstallationID: installationID, key: secrets.FromValue(string(key))}
+}
+
+// PrivateKey resolves the second app's private key, as a connector's Credentials does.
+func (o *OtherApp) PrivateKey(context.Context) (secrets.Secret, bool, error) { return o.key, true, nil }
+
 // Repository creates a public repository with a first commit on main, and deletes it when the
 // test ends. Its name starts with quai-test-. It is public because merge queues need it, so it
 // holds synthetic data only.
@@ -199,6 +234,40 @@ func (s *Sandbox) RequireCheck(ctx context.Context, repo, check string) (int64, 
 		return 0, fmt.Errorf("the ruleset: %w", err)
 	}
 	return set.GetID(), nil
+}
+
+// MergeQueue creates a ruleset on the default branch requiring check from the app and merging
+// through a merge queue, which squashes and merges each entry as soon as its group passes, and
+// returns its ID.
+func (s *Sandbox) MergeQueue(ctx context.Context, repo, check string) (int64, error) {
+	set := s.ApprovalRuleset(check)
+	set.Name = "queue"
+	set.Rules.MergeQueue = &github.MergeQueueRuleParameters{CheckResponseTimeoutMinutes: 5, GroupingStrategy: github.MergeGroupingStrategyAllGreen,
+		MaxEntriesToBuild: 5, MaxEntriesToMerge: 5, MergeMethod: github.MergeQueueMergeMethodSquash, MinEntriesToMerge: 1, MinEntriesToMergeWaitMinutes: 0}
+	created, _, err := s.Client.Repositories.CreateRuleset(ctx, s.Org, repo, set)
+	if err != nil {
+		return 0, fmt.Errorf("the merge queue's ruleset: %w", err)
+	}
+	return created.GetID(), nil
+}
+
+// AllowAutoMerge sets the repository's "Allow auto-merge" setting, and waits until GitHub reads it
+// back so: it takes a few seconds (measured).
+func (s *Sandbox) AllowAutoMerge(ctx context.Context, repo string, allow bool) error {
+	if _, _, err := s.Client.Repositories.Edit(ctx, s.Org, repo, &github.Repository{AllowAutoMerge: github.Ptr(allow)}); err != nil {
+		return fmt.Errorf("allow_auto_merge on %s: %w", repo, err)
+	}
+	deadline := time.Now().Add(time.Minute)
+	for {
+		r, _, err := s.Client.Repositories.Get(ctx, s.Org, repo)
+		if err == nil && r.GetAllowAutoMerge() == allow {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("allow_auto_merge on %s is not %v after a minute: %v", repo, allow, err)
+		}
+		time.Sleep(time.Second)
+	}
 }
 
 // AddTeam gives Team write access to repo, which GitHub needs of a team that owns files.

@@ -10,7 +10,9 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -77,6 +79,12 @@ func giteaHarnessWith(t *testing.T, merge, spec string, edit func(path string, b
 // giteaHarnessFiles is giteaHarnessWith with extra files in the repository, by path.
 func giteaHarnessFiles(t *testing.T, merge, spec string, edit func(path string, b []byte) []byte, extra map[string]string) (*harness, *giteatest.Repo) {
 	t.Helper()
+	return giteaHarnessOver(t, merge, spec, edit, extra, giteaconn.New)
+}
+
+// giteaHarnessOver is giteaHarnessFiles with the connector factory makes.
+func giteaHarnessOver(t *testing.T, merge, spec string, edit func(path string, b []byte) []byte, extra map[string]string, factory connectors.Factory) (*harness, *giteatest.Repo) {
+	t.Helper()
 	g := giteatest.Get(t)
 	r := g.Repo(t, "infra")
 	pushEdited(t, r.CloneURL, func(context.Context) (gitx.Credentials, error) { return gitx.Credentials{Header: g.GitHeader()}, nil }, nil, edit, extra)
@@ -95,7 +103,7 @@ func giteaHarnessFiles(t *testing.T, merge, spec string, edit func(path string, 
 			}
 			return g.Token, n == "GITEA_TOKEN"
 		}}}),
-		Connectors: &connectors.Registry{Factories: map[string]connectors.Factory{"gitea": giteaconn.New}},
+		Connectors: &connectors.Registry{Factories: map[string]connectors.Factory{"gitea": factory}},
 	})
 	return h, r
 }
@@ -265,6 +273,95 @@ func TestManualMerge(t *testing.T) {
 	comments, _, err := g.Client.ListIssueComments(remote.Owner, remote.Name, 1, gitea.ListIssueCommentOptions{})
 	if err != nil || len(comments) != 1 || !strings.Contains(comments[0].Body, "Approved-by: alice") {
 		t.Errorf("comments = %+v, %v", comments, err)
+	}
+}
+
+// queueConnector is the Gitea connector as a platform with auto-complete and a merge queue, which
+// merges as GitHub's queue does: with a message of its own, keeping the branch.
+type queueConnector struct {
+	connectors.Connector
+	mu   sync.Mutex
+	asks []connectors.MergeOptions
+}
+
+func (q *queueConnector) Info() connectors.Info {
+	info := q.Connector.Info()
+	info.Capabilities = append(slices.Clone(info.Capabilities), connectors.CapAutoComplete, connectors.CapMergeQueue)
+	return info
+}
+
+func (q *queueConnector) PullRequests() connectors.PullRequests {
+	return queuePullRequests{q.Connector.PullRequests(), q}
+}
+
+func (q *queueConnector) asked() []connectors.MergeOptions {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return slices.Clone(q.asks)
+}
+
+type queuePullRequests struct {
+	connectors.PullRequests
+	q *queueConnector
+}
+
+func (p queuePullRequests) AutoComplete(ctx context.Context, id string, o connectors.MergeOptions) error {
+	p.q.mu.Lock()
+	p.q.asks = append(p.q.asks, o)
+	p.q.mu.Unlock()
+	o.Message, o.DeleteBranch = "Merged by the queue\n", false
+	_, err := p.Merge(ctx, id, o)
+	return err
+}
+
+// TestMergeQueueDelivery: with a platform that merges through a queue, Quai asks it to (auto-
+// complete) with its approval, for the queue's own commit; the queue writes its own message, so
+// the approvals are a comment; the branch the queue keeps is deleted once the merge applies the
+// request.
+func TestMergeQueueDelivery(t *testing.T) {
+	t.Parallel()
+	q := &queueConnector{}
+	h, remote := giteaHarnessOver(t, "auto", "", nil, nil, func(cfg connectors.Config) (connectors.Connector, error) {
+		c, err := giteaconn.New(cfg)
+		q.Connector = c
+		return q, err
+	})
+	g := giteatest.Get(t)
+	bob, alice := h.as("bob"), h.as("alice")
+	var r RequestView
+	if status, body := bob.do(http.MethodPost, Prefix+"/requests/type", resizeBody(6), &r); status != http.StatusCreated {
+		t.Fatalf("submit = %d %s", status, body)
+	}
+	bob.awaitDelivery(r.ID, "opened", func(v RequestView) bool { return v.Delivery.PullRequest != "" })
+	if status, body := alice.do(http.MethodPost, Prefix+"/requests/"+r.ID+"/review", map[string]string{"decision": "approve"}, nil); status != http.StatusOK {
+		t.Fatalf("approve = %d %s", status, body)
+	}
+	r = bob.awaitDelivery(r.ID, "applied", func(v RequestView) bool { return v.State == "applied" })
+	asks := q.asked()
+	if len(asks) == 0 {
+		t.Fatal("the platform was not asked to merge")
+	}
+	if a := asks[0].Approval; a.Name != "quai/approval" || a.State != connectors.StatusSuccess || a.URL != "https://quai.example.com/requests/"+r.ID ||
+		asks[0].Head == "" || !strings.Contains(asks[0].Message, "Approved-by: alice") {
+		t.Errorf("asked with %+v", asks[0])
+	}
+	if c, _, err := g.Client.GetSingleCommit(remote.Owner, remote.Name, r.Delivery.MergeCommit); err != nil || !strings.HasPrefix(c.RepoCommit.Message, "Merged by the queue") {
+		t.Errorf("the queue's commit: %v, %v", c, err)
+	}
+	comments, _, err := g.Client.ListIssueComments(remote.Owner, remote.Name, 1, gitea.ListIssueCommentOptions{})
+	if err != nil || len(comments) != 1 || !strings.Contains(comments[0].Body, "Approved-by: alice") {
+		t.Errorf("comments = %+v, %v", comments, err)
+	}
+	// It goes once the merge is recorded.
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		if _, resp, _ := g.Client.GetRepoBranch(remote.Owner, remote.Name, "quai/r-1-web01-resize"); resp != nil && resp.StatusCode == http.StatusNotFound {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the branch was not deleted; log:\n%s", h.log.String())
+		}
+		time.Sleep(200 * time.Millisecond)
 	}
 }
 

@@ -103,19 +103,26 @@ failure on a rejection or a cancellation (the pull request is then closed and it
 deleted), not-applicable when stale (failure on Gitea, which has no such state). Once approved,
 with `merge: auto`, Quai waits for the `waitForChecks` (the pull request's statuses, and its
 policy evaluations on Azure DevOps), then asks the platform to merge when its own policies pass
-(auto-complete on Azure DevOps; on Gitea a merge, asked again while a required check is pending)
-with the approved head pinned. Until the platform has merged, Quai publishes its status again and
+(auto-complete on Azure DevOps; on GitHub auto-merge, or the merge queue where the base branch
+requires one; on Gitea a merge, asked again while a required check is pending) with the approved
+head pinned. A merge queue checks a merge group, a commit of its own holding the pull request on
+top of the base, and requires `quai/approval` there too: Quai publishes its success on that commit
+as well. Until the platform has merged, Quai publishes its status again and
 asks again every 20 seconds. Statuses are published one at a time per request, each from the
 request's latest state, so that one published from an older state never comes last;
 with `merge: manual` it stops at the status. The merge, seen by the job, a webhook or a poll (a
 poll re-reads every pull request Quai waits on), applies the request; one merged before Quai's
 approval is recorded as such (`merged_without_approval`). A pull request closed outside Quai
-cancels its request.
+cancels its request. After a merge the platform made by itself (auto-complete), a job deletes the
+branch when `deleteBranch` is set, since GitHub's auto-merge and merge queue keep it; GitHub
+refuses for a few seconds after its merge queue merged, so the job tries again every 10 seconds,
+for 5 minutes.
 
 Approvals are recorded in Git (P1-14): a commit in direct mode, made after the approvals, carries
 them as `Approved-by:` trailers; in pull-request mode, the merge or squash commit's message does.
-When the merge keeps Quai's commit as it is (`mergeMethod: rebase`), or a person merges
-(`merge: manual`), Quai adds them to the pull request as a final comment instead.
+When the merge keeps Quai's commit as it is (`mergeMethod: rebase`), a person merges
+(`merge: manual`), or the platform has a merge queue, which merges with the method and message its
+own rule sets (GitHub), Quai adds them to the pull request as a final comment instead.
 
 Signing: with `git.signingKey.ref` (an SSH private key in a secret store), every commit Quai
 makes is signed with it (`gpg.format=ssh`); the platform's own merge commits are the platform's.

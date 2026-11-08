@@ -287,15 +287,20 @@ func TestConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	info := c.Info()
-	if info.Platform != "github" || !info.Has(connectors.CapPullRequests) || !info.Has(connectors.CapEnforcedStatus) || !info.Has(connectors.CapCodeOwnersFile) ||
-		info.Has(connectors.CapAutoComplete) || len(info.MergeMethods) != 3 {
+	for _, cap := range []connectors.Capability{connectors.CapPullRequests, connectors.CapEnforcedStatus, connectors.CapAutoComplete, connectors.CapMergeQueue,
+		connectors.CapSignedWebhooks, connectors.CapCodeOwnersFile} {
+		if !info.Has(cap) {
+			t.Errorf("no %s: %+v", cap, info)
+		}
+	}
+	if info.Platform != "github" || info.Has(connectors.CapPipelines) || len(info.MergeMethods) != 3 {
 		t.Errorf("info = %+v", info)
 	}
-	if c.Statuses() == nil || c.Policies() == nil || c.Owners() == nil {
-		t.Error("statuses, policies or owners are missing")
+	if c.Statuses() == nil || c.Policies() == nil || c.Owners() == nil || c.Webhooks() == nil {
+		t.Error("statuses, policies, owners or webhooks are missing")
 	}
-	// What a connector lacks is a true nil, which callers compare: P3-18 fills webhooks.
-	if c.Webhooks() != nil || c.Pipelines() != nil || c.Identities() != nil {
+	// What a connector lacks is a true nil, which callers compare.
+	if c.Pipelines() != nil || c.Identities() != nil {
 		t.Error("a capability the connector lacks is not nil")
 	}
 	if _, err := c.GitAuth(t.Context()); err == nil || !strings.Contains(err.Error(), "spec.credentials.ref") {
@@ -747,6 +752,7 @@ func TestMerge(t *testing.T) {
 		"a conflict":          {gets: []answer{dirty}, puts: []answer{refused(405, "Pull Request has merge conflicts")}, err: connectors.ErrBlocked, merges: 1},
 		"a required check":    {gets: []answer{open}, puts: []answer{refused(405, "Required status check is expected.")}, err: connectors.ErrBlocked, merges: 1},
 		"a forbidden method":  {gets: []answer{open}, puts: []answer{refused(405, "Rebase merges are not allowed on this repository.")}, err: connectors.ErrUnsupported, merges: 1},
+		"a merge queue":       {gets: []answer{open}, puts: []answer{refused(405, "Repository rule violations found\n\nChanges must be made through the merge queue\n\n")}, err: connectors.ErrUnsupported, merges: 1},
 		"merged by someone":   {gets: []answer{open, mergedPR}, puts: []answer{refused(405, "Pull Request is not mergeable")}, commit: "m2", merges: 1, deletions: 1},
 		"closed by someone":   {gets: []answer{open, closed}, puts: []answer{refused(405, "Pull Request is not mergeable")}, plain: true, merges: 1},
 		"no merge, no reason": {gets: []answer{open}, puts: []answer{{http.StatusOK, `{"merged":false,"message":"no"}`}}, err: connectors.ErrBlocked, merges: 1},

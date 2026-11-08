@@ -167,8 +167,10 @@ func Run(t *testing.T, h Harness) {
 		switch {
 		case !info.Has(connectors.CapEnforcedStatus):
 			t.Skip("the platform cannot restrict who sets the check")
-		case !enforced || repo.Other == nil:
-			t.Skip("the harness has no enforcement or no second identity")
+		case !enforced:
+			t.Skip("the harness has no enforcement")
+		case repo.Other == nil:
+			t.Skip("the harness has no second identity")
 		}
 		pr := s.openPR(t)
 		s.setStatus(t, repo.Other, pr, connectors.StatusSuccess)
