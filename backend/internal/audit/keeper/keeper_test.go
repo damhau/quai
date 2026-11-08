@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/damhau/quai/backend/internal/audit"
@@ -242,6 +243,21 @@ func TestCheckpoints(t *testing.T) {
 	e.now = time.Now().Add(keeper.VerifyEvery)
 	if due, err := k.Due(ctx); err != nil || !due {
 		t.Errorf("due a day later = %v, %v", due, err)
+	}
+	// A verification the application role dates ahead does not put off the next one: the
+	// database says when it recorded it (the restore below deletes it).
+	last, err := e.store.LastAuditEvent(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.store.InsertAuditEvent(ctx, db.InsertAuditEventParams{Seq: last.Seq + 1, At: pgtype.Timestamptz{Time: time.Date(2100, 1, 1, 0, 0, 0, 0, time.UTC), Valid: true},
+		Actor: []byte(`{"id":"quai","type":"system"}`), Action: keeper.ActionVerified, Object: []byte(`{"id":"log","type":"audit"}`), Details: []byte(`{}`),
+		Prev: last.Hash, Hash: strings.Repeat("0", 64)}); err != nil {
+		t.Fatal(err)
+	}
+	e.now = time.Now().Add(keeper.VerifyEvery)
+	if due, err := k.Due(ctx); err != nil || !due {
+		t.Errorf("due a day after a verification dated 2100 = %v, %v", due, err)
 	}
 
 	// The database restored from a backup taken at the first checkpoint: the audit repository has

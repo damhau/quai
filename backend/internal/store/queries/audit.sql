@@ -52,15 +52,16 @@ LIMIT 1;
 
 -- name: AuditProtected :one
 -- Whether the role the server connects as can only read and append the audit log: it can neither
--- change nor delete events or checkpoints, nor change the retention, nor become a role that could.
+-- change nor delete events or checkpoints, nor set when the database recorded an event, nor change
+-- the retention, nor become a role that could. A column's privilege counts as the table's.
 SELECT NOT (
-    has_table_privilege('audit_events', 'UPDATE') OR has_table_privilege('audit_events', 'DELETE')
-    OR has_table_privilege('audit_events', 'TRUNCATE')
-    OR has_table_privilege('audit_personal', 'UPDATE') OR has_table_privilege('audit_personal', 'DELETE')
+    has_any_column_privilege('audit_events', 'UPDATE') OR has_table_privilege('audit_events', 'DELETE')
+    OR has_table_privilege('audit_events', 'TRUNCATE') OR has_column_privilege('audit_events', 'recorded', 'INSERT')
+    OR has_any_column_privilege('audit_personal', 'UPDATE') OR has_table_privilege('audit_personal', 'DELETE')
     OR has_table_privilege('audit_personal', 'TRUNCATE')
-    OR has_table_privilege('audit_checkpoints', 'UPDATE') OR has_table_privilege('audit_checkpoints', 'DELETE')
+    OR has_any_column_privilege('audit_checkpoints', 'UPDATE') OR has_table_privilege('audit_checkpoints', 'DELETE')
     OR has_table_privilege('audit_checkpoints', 'TRUNCATE')
-    OR has_table_privilege('audit_retention', 'INSERT') OR has_table_privilege('audit_retention', 'UPDATE')
+    OR has_any_column_privilege('audit_retention', 'INSERT') OR has_any_column_privilege('audit_retention', 'UPDATE')
     OR has_table_privilege('audit_retention', 'DELETE') OR has_table_privilege('audit_retention', 'TRUNCATE')
     OR (SELECT r.rolsuper FROM pg_catalog.pg_roles r WHERE r.rolname = current_user)
     OR pg_has_role(current_user, (SELECT c.relowner FROM pg_catalog.pg_class c WHERE c.oid = 'audit_events'::regclass), 'MEMBER')

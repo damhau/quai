@@ -54,6 +54,11 @@ jobs:
           if kubectl -n quai exec deploy/postgres -- psql -U quai_app -d quai -v ON_ERROR_STOP=1 -c "update audit_retention set retention = interval '1 second'"; then
             echo "quai_app may change the audit retention"; exit 1
           fi
+          # When the database recorded an event is its own: pruning ages events by it.
+          if out=$(kubectl -n quai exec deploy/postgres -- psql -U quai_app -d quai -v ON_ERROR_STOP=1 -c "insert into audit_events (seq, at, actor, action, object, details, prev, hash, recorded) values (1000000000, now(), '{}', 'x', '{}', '{}', '', '', '2000-01-01')" 2>&1); then
+            echo "quai_app may set recorded"; exit 1
+          fi
+          echo "$out" | grep -q "permission denied" || { echo "$out"; exit 1; }
           kubectl -n quai exec deploy/postgres -- psql -U quai_app -d quai -tAc 'select count(*) from audit_events'
       - name: Smoke test
         run: |

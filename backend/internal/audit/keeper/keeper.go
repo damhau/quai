@@ -285,7 +285,9 @@ func (k *Keeper) Verify(ctx context.Context) (audit.Result, error) {
 	return res, err
 }
 
-// Due reports whether a verification is due: none recorded in the last VerifyEvery.
+// Due reports whether a verification is due: none recorded in the last VerifyEvery, as the
+// database's clock says when it recorded the last one; an event's at is whatever its writer said,
+// and a verification dated ahead would put off the next ones.
 func (k *Keeper) Due(ctx context.Context) (bool, error) {
 	last, err := k.o.Store.LastAuditVerification(ctx)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -293,7 +295,7 @@ func (k *Keeper) Due(ctx context.Context) (bool, error) {
 	} else if err != nil {
 		return false, err
 	}
-	return k.o.Now().Sub(last.At.Time) >= VerifyEvery, nil
+	return k.o.Now().Sub(last.Recorded.Time) >= VerifyEvery, nil
 }
 
 // CheckpointArgs signs a checkpoint and prunes, every hour.

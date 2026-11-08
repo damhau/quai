@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -93,6 +94,14 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool) (int, error) {
 // AuditTables are the tables of the audit log: the application role may only read and append.
 var AuditTables = []string{"audit_events", "audit_personal", "audit_checkpoints"}
 
+// auditInsertColumns are the columns of an audit table the application role may write, when not
+// all of them: audit_events.recorded is the database's clock, which pruning judges an event's age
+// by (open question 36), so the role cannot set it. A column added to the table later is the
+// database's until it is listed here.
+var auditInsertColumns = map[string][]string{
+	"audit_events": {"seq", "at", "actor", "action", "object", "details", "prev", "hash"},
+}
+
 // readOnlyTables are the migrations' bookkeeping and the audit log's retention, which only quai
 // migrate writes.
 var readOnlyTables = []string{"goose_db_version", "river_migration", "audit_retention"}
@@ -103,9 +112,9 @@ var auditFunctions = []string{"audit_prune()"}
 
 // Grant gives the application role what the server and the worker need, from the schema owner's
 // connection pool, after the migrations (open question 19): every table to read and write, but
-// the audit log's to read and append only, the migrations' bookkeeping and the audit log's
-// retention to read only, and the pruning function to execute. It revokes the rest from the
-// role, and the audit log from PUBLIC.
+// the audit log's to read and append only (audit_events without its recorded column), the
+// migrations' bookkeeping and the audit log's retention to read only, and the pruning function to
+// execute. It revokes the rest from the role, and the audit log from PUBLIC.
 func Grant(ctx context.Context, pool *pgxpool.Pool, role string) error {
 	r := pgx.Identifier{role}.Sanitize()
 	var schema string
@@ -123,9 +132,18 @@ func Grant(ctx context.Context, pool *pgxpool.Pool, role string) error {
 			"GRANT SELECT ON "+pgx.Identifier{t}.Sanitize()+" TO "+r)
 	}
 	for _, t := range AuditTables {
-		stmts = append(stmts, "REVOKE ALL ON "+pgx.Identifier{t}.Sanitize()+" FROM PUBLIC",
-			"REVOKE ALL ON "+pgx.Identifier{t}.Sanitize()+" FROM "+r,
-			"GRANT SELECT, INSERT ON "+pgx.Identifier{t}.Sanitize()+" TO "+r)
+		tn := pgx.Identifier{t}.Sanitize()
+		// Revoking a table's privileges revokes its columns' too.
+		stmts = append(stmts, "REVOKE ALL ON "+tn+" FROM PUBLIC", "REVOKE ALL ON "+tn+" FROM "+r)
+		if cols, ok := auditInsertColumns[t]; ok {
+			ids := make([]string, len(cols))
+			for i, c := range cols {
+				ids[i] = pgx.Identifier{c}.Sanitize()
+			}
+			stmts = append(stmts, "GRANT SELECT ON "+tn+" TO "+r, "GRANT INSERT ("+strings.Join(ids, ", ")+") ON "+tn+" TO "+r)
+		} else {
+			stmts = append(stmts, "GRANT SELECT, INSERT ON "+tn+" TO "+r)
+		}
 	}
 	for _, f := range auditFunctions {
 		stmts = append(stmts, "REVOKE ALL ON FUNCTION "+f+" FROM PUBLIC", "GRANT EXECUTE ON FUNCTION "+f+" TO "+r)

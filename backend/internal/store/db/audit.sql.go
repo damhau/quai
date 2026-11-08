@@ -74,7 +74,7 @@ func (q *Queries) AuditClock(ctx context.Context) (pgtype.Timestamptz, error) {
 }
 
 const auditEventsFrom = `-- name: AuditEventsFrom :many
-SELECT seq, at, actor, action, object, details, prev, hash FROM audit_events WHERE seq >= $1 ORDER BY seq LIMIT $2
+SELECT seq, at, actor, action, object, details, prev, hash, recorded FROM audit_events WHERE seq >= $1 ORDER BY seq LIMIT $2
 `
 
 type AuditEventsFromParams struct {
@@ -101,6 +101,7 @@ func (q *Queries) AuditEventsFrom(ctx context.Context, arg AuditEventsFromParams
 			&i.Details,
 			&i.Prev,
 			&i.Hash,
+			&i.Recorded,
 		); err != nil {
 			return nil, err
 		}
@@ -145,13 +146,13 @@ func (q *Queries) AuditPersonalOf(ctx context.Context, seqs []int64) ([]AuditPer
 
 const auditProtected = `-- name: AuditProtected :one
 SELECT NOT (
-    has_table_privilege('audit_events', 'UPDATE') OR has_table_privilege('audit_events', 'DELETE')
-    OR has_table_privilege('audit_events', 'TRUNCATE')
-    OR has_table_privilege('audit_personal', 'UPDATE') OR has_table_privilege('audit_personal', 'DELETE')
+    has_any_column_privilege('audit_events', 'UPDATE') OR has_table_privilege('audit_events', 'DELETE')
+    OR has_table_privilege('audit_events', 'TRUNCATE') OR has_column_privilege('audit_events', 'recorded', 'INSERT')
+    OR has_any_column_privilege('audit_personal', 'UPDATE') OR has_table_privilege('audit_personal', 'DELETE')
     OR has_table_privilege('audit_personal', 'TRUNCATE')
-    OR has_table_privilege('audit_checkpoints', 'UPDATE') OR has_table_privilege('audit_checkpoints', 'DELETE')
+    OR has_any_column_privilege('audit_checkpoints', 'UPDATE') OR has_table_privilege('audit_checkpoints', 'DELETE')
     OR has_table_privilege('audit_checkpoints', 'TRUNCATE')
-    OR has_table_privilege('audit_retention', 'INSERT') OR has_table_privilege('audit_retention', 'UPDATE')
+    OR has_any_column_privilege('audit_retention', 'INSERT') OR has_any_column_privilege('audit_retention', 'UPDATE')
     OR has_table_privilege('audit_retention', 'DELETE') OR has_table_privilege('audit_retention', 'TRUNCATE')
     OR (SELECT r.rolsuper FROM pg_catalog.pg_roles r WHERE r.rolname = current_user)
     OR pg_has_role(current_user, (SELECT c.relowner FROM pg_catalog.pg_class c WHERE c.oid = 'audit_events'::regclass), 'MEMBER')
@@ -159,7 +160,8 @@ SELECT NOT (
 `
 
 // Whether the role the server connects as can only read and append the audit log: it can neither
-// change nor delete events or checkpoints, nor change the retention, nor become a role that could.
+// change nor delete events or checkpoints, nor set when the database recorded an event, nor change
+// the retention, nor become a role that could. A column's privilege counts as the table's.
 func (q *Queries) AuditProtected(ctx context.Context) (pgtype.Bool, error) {
 	row := q.db.QueryRow(ctx, auditProtected)
 	var protected pgtype.Bool
@@ -271,7 +273,7 @@ func (q *Queries) LastAuditEvent(ctx context.Context) (LastAuditEventRow, error)
 }
 
 const lastAuditVerification = `-- name: LastAuditVerification :one
-SELECT seq, at, actor, action, object, details, prev, hash FROM audit_events WHERE action = ANY ('{audit.verified,audit.broken}'::text[]) ORDER BY seq DESC LIMIT 1
+SELECT seq, at, actor, action, object, details, prev, hash, recorded FROM audit_events WHERE action = ANY ('{audit.verified,audit.broken}'::text[]) ORDER BY seq DESC LIMIT 1
 `
 
 // The outcome of the last verification of the chain, which the worker records.
@@ -287,6 +289,7 @@ func (q *Queries) LastAuditVerification(ctx context.Context) (AuditEvent, error)
 		&i.Details,
 		&i.Prev,
 		&i.Hash,
+		&i.Recorded,
 	)
 	return i, err
 }
@@ -324,7 +327,7 @@ func (q *Queries) LatestAuditCheckpoint(ctx context.Context) (AuditCheckpoint, e
 }
 
 const listAuditEvents = `-- name: ListAuditEvents :many
-SELECT seq, at, actor, action, object, details, prev, hash FROM audit_events e
+SELECT seq, at, actor, action, object, details, prev, hash, recorded FROM audit_events e
 WHERE ($1::bigint IS NULL OR e.seq < $1)
   AND ($2::text IS NULL OR e.action = $2 OR starts_with(e.action, $2 || '.'))
   AND ($3::text IS NULL OR e.actor ->> 'id' = $3
@@ -379,6 +382,7 @@ func (q *Queries) ListAuditEvents(ctx context.Context, arg ListAuditEventsParams
 			&i.Details,
 			&i.Prev,
 			&i.Hash,
+			&i.Recorded,
 		); err != nil {
 			return nil, err
 		}

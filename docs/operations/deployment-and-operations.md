@@ -112,7 +112,8 @@ audit events ([audit log](../design/09-security-and-compliance.md#audit-log), [o
   needs only `LOGIN`: after migrating, `quai migrate` grants it the schema's usage, `SELECT`,
   `INSERT`, `UPDATE` and `DELETE` on the tables, `SELECT` only on the migrations' records
   (`goose_db_version`, `river_migration`), `SELECT` and `INSERT` only on the audit tables
-  (`audit_events`, `audit_personal`, `audit_checkpoints`), `SELECT` only on the retention
+  (`audit_events`, `audit_personal`, `audit_checkpoints`; on `audit_events`, `INSERT` on every
+  column but `recorded`, when the database recorded the event), `SELECT` only on the retention
   (`audit_retention`), and `EXECUTE` on `audit_prune()`, the owner's function that prunes
   ([retention](#retention-and-pruning)). It prints `<role> may read and append the audit log, and
   not change it`.
@@ -197,9 +198,11 @@ the checkpoint of the highest `seq` in it; `quai audit verify --anchors` reads t
 `audit.retention` (a year by default) is how long events are kept. `quai migrate` stores it in the
 database, as the schema's owner, so it takes effect at the next migration (the chart's upgrade),
 and the application role cannot shorten it. Every hour the worker calls `audit_prune()`: it
-deletes the events older than the retention before the latest checkpoint older than the
-retention whose hash is its event's, with their personal data and the checkpoints before it, and
-records an `audit.pruned` event. The kept checkpoint is where the chain starts from: verification
+deletes the events before the latest checkpoint whose hash is its event's and whose event the
+database recorded longer than the retention ago, with their personal data and the checkpoints
+before it, and records an `audit.pruned` event. An event's age is the database's clock when it
+inserted the event (`recorded`), not the time the event states, which the application writes.
+Events written before the version that added `recorded` count from the upgrade to it. The kept checkpoint is where the chain starts from: verification
 accepts a log that starts at a signed checkpoint only when an `audit.pruned` event names it.
 Without a signing key, nothing is pruned. Longer periods (often 10 years for financial
 institutions) need nothing else than a longer retention; the SIEM's export is the long-term

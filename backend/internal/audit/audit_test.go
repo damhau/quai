@@ -230,6 +230,10 @@ func TestInsertOnly(t *testing.T) {
 		"ALTER TABLE audit_events DISABLE TRIGGER ALL",
 		"DROP TABLE audit_events",
 		"UPDATE goose_db_version SET is_applied = false",
+		// When the database recorded an event is the database's own.
+		"UPDATE audit_events SET recorded = now() - interval '10 years'",
+		`INSERT INTO audit_events (seq, at, actor, action, object, details, prev, hash, recorded)
+			VALUES (5, now(), '{}', 'x', '{}', '{}', '', '', now() - interval '10 years')`,
 	} {
 		var pgErr *pgconn.PgError
 		if _, err := s.Pool.Exec(ctx, stmt); !errors.As(err, &pgErr) || (pgErr.Code != "42501" && pgErr.Code != "42809") {
@@ -252,6 +256,22 @@ func TestInsertOnly(t *testing.T) {
 	oq := db.New(owner)
 	if p, err := oq.AuditProtected(ctx); err != nil || p.Bool {
 		t.Errorf("protected as the owner = %v, %v", p, err)
+	}
+	// A column's privilege is the table's: the application role is not protected once it may
+	// set recorded, or update a column.
+	for _, grant := range []string{"INSERT (recorded) ON audit_events", "UPDATE (details) ON audit_events", "UPDATE (value) ON audit_personal", "INSERT (retention) ON audit_retention"} {
+		if _, err := owner.Exec(ctx, "GRANT "+grant+" TO "+pgtest.AppRole); err != nil {
+			t.Fatal(err)
+		}
+		if p, err := s.AuditProtected(ctx); err != nil || p.Bool {
+			t.Errorf("protected with %s = %v, %v", grant, p, err)
+		}
+		if _, err := owner.Exec(ctx, "REVOKE "+grant+" FROM "+pgtest.AppRole); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if p, err := s.AuditProtected(ctx); err != nil || !p.Bool {
+		t.Errorf("protected again = %v, %v", p, err)
 	}
 	for _, c := range []struct {
 		stmt string

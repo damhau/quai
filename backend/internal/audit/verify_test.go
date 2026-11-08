@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/damhau/quai/backend/internal/audit"
+	"github.com/damhau/quai/backend/internal/config"
 	"github.com/damhau/quai/backend/internal/pgtest"
 	"github.com/damhau/quai/backend/internal/store"
 	"github.com/damhau/quai/backend/internal/store/db"
@@ -33,7 +34,8 @@ func newKey(t *testing.T) (ed25519.PrivateKey, audit.Keys) {
 	return key, keys
 }
 
-// appendAt appends an event at each time, as a writer with its own clock would.
+// appendAt appends an event at each time, as a writer with its own clock would: the application
+// role can, and the database records it now.
 func appendAt(t *testing.T, q *db.Queries, times ...time.Time) {
 	t.Helper()
 	seq, prev := int64(0), audit.Genesis
@@ -240,8 +242,9 @@ func rehash(t *testing.T, lines []string, from int) []string {
 	return lines
 }
 
-// TestPrune: the application role prunes only through audit_prune, only what is older than the
-// retention and before a checkpoint that matches its event; the chain then verifies from it.
+// TestPrune: the application role prunes only through audit_prune, only what the database recorded
+// before the retention and before a checkpoint that matches its event; the chain then verifies
+// from it.
 func TestPrune(t *testing.T) {
 	s := pgtest.Store(t)
 	key, keys := newKey(t)
@@ -258,6 +261,7 @@ func TestPrune(t *testing.T) {
 		}
 		return p
 	}
+	// What the application says of an event's time: two years ago, a minute apart.
 	old := time.Now().AddDate(-2, 0, 0)
 	at := func(n int) []time.Time {
 		var out []time.Time
@@ -267,8 +271,36 @@ func TestPrune(t *testing.T) {
 		}
 		return out
 	}
+	// When the database recorded the events up to a seq: two years ago, as only the schema's
+	// owner can say.
+	age := func(upTo int64) {
+		t.Helper()
+		if _, err := owner.Exec(ctx, `UPDATE audit_events SET recorded = $1::timestamptz + make_interval(secs => seq) WHERE seq <= $2`,
+			time.Now().AddDate(-2, 0, 0), upTo); err != nil {
+			t.Fatal(err)
+		}
+	}
+	count := func() int {
+		t.Helper()
+		var n int
+		if err := s.Pool.QueryRow(ctx, "SELECT count(*) FROM audit_events").Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
 
-	// Old events, none covered by a checkpoint: nothing goes.
+	// audit_prune runs as its owner, with its own search path.
+	var definer bool
+	var settings []string
+	if err := s.Pool.QueryRow(ctx, "SELECT prosecdef, proconfig FROM pg_proc WHERE oid = 'audit_prune()'::regprocedure").Scan(&definer, &settings); err != nil {
+		t.Fatal(err)
+	}
+	if !definer || len(settings) != 1 || settings[0] != "search_path=public, pg_temp" {
+		t.Errorf("audit_prune: security definer %v, %v", definer, settings)
+	}
+
+	// Events the application dated two years ago, with a checkpoint of the last, even with the
+	// shortest retention: the database recorded them now, and nothing goes.
 	appendAt(t, s.Queries, at(4)...)
 	if err := s.InsertAuditPersonal(ctx, db.InsertAuditPersonalParams{Hash: "pd:x", Seq: 2, Salt: []byte("salt"), Value: "alice"}); err != nil {
 		t.Fatal(err)
@@ -286,11 +318,26 @@ func TestPrune(t *testing.T) {
 	if _, err := owner.Exec(ctx, `DELETE FROM audit_checkpoints`); err != nil {
 		t.Fatal(err)
 	}
+	if err := store.SetAuditRetention(ctx, owner, config.MinAuditRetention); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.InsertAuditCheckpoint(ctx, db.InsertAuditCheckpointParams{Seq: 4, Hash: all(t, s)[3].Hash, At: pgtype.Timestamptz{Time: old, Valid: true},
+		Key: "k", Signature: "s"}); err != nil {
+		t.Fatal(err)
+	}
+	if p := prune(); p.Events != 0 || count() != 4 {
+		t.Errorf("pruned events the application dated back: %+v, %d left", p, count())
+	}
+	if _, err := owner.Exec(ctx, `DELETE FROM audit_checkpoints`); err != nil {
+		t.Fatal(err)
+	}
 
-	// Old events up to 4, a checkpoint of 4, old events after it, then recent ones and their
-	// checkpoint at 8.
+	// Events up to 4 recorded two years ago, a checkpoint of 4, others after it, then recent ones
+	// and their checkpoint at 8.
+	age(4)
 	sign(t, s, key)
 	appendAt(t, s.Queries, at(3)...)
+	age(7)
 	record(t, s, login(0))
 	sign(t, s, key)
 	record(t, s, login(1))
@@ -362,6 +409,28 @@ func TestPrune(t *testing.T) {
 	}
 	if res := verifyLines(t, keys, export(t, s)); res.Broken != nil || res.Start != 4 {
 		t.Errorf("verify the export after pruning = %+v, %v", res, res.Broken)
+	}
+	if strings.Contains(strings.Join(export(t, s), "\n"), "recorded") {
+		t.Error("the export holds when the database recorded the events")
+	}
+
+	// The same after recent events: one dated back to 2000 at the end of the chain and a
+	// checkpoint of it, forged, then pruning with the shortest retention. Nothing goes, and
+	// verification finds the forged checkpoint.
+	if err := store.SetAuditRetention(ctx, owner, config.MinAuditRetention); err != nil {
+		t.Fatal(err)
+	}
+	before := count()
+	appendAt(t, s.Queries, time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC))
+	last := all(t, s)[before]
+	if err := s.InsertAuditCheckpoint(ctx, db.InsertAuditCheckpointParams{Seq: last.Seq, Hash: last.Hash, At: last.At, Key: "k", Signature: "s"}); err != nil {
+		t.Fatal(err)
+	}
+	if p := prune(); p.Events != 0 || count() != before+1 {
+		t.Errorf("pruned before an event the application dated back: %+v, %d of %d left", p, count(), before+1)
+	}
+	if res, err := audit.Verify(ctx, s.Pool, keys); err != nil || res.Broken == nil || res.Broken.Seq != last.Seq || !strings.Contains(res.Broken.Reason, "the checkpoint does not hold") {
+		t.Errorf("verify with the forged checkpoint = %+v, %v, %v", res, res.Broken, err)
 	}
 
 	// Events deleted up to a checkpoint, but not by pruning: no audit.pruned event says so.

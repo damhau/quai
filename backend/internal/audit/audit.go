@@ -169,7 +169,8 @@ func (t *Tx) Record(ctx context.Context) error {
 		if row.Hash, err = Hash(row); err != nil {
 			return fmt.Errorf("audit: %s: %w", ev.Action, err)
 		}
-		if err := q.InsertAuditEvent(ctx, db.InsertAuditEventParams(row)); err != nil {
+		if err := q.InsertAuditEvent(ctx, db.InsertAuditEventParams{Seq: row.Seq, At: row.At, Actor: row.Actor, Action: row.Action,
+			Object: row.Object, Details: row.Details, Prev: row.Prev, Hash: row.Hash}); err != nil {
 			return fmt.Errorf("audit: %w", err)
 		}
 		for _, p := range personal {

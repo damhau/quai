@@ -34,14 +34,15 @@ type AuditCheckpoint struct {
 }
 
 type AuditEvent struct {
-	Seq     int64
-	At      pgtype.Timestamptz
-	Actor   json.RawMessage
-	Action  string
-	Object  json.RawMessage
-	Details json.RawMessage
-	Prev    string
-	Hash    string
+	Seq      int64
+	At       pgtype.Timestamptz
+	Actor    json.RawMessage
+	Action   string
+	Object   json.RawMessage
+	Details  json.RawMessage
+	Prev     string
+	Hash     string
+	Recorded pgtype.Timestamptz
 }
 
 type AuditPersonal struct {

@@ -96,9 +96,11 @@ changes, executor calls, configuration changes.
   the schema's owner; the application role can read it, not change it. Every hour the worker
   calls `audit_prune()`, a `SECURITY DEFINER` function of the owner with its own `search_path`,
   which the application role may execute and nothing more: it deletes the events (and their
-  personal data) before the latest checkpoint older than the retention whose hash is its event's,
-  and the checkpoints before it, by the database's clock ([open questions 36 and
-  37](../plan/open-questions.md#still-open)). The worker records `audit.pruned` with the
+  personal data) before the latest checkpoint whose hash is its event's and whose event is older
+  than the retention, and the checkpoints before it. An event's age is the database's: `recorded`,
+  its clock when it inserted the row, which the application role can neither set nor change, not
+  `at`, which the application writes ([open questions 36 and
+  37](../plan/open-questions.md#still-open)). `recorded` is not hashed nor exported. The worker records `audit.pruned` with the
   checkpoint the chain now starts from. Without a checkpoint, nothing is pruned.
 - **Verification.** One check, offline and in the worker: each event's hash, each link, each
   checkpoint's signature and that its hash is its event's, and that no checkpoint, the audit
