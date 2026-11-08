@@ -345,6 +345,7 @@ type Config struct {
 	// Credentials resolves spec.credentials.ref; ok is false when the connection names none.
 	Credentials func(ctx context.Context) (s secrets.Secret, ok bool, err error)
 	KnownHosts  string // spec.credentials.knownHosts: the SSH host keys of the remote
+	AppID       int64  // spec.credentials.appId: the GitHub App whose private key Credentials holds
 	HTTP        *http.Client
 	Log         *slog.Logger
 }

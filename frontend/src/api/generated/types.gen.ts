@@ -217,6 +217,7 @@ export type CreatedTokenOutputBody = {
 };
 
 export type Credentials = {
+    appId?: number;
     knownHosts?: string;
     ref?: string;
 };

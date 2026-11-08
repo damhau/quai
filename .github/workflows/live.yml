@@ -8,8 +8,10 @@ name: live
 # sandbox's hosted agents. It needs the AZURE_DEVOPS_PAT repository secret.
 #
 # github, on the GitHub sandbox (docs/plan/phase-3-backlog.md#test-infrastructure): the sandbox's
-# helpers. It needs the QUAI_TEST_GITHUB_APP_KEY and QUAI_TEST_GITHUB_WEBHOOK_SECRET repository
-# secrets.
+# helpers, and the connector's conformance suite and live tests. The suite covers the repository,
+# branch and pull request parts so far; its steps for statuses, checks and webhooks skip until
+# P3-17 and P3-18, and the job's notice names what skipped. It needs the QUAI_TEST_GITHUB_APP_KEY
+# and QUAI_TEST_GITHUB_WEBHOOK_SECRET repository secrets.
 #
 # Without its secrets, a job says so in a notice and does nothing, so it is green having tested
 # nothing: read the run's annotations before calling it a pass.
@@ -103,7 +105,9 @@ jobs:
           printf '%s' "$APP_KEY" > "$RUNNER_TEMP/github-app.pem"
           printf '%s' "$WEBHOOK_SECRET" > "$RUNNER_TEMP/github-webhook-secret"
       # bash, for pipefail: go test's failure must survive tee. The notice says what ran, since go
-      # test reports a package as ok whether its tests passed or were skipped.
+      # test reports a package as ok whether its tests passed or were skipped. It counts subtests
+      # too and names each one skipped: the conformance suite's steps are subtests, so a suite with
+      # most of its steps skipped still passes at the top level.
       - if: env.HAS_KEY == 'true'
         name: Live tests on the sandbox
         shell: bash
@@ -114,8 +118,8 @@ jobs:
           QUAI_TEST_GITHUB_APP_ID: "5656119"
           QUAI_TEST_GITHUB_INSTALLATION_ID: "179566659"
         run: |
-          go test -count=1 -v -timeout 30m ./internal/githubtest/... | tee "$RUNNER_TEMP/github-live.log"
-          echo "::notice::GitHub live tests on $QUAI_TEST_GITHUB_ORG: $(grep -c '^--- PASS' "$RUNNER_TEMP/github-live.log") passed, $(grep -c '^--- SKIP' "$RUNNER_TEMP/github-live.log") skipped."
+          go test -count=1 -v -timeout 30m ./internal/githubtest/... ./internal/connectors/github/... | tee "$RUNNER_TEMP/github-live.log"
+          echo "::notice::GitHub live tests on $QUAI_TEST_GITHUB_ORG, subtests included: $(grep -cE '^ *--- PASS' "$RUNNER_TEMP/github-live.log") passed, $(grep -cE '^ *--- SKIP' "$RUNNER_TEMP/github-live.log") skipped: $(grep -E '^ *--- SKIP' "$RUNNER_TEMP/github-live.log" | awk '{print $3}' | paste -sd ' ' -)."
       - if: always() && env.HAS_KEY == 'true'
         working-directory: .
         run: rm -f "$RUNNER_TEMP/github-app.pem" "$RUNNER_TEMP/github-webhook-secret" "$RUNNER_TEMP/github-live.log"

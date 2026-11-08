@@ -148,7 +148,7 @@ func (r *Registry) AccessTest(ctx context.Context, d Document) (AccessReport, er
 		a.skipRest(CheckCredentials)
 		return a.done(), nil
 	}
-	conn, err := r.connectors.New(spec.Connector, connectors.Config{URL: spec.URL, Credentials: repo.Credentials, KnownHosts: spec.Credentials.KnownHosts})
+	conn, err := r.connectors.New(spec.Connector, connectors.Config{URL: spec.URL, Credentials: repo.Credentials, KnownHosts: spec.Credentials.KnownHosts, AppID: spec.Credentials.AppID})
 	if !a.check(CheckConnector, err) {
 		a.skipRest(CheckConnector)
 		return a.done(), nil

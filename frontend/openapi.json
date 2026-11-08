@@ -668,6 +668,10 @@
       "Credentials": {
         "additionalProperties": false,
         "properties": {
+          "appId": {
+            "format": "int64",
+            "type": "integer"
+          },
           "knownHosts": {
             "type": "string"
           },

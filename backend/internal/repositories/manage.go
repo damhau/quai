@@ -86,7 +86,7 @@ func (r *Registry) VerifyEnforcementOf(ctx context.Context, d Document) ([]strin
 		return nil, err
 	}
 	repo := &Repo{Name: d.Metadata.Name, Branch: d.Spec.DefaultBranch, Document: d, secrets: r.secrets, log: r.log}
-	conn, err := r.connectors.New(d.Spec.Connector, connectors.Config{URL: d.Spec.URL, Credentials: repo.Credentials, KnownHosts: d.Spec.Credentials.KnownHosts})
+	conn, err := r.connectors.New(d.Spec.Connector, connectors.Config{URL: d.Spec.URL, Credentials: repo.Credentials, KnownHosts: d.Spec.Credentials.KnownHosts, AppID: d.Spec.Credentials.AppID})
 	if err != nil {
 		return nil, err
 	}

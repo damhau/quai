@@ -56,10 +56,12 @@ type Spec struct {
 }
 
 // Credentials name the secret Quai authenticates to the platform with. KnownHosts holds the
-// SSH host keys of the remote (known_hosts lines), for an SSH deploy key: they are verified.
+// SSH host keys of the remote (known_hosts lines), for an SSH deploy key: they are verified. AppID
+// is the GitHub App whose private key Ref names: public, and what its JWTs say they come from.
 type Credentials struct {
 	Ref        string `json:"ref,omitempty" yaml:"ref"`
 	KnownHosts string `json:"knownHosts,omitempty" yaml:"knownHosts"`
+	AppID      int64  `json:"appId,omitempty" yaml:"appId"`
 }
 
 // SecretRef names a secret in a secret store (env:, k8s:, vault:, azkv:), never the secret itself.
@@ -242,6 +244,9 @@ func (d *Document) Validate() error {
 	}
 	if err := checkKnownHosts(s.Credentials.KnownHosts); err != nil {
 		add("spec.credentials.knownHosts: %v", err)
+	}
+	if s.Credentials.AppID != 0 && (s.Connector != "github" || s.Credentials.AppID < 0) {
+		add("spec.credentials.appId is the ID of a GitHub App, for the github connector")
 	}
 	if s.Runner.DriftInterval != 0 && s.Runner.DriftInterval < Duration(time.Hour) {
 		add("spec.runner.driftInterval must be at least 1h")

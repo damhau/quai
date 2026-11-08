@@ -4,13 +4,14 @@ Status: Draft · 2026-11-07
 
 ## Still open
 
-None. A decision the docs do not settle is added here, with the default the plan assumes until
+A decision the docs do not settle is added here, with the default the plan assumes until
 the owner answers it. Until M2 closes, work goes on with that default, unless the choice is
 security-sensitive or hard to reverse (decided below). Numbers are not reused: the next question
-is 13.
+is 14.
 
 | # | Question | Why it matters | Default assumed | Needed by |
 | --- | --- | --- | --- | --- |
+| 13 | How the GitHub connector learns which GitHub App it is, and which installation | A connection had one secret and nowhere for an app's ID, and an installation's ID is one more value for an admin to find and keep right | **`spec.credentials.appId` holds the app's ID, in the document since it is public, and `spec.credentials.ref` the private key.** The installation is found from them (`GET /repos/{owner}/{repo}/installation` with the app's JWT, checked on the sandbox), kept in memory, and looked up again after GitHub refuses a token. Tokens are limited to the connection's one repository, whatever the app is installed on ([GitHub](../design/12-git-connectors.md#github-second)) | P3-18, whose wizard form asks for the app's ID |
 
 ## Decided
 

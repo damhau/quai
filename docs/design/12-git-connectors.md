@@ -258,14 +258,37 @@ sequenceDiagram
 | Concern | Approach |
 | --- | --- |
 | Library | `google/go-github`, `bradleyfalzon/ghinstallation` |
-| Authentication | GitHub App installed on selected repositories; short-lived installation tokens for API and Git |
+| Authentication | GitHub App installed on selected repositories or a whole organization. `spec.credentials.ref` names the app's private key and `spec.credentials.appId` holds its ID ([open question 13](../plan/open-questions.md#still-open)). A JWT signed with the key finds the app's installation on the repository (`GET /repos/{owner}/{repo}/installation`, so nothing else needs configuring) and is exchanged for an installation token **limited to that one repository**, renewed a minute before it expires. The key is read on each use, so a rotated one applies from the next call; the installation is looked up again after GitHub refuses a token (the app reinstalled has a new ID) |
+| Git | The installation token, fresh for each command, as HTTPS Basic credentials for the user `x-access-token` (`Authorization: Basic …`, through the same header mechanism as the other connectors, scoped to the host) |
 | `quai/approval` | Check run created by the app |
 | Enforcement | Branch protection or repository ruleset requiring the check, **pinned to the Quai app** as expected source; Quai reads both protection and rulesets |
-| Merge | Merge API, or auto-merge; merge queue when enabled |
+| Merge | Merge API, pinned to the approved head (`sha`), with methods merge, squash and rebase; GitHub's merge does not delete the source branch, so the connector does. Auto-merge and the merge queue come with P3-17 and P3-18; until then Quai merges itself and the connector has no `auto-complete` capability |
 | Ownership | `CODEOWNERS` file, parsed by the connector |
 | Webhooks | App webhooks signed with HMAC-SHA256 (`X-Hub-Signature-256`) |
-| Commits | Commits created through the API by the app are shown as verified |
-| Editions | github.com. GitHub Enterprise Server is a [future improvement](../plan/roadmap.md#future-improvements) ([#137](https://github.com/damhau/quai/issues/137)): the API URL stays configurable, with feature detection by version when it is built |
+| Commits | Pushed over Git with the installation token, so GitHub shows them as unverified (`reason: unsigned`, measured); only commits the app creates through the API are verified. A branch that requires signed commits refuses Quai's pushes: not supported yet |
+| Editions | github.com: `spec.url` must be `https://github.com/<owner>/<repository>`, and any other host is refused, since the app's JWT and tokens go where the URL says. GitHub Enterprise Server is a [future improvement](../plan/roadmap.md#future-improvements) ([#137](https://github.com/damhau/quai/issues/137)): the API URL stays configurable, with feature detection by version when it is built |
+
+### GitHub specifics to handle
+
+Measured on the sandbox ([test infrastructure](../plan/phase-3-backlog.md#test-infrastructure)) unless marked; `TestLiveMerge`, `TestLivePullRequests` and `TestLiveForks` pin them.
+
+- **A merge is synchronous, and its refusals say different things.** The merge call answers with the merge commit, which is what the connector reports; `Get` then shows the same commit. Its 405 and 409 refusals mean:
+
+  | GitHub's answer | What it means | What the connector does |
+  | --- | --- | --- |
+  | 405 `Base branch was modified` | Another merge landed at that moment, as when two pull requests merge at once | Asks again, every second for up to 30 s |
+  | 405 or 409 with `mergeable: null` | GitHub has not computed mergeability yet (a precaution: a merge asked while it was `null` has not been refused so far) | Asks again, as above |
+  | 409 `Head branch was modified`, the pull request still showing the approved head | The merge saw a newer head than the API does yet (a precaution: not seen so far) | Asks again, as above |
+  | 409, the pull request showing another head | The branch moved after approval | `ErrBlocked` |
+  | 405 `Pull Request is still a draft`, `… has merge conflicts`, and any other refusal, such as a required check (not measured until P3-17) | Waiting on someone | `ErrBlocked` (Quai asks again later) |
+  | 405 `… merges are not allowed on this repository` | The repository's settings forbid `spec.delivery.mergeMethod`, which waiting will not change | `ErrUnsupported`, so the request fails and says why rather than waiting forever |
+
+  `mergeable_state` does not tell these apart: a draft and a forbidden method both show `clean`. Mergeability is `null` for a moment after a pull request opens, yet a merge asked at once usually succeeds, so the connector asks first and reads afterwards. A pull request closed without merging is an error, not a wait. One already merged is a success, which is what a retry after a lost response finds.
+- **Labels are a second call.** GitHub keeps them on the issue every pull request also is, and creates the ones it does not know. If labelling fails, `Open` fails with the pull request open: the retry finds it (`List`) and goes on without its labels, which are a convenience and carry no meaning for Quai (the [marker](05-delivery-and-approvals.md#branch-commit-pull-request) in the description does).
+- **Limits.** GitHub refuses a description over 65536 characters when opening, so the connector cuts one to that many bytes, keeping the marker, and a comment the same way (its limit is not measured). A label holds 50 characters, and a cut one is created under its shorter name. A title is cut to 256, the limit GitHub's refusal names, though it accepted longer ones on an edit.
+- **Forks.** Anyone can open a pull request from a fork of a public repository, with a branch named `quai/…`. `List` leaves these out, since core takes what it returns for its own pull request, and `Merge` never deletes a fork's branch: GitHub reports only the branch's name, so deleting by it would delete the repository's branch of that name, which could be `main`. Without this check, both happen on the sandbox. A pull request's source is in the repository only when `head.repo` and `base.repo` are the same repository; `head.repo` is null once a fork is gone.
+- **Branch deletion** works straight after the merge. A branch already gone (422, say the repository's "automatically delete head branches" setting) is not an error, and a failure to delete is logged without failing the merge, which stands.
+- **Rate limits** go through the shared transport like every API call, including the JWT calls and the token exchange; go-github's own accounting is off. A 403 for a primary or secondary limit that reaches the connector is `ErrRateLimited`.
 
 ## GitLab (third)
 

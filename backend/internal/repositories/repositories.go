@@ -336,7 +336,7 @@ func (r *Registry) open(ctx context.Context, s Stored, prev *Repo) (*Repo, error
 		secrets: r.secrets, store: r.db, log: r.log, lastFetch: time.Now()}
 	repo.checkCredentials(ctx)
 	if repo.Connector, err = r.connectors.New(d.Spec.Connector, connectors.Config{URL: d.Spec.URL, Credentials: repo.Credentials,
-		KnownHosts: d.Spec.Credentials.KnownHosts}); err != nil {
+		KnownHosts: d.Spec.Credentials.KnownHosts, AppID: d.Spec.Credentials.AppID}); err != nil {
 		return nil, err
 	}
 	for _, f := range d.Spec.Enforcement.FloorRules {

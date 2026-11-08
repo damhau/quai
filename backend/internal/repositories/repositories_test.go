@@ -95,6 +95,42 @@ spec:
 	}
 }
 
+// TestAppID: the GitHub App's ID in the document reaches the connector wherever one is made: a
+// connection that opens, the access test, and the verification of a document not saved yet.
+func TestAppID(t *testing.T) {
+	ctx := context.Background()
+	r := newRemote(t, "infra")
+	d := doc(t, "apiVersion: quai.dev/v1beta1\nkind: Repository\nmetadata: { name: infra }\nspec:\n  connector: github\n  url: "+r.url+
+		"\n  credentials: { ref: env:KEY, appId: 5656119 }\n")
+	if d.Spec.Credentials.AppID != 5656119 {
+		t.Errorf("appId = %d", d.Spec.Credentials.AppID)
+	}
+	store := secrets.New(map[string]secrets.Backend{"env": secrets.Env{Lookup: func(string) (string, bool) { return "key", true }}})
+	var ids []int64
+	conns := &connectors.Registry{Factories: map[string]connectors.Factory{"github": func(cfg connectors.Config) (connectors.Connector, error) {
+		ids = append(ids, cfg.AppID)
+		c, err := generic.New(cfg)
+		return apiOnly{c}, err
+	}}}
+	reg, err := Open(ctx, testConfig(t), Static([]Document{d}), Options{Secrets: store, Connectors: conns, Log: slog.New(slog.DiscardHandler)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reg.Close()
+	if _, err := reg.Get("infra"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reg.AccessTest(ctx, d); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reg.VerifyEnforcementOf(ctx, d); err != nil {
+		t.Fatal(err)
+	}
+	if len(ids) != 3 || ids[0] != 5656119 || ids[1] != 5656119 || ids[2] != 5656119 {
+		t.Errorf("the connectors were made with the app IDs %v", ids)
+	}
+}
+
 func TestParse(t *testing.T) {
 	d := doc(t, `apiVersion: quai.dev/v1beta1
 kind: Repository
@@ -123,6 +159,8 @@ spec:
 
 	for name, tt := range map[string]struct{ src, want string }{
 		"known hosts":   {"apiVersion: quai.dev/v1beta1\nkind: Repository\nmetadata: { name: a }\nspec: { connector: generic, url: 'git@h:r', credentials: { ref: env:KEY, knownHosts: 'h not-a-key' } }\n", "spec.credentials.knownHosts"},
+		"app ID":        {"apiVersion: quai.dev/v1beta1\nkind: Repository\nmetadata: { name: a }\nspec: { connector: gitea, url: x, credentials: { appId: 5 } }\n", "spec.credentials.appId"},
+		"negative app":  {"apiVersion: quai.dev/v1beta1\nkind: Repository\nmetadata: { name: a }\nspec: { connector: github, url: x, credentials: { appId: -5 } }\n", "spec.credentials.appId"},
 		"unknown field": {"apiVersion: quai.dev/v1beta1\nkind: Repository\nmetadata: { name: a }\nspec: { connector: gitea, url: x, branch: main }\n", "field branch not found"},
 		"kind":          {"apiVersion: quai.dev/v1beta1\nkind: Repo\nmetadata: { name: a }\nspec: { connector: gitea, url: x }\n", "kind must be Repository"},
 		"name":          {"apiVersion: quai.dev/v1beta1\nkind: Repository\nmetadata: { name: Infra }\nspec: { connector: gitea, url: x }\n", "metadata.name must be a lowercase DNS label"},
