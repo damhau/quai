@@ -47,6 +47,14 @@ func TestKubernetesExamplePass(t *testing.T) {
 	}
 }
 
+// The pilot's types (P3-19): entries and a field of shared YAML, HCL and JSON files.
+func TestPilotExamplePass(t *testing.T) {
+	r := Run(os.DirFS("../../../../examples/pilot-infra"))
+	if len(r.Problems) > 0 || r.Types != 4 || r.Resources != 25 {
+		t.Errorf("report = %+v", r)
+	}
+}
+
 func TestExamplesPass(t *testing.T) {
 	r := Run(os.DirFS(examples))
 	if len(r.Problems) > 0 || r.Types != 1 || r.Blueprints != 2 || r.Resources != 4 || r.Tests != 2 {

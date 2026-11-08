@@ -59,6 +59,7 @@ you out to switch.
 | `e2e/` | Playwright scenarios against the compose stack |
 | `examples/gitops-repo` | The demo repository, also the tests' fixture |
 | `examples/kubernetes-repo` | A Kubernetes platform's GitOps repository: a type per component of the `component` generator |
+| `examples/pilot-infra` | The pilot's types on the stand-in `pilot-infra`: entries of shared YAML, HCL and JSON files |
 | `deploy/` | The compose stack's scripts and the Helm chart |
 | `docs/` | Design, decisions (ADRs), engineering, operations and the plan |
 

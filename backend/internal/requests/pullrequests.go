@@ -465,34 +465,37 @@ func (s *Service) mergeMessage(ctx context.Context, r db.Request) (string, error
 	return message(r, sets[0], approved...), nil
 }
 
-// commentApprovals records the approvals on the pull request, once.
+// commentApprovals records the approvals on the pull request, once: under a lock, since the
+// approval's delivery and a poll's may both get here.
 func (s *Service) commentApprovals(ctx context.Context, prs connectors.PullRequests, r db.Request, d db.Delivery) error {
-	events, err := s.store.ListRequestEvents(ctx, pgtype.UUID{Bytes: r.ID, Valid: true})
-	if err != nil {
-		return err
-	}
-	for _, e := range events {
-		if e.Kind == "approvals_commented" {
-			return nil
+	return jobs.WithLock(ctx, s.store.Pool, "quai/request-comment/"+r.ID.String(), func(ctx context.Context) error {
+		events, err := s.store.ListRequestEvents(ctx, pgtype.UUID{Bytes: r.ID, Valid: true})
+		if err != nil {
+			return err
 		}
-	}
-	approved, err := s.approvals(ctx, r)
-	if err != nil {
-		return err
-	}
-	var b strings.Builder
-	fmt.Fprintf(&b, "Approved in Quai (request #%d).\n\n", r.Number)
-	for _, t := range approved {
-		b.WriteString(t.Key + ": " + t.Value + "\n")
-	}
-	if l := s.link(r); l != "" {
-		b.WriteString("\n" + l + "\n")
-	}
-	if err := prs.Comment(ctx, d.PullRequest, b.String()); err != nil {
-		return fmt.Errorf("comment on pull request %s: %w", d.PullRequest, err)
-	}
-	return s.store.Tx(ctx, func(_ pgx.Tx, q *db.Queries) error {
-		return event(ctx, q, r, "approvals_commented", "", map[string]any{"pullRequest": d.PullRequest})
+		for _, e := range events {
+			if e.Kind == "approvals_commented" {
+				return nil
+			}
+		}
+		approved, err := s.approvals(ctx, r)
+		if err != nil {
+			return err
+		}
+		var b strings.Builder
+		fmt.Fprintf(&b, "Approved in Quai (request #%d).\n\n", r.Number)
+		for _, t := range approved {
+			b.WriteString(t.Key + ": " + t.Value + "\n")
+		}
+		if l := s.link(r); l != "" {
+			b.WriteString("\n" + l + "\n")
+		}
+		if err := prs.Comment(ctx, d.PullRequest, b.String()); err != nil {
+			return fmt.Errorf("comment on pull request %s: %w", d.PullRequest, err)
+		}
+		return s.store.Tx(ctx, func(_ pgx.Tx, q *db.Queries) error {
+			return event(ctx, q, r, "approvals_commented", "", map[string]any{"pullRequest": d.PullRequest})
+		})
 	})
 }
 

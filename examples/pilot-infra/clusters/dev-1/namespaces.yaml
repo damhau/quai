@@ -1,0 +1,28 @@
+# Namespaces on the dev-1 cluster, one entry each; stacks/clusters/dev-1 makes each one a
+# namespace and its quota. The platform team reviews new namespaces and quota increases.
+namespaces:
+  - name: booking-dev
+    owner: carol
+    description: Booking front-end and API
+    labels:
+      app: booking
+      cost_center: CC-1042
+    quota:
+      cpu: 8
+      memory_gi: 16
+      pods: 50
+  - name: payments-dev
+    owner: bob
+    description: Payment gateway
+    labels:
+      app: payments
+    quota:
+      cpu: 4
+      memory_gi: 8
+  # CI jobs of every team: short-lived pods, many of them.
+  - name: ci-runners
+    owner: alice
+    quota:
+      cpu: 16
+      memory_gi: 32
+      pods: 200

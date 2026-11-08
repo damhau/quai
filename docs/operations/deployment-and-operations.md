@@ -145,7 +145,8 @@ files in `vms/<env>/`, a Terraform stack per environment in `stacks/<env>/`), in
    schema follows the variables' validations, `locate`, `stack` and `address` follow the stacks.
    `quai lint <dir>` loads them and checks every file; `quai lint --plan plan.json --stack <stack>
    <dir>`, on the plan of a change, checks that every Terraform resource it changes belongs to
-   exactly one resource.
+   exactly one resource. A type that writes part of another's entries (a `field` type, such as a
+   quota) needs Terraform resources of its own: two types claiming one resource is a problem.
 3. **`quai lint` in the plan pipeline**, before the plan and, with `--plan` and `--stack`, after
    each stack's plan, from the image pinned to a commit (`ghcr.io/damhau/quai:sha-<commit>`).
 4. **`quai report` after each plan and apply** ([runners](#runners)), with the condition
@@ -154,6 +155,12 @@ files in `vms/<env>/`, a Terraform stack per environment in `stacks/<env>/`), in
    Code (read and write), Pull Request Threads (read and write) and Build (read and execute),
    `delivery: { mode: pull-request, merge: auto }`, and `runner.pipelines` naming the plan and
    apply pipelines with the stacks they cover.
+
+Pull requests people open after the status check (another type, a module, the pipelines) need
+`quai/approval` too, which Quai posts only on its own: until
+[open question 16](../plan/open-questions.md#still-open) is answered, the platform owners complete
+them with a policy bypass. The pilot's next types (P3-19: namespaces and quotas, DNS records,
+firewall rules, in `examples/pilot-infra`) wait on it on `pilot-infra`, as !407 to !410.
 
 What reaches Quai depends on the network. Quai reaching Azure DevOps Services and polling it is
 enough to request, approve and merge; to read pull requests' build validation runs as plans

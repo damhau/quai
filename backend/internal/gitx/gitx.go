@@ -495,6 +495,26 @@ func (m *Mirror) MergeBase(ctx context.Context, a, b string) (string, error) {
 	return strings.TrimSpace(out), nil
 }
 
+// Merges reports whether head merges onto base without conflicts, as a platform's merge of a pull
+// request from head into base would (git merge-tree).
+func (m *Mirror) Merges(ctx context.Context, base, head string) (bool, error) {
+	if err := checkCommit(base); err != nil {
+		return false, err
+	}
+	if err := checkCommit(head); err != nil {
+		return false, err
+	}
+	_, err := m.git(ctx, "", "merge-tree", "--write-tree", "--no-messages", base, head)
+	var exit *exec.ExitError
+	if errors.As(err, &exit) && exit.ExitCode() == 1 {
+		return false, nil // conflicts
+	}
+	if err != nil {
+		return false, fmt.Errorf("merge of %.12s onto %.12s: %w", head, base, err)
+	}
+	return true, nil
+}
+
 // IsAncestor reports whether a is b or one of its ancestors. A commit the mirror does not have
 // is no ancestor.
 func (m *Mirror) IsAncestor(ctx context.Context, a, b string) (bool, error) {

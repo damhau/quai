@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dev.azure.com/dh-consulting/quai-sandbox/_git/pilot-infra/.quai/schemas/dns-record.schema.json",
+  "title": "DNS record set",
+  "description": "An entry of the records map in stacks/dns/<zone>/records.auto.tfvars, as the variables of modules/dns-record accept it: the plan fails on anything else.",
+  "type": "object",
+  "required": ["owner", "type", "values"],
+  "additionalProperties": false,
+  "properties": {
+    "owner": { "type": "string", "title": "Owner", "description": "A user or team:<name>." },
+    "type": { "type": "string", "title": "Type", "enum": ["A", "AAAA", "CNAME", "TXT"], "default": "A" },
+    "ttl": { "type": "integer", "title": "TTL (seconds)", "minimum": 60, "maximum": 86400, "default": 300 },
+    "values": {
+      "type": "array",
+      "title": "Values",
+      "description": "IPv4 addresses for an A record, IPv6 for AAAA, one host name for a CNAME.",
+      "minItems": 1,
+      "maxItems": 8,
+      "items": { "type": "string", "minLength": 1 }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "type": { "const": "CNAME" } }, "required": ["type"] },
+      "then": { "properties": { "values": { "maxItems": 1 } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "A" } }, "required": ["type"] },
+      "then": { "properties": { "values": { "items": { "format": "ipv4" } } } }
+    }
+  ]
+}

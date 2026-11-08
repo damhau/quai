@@ -31,6 +31,7 @@ esac
 case "$changed" in
 *examples/*)
 	go run ./cmd/quai lint ../examples/gitops-repo
+	go run ./cmd/quai lint ../examples/pilot-infra
 	want="$want $module/internal/api $module/internal/ingest $module/internal/engine/lint"
 	;;
 esac

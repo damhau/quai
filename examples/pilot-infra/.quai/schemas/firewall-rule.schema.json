@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dev.azure.com/dh-consulting/quai-sandbox/_git/pilot-infra/.quai/schemas/firewall-rule.schema.json",
+  "title": "Firewall rule",
+  "description": "An item of the rules list in stacks/firewall/<env>/rules.auto.tfvars.json, as the variables of modules/firewall-rule accept it: the plan fails on anything else.",
+  "type": "object",
+  "required": ["name", "owner", "protocol", "sources", "destinations"],
+  "additionalProperties": false,
+  "properties": {
+    "name": { "type": "string", "title": "Name", "pattern": "^[a-z][a-z0-9-]{2,40}$" },
+    "owner": { "type": "string", "title": "Owner", "description": "A user or team:<name>." },
+    "description": { "type": "string", "title": "Description", "maxLength": 200 },
+    "action": { "type": "string", "title": "Action", "enum": ["allow", "deny"], "default": "allow" },
+    "protocol": { "type": "string", "title": "Protocol", "enum": ["tcp", "udp", "icmp"], "default": "tcp" },
+    "sources": {
+      "type": "array",
+      "title": "Sources",
+      "description": "IPv4 networks in CIDR notation, such as 10.20.1.0/24.",
+      "minItems": 1,
+      "maxItems": 16,
+      "items": { "$ref": "#/$defs/cidr" }
+    },
+    "destinations": {
+      "type": "array",
+      "title": "Destinations",
+      "description": "IPv4 networks in CIDR notation, such as 10.20.2.0/24.",
+      "minItems": 1,
+      "maxItems": 16,
+      "items": { "$ref": "#/$defs/cidr" }
+    },
+    "ports": {
+      "type": "array",
+      "title": "Ports",
+      "description": "At least one for tcp and udp, none for icmp.",
+      "maxItems": 16,
+      "items": { "type": "integer", "minimum": 1, "maximum": 65535 }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "protocol": { "const": "icmp" } }, "required": ["protocol"] },
+      "then": { "properties": { "ports": { "maxItems": 0 } } },
+      "else": { "required": ["ports"], "properties": { "ports": { "minItems": 1 } } }
+    }
+  ],
+  "$defs": {
+    "cidr": {
+      "type": "string",
+      "pattern": "^((25[0-5]|2[0-4][0-9]|1?[0-9]?[0-9])\\.){3}(25[0-5]|2[0-4][0-9]|1?[0-9]?[0-9])/([0-9]|[12][0-9]|3[0-2])$"
+    }
+  }
+}

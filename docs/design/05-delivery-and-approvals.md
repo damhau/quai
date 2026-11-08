@@ -163,7 +163,10 @@ holds:
   is refused if the branch is no longer at Quai's commit (`--force-with-lease`):
   a rebuild never overwrites someone's push. An approved request is then merged
   on the new head. While the platform merges (`merging`), the branch is not
-  rebuilt.
+  rebuilt, unless it no longer merges onto the base (`git merge-tree`), which
+  the platform cannot do: two requests on one file approved together both
+  append to its collection, so the first to merge conflicts with the second,
+  which is rebuilt on it and merged with its approvals.
 - A push by someone else: the files it changes, from the merge base, must all
   be files the request changes or inside the regions it owns. Then the
   request's change set becomes the branch's diff, with a new hash, its

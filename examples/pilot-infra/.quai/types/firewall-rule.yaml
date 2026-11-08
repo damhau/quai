@@ -1,0 +1,41 @@
+apiVersion: quai.dev/v1beta1
+kind: ResourceType
+metadata:
+  name: firewall-rule
+  title: Firewall rule
+  description: A rule of an environment's firewall, one item of the rules list in stacks/firewall/<env>/rules.auto.tfvars.json. The environment's Terraform stack makes each item an instance of modules/firewall-rule, whose variables the schema follows.
+  icon: shield
+  category: Network
+  version: 1.0.0
+  tags: [terraform, firewall]
+spec:
+  locate:
+    strategy: entry
+    path: stacks/firewall/{env}/rules.auto.tfvars.json
+    collection: rules
+    key: name
+    keyParam: name
+  params:
+    - name: env
+      title: Environment
+      type: enum
+      discover: true # the environments that have a firewall stack
+    - name: name
+      title: Name
+      description: Unique in the environment; becomes the Terraform for_each key.
+      pattern: "[a-z][a-z0-9-]{2,40}" # modules/firewall-rule's name validation
+  schema: .quai/schemas/firewall-rule.schema.json
+  generate: { kind: identity }
+  ownership: { field: owner }
+  stack: stacks/firewall/{env}
+  address: module.rule["{name}"]
+  deletion: approval
+  ui:
+    order: [description, action, protocol, sources, destinations, ports]
+  approval:
+    rules:
+      - name: security
+        approvers: [group:security]
+      - name: production-network
+        when: params.env == 'prod'
+        approvers: [group:network]

@@ -122,7 +122,9 @@ of a shared file keeps the entry changes that made it (create, update or delete,
 with the entry's new value; for a field region, the new values of its fields); when the file is no longer what the request was
 planned on, delivery makes them again on the file as it is, verified as any edit
 is. The change set's hash and its approvals stay: they are bound to the entry's
-content, which its fingerprint shows unchanged. An entry's fingerprint leaves out
+content, which its fingerprint shows unchanged; so two requests approved together
+on one file both merge, the second rebuilt on the first even while it was being
+merged ([delivery](05-delivery-and-approvals.md#approvals-bound-to-content)). An entry's fingerprint leaves out
 HCL's alignment padding (see verification), so realigning it is not a change.
 
 ## Testing

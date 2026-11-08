@@ -71,14 +71,19 @@ func (s *Service) reconcile(ctx context.Context, repo *repositories.Repo, r db.R
 		}
 		return s.outsidePush(ctx, repo, r, d, cs, head)
 	}
-	if r.State == Merging {
-		return nil // the platform is merging: no rebuild under it
-	}
-	changed, err := s.definitionsChanged(ctx, r, sets)
+	base, err := repo.Mirror.Head(ctx, repo.Branch)
 	if err != nil {
 		return err
 	}
-	base, err := repo.Mirror.Head(ctx, repo.Branch)
+	if r.State == Merging {
+		// The platform is merging: no rebuild under it, unless the branch no longer merges onto
+		// the base, which the platform cannot do. Two requests on one file approved together:
+		// the first to merge conflicts with the second, both having appended to the collection.
+		if clean, err := repo.Mirror.Merges(ctx, base, head); err != nil || clean {
+			return err
+		}
+	}
+	changed, err := s.definitionsChanged(ctx, r, sets)
 	if err != nil {
 		return err
 	}

@@ -18,6 +18,7 @@ import (
 
 	"code.gitea.io/sdk/gitea"
 
+	"github.com/damhau/quai/backend/internal/config"
 	"github.com/damhau/quai/backend/internal/connectors"
 	giteaconn "github.com/damhau/quai/backend/internal/connectors/gitea"
 	"github.com/damhau/quai/backend/internal/engine/plan"
@@ -82,8 +83,9 @@ func giteaHarnessFiles(t *testing.T, merge, spec string, edit func(path string, 
 	return giteaHarnessOver(t, merge, spec, edit, extra, giteaconn.New)
 }
 
-// giteaHarnessOver is giteaHarnessFiles with the connector factory makes.
-func giteaHarnessOver(t *testing.T, merge, spec string, edit func(path string, b []byte) []byte, extra map[string]string, factory connectors.Factory) (*harness, *giteatest.Repo) {
+// giteaHarnessOver is giteaHarnessFiles with the connector factory makes, and Quai's
+// configuration changed by configure.
+func giteaHarnessOver(t *testing.T, merge, spec string, edit func(path string, b []byte) []byte, extra map[string]string, factory connectors.Factory, configure ...func(*config.Config)) (*harness, *giteatest.Repo) {
 	t.Helper()
 	g := giteatest.Get(t)
 	r := g.Repo(t, "infra")
@@ -104,7 +106,7 @@ func giteaHarnessOver(t *testing.T, merge, spec string, edit func(path string, b
 			return g.Token, n == "GITEA_TOKEN"
 		}}}),
 		Connectors: &connectors.Registry{Factories: map[string]connectors.Factory{"gitea": factory}},
-	})
+	}, configure...)
 	return h, r
 }
 

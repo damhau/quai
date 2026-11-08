@@ -326,3 +326,36 @@ func TestAncestryAndChanges(t *testing.T) {
 		t.Errorf("changes since the first commit = %+v, %v", since, err)
 	}
 }
+
+// Merges: a branch merges onto a base that changed other lines, not onto one that changed the
+// same lines.
+func TestMerges(t *testing.T) {
+	bare, push := remote(t)
+	m := mirror(t, bare)
+	branch, err := m.CommitAndPush(ctx, Commit{Branch: "quai/web01", Base: "main", Message: "web01\n", Author: bob,
+		Changes: []plan.Change{{Op: plan.OpUpdate, Path: "envs/prod/vms/web01.yaml", Before: []byte("cpu: 4\n"), After: []byte("cpu: 4\nmemory: 8\n")}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	push("envs/prod/vms/db01.yaml", "cpu: 16\n")
+	if err := m.Fetch(ctx); err != nil {
+		t.Fatal(err)
+	}
+	other, _ := m.Head(ctx, "main")
+	push("envs/prod/vms/web01.yaml", "cpu: 4\ndisk: 100\n")
+	if err := m.Fetch(ctx); err != nil {
+		t.Fatal(err)
+	}
+	same, _ := m.Head(ctx, "main")
+	for _, c := range []struct {
+		base string
+		want bool
+	}{{other, true}, {same, false}} {
+		if got, err := m.Merges(ctx, c.base, branch); err != nil || got != c.want {
+			t.Errorf("Merges(%.7s, %.7s) = %v, %v", c.base, branch, got, err)
+		}
+	}
+	if _, err := m.Merges(ctx, "main", branch); err == nil {
+		t.Error("a ref was taken for a commit")
+	}
+}

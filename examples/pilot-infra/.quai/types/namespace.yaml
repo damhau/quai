@@ -1,0 +1,44 @@
+apiVersion: quai.dev/v1beta1
+kind: ResourceType
+metadata:
+  name: namespace
+  title: Namespace
+  description: A namespace and its quota on a Kubernetes cluster, one entry of clusters/<cluster>/namespaces.yaml. The stacks/clusters/<cluster> Terraform stack makes each entry an instance of modules/namespace, whose variables the schema follows.
+  icon: box
+  category: Kubernetes
+  version: 1.0.0
+  tags: [terraform, kubernetes]
+spec:
+  locate:
+    strategy: entry
+    path: clusters/{cluster}/namespaces.yaml
+    collection: namespaces
+    key: name
+    keyParam: name
+  params:
+    - name: cluster
+      title: Cluster
+      type: enum
+      discover: true # the clusters that have a namespaces.yaml
+    - name: name
+      title: Name
+      description: Becomes the namespace's name and the Terraform for_each key.
+      pattern: "[a-z][a-z0-9-]{1,30}[a-z0-9]" # modules/namespace's name validation
+  schema: .quai/schemas/namespace.schema.json
+  generate: { kind: identity }
+  ownership: { field: owner }
+  stack: stacks/clusters/{cluster}
+  # The namespace only: its quota is the namespace-quota type's.
+  address: module.namespace["{name}"].terraform_data.namespace
+  deletion: approval
+  ui:
+    order: [description, labels, quota]
+  approval:
+    rules:
+      - name: platform
+        # A new or deleted namespace, any change on a production cluster, and a quota that grows.
+        when: >-
+          request.kind != 'update' || params.cluster.startsWith('prod-') ||
+          inputs.quota.cpu > previous.quota.cpu || inputs.quota.memory_gi > previous.quota.memory_gi ||
+          inputs.quota.?pods.orValue(50) > previous.quota.?pods.orValue(50)
+        approvers: [group:platform-admins]

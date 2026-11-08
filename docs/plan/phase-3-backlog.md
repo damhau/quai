@@ -65,7 +65,14 @@ pilot repository `pilot-infra`. Phase 3 adds:
 - **P3-19** (the pilot's types) works on the stand-in `pilot-infra` with synthetic data: there is
   no pilot repository (the owner's decision of 2026-10-30, in
   [open questions](open-questions.md#decided)). Its pull requests are completed in order, as in
-  P2-13.
+  P2-13. They are open, ready, on `pilot-infra`, each on the one before: !407 (the pipelines plan
+  and apply every stack under `stacks/`, and lint with the image of `0a2e052`), !408 (namespaces
+  and quotas), !409 (DNS records), !410 (firewall rules). Their build validation runs, 173 to 176,
+  passed: on !410, `quai lint` (5 types, 30 resources, no problems) and `quai lint --plan` on each
+  of the eight stacks' plans. They wait on [open question 16](open-questions.md#still-open), as
+  `quai/approval` binds every pull request since P2-13. The types and data are copied in
+  `examples/pilot-infra`, which `TestPilotTypes` and `TestPilotConcurrentEntries` request on
+  Gitea.
 - **P3-21** (Phase 3 review): write the report the issue describes, commit with `refs`, comment
   that it is ready, and go on to Phase 4 ([the owner's decision of 2026-11-07](open-questions.md#decided)).
   Only the owner closes it.

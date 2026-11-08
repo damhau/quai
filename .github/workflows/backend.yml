@@ -46,6 +46,7 @@ jobs:
         run: |
           go run ./cmd/quai lint ../examples/gitops-repo
           go run ./cmd/quai lint ../examples/kubernetes-repo
+          go run ./cmd/quai lint ../examples/pilot-infra
 
   test:
     runs-on: ubuntu-latest

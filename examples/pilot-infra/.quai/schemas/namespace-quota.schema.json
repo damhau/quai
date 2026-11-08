@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dev.azure.com/dh-consulting/quai-sandbox/_git/pilot-infra/.quai/schemas/namespace-quota.schema.json",
+  "title": "Namespace quota",
+  "description": "The quota of an entry of clusters/<cluster>/namespaces.yaml, as the quota variable of modules/namespace accepts it.",
+  "type": "object",
+  "required": ["quota"],
+  "properties": {
+    "quota": {
+      "type": "object",
+      "title": "Quota",
+      "description": "The namespace's ResourceQuota.",
+      "required": ["cpu", "memory_gi"],
+      "additionalProperties": false,
+      "properties": {
+        "cpu": { "type": "integer", "title": "CPU (cores)", "minimum": 1, "maximum": 64 },
+        "memory_gi": { "type": "integer", "title": "Memory (GiB)", "minimum": 1, "maximum": 256 },
+        "pods": { "type": "integer", "title": "Pods", "minimum": 10, "maximum": 500, "default": 50 }
+      }
+    }
+  }
+}

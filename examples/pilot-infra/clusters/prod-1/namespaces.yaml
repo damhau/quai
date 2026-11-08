@@ -1,0 +1,17 @@
+# Namespaces on the prod-1 cluster, one entry each; stacks/clusters/prod-1 makes each one a
+# namespace and its quota. The platform team reviews every change here.
+namespaces:
+  - name: booking
+    owner: carol
+    description: Booking front-end and API
+    labels: { app: booking, cost_center: CC-1042 }
+    quota: { cpu: 16, memory_gi: 64, pods: 200 }
+  - name: payments
+    owner: bob
+    description: Payment gateway
+    labels: { app: payments }
+    quota: { cpu: 8, memory_gi: 32 }
+  # The monitoring agents of every node; sized by the platform team.
+  - name: monitoring
+    owner: alice
+    quota: { cpu: 4, memory_gi: 16, pods: 100 }
