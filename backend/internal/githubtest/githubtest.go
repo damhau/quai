@@ -222,7 +222,7 @@ func (s *Sandbox) AddFiles(ctx context.Context, repo, branch, message string, fi
 func (s *Sandbox) ApprovalRuleset(check string) github.RepositoryRuleset {
 	return github.RepositoryRuleset{Name: "quai", Target: github.Ptr(github.RulesetTargetBranch), Enforcement: github.RulesetEnforcementActive,
 		BypassActors: []*github.BypassActor{},
-		Conditions: &github.RepositoryRulesetConditions{RefName: &github.RepositoryRulesetRefConditionParameters{Include: []string{"~DEFAULT_BRANCH"}, Exclude: []string{}}},
+		Conditions:   &github.RepositoryRulesetConditions{RefName: &github.RepositoryRulesetRefConditionParameters{Include: []string{"~DEFAULT_BRANCH"}, Exclude: []string{}}},
 		Rules: &github.RepositoryRulesetRules{RequiredStatusChecks: &github.RequiredStatusChecksRuleParameters{
 			RequiredStatusChecks: []*github.RuleStatusCheck{{Context: check, IntegrationID: github.Ptr(s.AppID)}}}}}
 }
