@@ -104,6 +104,28 @@
         ],
         "type": "object"
       },
+      "AuditCheckpointView": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "type": "string"
+          },
+          "key": {
+            "description": "The ID of the public key that verifies it: the SHA-256 of its 32 bytes, in hex",
+            "type": "string"
+          },
+          "seq": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "seq",
+          "at",
+          "key"
+        ],
+        "type": "object"
+      },
       "AuditEventView": {
         "additionalProperties": false,
         "properties": {
@@ -177,6 +199,9 @@
             "readOnly": true,
             "type": "string"
           },
+          "checkpoint": {
+            "$ref": "#/components/schemas/AuditCheckpointView"
+          },
           "events": {
             "items": {
               "$ref": "#/components/schemas/AuditEventView"
@@ -199,12 +224,52 @@
           },
           "protected": {
             "type": "boolean"
+          },
+          "verification": {
+            "$ref": "#/components/schemas/AuditVerificationView"
           }
         },
         "required": [
           "events",
           "personal",
           "protected"
+        ],
+        "type": "object"
+      },
+      "AuditVerificationView": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "type": "string"
+          },
+          "broken": {
+            "description": "The first seq where the log fails",
+            "format": "int64",
+            "type": "integer"
+          },
+          "events": {
+            "description": "How many events held",
+            "format": "int64",
+            "type": "integer"
+          },
+          "reason": {
+            "description": "Why it fails there",
+            "type": "string"
+          },
+          "seq": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "verified": {
+            "description": "Whether the chain, its checkpoints and the audit repository's latest checkpoint held",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "seq",
+          "at",
+          "verified",
+          "events"
         ],
         "type": "object"
       },
@@ -3787,6 +3852,38 @@
           }
         },
         "summary": "Read the audit log (auditors and platform admins)",
+        "tags": [
+          "Audit"
+        ]
+      }
+    },
+    "/api/v1/audit/export": {
+      "get": {
+        "description": "The log as it is at one moment, in JSON lines: its signed checkpoints, then its events in seq order, with personal data as pseudonyms (docs/design/09-security-and-compliance.md#audit-log).",
+        "operationId": "export-audit-log",
+        "responses": {
+          "200": {
+            "content": {
+              "application/jsonl": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "JSON lines: checkpoints, then events"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Export the audit log, to verify it offline with quai audit verify (auditors and platform admins)",
         "tags": [
           "Audit"
         ]

@@ -11,12 +11,15 @@ import (
 	"github.com/riverqueue/river"
 	"github.com/spf13/cobra"
 
+	"github.com/damhau/quai/backend/internal/audit/keeper"
 	"github.com/damhau/quai/backend/internal/config"
+	"github.com/damhau/quai/backend/internal/gitx"
 	"github.com/damhau/quai/backend/internal/ingest"
 	"github.com/damhau/quai/backend/internal/jobs"
 	"github.com/damhau/quai/backend/internal/netx"
 	"github.com/damhau/quai/backend/internal/requests"
 	"github.com/damhau/quai/backend/internal/store"
+	"github.com/damhau/quai/backend/internal/telemetry"
 )
 
 func newWorkerCmd() *cobra.Command {
@@ -47,6 +50,15 @@ func newWorkerCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			shutdown, err := telemetry.Setup(ctx, cfg.Telemetry, version, network)
+			if err != nil {
+				return err
+			}
+			defer func() {
+				if err := shutdown(context.WithoutCancel(ctx)); err != nil {
+					log.Error("telemetry shutdown", slog.Any("error", err))
+				}
+			}()
 			return work(ctx, cfg, log, s, network)
 		},
 	}
@@ -55,8 +67,8 @@ func newWorkerCmd() *cobra.Command {
 }
 
 // work runs the job queue until ctx ends, then lets jobs in flight finish within the shutdown
-// timeout before cancelling them; cancelled jobs run again later. Outgoing connections go
-// through network (nil: the defaults).
+// timeout before cancelling them, and signs a last audit checkpoint; cancelled jobs run again
+// later. Outgoing connections go through network (nil: the defaults).
 func work(ctx context.Context, cfg *config.Config, log *slog.Logger, s *store.Store, network *netx.Network) error {
 	opts := jobs.Options{Logger: log}
 	var svc *requests.Service
@@ -65,6 +77,14 @@ func work(ctx context.Context, cfg *config.Config, log *slog.Logger, s *store.St
 	if err != nil {
 		return err
 	}
+	keep := keeper.New(keeper.Options{Store: s, Config: cfg.Audit, Secrets: secretStore(cfg), Repositories: reg,
+		Committer: gitx.Signature{Name: cfg.Git.Committer.Name, Email: cfg.Git.Committer.Email}, Log: log})
+	if !keep.Signs() {
+		log.Warn("audit.checkpoints.signingKey.ref is not set: no audit checkpoint is signed, so the audit log is not pruned " +
+			"and its verification cannot tell a rewritten chain (docs/operations/deployment-and-operations.md#the-checkpoint-key)")
+	}
+	opts.Workers = keep.Workers
+	opts.Periodic = append(opts.Periodic, keep.Periodic()...)
 	if reg != nil {
 		defer reg.Close()
 		svc = requests.New(s, reg, nil, log)
@@ -72,6 +92,7 @@ func work(ctx context.Context, cfg *config.Config, log *slog.Logger, s *store.St
 		hooks = ingest.New(s, reg, log)
 		hooks.UseHandler(svc)
 		opts.Workers = func(w *river.Workers) {
+			keep.Workers(w)
 			svc.Workers(w)
 			hooks.Workers(w)
 		}
@@ -97,6 +118,9 @@ func work(ctx context.Context, cfg *config.Config, log *slog.Logger, s *store.St
 		if err := c.StopAndCancel(context.WithoutCancel(ctx)); err != nil {
 			return err
 		}
+	}
+	if err := keep.Shutdown(sctx); err != nil {
+		log.Error("the audit checkpoint at shutdown", slog.Any("error", err))
 	}
 	log.Info("stopped")
 	return nil

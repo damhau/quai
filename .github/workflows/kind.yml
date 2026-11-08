@@ -48,6 +48,12 @@ jobs:
           if kubectl -n quai exec deploy/postgres -- psql -U quai_app -d quai -v ON_ERROR_STOP=1 -c 'delete from audit_events'; then
             echo "quai_app may delete audit events"; exit 1
           fi
+          if kubectl -n quai exec deploy/postgres -- psql -U quai_app -d quai -v ON_ERROR_STOP=1 -c 'delete from audit_checkpoints'; then
+            echo "quai_app may delete audit checkpoints"; exit 1
+          fi
+          if kubectl -n quai exec deploy/postgres -- psql -U quai_app -d quai -v ON_ERROR_STOP=1 -c "update audit_retention set retention = interval '1 second'"; then
+            echo "quai_app may change the audit retention"; exit 1
+          fi
           kubectl -n quai exec deploy/postgres -- psql -U quai_app -d quai -tAc 'select count(*) from audit_events'
       - name: Smoke test
         run: |

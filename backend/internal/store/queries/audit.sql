@@ -52,12 +52,43 @@ LIMIT 1;
 
 -- name: AuditProtected :one
 -- Whether the role the server connects as can only read and append the audit log: it can neither
--- change nor delete events, nor become a role that could.
+-- change nor delete events or checkpoints, nor change the retention, nor become a role that could.
 SELECT NOT (
     has_table_privilege('audit_events', 'UPDATE') OR has_table_privilege('audit_events', 'DELETE')
     OR has_table_privilege('audit_events', 'TRUNCATE')
     OR has_table_privilege('audit_personal', 'UPDATE') OR has_table_privilege('audit_personal', 'DELETE')
     OR has_table_privilege('audit_personal', 'TRUNCATE')
+    OR has_table_privilege('audit_checkpoints', 'UPDATE') OR has_table_privilege('audit_checkpoints', 'DELETE')
+    OR has_table_privilege('audit_checkpoints', 'TRUNCATE')
+    OR has_table_privilege('audit_retention', 'INSERT') OR has_table_privilege('audit_retention', 'UPDATE')
+    OR has_table_privilege('audit_retention', 'DELETE') OR has_table_privilege('audit_retention', 'TRUNCATE')
     OR (SELECT r.rolsuper FROM pg_catalog.pg_roles r WHERE r.rolname = current_user)
     OR pg_has_role(current_user, (SELECT c.relowner FROM pg_catalog.pg_class c WHERE c.oid = 'audit_events'::regclass), 'MEMBER')
 )::boolean AS protected;
+
+-- name: InsertAuditCheckpoint :exec
+-- Another worker may have signed the same seq first: its checkpoint stays.
+INSERT INTO audit_checkpoints (seq, hash, at, key, signature) VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (seq) DO NOTHING;
+
+-- name: AuditCheckpointAt :one
+SELECT * FROM audit_checkpoints WHERE seq = $1;
+
+-- name: LatestAuditCheckpoint :one
+SELECT * FROM audit_checkpoints ORDER BY seq DESC LIMIT 1;
+
+-- name: AuditCheckpoints :many
+-- Every checkpoint kept, in seq order: a few thousand a year.
+SELECT * FROM audit_checkpoints ORDER BY seq;
+
+-- name: PruneAudit :one
+-- Deletes what the retention lets go, up to a checkpoint (audit_prune, the schema owner's).
+-- checkpoint is 0 when nothing was deleted.
+SELECT coalesce(p.checkpoint, 0)::bigint AS checkpoint, p.events::bigint AS events FROM audit_prune() p;
+
+-- name: AuditRetention :one
+SELECT retention FROM audit_retention;
+
+-- name: LastAuditVerification :one
+-- The outcome of the last verification of the chain, which the worker records.
+SELECT * FROM audit_events WHERE action = ANY ('{audit.verified,audit.broken}'::text[]) ORDER BY seq DESC LIMIT 1;

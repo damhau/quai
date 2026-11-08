@@ -71,9 +71,7 @@ changes, executor calls, configuration changes.
   `INSERT` on the audit tables, nothing more: no `UPDATE`, `DELETE` or `TRUNCATE`, and no change
   to the migrations' records ([open question 19](../plan/open-questions.md#still-open)). When the
   two are one role, `quai migrate` and the server warn, and the audit log page says the database
-  does not protect the log. Retention will delete old events through a `SECURITY DEFINER`
-  function of the owner, only those older than the retention and covered by a signed checkpoint
-  (P4-02).
+  does not protect the log.
 - **Personal data** (people's names and emails, IP addresses, reasons and comments) is in an event
   as a pseudonym, `pd:` and the SHA-256 of a random salt and the value; the salt and the value are
   in a separate table, `audit_personal`, that pseudonymization deletes from without breaking the
@@ -84,12 +82,41 @@ changes, executor calls, configuration changes.
   authenticated with the identity provider. An API token's events carry the person and the
   token's ID, without an authentication time. `actor.ip` is the address of the connection Quai
   received, a proxy's behind one ([open question 32](../plan/open-questions.md#still-open)).
-- Every hour (and at shutdown) Quai signs a checkpoint (latest `seq` and `hash`) with an Ed25519 key from the secret store. Checkpoints can also be committed to an audit Git repository, giving an external, timestamped anchor.
+- **Checkpoints.** Every hour and when it stops, the worker signs a checkpoint of the latest event,
+  when none covers it yet: `{"type": "checkpoint", "seq", "hash", "at", "key", "signature"}`,
+  the Ed25519 signature (base64) of the checkpoint's JCS without `signature`, `key` the SHA-256 of
+  the public key. The key is in the secret store (`audit.checkpoints.signingKey.ref`); verifying
+  needs only its public key, and the keys before a rotation stay valid through
+  `audit.checkpoints.previousKeys` ([open question 35](../plan/open-questions.md#still-open)).
+  Checkpoints are in `audit_checkpoints`, insert-only like the events, and committed to the audit
+  repository when the configuration names one (a connection with delivery mode `direct`), as
+  `checkpoints/YYYY/MM/DD/<seq>.json`: an external, timestamped anchor that a restored or
+  rewritten database cannot change.
+- **Retention.** Events are kept `audit.retention`, a year by default. `quai migrate` stores it as
+  the schema's owner; the application role can read it, not change it. Every hour the worker
+  calls `audit_prune()`, a `SECURITY DEFINER` function of the owner with its own `search_path`,
+  which the application role may execute and nothing more: it deletes the events (and their
+  personal data) before the latest checkpoint older than the retention whose hash is its event's,
+  and the checkpoints before it, by the database's clock ([open questions 36 and
+  37](../plan/open-questions.md#still-open)). The worker records `audit.pruned` with the
+  checkpoint the chain now starts from. Without a checkpoint, nothing is pruned.
+- **Verification.** One check, offline and in the worker: each event's hash, each link, each
+  checkpoint's signature and that its hash is its event's, and that no checkpoint, the audit
+  repository's included, is beyond the last event (events lost, as when a database is restored
+  from an older backup). A log may start at a checkpoint only when an `audit.pruned` event names
+  it. The first `seq` that fails is named, with why. `quai audit export` (or
+  `GET /api/v1/audit/export`, for auditors and platform admins) writes the log in JSON lines,
+  its checkpoints then its events, pseudonyms and no clear values; `quai audit verify` checks it
+  with the public keys and, with `--anchors`, a checkout of the audit repository. The worker
+  verifies the log every day with the latest checkpoint of the audit repository, records
+  `audit.verified` or `audit.broken`, counts it in `quai.audit.verifications`, logs an error when
+  it breaks, and the audit log page shows the last outcome and checkpoint ([open question
+  31](../plan/open-questions.md#still-open)). What to do then is the operations guide's
+  [runbook](../operations/deployment-and-operations.md#when-the-chain-does-not-verify).
 - Export: syslog (RFC 5424, optionally CEF), OpenTelemetry logs, Splunk HEC, or a webhook. Export is at-least-once with a cursor, so the SIEM can detect gaps.
-- `quai audit verify` checks the chain and checkpoints offline.
 
-What is recorded, by action (P4-01; break-glass, executor calls and configuration changes come with
-their features):
+What is recorded, by action (P4-01, P4-02; break-glass, executor calls and configuration changes
+come with their features):
 
 | Action | Actor | When |
 | --- | --- | --- |
@@ -105,8 +132,11 @@ their features):
 | `repository.created`, `repository.updated`, `repository.deleted` | the person, or Quai for the configuration's connections | a repository connection changed (its document's SHA-256 and generation) |
 | `repository.enforcement_lost`, `repository.enforcement_restored` | Quai | the platform stops or starts enforcing `quai/approval` |
 | `definitions.commit` | Quai | the first definitions of a repository, and each commit that changes them: the commit, its author (a pseudonym), the definitions it changes |
+| `audit.verified`, `audit.broken` | Quai | the daily verification: the events and checkpoints verified, and where and why it broke |
+| `audit.pruned` | Quai | events pruned: how many, and the checkpoint the chain starts from |
 
-Auditors and platform admins read it (`GET /api/v1/audit`, the audit log page under Admin):
+Auditors and platform admins read it (`GET /api/v1/audit`, the audit log page under Admin, which
+also shows the latest checkpoint and verification, and exports the log):
 newest first, a page at a time with a `before` cursor, filtered by action (or its prefix, such as
 `request`), actor (a person's name, a repository for its runner, `quai`), object (a request's ID,
 a resource, a repository, a token's ID or a person's name), object type and time. An API token
@@ -130,7 +160,7 @@ sample, and what Quai attaches to ITSM change requests.
 
 - Personal data is limited to identity attributes from the IdP, reasons and comments people write, and IP addresses in the audit log.
 - Self-hosted by default: data stays in the customer's environment. No telemetry leaves the installation unless an admin enables it.
-- Retention: requests and audit events are kept for a configurable period, **default 1 year**. Customers with regulatory duties set longer periods (financial institutions often need 10 years); the export to their SIEM or archive is the long-term record. Signed checkpoints are kept for the whole retention period so a pruned chain can still be verified from the last kept checkpoint. Personal data in old records can be pseudonymized without breaking the hash chain by hashing it into the event at write time and storing the clear values in a separate, deletable table.
+- Retention: requests and audit events are kept for a configurable period, **default 1 year** (`audit.retention` for audit events; [retention](#audit-log)). Customers with regulatory duties set longer periods (financial institutions often need 10 years); the export to their SIEM or archive is the long-term record. Signed checkpoints are kept for the whole retention period so a pruned chain can still be verified from the last kept checkpoint. Personal data in old records can be pseudonymized without breaking the hash chain by hashing it into the event at write time and storing the clear values in a separate, deletable table: pseudonymizing a person deletes their clear values and leaves the hashes ([open question 39](../plan/open-questions.md#still-open)).
 
 ## Compliance mapping
 

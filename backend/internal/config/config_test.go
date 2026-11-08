@@ -78,6 +78,12 @@ func TestInvalid(t *testing.T) {
 		"level":            {env: map[string]string{"QUAI_LOG_LEVEL": "loud"}, want: `log.level must be debug, info, warn or error, not "loud"`},
 		"format":           {env: map[string]string{"QUAI_LOG_FORMAT": "xml"}, want: `log.format must be json or text`},
 		"endpoint":         {env: map[string]string{"QUAI_TELEMETRY_OTLP_ENDPOINT": "collector:4318"}, want: "telemetry.otlpEndpoint must be an http or https URL"},
+		"retention":        {env: map[string]string{"QUAI_AUDIT_RETENTION": "1h"}, want: "audit.retention must be at least 24h0m0s"},
+		"retention format": {file: "audit: { retention: 1y }\n", want: "configuration "},
+		"checkpoint key":   {env: map[string]string{"QUAI_AUDIT_CHECKPOINTS_SIGNING_KEY_REF": "/etc/key.pem"}, want: "audit.checkpoints.signingKey.ref must be a secret reference"},
+		"audit repository": {env: map[string]string{"QUAI_AUDIT_CHECKPOINTS_REPOSITORY": "audit"}, want: "audit.checkpoints.repository needs audit.checkpoints.signingKey.ref"},
+		"previous key":     {file: "audit: { checkpoints: { previousKeys: [\"not a key\"] } }\n", want: "audit.checkpoints.previousKeys[0]: must be one PEM"},
+		"previous RSA key": {file: "audit: { checkpoints: { previousKeys: [\"" + strings.ReplaceAll(rsaPublic, "\n", "\\n") + "\"] } }\n", want: "audit.checkpoints.previousKeys[0]: is not an Ed25519 key"},
 	} {
 		p := ""
 		if tt.file != "" {
@@ -89,6 +95,33 @@ func TestInvalid(t *testing.T) {
 	}
 	if _, err := Load(filepath.Join(t.TempDir(), "missing.yaml"), env(nil)); err == nil {
 		t.Error("a missing file was accepted")
+	}
+}
+
+// rsaPublic is a public key of another algorithm than Ed25519.
+const rsaPublic = `-----BEGIN PUBLIC KEY-----
+MFwwDQYJKoZIhvcNAQEBBQADSwAwSAJBAL3n9C2gS1BqJ2OAuWGfmfQ6t0TlCqRm
+o7m1z0yOg3xK3Wb1aiwxV0sLhJ2wB0Ilm7v3hSvwj5Fnt2EeE0lJm0kCAwEAAQ==
+-----END PUBLIC KEY-----
+`
+
+// TestAudit: the audit log's retention and checkpoints.
+func TestAudit(t *testing.T) {
+	c, err := Load("", env(nil))
+	if err != nil || c.Audit.Retention != 8760*time.Hour || c.Audit.Checkpoints.SigningKey.Ref != "" {
+		t.Errorf("default audit = %+v, %v", c.Audit, err)
+	}
+	pub := "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAGb9ECWmEzf6FQbrBZ9w7lshQhqowtrbLDFw4rXAxZuE=\n-----END PUBLIC KEY-----\n"
+	p := write(t, "audit:\n  retention: 87600h\n  checkpoints:\n    signingKey: { ref: \"k8s:quai/audit-key#private.pem\" }\n    previousKeys:\n      - |\n"+
+		"        "+strings.ReplaceAll(strings.TrimSuffix(pub, "\n"), "\n", "\n        ")+"\n    repository: audit\n")
+	c, err = Load(p, env(map[string]string{"QUAI_AUDIT_CHECKPOINTS_REPOSITORY": "audit-log"}))
+	if err != nil || c.Audit.Retention != 87600*time.Hour || c.Audit.Checkpoints.SigningKey.Ref != "k8s:quai/audit-key#private.pem" ||
+		len(c.Audit.Checkpoints.PreviousKeys) != 1 || c.Audit.Checkpoints.PreviousKeys[0] != pub || c.Audit.Checkpoints.Repository != "audit-log" {
+		t.Errorf("audit = %+v, %v", c.Audit, err)
+	}
+	c, err = Load("", env(map[string]string{"QUAI_AUDIT_RETENTION": "720h", "QUAI_AUDIT_CHECKPOINTS_SIGNING_KEY_REF": "env:QUAI_AUDIT_KEY"}))
+	if err != nil || c.Audit.Retention != 720*time.Hour || c.Audit.Checkpoints.SigningKey.Ref != "env:QUAI_AUDIT_KEY" {
+		t.Errorf("audit from the environment = %+v, %v", c.Audit, err)
 	}
 }
 

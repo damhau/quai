@@ -1,7 +1,10 @@
 package api
 
 import (
+	"bytes"
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"encoding/json"
 	"io"
 	"maps"
@@ -17,6 +20,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/damhau/quai/backend/internal/audit"
+	"github.com/damhau/quai/backend/internal/audit/keeper"
 	"github.com/damhau/quai/backend/internal/config"
 	"github.com/damhau/quai/backend/internal/repositories"
 	"github.com/damhau/quai/backend/internal/store/db"
@@ -280,8 +284,8 @@ func TestAuditLog(t *testing.T) {
 	}
 
 	// The chain holds.
-	if n, broken, err := audit.Verify(ctx, h.store.Queries); err != nil || broken != nil || n < 30 {
-		t.Errorf("verify = %d, %v, %v", n, broken, err)
+	if res, err := audit.Verify(ctx, h.store.Pool, nil); err != nil || res.Broken != nil || res.Events < 30 {
+		t.Errorf("verify = %+v, %v", res, err)
 	}
 }
 
@@ -312,6 +316,87 @@ func TestAuditReaders(t *testing.T) {
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("a token reading the audit log = %d", resp.StatusCode)
+	}
+}
+
+// TestAuditExport: auditors and platform admins download the audit log, which verifies offline;
+// the audit log page shows the latest checkpoint and verification.
+func TestAuditExport(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	dir := t.TempDir()
+	bare, _ := localRemote(t, dir)
+	h := start(t, dir, "connector: generic\n  url: "+bare, repositories.Options{}, func(c *config.Config) {
+		c.Auth.Dev.Users = append(c.Auth.Dev.Users, config.DevUser{Name: "dana", Groups: []string{"auditors"}})
+		c.Auth.Roles = append(c.Auth.Roles, config.RoleMapping{Group: "auditors", Role: "auditor"})
+	})
+	if page := h.auditLog("limit=1"); page.Checkpoint != nil || page.Verification != nil {
+		t.Errorf("before any checkpoint or verification: %+v, %+v", page.Checkpoint, page.Verification)
+	}
+	pub, key, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keys := audit.Keys{}
+	keys.Add(pub)
+	c, _, err := audit.SignLatest(ctx, h.store.Queries, key, time.Now())
+	if err != nil || c.Seq == 0 {
+		t.Fatalf("checkpoint = %+v, %v", c, err)
+	}
+	res, err := keeper.New(keeper.Options{Store: h.store}).Verify(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := h.auditLog("limit=1")
+	if cp := page.Checkpoint; cp == nil || cp.Seq != c.Seq || cp.Key != c.Key || cp.At != c.At {
+		t.Errorf("checkpoint = %+v, want %+v", cp, c)
+	}
+	// Without the key, the keeper finds the checkpoint it cannot verify.
+	if v := page.Verification; v == nil || v.Verified || v.Broken != c.Seq || !strings.Contains(v.Reason, "which was not given") || v.Seq <= c.Seq {
+		t.Errorf("verification = %+v (%+v)", v, res)
+	}
+
+	for name, want := range map[string]int{"dana": http.StatusOK, "alice": http.StatusOK, "bob": http.StatusForbidden, "": http.StatusUnauthorized} {
+		u := h.as(name)
+		req, _ := http.NewRequest(http.MethodGet, h.srv.URL+Prefix+"/audit/export", nil)
+		resp, err := u.c.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if resp.StatusCode != want {
+			t.Errorf("%q exporting the audit log = %d %s", name, resp.StatusCode, body)
+			continue
+		}
+		if want != http.StatusOK {
+			continue
+		}
+		if ct, cd := resp.Header.Get("Content-Type"), resp.Header.Get("Content-Disposition"); ct != "application/jsonl" || !strings.HasPrefix(cd, "attachment;") {
+			t.Errorf("export headers: %q, %q", ct, cd)
+		}
+		v := audit.NewVerifier(keys)
+		if err := audit.ReadExport(bytes.NewReader(body), v); err != nil {
+			t.Fatal(err)
+		}
+		if res := v.Result(); res.Broken != nil || res.First != 1 || res.Checkpoints != 1 || res.Events < int64(c.Seq) {
+			t.Errorf("the export verifies: %+v, %v", res, res.Broken)
+		}
+		if strings.Contains(string(body), "alice") {
+			t.Error("the export holds a clear personal value")
+		}
+	}
+	var tok CreatedTokenOutput
+	h.as("alice").do(http.MethodPost, Prefix+"/tokens", map[string]any{"name": "read", "scopes": []string{"requests:read"}}, &tok.Body)
+	req, _ := http.NewRequest(http.MethodGet, h.srv.URL+Prefix+"/audit/export", nil)
+	req.Header.Set("Authorization", "Bearer "+tok.Body.Token)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("a token exporting the audit log = %d", resp.StatusCode)
 	}
 }
 

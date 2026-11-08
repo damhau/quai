@@ -132,8 +132,8 @@ func TestRecord(t *testing.T) {
 		t.Errorf("details = %+v, values %v", details, values)
 	}
 
-	if n, broken, err := audit.Verify(ctx, s.Queries); err != nil || broken != nil || n != 3 {
-		t.Errorf("verify = %d, %v, %v", n, broken, err)
+	if res, err := audit.Verify(ctx, s.Pool, nil); err != nil || res.Broken != nil || res.Events != 3 {
+		t.Errorf("verify = %+v, %v", res, err)
 	}
 }
 
@@ -208,8 +208,8 @@ func TestConcurrentWriters(t *testing.T) {
 			t.Fatalf("event %d does not chain on %d", r.Seq, rows[i-1].Seq)
 		}
 	}
-	if n, broken, err := audit.Verify(ctx, s.Queries); err != nil || broken != nil || n != int64(want) {
-		t.Errorf("verify = %d, %v, %v", n, broken, err)
+	if res, err := audit.Verify(ctx, s.Pool, nil); err != nil || res.Broken != nil || res.Events != int64(want) {
+		t.Errorf("verify = %+v, %v", res, err)
 	}
 }
 
@@ -239,8 +239,8 @@ func TestInsertOnly(t *testing.T) {
 	if p, err := s.AuditProtected(ctx); err != nil || !p.Bool {
 		t.Errorf("protected as the application role = %v, %v", p, err)
 	}
-	if n, broken, err := audit.Verify(ctx, s.Queries); err != nil || broken != nil || n != 4 {
-		t.Errorf("verify = %d, %v, %v", n, broken, err)
+	if res, err := audit.Verify(ctx, s.Pool, nil); err != nil || res.Broken != nil || res.Events != 4 {
+		t.Errorf("verify = %+v, %v", res, err)
 	}
 
 	// The owner can change a row, and the chain shows where.
@@ -265,9 +265,9 @@ func TestInsertOnly(t *testing.T) {
 		if _, err := owner.Exec(ctx, c.stmt); err != nil {
 			t.Fatal(err)
 		}
-		_, broken, err := audit.Verify(ctx, s.Queries)
-		if err != nil || broken == nil || broken.Seq != c.seq {
-			t.Errorf("after %s: %v, %v", c.stmt, broken, err)
+		res, err := audit.Verify(ctx, s.Pool, nil)
+		if err != nil || res.Broken == nil || res.Broken.Seq != c.seq {
+			t.Errorf("after %s: %v, %v", c.stmt, res.Broken, err)
 		}
 	}
 }

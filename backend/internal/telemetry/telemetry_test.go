@@ -101,6 +101,10 @@ func TestMetrics(t *testing.T) {
 	WebhookProcessed(ctx, "infra-live", 200*time.Millisecond)
 	Delivered(ctx, "infra-live", "pull-request", "applied")
 	Delivered(ctx, "infra-live", "pull-request", "bypassed")
+	AuditCheckpointed(ctx, nil)
+	AuditVerified(ctx, "ok")
+	AuditVerified(ctx, "broken")
+	AuditVerified(ctx, "error")
 	var rm metricdata.ResourceMetrics
 	if err := reader.Collect(ctx, &rm); err != nil {
 		t.Fatal(err)
@@ -120,7 +124,7 @@ func TestMetrics(t *testing.T) {
 			}
 		}
 	}
-	want := map[string]int{"quai.git.fetch.duration": 2, "quai.webhook.lag": 1, "quai.deliveries": 2}
+	want := map[string]int{"quai.git.fetch.duration": 2, "quai.webhook.lag": 1, "quai.deliveries": 2, "quai.audit.checkpoints": 1, "quai.audit.verifications": 3}
 	if !maps.Equal(got, want) {
 		t.Errorf("metrics = %v, want %v", got, want)
 	}

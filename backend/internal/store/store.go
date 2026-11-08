@@ -8,8 +8,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
@@ -89,15 +91,21 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool) (int, error) {
 }
 
 // AuditTables are the tables of the audit log: the application role may only read and append.
-var AuditTables = []string{"audit_events", "audit_personal"}
+var AuditTables = []string{"audit_events", "audit_personal", "audit_checkpoints"}
 
-// readOnlyTables are the migrations' bookkeeping, which only quai migrate writes.
-var readOnlyTables = []string{"goose_db_version", "river_migration"}
+// readOnlyTables are the migrations' bookkeeping and the audit log's retention, which only quai
+// migrate writes.
+var readOnlyTables = []string{"goose_db_version", "river_migration", "audit_retention"}
+
+// auditFunctions are the schema owner's functions the application role may execute: pruning the
+// audit log as the retention allows (open question 19).
+var auditFunctions = []string{"audit_prune()"}
 
 // Grant gives the application role what the server and the worker need, from the schema owner's
 // connection pool, after the migrations (open question 19): every table to read and write, but
-// the audit log's to read and append only, and the migrations' bookkeeping to read only. It
-// revokes the rest from the role, and the audit log from PUBLIC.
+// the audit log's to read and append only, the migrations' bookkeeping and the audit log's
+// retention to read only, and the pruning function to execute. It revokes the rest from the
+// role, and the audit log from PUBLIC.
 func Grant(ctx context.Context, pool *pgxpool.Pool, role string) error {
 	r := pgx.Identifier{role}.Sanitize()
 	var schema string
@@ -119,6 +127,9 @@ func Grant(ctx context.Context, pool *pgxpool.Pool, role string) error {
 			"REVOKE ALL ON "+pgx.Identifier{t}.Sanitize()+" FROM "+r,
 			"GRANT SELECT, INSERT ON "+pgx.Identifier{t}.Sanitize()+" TO "+r)
 	}
+	for _, f := range auditFunctions {
+		stmts = append(stmts, "REVOKE ALL ON FUNCTION "+f+" FROM PUBLIC", "GRANT EXECUTE ON FUNCTION "+f+" TO "+r)
+	}
 	tx, err := pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("grants: %w", err)
@@ -131,6 +142,23 @@ func Grant(ctx context.Context, pool *pgxpool.Pool, role string) error {
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("grants: %w", err)
+	}
+	return nil
+}
+
+// SetAuditRetention sets how long audit events are kept, from the schema owner's connection pool
+// (quai migrate), unless it is set already: the application role may only read it, and pruning
+// deletes nothing younger.
+func SetAuditRetention(ctx context.Context, pool *pgxpool.Pool, d time.Duration) error {
+	if d <= 0 {
+		return fmt.Errorf("audit retention: %s is not a duration", d)
+	}
+	want := pgtype.Interval{Microseconds: d.Microseconds(), Valid: true}
+	if got, err := db.New(pool).AuditRetention(ctx); err == nil && got == want {
+		return nil
+	}
+	if _, err := pool.Exec(ctx, "UPDATE audit_retention SET retention = $1", want); err != nil {
+		return fmt.Errorf("audit retention: %w", err)
 	}
 	return nil
 }

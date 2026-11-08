@@ -56,6 +56,10 @@ single pod with both roles.
   | `network.caFile` | `QUAI_NETWORK_CA_FILE` | none: a PEM file of CA certificates trusted in addition to the system's (an internal CA), by Git and every HTTPS call Quai makes |
   | (proxy) | `HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY` | none: the HTTP proxy for Git over HTTPS and every HTTP call; loopback addresses are never proxied |
   | `secrets.kubernetes.kubeconfig` | `QUAI_SECRETS_KUBECONFIG` | none: the cluster Quai runs in, or the default kubeconfig outside one. Where `k8s:namespace/name#key` references resolve; `env:NAME` references read Quai's environment |
+  | `audit.retention` | `QUAI_AUDIT_RETENTION` | `8760h` (a year), at least `24h`. How long audit events are kept: `quai migrate` stores it, and the worker prunes older events up to a signed checkpoint ([retention](#retention-and-pruning)) |
+  | `audit.checkpoints.signingKey.ref` | `QUAI_AUDIT_CHECKPOINTS_SIGNING_KEY_REF` | none: no checkpoint is signed, so nothing is pruned and a rewritten chain goes unnoticed; the worker warns. A reference to an Ed25519 private key in PEM (`k8s:quai/quai-audit-key#private.pem`) the worker signs a checkpoint with every hour ([the checkpoint key](#the-checkpoint-key)) |
+  | `audit.checkpoints.previousKeys` | | none: the public keys (PEM) of the signing keys before a rotation, kept as long as the checkpoints they signed |
+  | `audit.checkpoints.repository` | `QUAI_AUDIT_CHECKPOINTS_REPOSITORY` | none: the name of a repository connection, with delivery mode `direct`, the worker commits each checkpoint to ([the audit repository](#the-audit-repository)) |
   | `log.level` | `QUAI_LOG_LEVEL` | `info` (`debug`, `info`, `warn`, `error`) |
   | `log.format` | `QUAI_LOG_FORMAT` | `json` in production, `text` otherwise |
   | `telemetry.otlpEndpoint` | `QUAI_TELEMETRY_OTLP_ENDPOINT` | none: no traces are exported; traces go to `<url>/v1/traces` |
@@ -107,9 +111,11 @@ audit events ([audit log](../design/09-security-and-compliance.md#audit-log), [o
 - **The application role** (`database.url`) is what the server and the worker connect as. It
   needs only `LOGIN`: after migrating, `quai migrate` grants it the schema's usage, `SELECT`,
   `INSERT`, `UPDATE` and `DELETE` on the tables, `SELECT` only on the migrations' records
-  (`goose_db_version`, `river_migration`), and `SELECT` and `INSERT` only on the audit tables
-  (`audit_events`, `audit_personal`). It prints `<role> may read and append the audit log, and not
-  change it`.
+  (`goose_db_version`, `river_migration`), `SELECT` and `INSERT` only on the audit tables
+  (`audit_events`, `audit_personal`, `audit_checkpoints`), `SELECT` only on the retention
+  (`audit_retention`), and `EXECUTE` on `audit_prune()`, the owner's function that prunes
+  ([retention](#retention-and-pruning)). It prints `<role> may read and append the audit log, and
+  not change it`.
 
 ```sql
 -- as an administrator, once
@@ -123,12 +129,150 @@ A new installation from a single role moves to two by creating the application r
 migrate` (the chart's upgrade does). Until then, `quai migrate` and the server log a warning, and
 the audit log page says the database does not protect it.
 
-**When the chain does not verify** (an alert, or a check by an auditor): the audit log's events
-are evidence. Do not repair or delete them. Find the first `seq` that breaks (an event changed,
-or missing after a deletion) and when, from the database's own logs and backups; check that the
-server and the worker connect as the application role (the server logs a warning at start
-otherwise) and who holds the owner's credentials; treat it as a security incident. The events
-before the break still verify, and so do those after it from the broken event's hash.
+### The audit log
+
+The worker keeps the audit log ([design](../design/09-security-and-compliance.md#audit-log)):
+every hour and when it stops, it signs a checkpoint of the latest event, commits it to the audit
+repository and prunes what the retention lets go; every day it verifies the chain.
+
+#### The checkpoint key
+
+Checkpoints are signed with an Ed25519 key the worker reads from the secret store
+(`audit.checkpoints.signingKey.ref`); verifying them needs only its public key. Generate it on a
+machine you trust, store the private key, and keep only the public key:
+
+```bash
+openssl genpkey -algorithm ed25519 -out audit-key.pem
+openssl pkey -in audit-key.pem -pubout -out audit-key.pub
+kubectl -n quai create secret generic quai-audit-key --from-file=private.pem=audit-key.pem
+shred -u audit-key.pem
+```
+
+```yaml
+audit:
+  checkpoints:
+    signingKey: { ref: "k8s:quai/quai-audit-key#private.pem" }
+```
+
+Add `quai-audit-key` to `secretStore.kubernetes.secretNames` when the list is set. Quai never logs
+the key and does not publish its public key: give `audit-key.pub` to the auditors, and keep it
+where they can check it without Quai, such as a reviewed commit of a person in the audit
+repository or the security team's records ([open question 35](../plan/open-questions.md#still-open)).
+A key from the server that the log is about would prove nothing to them. Each checkpoint names
+its key by the SHA-256 of the public key.
+
+**Rotating it** (a schedule of the security team's, or a key that may have leaked): generate a new
+key as above, in a new Secret; set `signingKey.ref` to it and add the old public key to
+`previousKeys`, then upgrade. Checkpoints signed before still verify, with the old key, in the
+worker and in `quai audit verify --key old.pub --key new.pub`. Keep the old public key as long as
+the retention keeps a checkpoint it signed. A leaked key lets whoever holds it sign checkpoints:
+with the application role, that prunes nothing the retention does not already let go; with the
+owner's credentials too, they could rewrite the chain and sign it, which only the audit
+repository's earlier checkpoints and the SIEM's export would show. Rotate a key that may have
+leaked at once.
+
+```yaml
+audit:
+  checkpoints:
+    signingKey: { ref: "k8s:quai/quai-audit-key-2027#private.pem" }
+    previousKeys:
+      - |
+        -----BEGIN PUBLIC KEY-----
+        MCowBQYDK2VwAyEA…
+        -----END PUBLIC KEY-----
+```
+
+#### The audit repository
+
+`audit.checkpoints.repository` names a repository connection the worker commits each new
+checkpoint to, as `checkpoints/YYYY/MM/DD/<seq>.json`: a copy outside the database, timestamped by
+the platform, that a restored or rewritten database cannot change. Connect a repository of its own
+with `delivery: { mode: direct }` and a credential that can push to its branch, and protect the
+branch against force pushes and deletion; the platform's history then dates each checkpoint.
+When the repository cannot be reached, the next hour commits the latest checkpoint. The daily verification reads
+the checkpoint of the highest `seq` in it; `quai audit verify --anchors` reads them all.
+
+#### Retention and pruning
+
+`audit.retention` (a year by default) is how long events are kept. `quai migrate` stores it in the
+database, as the schema's owner, so it takes effect at the next migration (the chart's upgrade),
+and the application role cannot shorten it. Every hour the worker calls `audit_prune()`: it
+deletes the events older than the retention before the latest checkpoint older than the
+retention whose hash is its event's, with their personal data and the checkpoints before it, and
+records an `audit.pruned` event. The kept checkpoint is where the chain starts from: verification
+accepts a log that starts at a signed checkpoint only when an `audit.pruned` event names it.
+Without a signing key, nothing is pruned. Longer periods (often 10 years for financial
+institutions) need nothing else than a longer retention; the SIEM's export is the long-term
+record.
+
+**Pseudonymizing a person** (a request to erase their personal data) deletes their clear values
+from `audit_personal`; their events keep the pseudonyms, and the chain still verifies. As the
+schema's owner, delete the rows whose value is their name, their emails and their addresses
+([open question 39](../plan/open-questions.md#still-open)):
+
+```sql
+DELETE FROM audit_personal WHERE value IN ('alice', 'alice@example.com');
+```
+
+The audit log page then shows "(erased)" where they were.
+
+#### Verifying the log
+
+The worker verifies the chain every day, from the database and the latest checkpoint in the audit
+repository: it records `audit.verified` or `audit.broken` in the log, counts it in
+`quai.audit.verifications` (`outcome`: `ok`, `broken`, `error`), logs an error when the chain
+breaks, and the audit log page shows the last outcome, a banner when it broke. Alert on an outcome
+other than `ok`, and on no `ok` for more than 25 hours.
+
+Auditors verify it offline, with nothing from Quai but an export of the log:
+
+```bash
+quai audit export --config quai.yaml -o audit.jsonl   # as database.url; or the Export button of the audit log page (GET /api/v1/audit/export)
+git clone <audit repository> audit-checkpoints
+quai audit verify --key audit-key.pub --anchors audit-checkpoints audit.jsonl
+```
+
+The export holds the checkpoints and the events, with personal data as pseudonyms. `quai audit
+verify` checks each event's hash, each link to the event before, each checkpoint's signature and
+that its hash is its event's, and the audit repository's checkpoints too: one beyond the export's
+last event means events were lost. It prints what it verified, or names the first `seq` where the
+log fails and why, and exits with status 1.
+
+#### When the chain does not verify
+
+An alert, a banner on the audit log page, or an auditor's check. The audit log's events are
+evidence: do not repair or delete them, and change nothing in the database or the audit
+repository until the cause is known.
+
+1. **Keep the evidence**: export the log now (`quai audit export -o`), and clone the audit
+   repository.
+2. **Reproduce it offline** with every public key, old ones too: `quai audit verify --key …
+   --anchors <clone> audit.jsonl`. It names the first `seq` that fails and why.
+3. **Read the reason**:
+
+   | Reason | What happened |
+   | --- | --- |
+   | `signed with key …, which was not given` | A key rotated without its public key in `previousKeys` (or `--key`): add it. Not an incident, if the key is yours |
+   | `its hash is not the hash of its content` | The event was changed |
+   | `the event is missing or out of order`, `comes again or out of order`, `its prev is not the hash of the event before it` | An event was deleted, inserted or moved |
+   | `its hash is not the one the checkpoint signed` | The chain was rewritten after the checkpoint: changed events with their hashes recomputed |
+   | `its signature does not verify` | A checkpoint was forged or changed, in the database or the audit repository |
+   | `the log starts at the checkpoint at seq …, but no audit.pruned event…`, `the log starts at seq …, with no signed checkpoint of it` | The first events were deleted, not pruned |
+   | `the log ends at seq …, but a checkpoint … says it reached seq …` | The last events are gone: a database restored from a backup older than the checkpoint, or deleted |
+
+4. **Otherwise, treat it as a security incident**. Find when the log changed from the database's
+   own logs, its backups and the SIEM's export (which has the events as they were sent); check
+   that the server and the worker connect as the application role (the server logs a warning at
+   start otherwise) and who holds the owner's credentials and the checkpoint key. The events
+   before the break still verify, and so do those after it from the broken event's hash.
+
+**After a restore from backup**, the events between the backup and the restore are lost, and the
+audit repository's checkpoints after the backup say so: the daily verification fails until the
+log has grown past them and a new checkpoint is committed, and `quai audit verify` with the whole
+repository keeps failing there.
+That is the record of the restore: write it in the incident report, with the SIEM's copy of the
+lost events, and verify the log since then with the checkpoints after the restore (`--anchors`
+naming their files).
 
 ### Runners
 
@@ -261,7 +405,9 @@ snoozed and retried. Different repositories proceed in parallel.
   - job queue depth, job latency and failures by kind;
   - `git` operation duration and failures by repository;
   - webhook lag and last delivery per repository;
-  - credential days-to-expiry; repositories without enforced branch protection.
+  - credential days-to-expiry; repositories without enforced branch protection;
+  - audit checkpoints signed (`quai.audit.checkpoints`, by outcome) and verifications of the audit
+    log (`quai.audit.verifications`: `ok`, `broken`, `error`).
 - **Dashboards and alerts** shipped with the chart: no webhook from a repository for 1 h while pushes happen, enforcement missing, credential expiring within 14 days, job failure rate above threshold, audit export lagging.
 
 ## Backup and disaster recovery
@@ -269,7 +415,7 @@ snoozed and retried. Different repositories proceed in parallel.
 | Data | Backup | Recovery |
 | --- | --- | --- |
 | PostgreSQL | Continuous WAL archiving and daily base backups (CloudNativePG / pgBackRest) to object storage | Point-in-time restore |
-| Audit log | Also exported continuously to the SIEM; signed checkpoints | Verify with `quai audit verify` |
+| Audit log | Also exported continuously to the SIEM; signed checkpoints, committed to the audit repository | Verify with `quai audit verify` ([after a restore](#when-the-chain-does-not-verify)) |
 | Git mirrors | None needed | Re-clone |
 | Desired state | Lives in customer Git | — |
 
@@ -289,5 +435,5 @@ before GA and twice a year.
 Shipped with the docs, one per alert: webhook silence, enforcement missing,
 credential expired, stuck request, stale request storm after a large base
 change, job queue backlog, audit chain verification failure (the first is in
-[database roles](#database-roles)), restore from backup, rotating the
-commit-signing key, break-glass review.
+[the audit log](#when-the-chain-does-not-verify)), restore from backup, rotating the
+commit-signing key and [the checkpoint key](#the-checkpoint-key), break-glass review.

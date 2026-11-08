@@ -3,13 +3,17 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/damhau/quai/backend/internal/audit"
+	"github.com/damhau/quai/backend/internal/audit/keeper"
 	"github.com/damhau/quai/backend/internal/authz"
 	"github.com/damhau/quai/backend/internal/store"
 	"github.com/damhau/quai/backend/internal/store/db"
@@ -66,9 +70,60 @@ type AuditPageView struct {
 	// Protected says whether the database keeps Quai from changing or deleting events: false when
 	// the server connects as the schema's owner (open question 19).
 	Protected bool `json:"protected"`
+	// Checkpoint is the latest signed checkpoint; absent before the first, or without a key.
+	Checkpoint *AuditCheckpointView `json:"checkpoint,omitempty"`
+	// Verification is the outcome of the worker's last daily verification; absent before the first.
+	Verification *AuditVerificationView `json:"verification,omitempty"`
 }
 
-func registerAudit(a huma.API, s *store.Store) {
+// AuditCheckpointView is a signed checkpoint of the audit log: the event it covers.
+type AuditCheckpointView struct {
+	Seq int64  `json:"seq"`
+	At  string `json:"at"`
+	Key string `json:"key" doc:"The ID of the public key that verifies it: the SHA-256 of its 32 bytes, in hex"`
+}
+
+// AuditVerificationView is the outcome of a verification of the audit log, recorded as the
+// event at seq.
+type AuditVerificationView struct {
+	Seq      int64  `json:"seq"`
+	At       string `json:"at"`
+	Verified bool   `json:"verified" doc:"Whether the chain, its checkpoints and the audit repository's latest checkpoint held"`
+	Events   int64  `json:"events" doc:"How many events held"`
+	Broken   int64  `json:"broken,omitempty" doc:"The first seq where the log fails"`
+	Reason   string `json:"reason,omitempty" doc:"Why it fails there"`
+}
+
+// auditState adds the latest checkpoint and verification to a page.
+func auditState(ctx context.Context, s *store.Store, page *AuditPageView) error {
+	if c, err := s.LatestAuditCheckpoint(ctx); err == nil {
+		page.Checkpoint = &AuditCheckpointView{Seq: c.Seq, At: audit.Time(c.At.Time), Key: c.Key}
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return err
+	}
+	ev, err := s.LastAuditVerification(ctx)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	var d struct {
+		Events int64  `json:"events"`
+		Seq    int64  `json:"seq"`
+		Reason string `json:"reason"`
+	}
+	if err := json.Unmarshal(ev.Details, &d); err != nil {
+		return err
+	}
+	v := &AuditVerificationView{Seq: ev.Seq, At: audit.Time(ev.At.Time), Verified: ev.Action == keeper.ActionVerified, Events: d.Events}
+	if !v.Verified {
+		v.Broken, v.Reason = d.Seq, d.Reason
+	}
+	page.Verification = v
+	return nil
+}
+
+func registerAudit(a huma.API, s *store.Store, log *slog.Logger) {
 	huma.Register(a, huma.Operation{
 		OperationID: "list-audit-events", Method: http.MethodGet, Path: Prefix + "/audit",
 		Summary: "Read the audit log (auditors and platform admins)", Tags: []string{"Audit"},
@@ -125,6 +180,39 @@ func registerAudit(a huma.API, s *store.Store) {
 			return nil, err
 		}
 		page.Protected = protected.Bool
+		if err := auditState(ctx, s, &page); err != nil {
+			return nil, err
+		}
 		return &out[AuditPageView]{Body: page}, nil
 	})
+
+	huma.Register(a, huma.Operation{
+		OperationID: "export-audit-log", Method: http.MethodGet, Path: Prefix + "/audit/export",
+		Summary: "Export the audit log, to verify it offline with quai audit verify (auditors and platform admins)",
+		Description: "The log as it is at one moment, in JSON lines: its signed checkpoints, then its events in seq " +
+			"order, with personal data as pseudonyms (docs/design/09-security-and-compliance.md#audit-log).",
+		Tags: []string{"Audit"},
+		Responses: map[string]*huma.Response{"200": {
+			Description: "JSON lines: checkpoints, then events",
+			Content:     map[string]*huma.MediaType{auditExportType: {Schema: &huma.Schema{Type: "string"}}},
+		}},
+	}, func(ctx context.Context, _ *struct{}) (*huma.StreamResponse, error) {
+		if _, err := authorize(ctx, authz.ReadAudit, authz.Object{}); err != nil {
+			return nil, err
+		}
+		return &huma.StreamResponse{Body: func(hc huma.Context) {
+			hc.SetHeader("Content-Type", auditExportType)
+			hc.SetHeader("Content-Disposition", `attachment; filename="quai-audit.jsonl"`)
+			hc.SetHeader("Cache-Control", "no-store")
+			hc.SetStatus(http.StatusOK)
+			if _, err := audit.Export(hc.Context(), s.Pool, hc.BodyWriter()); err != nil {
+				// The status is sent: the export stops short, which verifying it shows when a line is
+				// cut or a checkpoint is beyond its last event, and the log says why.
+				log.Error("audit export", slog.Any("error", err))
+			}
+		}}, nil
+	})
 }
+
+// auditExportType is the media type of an export of the audit log.
+const auditExportType = "application/jsonl"

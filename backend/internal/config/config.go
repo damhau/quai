@@ -5,6 +5,9 @@ package config
 
 import (
 	"bytes"
+	"crypto/ed25519"
+	"crypto/x509"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
@@ -39,6 +42,7 @@ type Config struct {
 	Secrets      Secrets      `yaml:"secrets"`
 	Network      Network      `yaml:"network"`
 	Webhooks     Webhooks     `yaml:"webhooks"`
+	Audit        Audit        `yaml:"audit"`
 	Log          Log          `yaml:"log"`
 	Telemetry    Telemetry    `yaml:"telemetry"`
 }
@@ -100,6 +104,34 @@ type Webhooks struct {
 	// webhooks, run reports and /healthz), to expose it to the platforms alone.
 	Host string `yaml:"host"`
 }
+
+// Audit configures the audit log (docs/design/09-security-and-compliance.md#audit-log).
+type Audit struct {
+	// Retention is how long events are kept, 8760h (a year) by default: quai migrate sets it in
+	// the database, and the worker prunes older events, those before a signed checkpoint.
+	Retention time.Duration `yaml:"retention"`
+	// Checkpoints configures the signed checkpoints the worker writes every hour and at shutdown.
+	Checkpoints AuditCheckpoints `yaml:"checkpoints"`
+}
+
+// AuditCheckpoints configures the audit log's checkpoints.
+type AuditCheckpoints struct {
+	// SigningKey names the Ed25519 private key the worker signs checkpoints with (PEM, PKCS #8),
+	// in a secret store (k8s:quai/audit-key#private.pem, env:NAME); none: no checkpoints, so
+	// nothing is pruned and verification cannot tell a rewritten chain.
+	SigningKey struct {
+		Ref string `yaml:"ref"`
+	} `yaml:"signingKey"`
+	// PreviousKeys are the public keys (PEM) of the signing keys before a rotation: checkpoints
+	// they signed still verify.
+	PreviousKeys []string `yaml:"previousKeys"`
+	// Repository names the repository connection each checkpoint is committed to, an external,
+	// timestamped anchor, with delivery mode direct; none: checkpoints stay in the database.
+	Repository string `yaml:"repository"`
+}
+
+// MinAuditRetention is the shortest retention: a day, the period of the chain's verification.
+const MinAuditRetention = 24 * time.Hour
 
 // Network configures outgoing connections: Git, platform APIs, the identity provider, traces.
 // The proxy comes from the standard environment variables (HTTPS_PROXY, HTTP_PROXY, NO_PROXY).
@@ -214,6 +246,12 @@ var variables = []struct {
 	{"QUAI_NETWORK_CA_FILE", func(c *Config, v string) error { c.Network.CAFile = v; return nil }},
 	{"QUAI_SERVER_PUBLIC_URL", func(c *Config, v string) error { c.Server.PublicURL = v; return nil }},
 	{"QUAI_WEBHOOKS_HOST", func(c *Config, v string) error { c.Webhooks.Host = v; return nil }},
+	{"QUAI_AUDIT_RETENTION", func(c *Config, v string) (err error) {
+		c.Audit.Retention, err = time.ParseDuration(v)
+		return err
+	}},
+	{"QUAI_AUDIT_CHECKPOINTS_SIGNING_KEY_REF", func(c *Config, v string) error { c.Audit.Checkpoints.SigningKey.Ref = v; return nil }},
+	{"QUAI_AUDIT_CHECKPOINTS_REPOSITORY", func(c *Config, v string) error { c.Audit.Checkpoints.Repository = v; return nil }},
 }
 
 // Load reads the configuration file at path, or at QUAI_CONFIG when path is empty, applies the
@@ -272,6 +310,9 @@ func (c *Config) defaults() {
 	if c.Telemetry.ServiceName == "" {
 		c.Telemetry.ServiceName = "quai"
 	}
+	if c.Audit.Retention == 0 {
+		c.Audit.Retention = 365 * 24 * time.Hour
+	}
 	if c.Git.Committer.Name == "" {
 		c.Git.Committer = Committer{Name: "Quai", Email: "quai@localhost"}
 	}
@@ -320,6 +361,7 @@ func (c *Config) validate() error {
 	if ref := c.Git.SigningKey.Ref; ref != "" && !signingRefRe.MatchString(ref) {
 		errs = append(errs, fmt.Errorf("git.signingKey.ref must be a secret reference such as k8s:namespace/name#key or env:NAME, not %q", ref))
 	}
+	errs = append(errs, c.Audit.validate())
 	if c.Env != Development && c.Env != Production {
 		errs = append(errs, fmt.Errorf("env must be %s or %s, not %q", Development, Production, c.Env))
 	}
@@ -353,6 +395,42 @@ func (c *Config) validate() error {
 		}
 	}
 	return errors.Join(errs...)
+}
+
+func (a *Audit) validate() error {
+	var errs []error
+	if a.Retention < MinAuditRetention {
+		errs = append(errs, fmt.Errorf("audit.retention must be at least %s, not %s", MinAuditRetention, a.Retention))
+	}
+	cp := a.Checkpoints
+	if ref := cp.SigningKey.Ref; ref != "" && !signingRefRe.MatchString(ref) {
+		errs = append(errs, fmt.Errorf("audit.checkpoints.signingKey.ref must be a secret reference such as k8s:namespace/name#key or env:NAME, not %q", ref))
+	}
+	if cp.Repository != "" && cp.SigningKey.Ref == "" {
+		errs = append(errs, errors.New("audit.checkpoints.repository needs audit.checkpoints.signingKey.ref: there is no checkpoint to commit without it"))
+	}
+	for i, k := range cp.PreviousKeys {
+		if err := ed25519PublicKey(k); err != nil {
+			errs = append(errs, fmt.Errorf("audit.checkpoints.previousKeys[%d]: %w", i, err))
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// ed25519PublicKey checks a PEM Ed25519 public key, as `openssl pkey -pubout` writes it.
+func ed25519PublicKey(s string) error {
+	block, rest := pem.Decode([]byte(s))
+	if block == nil || block.Type != "PUBLIC KEY" || len(bytes.TrimSpace(rest)) > 0 {
+		return errors.New("must be one PEM \"PUBLIC KEY\" (openssl pkey -pubout)")
+	}
+	k, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		return err
+	}
+	if _, ok := k.(ed25519.PublicKey); !ok {
+		return errors.New("is not an Ed25519 key")
+	}
+	return nil
 }
 
 // roles are the role names of docs/design/08; internal/authz defines them.

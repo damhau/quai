@@ -54,7 +54,8 @@ container image:
 | `quai lint` | Validate definitions and resource files in a repository's CI (see [resource types](02-resource-types-and-generators.md#testing-a-type)) |
 | `quai report` | Send a run report from a pipeline (see [runs](06-runs-status-and-drift.md)) |
 | `quai schema from-terraform` | Draft a JSON Schema from module variables |
-| `quai audit verify` | Verify the audit hash chain and checkpoints |
+| `quai audit export` | Write the audit log in JSON lines, its checkpoints then its events, to verify it offline ([audit log](09-security-and-compliance.md#audit-log)) |
+| `quai audit verify` | Verify an export of the audit log offline: the hash chain, the checkpoints' signatures with the public keys (`--key`), and the audit repository's checkpoints (`--anchors`); names the first `seq` that fails |
 
 ## AI agents (MCP)
 

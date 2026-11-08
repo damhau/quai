@@ -21,7 +21,8 @@ func newMigrateCmd() *cobra.Command {
 		Short: "Apply the database migrations",
 		Long: "Applies the migrations embedded in this binary that the database does not have yet, connected as the\n" +
 			"schema's owner (database.migrateURL, or database.url), then grants the application role database.url\n" +
-			"connects as what the server and the worker need: the audit log to read and append only.\n" +
+			"connects as what the server and the worker need: the audit log to read and append only. It sets the\n" +
+			"audit log's retention (audit.retention), which the application role cannot change.\n" +
 			"Run it before starting a new version (the Helm chart runs it as a pre-upgrade hook).",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -46,6 +47,10 @@ func newMigrateCmd() *cobra.Command {
 				return err
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "%d migrations applied\n", n)
+			if err := store.SetAuditRetention(cmd.Context(), s.Pool, cfg.Audit.Retention); err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "audit events are kept %s\n", cfg.Audit.Retention)
 			return grantApplication(cmd.Context(), s, cfg.Database.URL, cmd.OutOrStdout(), cmd.ErrOrStderr())
 		},
 	}

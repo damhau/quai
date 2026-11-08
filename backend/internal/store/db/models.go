@@ -25,6 +25,14 @@ type ApiToken struct {
 	RevokedAt  pgtype.Timestamptz
 }
 
+type AuditCheckpoint struct {
+	Seq       int64
+	Hash      string
+	At        pgtype.Timestamptz
+	Key       string
+	Signature string
+}
+
 type AuditEvent struct {
 	Seq     int64
 	At      pgtype.Timestamptz
@@ -41,6 +49,11 @@ type AuditPersonal struct {
 	Seq   int64
 	Salt  []byte
 	Value string
+}
+
+type AuditRetention struct {
+	OnlyRow   bool
+	Retention pgtype.Interval
 }
 
 type Change struct {

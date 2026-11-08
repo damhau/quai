@@ -12,6 +12,54 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const auditCheckpointAt = `-- name: AuditCheckpointAt :one
+SELECT seq, hash, at, key, signature FROM audit_checkpoints WHERE seq = $1
+`
+
+func (q *Queries) AuditCheckpointAt(ctx context.Context, seq int64) (AuditCheckpoint, error) {
+	row := q.db.QueryRow(ctx, auditCheckpointAt, seq)
+	var i AuditCheckpoint
+	err := row.Scan(
+		&i.Seq,
+		&i.Hash,
+		&i.At,
+		&i.Key,
+		&i.Signature,
+	)
+	return i, err
+}
+
+const auditCheckpoints = `-- name: AuditCheckpoints :many
+SELECT seq, hash, at, key, signature FROM audit_checkpoints ORDER BY seq
+`
+
+// Every checkpoint kept, in seq order: a few thousand a year.
+func (q *Queries) AuditCheckpoints(ctx context.Context) ([]AuditCheckpoint, error) {
+	rows, err := q.db.Query(ctx, auditCheckpoints)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AuditCheckpoint{}
+	for rows.Next() {
+		var i AuditCheckpoint
+		if err := rows.Scan(
+			&i.Seq,
+			&i.Hash,
+			&i.At,
+			&i.Key,
+			&i.Signature,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const auditClock = `-- name: AuditClock :one
 SELECT date_trunc('milliseconds', clock_timestamp())::timestamptz AS at
 `
@@ -101,18 +149,58 @@ SELECT NOT (
     OR has_table_privilege('audit_events', 'TRUNCATE')
     OR has_table_privilege('audit_personal', 'UPDATE') OR has_table_privilege('audit_personal', 'DELETE')
     OR has_table_privilege('audit_personal', 'TRUNCATE')
+    OR has_table_privilege('audit_checkpoints', 'UPDATE') OR has_table_privilege('audit_checkpoints', 'DELETE')
+    OR has_table_privilege('audit_checkpoints', 'TRUNCATE')
+    OR has_table_privilege('audit_retention', 'INSERT') OR has_table_privilege('audit_retention', 'UPDATE')
+    OR has_table_privilege('audit_retention', 'DELETE') OR has_table_privilege('audit_retention', 'TRUNCATE')
     OR (SELECT r.rolsuper FROM pg_catalog.pg_roles r WHERE r.rolname = current_user)
     OR pg_has_role(current_user, (SELECT c.relowner FROM pg_catalog.pg_class c WHERE c.oid = 'audit_events'::regclass), 'MEMBER')
 )::boolean AS protected
 `
 
 // Whether the role the server connects as can only read and append the audit log: it can neither
-// change nor delete events, nor become a role that could.
+// change nor delete events or checkpoints, nor change the retention, nor become a role that could.
 func (q *Queries) AuditProtected(ctx context.Context) (pgtype.Bool, error) {
 	row := q.db.QueryRow(ctx, auditProtected)
 	var protected pgtype.Bool
 	err := row.Scan(&protected)
 	return protected, err
+}
+
+const auditRetention = `-- name: AuditRetention :one
+SELECT retention FROM audit_retention
+`
+
+func (q *Queries) AuditRetention(ctx context.Context) (pgtype.Interval, error) {
+	row := q.db.QueryRow(ctx, auditRetention)
+	var retention pgtype.Interval
+	err := row.Scan(&retention)
+	return retention, err
+}
+
+const insertAuditCheckpoint = `-- name: InsertAuditCheckpoint :exec
+INSERT INTO audit_checkpoints (seq, hash, at, key, signature) VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (seq) DO NOTHING
+`
+
+type InsertAuditCheckpointParams struct {
+	Seq       int64
+	Hash      string
+	At        pgtype.Timestamptz
+	Key       string
+	Signature string
+}
+
+// Another worker may have signed the same seq first: its checkpoint stays.
+func (q *Queries) InsertAuditCheckpoint(ctx context.Context, arg InsertAuditCheckpointParams) error {
+	_, err := q.db.Exec(ctx, insertAuditCheckpoint,
+		arg.Seq,
+		arg.Hash,
+		arg.At,
+		arg.Key,
+		arg.Signature,
+	)
+	return err
 }
 
 const insertAuditEvent = `-- name: InsertAuditEvent :exec
@@ -182,6 +270,27 @@ func (q *Queries) LastAuditEvent(ctx context.Context) (LastAuditEventRow, error)
 	return i, err
 }
 
+const lastAuditVerification = `-- name: LastAuditVerification :one
+SELECT seq, at, actor, action, object, details, prev, hash FROM audit_events WHERE action = ANY ('{audit.verified,audit.broken}'::text[]) ORDER BY seq DESC LIMIT 1
+`
+
+// The outcome of the last verification of the chain, which the worker records.
+func (q *Queries) LastAuditVerification(ctx context.Context) (AuditEvent, error) {
+	row := q.db.QueryRow(ctx, lastAuditVerification)
+	var i AuditEvent
+	err := row.Scan(
+		&i.Seq,
+		&i.At,
+		&i.Actor,
+		&i.Action,
+		&i.Object,
+		&i.Details,
+		&i.Prev,
+		&i.Hash,
+	)
+	return i, err
+}
+
 const lastLoginGrants = `-- name: LastLoginGrants :one
 SELECT e.details FROM audit_personal p JOIN audit_events e ON e.seq = p.seq
 WHERE p.value = $1::text AND e.action = 'auth.login' AND e.actor ->> 'id' = p.hash
@@ -195,6 +304,23 @@ func (q *Queries) LastLoginGrants(ctx context.Context, name string) (json.RawMes
 	var details json.RawMessage
 	err := row.Scan(&details)
 	return details, err
+}
+
+const latestAuditCheckpoint = `-- name: LatestAuditCheckpoint :one
+SELECT seq, hash, at, key, signature FROM audit_checkpoints ORDER BY seq DESC LIMIT 1
+`
+
+func (q *Queries) LatestAuditCheckpoint(ctx context.Context) (AuditCheckpoint, error) {
+	row := q.db.QueryRow(ctx, latestAuditCheckpoint)
+	var i AuditCheckpoint
+	err := row.Scan(
+		&i.Seq,
+		&i.Hash,
+		&i.At,
+		&i.Key,
+		&i.Signature,
+	)
+	return i, err
 }
 
 const listAuditEvents = `-- name: ListAuditEvents :many
@@ -273,4 +399,22 @@ SELECT pg_advisory_xact_lock(hashtext('quai.audit'))
 func (q *Queries) LockAudit(ctx context.Context) error {
 	_, err := q.db.Exec(ctx, lockAudit)
 	return err
+}
+
+const pruneAudit = `-- name: PruneAudit :one
+SELECT coalesce(p.checkpoint, 0)::bigint AS checkpoint, p.events::bigint AS events FROM audit_prune() p
+`
+
+type PruneAuditRow struct {
+	Checkpoint int64
+	Events     int64
+}
+
+// Deletes what the retention lets go, up to a checkpoint (audit_prune, the schema owner's).
+// checkpoint is 0 when nothing was deleted.
+func (q *Queries) PruneAudit(ctx context.Context) (PruneAuditRow, error) {
+	row := q.db.QueryRow(ctx, pruneAudit)
+	var i PruneAuditRow
+	err := row.Scan(&i.Checkpoint, &i.Events)
+	return i, err
 }

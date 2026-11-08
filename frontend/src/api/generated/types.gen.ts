@@ -40,6 +40,15 @@ export type AuditActorView = {
     type: 'user' | 'token' | 'runner' | 'system';
 };
 
+export type AuditCheckpointView = {
+    at: string;
+    /**
+     * The ID of the public key that verifies it: the SHA-256 of its 32 bytes, in hex
+     */
+    key: string;
+    seq: number;
+};
+
 export type AuditEventView = {
     action: string;
     actor: AuditActorView;
@@ -64,6 +73,7 @@ export type AuditPageView = {
      * A URL to the JSON Schema for this object.
      */
     readonly $schema?: string;
+    checkpoint?: AuditCheckpointView;
     events: Array<AuditEventView> | null;
     /**
      * Pass it as before for the next page; absent on the last one
@@ -73,6 +83,28 @@ export type AuditPageView = {
         [key: string]: string;
     };
     protected: boolean;
+    verification?: AuditVerificationView;
+};
+
+export type AuditVerificationView = {
+    at: string;
+    /**
+     * The first seq where the log fails
+     */
+    broken?: number;
+    /**
+     * How many events held
+     */
+    events: number;
+    /**
+     * Why it fails there
+     */
+    reason?: string;
+    seq: number;
+    /**
+     * Whether the chain, its checkpoints and the audit repository's latest checkpoint held
+     */
+    verified: boolean;
 };
 
 export type BlueprintInput = {
@@ -1307,6 +1339,7 @@ export type AccessViewWritable = {
 };
 
 export type AuditPageViewWritable = {
+    checkpoint?: AuditCheckpointView;
     events: Array<AuditEventView> | null;
     /**
      * Pass it as before for the next page; absent on the last one
@@ -1316,6 +1349,7 @@ export type AuditPageViewWritable = {
         [key: string]: string;
     };
     protected: boolean;
+    verification?: AuditVerificationView;
 };
 
 export type BlueprintInputWritable = {
@@ -1977,6 +2011,31 @@ export type ListAuditEventsResponses = {
 };
 
 export type ListAuditEventsResponse = ListAuditEventsResponses[keyof ListAuditEventsResponses];
+
+export type ExportAuditLogData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/audit/export';
+};
+
+export type ExportAuditLogErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ExportAuditLogError = ExportAuditLogErrors[keyof ExportAuditLogErrors];
+
+export type ExportAuditLogResponses = {
+    /**
+     * JSON lines: checkpoints, then events
+     */
+    200: string;
+};
+
+export type ExportAuditLogResponse = ExportAuditLogResponses[keyof ExportAuditLogResponses];
 
 export type ListCatalogData = {
     body?: never;

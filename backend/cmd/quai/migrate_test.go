@@ -11,8 +11,15 @@ import (
 	"testing"
 	"time"
 
+	"crypto/ed25519"
+	"crypto/rand"
+	"crypto/x509"
+	"encoding/pem"
+
+	"github.com/damhau/quai/backend/internal/audit/keeper"
 	"github.com/damhau/quai/backend/internal/config"
 	"github.com/damhau/quai/backend/internal/pgtest"
+	"github.com/damhau/quai/backend/internal/store"
 )
 
 func TestMain(m *testing.M) { os.Exit(pgtest.Main(m)) }
@@ -37,11 +44,19 @@ func TestMigrate(t *testing.T) {
 		}
 		return out.String(), warn.String()
 	}
-	out, warn := migrate("{ url: \"" + url + "\", migrateURL: \"" + pgtest.OwnerURL(url) + "\" }")
-	if !strings.Contains(out, pgtest.AppRole+" may read and append the audit log, and not change it") || warn != "" {
+	out, warn := migrate("{ url: \"" + url + "\", migrateURL: \"" + pgtest.OwnerURL(url) + "\" }\naudit: { retention: 87600h }")
+	if !strings.Contains(out, pgtest.AppRole+" may read and append the audit log, and not change it") || !strings.Contains(out, "audit events are kept 87600h0m0s") || warn != "" {
 		t.Errorf("two roles: %q, %q", out, warn)
 	}
-	if _, warn = migrate("{ url: \"" + url + "\" }"); !strings.Contains(warn, "the audit log is not protected") {
+	s, err := store.Open(context.Background(), url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if r, err := s.AuditRetention(context.Background()); err != nil || r.Microseconds != (87600*time.Hour).Microseconds() || r.Days != 0 || r.Months != 0 {
+		t.Errorf("retention = %+v, %v", r, err)
+	}
+	if _, warn = migrate("{ url: \"" + url + "\" }\naudit: { retention: 87600h }"); !strings.Contains(warn, "the audit log is not protected") {
 		t.Errorf("one role: %q", warn)
 	}
 	empty := filepath.Join(t.TempDir(), "empty.yaml")
@@ -55,9 +70,28 @@ func TestMigrate(t *testing.T) {
 	}
 }
 
+// auditKey sets a checkpoint signing key in the environment, as QUAI_TEST_AUDIT_KEY.
+func auditKey(t *testing.T) {
+	t.Helper()
+	_, key, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	der, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("QUAI_TEST_AUDIT_KEY", string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der})))
+}
+
+// TestWorker: the worker runs the jobs, among them the audit log's checkpoint and verification
+// at start, and signs a last checkpoint as it stops.
 func TestWorker(t *testing.T) {
 	s := pgtest.Store(t)
-	cfg, err := config.Load("", func(string) (string, bool) { return "", false })
+	auditKey(t)
+	cfg, err := config.Load("", func(n string) (string, bool) {
+		return map[string]string{"QUAI_AUDIT_CHECKPOINTS_SIGNING_KEY_REF": "env:QUAI_TEST_AUDIT_KEY"}[n], n == "QUAI_AUDIT_CHECKPOINTS_SIGNING_KEY_REF"
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,6 +105,9 @@ func TestWorker(t *testing.T) {
 		sw.mu.Lock()
 		started := strings.Contains(logs.String(), "msg=working")
 		sw.mu.Unlock()
+		if _, err := s.LastAuditVerification(ctx); err != nil {
+			started = false // the verification at start is not recorded yet
+		}
 		if started || time.Now().After(deadline) {
 			break
 		}
@@ -84,6 +121,14 @@ func TestWorker(t *testing.T) {
 	defer sw.mu.Unlock()
 	if !strings.Contains(logs.String(), "msg=working") || !strings.Contains(logs.String(), "msg=stopped") {
 		t.Errorf("logs = %q", logs.String())
+	}
+	// The verification at start is recorded, and the checkpoint at shutdown covers it.
+	v, err := s.LastAuditVerification(context.Background())
+	if err != nil || v.Action != keeper.ActionVerified {
+		t.Errorf("verification = %+v, %v", v, err)
+	}
+	if c, err := s.LatestAuditCheckpoint(context.Background()); err != nil || c.Seq != v.Seq {
+		t.Errorf("checkpoint at shutdown = %+v, %v; the verification is seq %d", c, err, v.Seq)
 	}
 
 	cmd := newRootCmd()

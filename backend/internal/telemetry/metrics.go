@@ -16,6 +16,8 @@ type instruments struct {
 	fetch      metric.Float64Histogram
 	webhookLag metric.Float64Histogram
 	deliveries metric.Int64Counter
+	auditCps   metric.Int64Counter
+	auditVer   metric.Int64Counter
 }
 
 var current atomic.Pointer[instruments]
@@ -35,6 +37,14 @@ func use(mp metric.MeterProvider) error {
 	}
 	if in.deliveries, err = m.Int64Counter("quai.deliveries",
 		metric.WithDescription("Deliveries that ended, by repository, delivery mode and outcome (applied, failed, bypassed)")); err != nil {
+		return err
+	}
+	if in.auditCps, err = m.Int64Counter("quai.audit.checkpoints",
+		metric.WithDescription("Audit checkpoint runs: signing the latest event and committing it to the audit repository, by outcome (ok, error)")); err != nil {
+		return err
+	}
+	if in.auditVer, err = m.Int64Counter("quai.audit.verifications",
+		metric.WithDescription("Daily verifications of the audit log, by outcome (ok, broken, error)")); err != nil {
 		return err
 	}
 	current.Store(&in)
@@ -68,5 +78,19 @@ func Delivered(ctx context.Context, repository, mode, result string) {
 	if in := current.Load(); in != nil {
 		in.deliveries.Add(ctx, 1, metric.WithAttributes(attribute.String("repository", repository), attribute.String("mode", mode),
 			attribute.String("outcome", result)))
+	}
+}
+
+// AuditCheckpointed records a checkpoint run of the audit log.
+func AuditCheckpointed(ctx context.Context, err error) {
+	if in := current.Load(); in != nil {
+		in.auditCps.Add(ctx, 1, metric.WithAttributes(attribute.String("outcome", outcome(err))))
+	}
+}
+
+// AuditVerified records a verification of the audit log: ok, broken or error (it could not run).
+func AuditVerified(ctx context.Context, result string) {
+	if in := current.Load(); in != nil {
+		in.auditVer.Add(ctx, 1, metric.WithAttributes(attribute.String("outcome", result)))
 	}
 }

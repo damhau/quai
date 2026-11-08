@@ -14,6 +14,9 @@ test("auditors read the audit log, personal data in clear unless erased, page af
   const table = await screen.findByRole("table", { name: "Audit events" }, slow)
   expect(screen.getByRole("navigation", { name: "Main" })).toHaveTextContent("Audit log")
   expect(screen.queryByText("The audit log is not protected")).not.toBeInTheDocument()
+  expect(screen.queryByText("The audit log does not verify")).not.toBeInTheDocument()
+  expect(screen.getByText(/5 events held/)).toHaveTextContent(/^Verified .+: 5 events held\. Last checkpoint at seq 5, signed .+\.$/)
+  expect(screen.getByRole("link", { name: "Export" })).toHaveAttribute("href", "/api/v1/audit/export")
 
   const bypass = row(table, 5)
   expect(within(bypass).getByText("Merged without approval")).toBeInTheDocument()
@@ -71,6 +74,32 @@ test("the page says when the database does not protect the audit log", async () 
   renderApp("/admin/audit")
   expect(await screen.findByText("The audit log is not protected", {}, slow)).toBeInTheDocument()
   expect(screen.getByText(/database\.migrateURL/)).toBeInTheDocument()
+})
+
+test("the page says when the audit log does not verify", async () => {
+  state.user = "alice"
+  audit.verification = {
+    seq: 9,
+    at: "2026-11-06T12:00:00.000Z",
+    verified: false,
+    events: 3,
+    broken: 4,
+    reason: "its hash is not the hash of its content",
+  }
+  renderApp("/admin/audit")
+  expect(await screen.findByText("The audit log does not verify", {}, slow)).toBeInTheDocument()
+  expect(screen.getByText(/It breaks at seq 4: its hash is not the hash of its content/)).toBeInTheDocument()
+  expect(screen.getByText(/When the chain does not verify/)).toBeInTheDocument()
+})
+
+test("before the first checkpoint and verification, the page says so", async () => {
+  state.user = "alice"
+  audit.verification = undefined
+  audit.checkpoint = undefined
+  renderApp("/admin/audit")
+  expect(await screen.findByText(/Not verified yet/, {}, slow)).toHaveTextContent(
+    "Not verified yet: the worker verifies the chain every day. No signed checkpoint yet.",
+  )
 })
 
 test("only auditors and platform admins see the audit log in the navigation", async () => {

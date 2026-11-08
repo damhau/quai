@@ -1,13 +1,21 @@
 import { http, HttpResponse } from "msw"
-import type { AuditEventView, AuditPageView } from "@/api/generated/types.gen"
+import type { AuditCheckpointView, AuditEventView, AuditPageView, AuditVerificationView } from "@/api/generated/types.gen"
 
-// A fake of the audit log: two pages of events, newest first, the queries it was asked, and
-// whether the database protects it.
+// A fake of the audit log: two pages of events, newest first, the queries it was asked, whether
+// the database protects it, its latest checkpoint and the last verification.
 
 const pd = (n: number) => `pd:${n.toString(16).padStart(64, "0")}`
 const hash = (seq: number) => seq.toString(16).padStart(64, "a")
 
-export const audit = { queries: [] as URLSearchParams[], protected: true }
+const checkpoint: AuditCheckpointView = { seq: 5, at: "2026-11-05T11:00:00.000Z", key: "c0ffee".padEnd(64, "0") }
+const verified: AuditVerificationView = { seq: 6, at: "2026-11-05T12:00:00.000Z", verified: true, events: 5 }
+
+export const audit = {
+  queries: [] as URLSearchParams[],
+  protected: true,
+  checkpoint: checkpoint as AuditCheckpointView | undefined,
+  verification: verified as AuditVerificationView | undefined,
+}
 
 const event = (seq: number, e: Partial<AuditEventView>): AuditEventView => ({
   seq,
@@ -54,10 +62,11 @@ export const auditHandlers = [
     // alice's comment was deleted (pseudonymized): its pseudonym has no clear value any more.
     const personal = { [pd(1)]: "alice", [pd(2)]: "10.0.0.7", [pd(4)]: "bob", [pd(5)]: "Black Friday traffic", [pd(6)]: "carol", [pd(7)]: "carol" }
     const before = Number(q.get("before") ?? 0)
+    const state = { protected: audit.protected, checkpoint: audit.checkpoint, verification: audit.verification }
     const page: AuditPageView =
       before === 3
-        ? { events: oldest, personal, protected: audit.protected }
-        : { events: q.get("action") === "auth" ? oldest : newest, next: q.get("action") ? undefined : 3, personal, protected: audit.protected }
+        ? { events: oldest, personal, ...state }
+        : { events: q.get("action") === "auth" ? oldest : newest, next: q.get("action") ? undefined : 3, personal, ...state }
     return HttpResponse.json(page)
   }),
 ]
@@ -65,4 +74,6 @@ export const auditHandlers = [
 export function resetAudit() {
   audit.queries = []
   audit.protected = true
+  audit.checkpoint = checkpoint
+  audit.verification = verified
 }

@@ -1,12 +1,12 @@
 import { useState } from "react"
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router"
 import { useInfiniteQuery } from "@tanstack/react-query"
-import { ShieldAlert } from "lucide-react"
+import { Download, ShieldAlert } from "lucide-react"
 import { listAuditEventsInfiniteOptions } from "@/api/generated/@tanstack/react-query.gen"
-import type { AuditEventView } from "@/api/generated/types.gen"
+import type { AuditEventView, AuditPageView } from "@/api/generated/types.gen"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
@@ -21,6 +21,7 @@ import {
   dayStart,
   details,
   erased,
+  exportURL,
   objectLabel,
   clear,
   type Personal,
@@ -67,14 +68,21 @@ function AuditLog() {
   const unprotected = pages[0]?.protected === false
   return (
     <section aria-labelledby="audit-title" className="grid gap-6">
-      <header className="grid gap-1">
-        <h1 id="audit-title" className="text-2xl font-semibold tracking-tight">
-          Audit log
-        </h1>
-        <p className="text-muted-foreground">
-          Every security-relevant event, newest first, each chained to the one before by its hash.
-        </p>
+      <header className="flex flex-wrap items-start justify-between gap-4">
+        <div className="grid gap-1">
+          <h1 id="audit-title" className="text-2xl font-semibold tracking-tight">
+            Audit log
+          </h1>
+          <p className="text-muted-foreground">
+            Every security-relevant event, newest first, each chained to the one before by its hash.
+          </p>
+        </div>
+        <a href={exportURL} download className={buttonVariants({ variant: "outline" })}>
+          <Download />
+          Export
+        </a>
       </header>
+      {pages[0] && <Integrity page={pages[0]} />}
       {unprotected && (
         <Alert variant="destructive">
           <ShieldAlert />
@@ -121,6 +129,45 @@ function AuditLog() {
         </div>
       )}
     </section>
+  )
+}
+
+const when = (at: string) => <time dateTime={at}>{new Date(at).toLocaleString()}</time>
+
+/** Integrity says whether the chain held at its last daily verification, and its last checkpoint. */
+function Integrity({ page }: { page: AuditPageView }) {
+  const { checkpoint: c, verification: v } = page
+  if (v && !v.verified) {
+    return (
+      <Alert variant="destructive">
+        <ShieldAlert />
+        <AlertTitle>The audit log does not verify</AlertTitle>
+        <AlertDescription>
+          <p>
+            It breaks at seq {v.broken}: {v.reason}. Found {when(v.at)}.
+          </p>
+          <p>Follow the runbook "When the chain does not verify" in the operations guide before anything else changes.</p>
+        </AlertDescription>
+      </Alert>
+    )
+  }
+  return (
+    <p className="text-muted-foreground text-sm">
+      {v ? (
+        <>
+          Verified {when(v.at)}: {v.events} events held.{" "}
+        </>
+      ) : (
+        "Not verified yet: the worker verifies the chain every day. "
+      )}
+      {c ? (
+        <>
+          Last checkpoint at seq {c.seq}, signed {when(c.at)}.
+        </>
+      ) : (
+        "No signed checkpoint yet."
+      )}
+    </p>
   )
 }
 

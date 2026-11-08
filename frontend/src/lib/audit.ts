@@ -46,6 +46,9 @@ const labels: Record<string, string> = {
   "repository.enforcement_lost": "Approvals no longer enforced",
   "repository.enforcement_restored": "Approvals enforced again",
   "definitions.commit": "Definitions changed",
+  "audit.verified": "Audit log verified",
+  "audit.broken": "Audit log does not verify",
+  "audit.pruned": "Audit log pruned",
 }
 
 /** actionLabel names an action for people; an action this version does not know keeps its code. */
@@ -53,7 +56,7 @@ export const actionLabel = (action: string) => labels[action] ?? action
 
 /** alarming says whether an action is one an auditor looks at first. */
 export const alarming = (action: string) =>
-  action === "request.merged_without_approval" || action === "repository.enforcement_lost"
+  action === "request.merged_without_approval" || action === "repository.enforcement_lost" || action === "audit.broken"
 
 /** The filter's groups of actions, by prefix. */
 export const actionGroups = [
@@ -63,6 +66,7 @@ export const actionGroups = [
   { value: "request", label: "Requests" },
   { value: "repository", label: "Repositories" },
   { value: "definitions", label: "Definitions" },
+  { value: "audit", label: "The audit log itself" },
 ]
 
 /** actorLabel says who acted. */
@@ -82,6 +86,7 @@ export function actorLabel(a: AuditActorView, personal: Personal): string {
 /** objectLabel says what an event is about. */
 export function objectLabel(o: AuditObjectView, personal: Personal): string {
   if (o.type === "user") return clear(o.id, personal)
+  if (o.type === "audit") return "Audit log"
   if (o.type === "request") return o.resource ? o.resource : o.id
   return o.id
 }
@@ -102,6 +107,9 @@ export function details(e: AuditEventView, personal: Personal): [string, string]
     .map((k): [string, string] => [k, detailText(e.details[k], personal)])
     .filter(([, v]) => v !== "" && v !== "[]")
 }
+
+/** exportURL downloads the audit log, to verify it offline with quai audit verify. */
+export const exportURL = "/api/v1/audit/export"
 
 /** dayStart is the start of a local day (yyyy-mm-dd) as an RFC 3339 time; dayEnd the start of the next. */
 export function dayStart(day: string): string | undefined {
