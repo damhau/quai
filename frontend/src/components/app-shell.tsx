@@ -1,9 +1,10 @@
 import type { ReactNode } from "react"
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { Boxes, ClipboardCheck, FolderGit2, GitCommitHorizontal, LayoutGrid, ListChecks, LogOut, Workflow } from "lucide-react"
+import { Boxes, ClipboardCheck, FolderGit2, GitCommitHorizontal, LayoutGrid, ListChecks, LogOut, ScrollText, Workflow } from "lucide-react"
 import { getMeOptions, listRequestsOptions } from "@/api/generated/@tanstack/react-query.gen"
 import { Badge } from "@/components/ui/badge"
+import { canReadAudit } from "@/lib/audit"
 import { logout } from "@/lib/auth"
 import { isAdmin } from "@/lib/repositories"
 import { Button } from "@/components/ui/button"
@@ -27,12 +28,14 @@ const nav = [
 
 // For repository and platform admins.
 const admin = [{ to: "/admin/repositories", label: "Repositories", icon: FolderGit2 }] as const
+// For auditors and platform admins.
+const audit = [{ to: "/admin/audit", label: "Audit log", icon: ScrollText }] as const
 
 export function AppShell({ children }: { children: ReactNode }) {
   const path = useRouterState({ select: (s) => s.location.pathname })
   const { data: me } = useQuery({ ...getMeOptions(), enabled: path !== "/login" })
   if (path === "/login") return <main className="min-h-svh">{children}</main>
-  const links = isAdmin(me) ? [...nav, ...admin] : nav
+  const links = [...nav, ...(isAdmin(me) ? admin : []), ...(canReadAudit(me) ? audit : [])]
   return (
     <div className="flex min-h-svh flex-col">
       <header className="border-b">

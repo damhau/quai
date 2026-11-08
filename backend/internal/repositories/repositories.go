@@ -24,6 +24,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/damhau/quai/backend/internal/audit"
 	"github.com/damhau/quai/backend/internal/config"
 	"github.com/damhau/quai/backend/internal/connectors"
 	"github.com/damhau/quai/backend/internal/connectors/generic"
@@ -143,7 +144,7 @@ func Static(docs []Document) Source {
 // updates them, and removes those docs no longer declare. A document named like a connection
 // managed through the API is an error. Processes starting together reconcile one at a time.
 func Reconcile(ctx context.Context, s *store.Store, docs []Document) error {
-	return s.Tx(ctx, func(_ pgx.Tx, q *db.Queries) error {
+	return s.Tx(ctx, func(tx pgx.Tx, q *db.Queries) error {
 		if err := q.LockRepositories(ctx); err != nil {
 			return err
 		}
@@ -161,13 +162,31 @@ func Reconcile(ctx context.Context, s *store.Store, docs []Document) error {
 			if err != nil {
 				return err
 			}
-			if err := q.PutConfigRepository(ctx, db.PutConfigRepositoryParams{Name: name, Document: doc}); err != nil {
+			gen, err := q.PutConfigRepository(ctx, db.PutConfigRepositoryParams{Name: name, Document: doc})
+			if err != nil {
 				return err
+			}
+			if len(gen) > 0 {
+				action := "repository.updated"
+				if gen[0] == 1 {
+					action = "repository.created"
+				}
+				if err := audit.Add(ctx, tx, connectionEvent(action, name, ManagedByConfig, doc, gen[0])); err != nil {
+					return err
+				}
 			}
 			keep = append(keep, name)
 		}
-		_, err = q.DeleteConfigRepositoriesExcept(ctx, keep)
-		return err
+		gone, err := q.DeleteConfigRepositoriesExcept(ctx, keep)
+		if err != nil {
+			return err
+		}
+		for _, name := range gone {
+			if err := audit.Add(ctx, tx, connectionEvent("repository.deleted", name, ManagedByConfig, nil, 0)); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 }
 

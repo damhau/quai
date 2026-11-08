@@ -24,17 +24,31 @@ func (q *Queries) CreateRepository(ctx context.Context, arg CreateRepositoryPara
 	return err
 }
 
-const deleteConfigRepositoriesExcept = `-- name: DeleteConfigRepositoriesExcept :execrows
+const deleteConfigRepositoriesExcept = `-- name: DeleteConfigRepositoriesExcept :many
 DELETE FROM repositories WHERE managed_by = 'config' AND NOT (name = ANY ($1::text[]))
+RETURNING name
 `
 
-// Removes the repositories declared in configuration that it no longer declares.
-func (q *Queries) DeleteConfigRepositoriesExcept(ctx context.Context, keep []string) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteConfigRepositoriesExcept, keep)
+// Removes the repositories declared in configuration that it no longer declares, and returns
+// their names.
+func (q *Queries) DeleteConfigRepositoriesExcept(ctx context.Context, keep []string) ([]string, error) {
+	rows, err := q.db.Query(ctx, deleteConfigRepositoriesExcept, keep)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	return result.RowsAffected(), nil
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		items = append(items, name)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const deleteRepository = `-- name: DeleteRepository :execrows
@@ -95,11 +109,12 @@ func (q *Queries) LockRepositories(ctx context.Context) error {
 	return err
 }
 
-const putConfigRepository = `-- name: PutConfigRepository :exec
+const putConfigRepository = `-- name: PutConfigRepository :many
 INSERT INTO repositories (name, document, managed_by) VALUES ($1, $2, 'config')
 ON CONFLICT (org_id, name) DO UPDATE
 SET document = EXCLUDED.document, generation = repositories.generation + 1, updated_at = now()
 WHERE repositories.managed_by = 'config' AND repositories.document <> EXCLUDED.document
+RETURNING generation
 `
 
 type PutConfigRepositoryParams struct {
@@ -108,10 +123,26 @@ type PutConfigRepositoryParams struct {
 }
 
 // Adds or updates a repository declared in configuration. The generation moves only when the
-// document changes; a repository managed through the API is left alone.
-func (q *Queries) PutConfigRepository(ctx context.Context, arg PutConfigRepositoryParams) error {
-	_, err := q.db.Exec(ctx, putConfigRepository, arg.Name, arg.Document)
-	return err
+// document changes; a repository managed through the API is left alone. It returns the new
+// generation when the repository was added (1) or changed, and no row when nothing changed.
+func (q *Queries) PutConfigRepository(ctx context.Context, arg PutConfigRepositoryParams) ([]int64, error) {
+	rows, err := q.db.Query(ctx, putConfigRepository, arg.Name, arg.Document)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var generation int64
+		if err := rows.Scan(&generation); err != nil {
+			return nil, err
+		}
+		items = append(items, generation)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const updateRepository = `-- name: UpdateRepository :execrows

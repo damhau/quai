@@ -39,8 +39,16 @@ repositories: []
 
 # Existing Secrets the processes read their secrets from.
 database:
-  secretName: quai-database # key: url, such as postgres://quai:…@db:5432/quai
+  # The server and the worker connect as an application role, which the migrations grant what
+  # it needs: the audit log to read and append only.
+  secretName: quai-database # key: url, such as postgres://quai_app:…@db:5432/quai
   secretKey: url
+  # The migrations Job alone connects as the schema's owner, from a Secret of its own
+  # (database.migrateURL). Empty: the migrations connect with the URL above, a single role that
+  # can change or delete audit events, which Quai warns about.
+  migrate:
+    secretName: quai-database-owner # key: url, such as postgres://quai:…@db:5432/quai
+    secretKey: url
 oidc:
   secretName: quai-oidc # key: clientSecret
   secretKey: clientSecret
@@ -50,8 +58,9 @@ oidc:
 secretStore:
   kubernetes:
     # A Role lets the pods read the Secrets of the release's namespace; list their names to
-    # restrict it to those. The annotation quai.dev/expires-at (RFC 3339) on a Secret makes Quai
-    # warn 30 days before it expires.
+    # restrict it to those, and keep the schema owner's Secret (database.migrate) out of the
+    # pods' reach. The annotation quai.dev/expires-at (RFC 3339) on a Secret makes Quai warn 30
+    # days before it expires.
     enabled: true
     secretNames: []
 

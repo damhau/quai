@@ -17,24 +17,38 @@ import (
 
 func TestMain(m *testing.M) { os.Exit(pgtest.Main(m)) }
 
+// TestMigrate: migrations run as the schema's owner, who grants the application role the audit
+// log to read and append; with one role, a warning says the audit log is not protected.
 func TestMigrate(t *testing.T) {
 	url := pgtest.URL(t)
-	conf := filepath.Join(t.TempDir(), "quai.yaml")
-	if err := os.WriteFile(conf, []byte("database: { url: \""+url+"\" }\n"), 0o600); err != nil {
-		t.Fatal(err)
+	migrate := func(database string) (string, string) {
+		t.Helper()
+		conf := filepath.Join(t.TempDir(), "quai.yaml")
+		if err := os.WriteFile(conf, []byte("database: "+database+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		cmd := newRootCmd()
+		var out, warn bytes.Buffer
+		cmd.SetOut(&out)
+		cmd.SetErr(&warn)
+		cmd.SetArgs([]string{"migrate", "--config", conf})
+		if err := cmd.Execute(); err != nil || !strings.Contains(out.String(), "0 migrations applied") {
+			t.Errorf("migrate on a migrated database = %q, %v", out.String(), err)
+		}
+		return out.String(), warn.String()
 	}
-	cmd := newRootCmd()
-	var out bytes.Buffer
-	cmd.SetOut(&out)
-	cmd.SetArgs([]string{"migrate", "--config", conf})
-	if err := cmd.Execute(); err != nil || !strings.Contains(out.String(), "0 migrations applied") {
-		t.Errorf("migrate on a migrated database = %q, %v", out.String(), err)
+	out, warn := migrate("{ url: \"" + url + "\", migrateURL: \"" + pgtest.OwnerURL(url) + "\" }")
+	if !strings.Contains(out, pgtest.AppRole+" may read and append the audit log, and not change it") || warn != "" {
+		t.Errorf("two roles: %q, %q", out, warn)
+	}
+	if _, warn = migrate("{ url: \"" + url + "\" }"); !strings.Contains(warn, "the audit log is not protected") {
+		t.Errorf("one role: %q", warn)
 	}
 	empty := filepath.Join(t.TempDir(), "empty.yaml")
 	if err := os.WriteFile(empty, []byte("env: development\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd = newRootCmd()
+	cmd := newRootCmd()
 	cmd.SetArgs([]string{"migrate", "--config", empty})
 	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "no database") {
 		t.Errorf("migrate without a database: %v", err)

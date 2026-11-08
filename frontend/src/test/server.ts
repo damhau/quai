@@ -1,5 +1,6 @@
 import { http, HttpResponse } from "msw"
 import { setupServer } from "msw/node"
+import { auditHandlers, resetAudit } from "./audit"
 import { catalogHandlers } from "./catalog"
 import { gitHandlers, published } from "./git"
 import { inventoryHandlers } from "./inventory"
@@ -13,13 +14,17 @@ export const state: { user: string | null; auth: "dev" | "oidc" | "none"; logout
   logouts: [],
 }
 
-const users: Record<string, string[]> = { bob: ["developers"], alice: ["platform-admins"] }
-const roles: Record<string, { role: string; scope: string }[]> = { alice: [{ role: "platform-admin", scope: "global" }] }
+const users: Record<string, string[]> = { bob: ["developers"], alice: ["platform-admins"], dana: ["auditors"] }
+const roles: Record<string, { role: string; scope: string }[]> = {
+  alice: [{ role: "platform-admin", scope: "global" }],
+  dana: [{ role: "auditor", scope: "global" }],
+}
 
 export function resetRequests() {
   requests.current = pendingVM()
   published.blueprints = []
   resetRepositories()
+  resetAudit()
 }
 
 export const server = setupServer(
@@ -39,6 +44,7 @@ export const server = setupServer(
   ...inventoryHandlers(() => state.user),
   ...gitHandlers,
   ...repositoryHandlers,
+  ...auditHandlers,
   http.get("*/auth/dev/users", () => HttpResponse.json(Object.entries(users).map(([Name, Groups]) => ({ Name, Groups })))),
   http.post("*/auth/dev/login", async ({ request }) => {
     // As the server's middleware: with a session, a state-changing request needs its CSRF token.

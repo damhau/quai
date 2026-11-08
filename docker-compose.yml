@@ -5,7 +5,8 @@
 # Then open http://localhost:8080 and sign in as one of the demo users; Gitea is at
 # http://localhost:3000 (quai/infra-live). QUAI_PORT and GITEA_PORT choose other ports. For
 # local use only: PostgreSQL trusts the compose network and is not published, and Gitea's
-# account gets a random password at first start. `docker compose down -v` starts over.
+# account gets a random password at first start. `docker compose down -v` starts over (a volume
+# from before the application role, quai_app, needs it).
 name: quai
 
 x-quai: &quai
@@ -27,7 +28,9 @@ services:
       POSTGRES_USER: quai
       POSTGRES_DB: quai
       POSTGRES_HOST_AUTH_METHOD: trust # reachable from this compose network only
-    volumes: [postgres:/var/lib/postgresql/data]
+    volumes:
+      - postgres:/var/lib/postgresql/data
+      - ./deploy/compose/postgres-roles.sql:/docker-entrypoint-initdb.d/roles.sql:ro # the application role
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "quai", "-d", "quai"]
       interval: 2s
@@ -63,6 +66,9 @@ services:
   migrate:
     <<: *quai
     command: ["migrate"]
+    environment:
+      # The schema's owner, for the migrations alone: the server and the worker connect as quai_app.
+      QUAI_DATABASE_MIGRATE_URL: postgres://quai@postgres:5432/quai?sslmode=disable
     depends_on:
       postgres: { condition: service_healthy }
       seed: { condition: service_completed_successfully }

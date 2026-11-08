@@ -196,6 +196,12 @@ func TestCommitAndPush(t *testing.T) {
 	if out, err := m.Show(ctx, sha); err != nil || !strings.Contains(out, "+cpu: 8") {
 		t.Errorf("show = %q, %v", out, err)
 	}
+	if name, email, err := m.Author(ctx, sha); err != nil || name != "Bob Builder" || email != "bob@example.com" {
+		t.Errorf("author = %q %q, %v", name, email, err)
+	}
+	if _, _, err := m.Author(ctx, "--all"); err == nil {
+		t.Error("the author of an option")
+	}
 }
 
 func TestStale(t *testing.T) {

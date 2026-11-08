@@ -29,8 +29,8 @@ single pod with both roles.
 ## Packaging
 
 - **Image:** static Go binary on a distroless or UBI-minimal base, plus `git` and `openssh` (needed for transport). Non-root, read-only root file system, no shell in the distroless variant. Today (`Dockerfile`): Alpine with `git` and `openssh-client`, user 10001 in group 0 (OpenShift's arbitrary user ids run in it), the frontend's build embedded in the binary and served by `quai server` at every path the API and `/auth` do not answer, with a strict Content-Security-Policy and year-long caching of hashed assets. It runs with a read-only root file system given a writable `/tmp` and `/var/cache/quai` (the Git mirror cache). Base images are pinned by digest. CI builds the final stage without its layer cache, and that stage upgrades Alpine's packages, so each image has the fixes Alpine has that day, without waiting for a new base image. The Go dependencies compile in a layer of their own, cached while the packages the binaries import and `go.sum` do not change, so a commit compiles only Quai's packages. Each commit on `main` publishes it to `ghcr.io/damhau/quai` as `main`, `sha-<commit>` and `main-<commit time, UTC, YYYYMMDDHHMMSS>-<short commit>`, which sorts by date so that Argo CD Image Updater can follow `main`; the local stack's fake runner (the `fake-runner` target) is published with the same tags to `ghcr.io/damhau/quai-fake-runner`, for demo installations in a cluster.
-- **Helm chart:** server and worker Deployments, PodDisruptionBudgets, HorizontalPodAutoscaler for the server, NetworkPolicies, ServiceMonitor, optional CloudNativePG `Cluster`, configuration via values and a mounted `quai.yaml`. Today (`deploy/helm/quai`, [below](#helm)): server and worker Deployments, the server's Service, PodDisruptionBudget and optional HorizontalPodAutoscaler, an optional Ingress, `quai migrate` as a pre-install and pre-upgrade hook Job (it needs the database Secret alone, so it runs before the release's other objects exist), the configuration from values (or from an existing Secret when repository URLs carry tokens), the database URL and OIDC client secret from existing Secrets, a Role that lets the pods read the Secrets that repository connections reference (`secretStore.kubernetes`, optionally restricted by name), and the outgoing network setup (`network`: an internal CA from a ConfigMap, the proxy variables). Pods run non-root with a read-only root file system and no capabilities. CI lints it and checks the rendered objects against the Kubernetes schemas, and installs it on kind.
-- **Local stack:** `docker compose up --build` runs the server, a worker, PostgreSQL and Gitea, which a one-shot step seeds with `examples/gitops-repo` as `quai/infra-live` (a random password, and a token and a webhook secret Quai reads from a shared volume). Requests go through pull requests: `main` requires `quai/approval`, and Gitea's webhook reaches Quai's server. A fake runner stands in for the repository's pipelines: on Gitea's webhooks it reports a plan of each pull request and an apply of each push to `main` with `quai report`, so merged requests go through *Applying* to *Applied*. The development sign-in and its demo users are on; `QUAI_PORT`, `GITEA_PORT` and `FAKERUNNER_PORT` move the published ports.
+- **Helm chart:** server and worker Deployments, PodDisruptionBudgets, HorizontalPodAutoscaler for the server, NetworkPolicies, ServiceMonitor, optional CloudNativePG `Cluster`, configuration via values and a mounted `quai.yaml`. Today (`deploy/helm/quai`, [below](#helm)): server and worker Deployments, the server's Service, PodDisruptionBudget and optional HorizontalPodAutoscaler, an optional Ingress, `quai migrate` as a pre-install and pre-upgrade hook Job (it needs the database Secrets alone, so it runs before the release's other objects exist), the configuration from values (or from an existing Secret when repository URLs carry tokens), the database URL and OIDC client secret from existing Secrets, a Role that lets the pods read the Secrets that repository connections reference (`secretStore.kubernetes`, optionally restricted by name), and the outgoing network setup (`network`: an internal CA from a ConfigMap, the proxy variables). The migrations Job alone connects as the schema's owner, from a Secret of its own (`database.migrate`); the server and the worker never get it. Pods run non-root with a read-only root file system and no capabilities. CI lints it and checks the rendered objects against the Kubernetes schemas, and installs it on kind.
+- **Local stack:** `docker compose up --build` runs the server, a worker, PostgreSQL (with the schema's owner, `quai`, which the `migrate` step connects as, and the application role, `quai_app`, which the server and the worker connect as) and Gitea, which a one-shot step seeds with `examples/gitops-repo` as `quai/infra-live` (a random password, and a token and a webhook secret Quai reads from a shared volume). Requests go through pull requests: `main` requires `quai/approval`, and Gitea's webhook reaches Quai's server. A fake runner stands in for the repository's pipelines: on Gitea's webhooks it reports a plan of each pull request and an apply of each push to `main` with `quai report`, so merged requests go through *Applying* to *Applied*. The development sign-in and its demo users are on; `QUAI_PORT`, `GITEA_PORT` and `FAKERUNNER_PORT` move the published ports.
 - **OpenShift:** runs under the `restricted-v2` SCC with an arbitrary UID; a `Route` instead of an `Ingress`; UBI-based image variant.
 - **Air-gapped:** an offline bundle (images, chart, `quai` CLI binaries for Linux, macOS and Windows) with checksums and signatures. Nothing is fetched at runtime: no CDNs, no fonts, no telemetry.
 - **Configuration:** a YAML file, overridable by environment variables; secrets only as references (Vault, Kubernetes Secrets). Repository connections can be managed in the UI or declared in the configuration (GitOps for Quai itself).
@@ -42,7 +42,8 @@ single pod with both roles.
   | `server.addr` | `QUAI_SERVER_ADDR` | `:8080` |
   | `server.publicURL` | `QUAI_SERVER_PUBLIC_URL` | none: where people reach Quai, for the links to requests in pull requests and statuses; without it, pull requests name the request without a link |
   | `server.shutdownTimeout` | `QUAI_SERVER_SHUTDOWN_TIMEOUT` | `20s` for requests in flight to finish |
-  | `database.url` | `QUAI_DATABASE_URL` | none; `quai migrate` applies the migrations. Each process opens two pools of up to `pool_max_conns` connections (a URL parameter; by default the number of CPUs, at least four): one for its work, one for its advisory locks |
+  | `database.url` | `QUAI_DATABASE_URL` | none. The application role the server and the worker connect as. Each process opens two pools of up to `pool_max_conns` connections (a URL parameter; by default the number of CPUs, at least four): one for its work, one for its advisory locks |
+  | `database.migrateURL` | `QUAI_DATABASE_MIGRATE_URL` | `database.url`. The schema's owner, for `quai migrate` alone: it applies the migrations, then grants the role of `database.url` what the server and the worker need, the audit log to read and append only ([database roles](#database-roles)). Without it, or with the same role, the audit log is not protected, and `quai migrate`, the server and the audit log page say so |
   | `auth.mode` | `QUAI_AUTH_MODE` | `oidc`, or `dev` (the user switcher) in development only |
   | `auth.oidc.issuer`, `.clientID`, `.clientSecret`, `.redirectURL` | `QUAI_AUTH_OIDC_ISSUER`, `_CLIENT_ID`, `_CLIENT_SECRET`, `_REDIRECT_URL` | required for `oidc`; https in production |
   | `auth.oidc.scopes`, `.nameClaim`, `.groupsClaim` | | `openid profile email`, `preferred_username`, `groups` |
@@ -65,10 +66,14 @@ single pod with both roles.
 
 ### Helm
 
-Before installing, create in the release's namespace the Secrets the chart reads: the database URL
-(`database.secretName`, key `url`) and, with OIDC, the client secret (`oidc.secretName`, key
+Before installing, create in the release's namespace the Secrets the chart reads: the
+application role's database URL (`database.secretName`, key `url`), the schema owner's
+(`database.migrate.secretName`, by default `quai-database-owner`, key `url`; [database
+roles](#database-roles)) and, with OIDC, the client secret (`oidc.secretName`, key
 `clientSecret`). Repository connections refer to their own Secrets (`k8s:<namespace>/<name>#<key>`),
-which the release's Role can read (`secretStore.kubernetes.secretNames` restricts it to those).
+which the release's Role can read. List them in `secretStore.kubernetes.secretNames`: without a
+list, the pods may read every Secret of the namespace, the owner's too, and the chart's notes
+warn about it.
 
 ```bash
 helm install quai deploy/helm/quai -n quai -f my-values.yaml --wait   # migrations first, as a hook
@@ -77,7 +82,8 @@ helm upgrade quai deploy/helm/quai -n quai -f my-values.yaml --wait   # the same
 
 CI installs the chart on a kind cluster on every change (`.github/workflows/kind.yml`), with the
 image built from the commit and PostgreSQL in the cluster (`deploy/kind/fixtures.yaml`): install,
-upgrade, every migration applied, then a smoke test in the cluster (`deploy/kind/smoke.yaml`):
+upgrade, every migration applied, the application role refused deleting audit events, then a
+smoke test in the cluster (`deploy/kind/smoke.yaml`):
 health, a development sign-in, a repository connected, and a run report whose token's hash Quai
 reads from a Kubernetes Secret. Locally, the same commands (`kind`, `kubectl` and `helm` run
 outside the agents' sandbox):
@@ -89,6 +95,40 @@ helm install quai deploy/helm/quai -n quai -f deploy/kind/values.yaml --wait
 kubectl apply -f deploy/kind/smoke.yaml && kubectl -n quai wait --for=condition=complete job/smoke && kubectl -n quai logs job/smoke
 kind delete cluster --name quai
 ```
+
+### Database roles
+
+Quai connects to PostgreSQL as two roles, so that the server and the worker cannot change or delete
+audit events ([audit log](../design/09-security-and-compliance.md#audit-log), [open question
+19](../plan/open-questions.md#still-open)):
+
+- **The schema's owner** (`database.migrateURL`) owns the tables. Only `quai migrate` connects as
+  it; it needs no superuser rights.
+- **The application role** (`database.url`) is what the server and the worker connect as. It
+  needs only `LOGIN`: after migrating, `quai migrate` grants it the schema's usage, `SELECT`,
+  `INSERT`, `UPDATE` and `DELETE` on the tables, `SELECT` only on the migrations' records
+  (`goose_db_version`, `river_migration`), and `SELECT` and `INSERT` only on the audit tables
+  (`audit_events`, `audit_personal`). It prints `<role> may read and append the audit log, and not
+  change it`.
+
+```sql
+-- as an administrator, once
+CREATE ROLE quai LOGIN PASSWORD '…';      -- the schema's owner
+CREATE ROLE quai_app LOGIN PASSWORD '…';  -- the application role
+CREATE DATABASE quai OWNER quai;
+```
+
+A new installation from a single role moves to two by creating the application role, setting
+`database.migrateURL` to the old URL and `database.url` to the new role's, and running `quai
+migrate` (the chart's upgrade does). Until then, `quai migrate` and the server log a warning, and
+the audit log page says the database does not protect it.
+
+**When the chain does not verify** (an alert, or a check by an auditor): the audit log's events
+are evidence. Do not repair or delete them. Find the first `seq` that breaks (an event changed,
+or missing after a deletion) and when, from the database's own logs and backups; check that the
+server and the worker connect as the application role (the server logs a warning at start
+otherwise) and who holds the owner's credentials; treat it as a security incident. The events
+before the break still verify, and so do those after it from the broken event's hash.
 
 ### Runners
 
@@ -248,5 +288,6 @@ before GA and twice a year.
 
 Shipped with the docs, one per alert: webhook silence, enforcement missing,
 credential expired, stuck request, stale request storm after a large base
-change, job queue backlog, audit chain verification failure, restore from
-backup, rotating the commit-signing key, break-glass review.
+change, job queue backlog, audit chain verification failure (the first is in
+[database roles](#database-roles)), restore from backup, rotating the
+commit-signing key, break-glass review.

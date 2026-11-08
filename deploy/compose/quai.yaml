@@ -2,7 +2,9 @@
 # repositories.yaml.
 env: development
 database:
-  url: postgres://quai@postgres:5432/quai?sslmode=disable
+  # The application role; the migrate service connects as the schema's owner, quai
+  # (QUAI_DATABASE_MIGRATE_URL), and grants it the audit log to read and append only.
+  url: postgres://quai_app@postgres:5432/quai?sslmode=disable
 auth:
   mode: dev # the user switcher, with its demo users: alice (platform admin), bob, carol, fiona
 git:

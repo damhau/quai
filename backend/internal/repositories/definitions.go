@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/damhau/quai/backend/internal/audit"
 	"github.com/damhau/quai/backend/internal/connectors"
 	"github.com/damhau/quai/backend/internal/engine/definitions"
 	"github.com/damhau/quai/backend/internal/store"
@@ -193,12 +194,36 @@ func (repo *Repo) save(ctx context.Context, set DefinitionSet, prev *DefinitionS
 	if err != nil {
 		return err
 	}
-	return repo.store.Tx(ctx, func(_ pgx.Tx, q *db.Queries) error {
+	var diff []change
+	if prev != nil {
+		diff = changes(prev, set)
+	}
+	// The audit log has the first definitions and each commit that changes them, with the commit's
+	// author: read before the transaction, which waits on nothing.
+	var seen *audit.Event
+	if prev == nil || len(diff) > 0 {
+		seen = &audit.Event{Action: "definitions.commit", Object: audit.Object{Type: "repository", ID: repo.Name},
+			Details: map[string]any{"commit": set.Commit, "branch": repo.Branch, "problems": len(set.Problems)}}
+		if name, email, err := repo.Mirror.Author(ctx, set.Commit); err == nil {
+			seen.Details["author"] = audit.Personal(name + " <" + email + ">")
+		}
+		list := []map[string]any{}
+		for _, c := range diff {
+			list = append(list, map[string]any{"kind": c.kind, "name": c.name, "change": c.change})
+		}
+		seen.Details["changes"] = list
+	}
+	return repo.store.Tx(ctx, func(tx pgx.Tx, q *db.Queries) error {
 		n, err := q.PutDefinitionSet(ctx, db.PutDefinitionSetParams{Repository: repo.Name, Commit: set.Commit, Active: a, Problems: p})
-		if err != nil || n == 0 || prev == nil {
+		if err != nil || n == 0 {
 			return err
 		}
-		for _, c := range changes(prev, set) {
+		if seen != nil {
+			if err := audit.Add(ctx, tx, *seen); err != nil {
+				return err
+			}
+		}
+		for _, c := range diff {
 			author, commit := repo.authorOf(ctx, c.path)
 			data, _ := json.Marshal(map[string]any{"repository": repo.Name, "kind": c.kind, "name": c.name, "path": c.path,
 				"commit": commit, "setCommit": set.Commit, "problems": problemsOf(set.Problems, c.path)})

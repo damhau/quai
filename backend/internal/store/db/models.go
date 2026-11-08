@@ -25,6 +25,24 @@ type ApiToken struct {
 	RevokedAt  pgtype.Timestamptz
 }
 
+type AuditEvent struct {
+	Seq     int64
+	At      pgtype.Timestamptz
+	Actor   json.RawMessage
+	Action  string
+	Object  json.RawMessage
+	Details json.RawMessage
+	Prev    string
+	Hash    string
+}
+
+type AuditPersonal struct {
+	Hash  string
+	Seq   int64
+	Salt  []byte
+	Value string
+}
+
 type Change struct {
 	ChangeSetID uuid.UUID
 	Path        string
@@ -127,15 +145,16 @@ type Request struct {
 }
 
 type Review struct {
-	ID            uuid.UUID
-	RequestID     uuid.UUID
-	Reviewer      string
-	Groups        []string
-	Decision      string
-	Comment       string
-	ChangeSetHash string
-	CreatedAt     pgtype.Timestamptz
-	ReviewerEmail string
+	ID               uuid.UUID
+	RequestID        uuid.UUID
+	Reviewer         string
+	Groups           []string
+	Decision         string
+	Comment          string
+	ChangeSetHash    string
+	CreatedAt        pgtype.Timestamptz
+	ReviewerEmail    string
+	ReviewerAuthTime pgtype.Timestamptz
 }
 
 type Run struct {

@@ -86,6 +86,9 @@ func serve(ctx context.Context, cfg *config.Config, log *slog.Logger, ln net.Lis
 			client = network.Client()
 		}
 		opts.Store, opts.Auth = s, auth.New(cfg, s, client, log)
+		if p, err := s.AuditProtected(ctx); err != nil || !p.Bool {
+			log.Warn("the database role can change or delete audit events: connect as an application role (database.url) and migrate as the schema owner (database.migrateURL)", slog.Any("error", err))
+		}
 	}
 	reg, err := openRepositories(ctx, cfg, s, network, log)
 	if err != nil {

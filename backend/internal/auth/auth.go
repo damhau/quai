@@ -33,9 +33,11 @@ import (
 	"github.com/jackc/pgx/v5"
 	"golang.org/x/oauth2"
 
+	"github.com/damhau/quai/backend/internal/audit"
 	"github.com/damhau/quai/backend/internal/authz"
 	"github.com/damhau/quai/backend/internal/config"
 	"github.com/damhau/quai/backend/internal/store"
+	"github.com/damhau/quai/backend/internal/store/db"
 )
 
 // Identity is who makes a request.
@@ -137,6 +139,7 @@ func (a *Authenticator) Middleware(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
+		ctx = audit.WithIP(ctx, RemoteIP(r))
 		// Runners report with their repository's run token, which the run endpoint checks.
 		if h := r.Header.Get("Authorization"); h != "" && !IsRunsPath(r.URL.Path) {
 			id, err := a.tokenIdentity(ctx, h)
@@ -144,7 +147,7 @@ func (a *Authenticator) Middleware(next http.Handler) http.Handler {
 				writeProblem(w, http.StatusUnauthorized, err.Error())
 				return
 			}
-			next.ServeHTTP(w, r.WithContext(WithIdentity(ctx, id)))
+			next.ServeHTTP(w, r.WithContext(audit.WithActor(WithIdentity(ctx, id), ActorOf(ctx, id))))
 			return
 		}
 		id, ok := a.sessionIdentity(ctx)
@@ -156,7 +159,7 @@ func (a *Authenticator) Middleware(next http.Handler) http.Handler {
 			}
 		}
 		if ok {
-			ctx = WithIdentity(ctx, id)
+			ctx = audit.WithActor(WithIdentity(ctx, id), ActorOf(ctx, id))
 		}
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
@@ -236,7 +239,15 @@ func (a *Authenticator) Routes() http.Handler {
 }
 
 func (a *Authenticator) logout(w http.ResponseWriter, r *http.Request) {
-	if err := a.sessions.Destroy(r.Context()); err != nil {
+	ctx := r.Context()
+	var recorded error
+	if id, ok := FromContext(ctx); ok && id.TokenID == "" {
+		recorded = a.store.Tx(ctx, func(tx pgx.Tx, _ *db.Queries) error {
+			return audit.Add(ctx, tx, audit.Event{Action: "auth.logout", Object: audit.Object{Type: "user", ID: id.Principal.Name}})
+		})
+	}
+	// The session ends even when the audit log cannot record it.
+	if err := errors.Join(a.sessions.Destroy(ctx), recorded); err != nil {
 		a.fail(w, r, err)
 		return
 	}
@@ -332,6 +343,10 @@ func (a *Authenticator) callback(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, http.StatusForbidden, err.Error())
 		return
 	}
+	if err := a.recordLogin(ctx, u, config.AuthOIDC); err != nil {
+		a.fail(w, r, err)
+		return
+	}
 	if err := a.signIn(ctx, u); err != nil {
 		a.fail(w, r, err)
 		return
@@ -419,8 +434,13 @@ func (a *Authenticator) devLogin(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, http.StatusNotFound, "no development user "+body.Name)
 		return
 	}
-	u := a.cfg.Dev.Users[i]
-	if err := a.signIn(r.Context(), sessionUser{Name: u.Name, Email: u.Email, Groups: u.Groups, AuthTime: time.Now()}); err != nil {
+	du := a.cfg.Dev.Users[i]
+	u := sessionUser{Name: du.Name, Email: du.Email, Groups: du.Groups, AuthTime: time.Now().Truncate(time.Second)}
+	if err := a.recordLogin(r.Context(), u, config.AuthDev); err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	if err := a.signIn(r.Context(), u); err != nil {
 		a.fail(w, r, err)
 		return
 	}

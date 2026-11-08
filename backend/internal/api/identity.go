@@ -9,9 +9,11 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/damhau/quai/backend/internal/audit"
 	"github.com/damhau/quai/backend/internal/auth"
 	"github.com/damhau/quai/backend/internal/authz"
 	"github.com/damhau/quai/backend/internal/store"
@@ -130,10 +132,19 @@ func registerIdentity(a huma.API, s *store.Store) {
 		if groups == nil {
 			groups = []string{}
 		}
-		t, err := s.CreateAPIToken(ctx, db.CreateAPITokenParams{
-			ID: uuid.New(), Owner: id.Principal.Name, Groups: groups, Name: in.Body.Name, Hash: hash,
-			Scopes:    slices.Sorted(slices.Values(in.Body.Scopes)),
-			ExpiresAt: pgtype.Timestamptz{Time: time.Now().Add(time.Duration(in.Body.ExpiresInDays) * 24 * time.Hour), Valid: true},
+		var t db.ApiToken
+		err = s.Tx(ctx, func(tx pgx.Tx, q *db.Queries) error {
+			var err error
+			t, err = q.CreateAPIToken(ctx, db.CreateAPITokenParams{
+				ID: uuid.New(), Owner: id.Principal.Name, Groups: groups, Name: in.Body.Name, Hash: hash,
+				Scopes:    slices.Sorted(slices.Values(in.Body.Scopes)),
+				ExpiresAt: pgtype.Timestamptz{Time: time.Now().Add(time.Duration(in.Body.ExpiresInDays) * 24 * time.Hour), Valid: true},
+			})
+			if err != nil {
+				return err
+			}
+			return audit.Add(ctx, tx, audit.Event{Action: "token.created", Object: audit.Object{Type: "token", ID: t.ID.String()},
+				Details: map[string]any{"name": t.Name, "scopes": t.Scopes, "expiresAt": audit.Time(t.ExpiresAt.Time)}})
 		})
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
@@ -179,7 +190,14 @@ func registerIdentity(a huma.API, s *store.Store) {
 		if err != nil {
 			return nil, huma.Error404NotFound("no such token")
 		}
-		n, err := s.RevokeAPIToken(ctx, db.RevokeAPITokenParams{ID: tokenID, Owner: id.Principal.Name})
+		var n int64
+		err = s.Tx(ctx, func(tx pgx.Tx, q *db.Queries) error {
+			var err error
+			if n, err = q.RevokeAPIToken(ctx, db.RevokeAPITokenParams{ID: tokenID, Owner: id.Principal.Name}); err != nil || n == 0 {
+				return err
+			}
+			return audit.Add(ctx, tx, audit.Event{Action: "token.revoked", Object: audit.Object{Type: "token", ID: tokenID.String()}})
+		})
 		if err != nil {
 			return nil, err
 		}

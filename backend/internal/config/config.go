@@ -54,6 +54,10 @@ type Server struct {
 // Database configures PostgreSQL.
 type Database struct {
 	URL string `yaml:"url"` // such as postgres://quai@db:5432/quai; secrets belong in QUAI_DATABASE_URL
+	// MigrateURL is how quai migrate connects: as the schema's owner, while URL names the
+	// application role the server and the worker connect as, which may only read and append the
+	// audit log (open question 19). Empty: URL, one role for both, and the log is not protected.
+	MigrateURL string `yaml:"migrateURL"`
 }
 
 // Git configures how Quai works with repositories.
@@ -193,6 +197,7 @@ var variables = []struct {
 		return err
 	}},
 	{"QUAI_DATABASE_URL", func(c *Config, v string) error { c.Database.URL = v; return nil }},
+	{"QUAI_DATABASE_MIGRATE_URL", func(c *Config, v string) error { c.Database.MigrateURL = v; return nil }},
 	{"QUAI_AUTH_MODE", func(c *Config, v string) error { c.Auth.Mode = v; return nil }},
 	{"QUAI_AUTH_OIDC_ISSUER", func(c *Config, v string) error { c.Auth.OIDC.Issuer = v; return nil }},
 	{"QUAI_AUTH_OIDC_CLIENT_ID", func(c *Config, v string) error { c.Auth.OIDC.ClientID = v; return nil }},
@@ -324,6 +329,11 @@ func (c *Config) validate() error {
 	if u := c.Database.URL; u != "" {
 		if p, err := url.Parse(u); err != nil || (p.Scheme != "postgres" && p.Scheme != "postgresql") {
 			errs = append(errs, errors.New("database.url must be a postgres:// URL"))
+		}
+	}
+	if u := c.Database.MigrateURL; u != "" {
+		if p, err := url.Parse(u); err != nil || (p.Scheme != "postgres" && p.Scheme != "postgresql") {
+			errs = append(errs, errors.New("database.migrateURL must be a postgres:// URL"))
 		}
 	}
 	if c.Server.ShutdownTimeout < 0 {

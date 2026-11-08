@@ -4,23 +4,31 @@
 // into the user cache directory. Each test gets its own database, created from a migrated
 // template and dropped when the test ends.
 //
+// As in production, the schema belongs to one role and the tests connect as another, the
+// application role, which quai migrate's grants let read and append the audit log only
+// (docs/plan/open-questions.md, question 19). OwnerURL connects as the owner.
+//
 // A package that uses it calls Main from TestMain.
 package pgtest
 
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	embeddedpostgres "github.com/fergusstrange/embedded-postgres"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/damhau/quai/backend/internal/store"
@@ -28,7 +36,13 @@ import (
 
 const template = "quai_template"
 
-var admin string // URL of the server's maintenance database
+// AppRole is the application role the tests connect as.
+const AppRole = "quai_app"
+
+var (
+	admin string // URL of the server's maintenance database, as the schema owner
+	app   string // the same, as the application role
+)
 
 // Main starts PostgreSQL, prepares the migrated template database, runs the tests and stops
 // PostgreSQL. Use it as `func TestMain(m *testing.M) { os.Exit(pgtest.Main(m)) }`.
@@ -108,7 +122,8 @@ func start() (stop func() error, err error) {
 	return stop, nil
 }
 
-// prepareTemplate creates the template database, migrated, unless it exists.
+// prepareTemplate creates the application role and the template database, migrated, unless they
+// exist, and grants the role what quai migrate grants it.
 func prepareTemplate() error {
 	ctx := context.Background()
 	a, err := pxpool(ctx, admin)
@@ -116,6 +131,9 @@ func prepareTemplate() error {
 		return err
 	}
 	defer a.Close()
+	if err := appRole(ctx, a); err != nil {
+		return err
+	}
 	var exists bool
 	if err := a.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM pg_database WHERE datname = $1)", template).Scan(&exists); err != nil {
 		return err
@@ -130,8 +148,32 @@ func prepareTemplate() error {
 		return err
 	}
 	defer t.Close()
-	_, err = store.Migrate(ctx, t)
-	return err
+	if _, err := store.Migrate(ctx, t); err != nil {
+		return err
+	}
+	return store.Grant(ctx, t, AppRole)
+}
+
+// appRole creates the application role, or sets its password. The password is derived from the
+// owner's URL, so that packages testing against one server at once agree on it.
+func appRole(ctx context.Context, a *pgxpool.Pool) error {
+	sum := sha256.Sum256([]byte("quai-pgtest-app " + admin))
+	password := hex.EncodeToString(sum[:16])
+	_, err := a.Exec(ctx, "CREATE ROLE "+AppRole+" LOGIN")
+	var pgErr *pgconn.PgError
+	if err != nil && !(errors.As(err, &pgErr) && (pgErr.Code == "42710" || pgErr.Code == "23505")) {
+		return fmt.Errorf("application role: %w", err)
+	}
+	if _, err := a.Exec(ctx, "ALTER ROLE "+AppRole+" LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD '"+password+"'"); err != nil {
+		return fmt.Errorf("application role: %w", err)
+	}
+	u, err := url.Parse(admin)
+	if err != nil {
+		return err
+	}
+	u.User = url.UserPassword(AppRole, password)
+	app = u.String()
+	return nil
 }
 
 func pxpool(ctx context.Context, u string) (*pgxpool.Pool, error) {
@@ -155,7 +197,8 @@ func withDatabase(u, name string) string {
 	return parsed.String()
 }
 
-// URL returns the URL of a new, migrated database for the test, dropped when the test ends.
+// URL returns the URL of a new, migrated database for the test, as the application role; it is
+// dropped when the test ends.
 func URL(t testing.TB) string {
 	t.Helper()
 	if admin == "" {
@@ -184,7 +227,16 @@ func URL(t testing.TB) string {
 			t.Error(err)
 		}
 	})
-	return withDatabase(admin, name)
+	return withDatabase(app, name)
+}
+
+// OwnerURL returns the URL of the database of u (from URL) as the schema owner.
+func OwnerURL(u string) string {
+	parsed, err := url.Parse(u)
+	if err != nil {
+		return u
+	}
+	return withDatabase(admin, strings.TrimPrefix(parsed.Path, "/"))
 }
 
 // Store returns a store on a new, migrated database for the test.

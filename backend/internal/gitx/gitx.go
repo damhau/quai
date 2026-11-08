@@ -468,6 +468,19 @@ func (m *Mirror) Log(ctx context.Context, branch, file string, limit int) ([]Log
 	return entries, nil
 }
 
+// Author returns who authored a commit: name and email.
+func (m *Mirror) Author(ctx context.Context, commit string) (string, string, error) {
+	if err := checkCommit(commit); err != nil {
+		return "", "", err
+	}
+	out, err := m.git(ctx, "", "log", "-n1", "--format=%an%x1f%ae", commit, "--")
+	if err != nil {
+		return "", "", fmt.Errorf("commit %.12s: %w", commit, err)
+	}
+	name, email, _ := strings.Cut(strings.TrimSpace(out), "\x1f")
+	return name, email, nil
+}
+
 // DeleteBranch deletes a branch on the remote, and in the mirror. A branch already gone is no error.
 func (m *Mirror) DeleteBranch(ctx context.Context, branch string) error {
 	if err := checkRef(branch); err != nil {

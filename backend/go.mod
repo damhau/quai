@@ -20,6 +20,7 @@ require (
 	github.com/go-logr/logr v1.4.4
 	github.com/google/go-github/v88 v88.0.0
 	github.com/google/uuid v1.6.0
+	github.com/gowebpki/jcs v1.0.2
 	github.com/hashicorp/hcl/v2 v2.25.0
 	github.com/hashicorp/terraform-json v0.29.0
 	github.com/jackc/pgx/v5 v5.11.0

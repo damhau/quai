@@ -1,6 +1,7 @@
 # What the chart's smoke test on kind needs besides the chart (docs/operations/deployment-and-operations.md#helm):
-# the namespace, a PostgreSQL that trusts the cluster's network, and the Secrets the release
-# refers to. Test values for a throwaway cluster: they protect nothing.
+# the namespace, a PostgreSQL that trusts the cluster's network, with the schema's owner (quai)
+# and the application role (quai_app), and the Secrets the release refers to. Test values for a
+# throwaway cluster: they protect nothing.
 apiVersion: v1
 kind: Namespace
 metadata: { name: quai }
@@ -9,7 +10,21 @@ apiVersion: v1
 kind: Secret
 metadata: { name: quai-database, namespace: quai }
 stringData:
+  url: postgres://quai_app@postgres:5432/quai?sslmode=disable
+---
+apiVersion: v1
+kind: Secret
+metadata: { name: quai-database-owner, namespace: quai }
+stringData:
   url: postgres://quai@postgres:5432/quai?sslmode=disable
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: { name: postgres-roles, namespace: quai }
+data:
+  roles.sql: |
+    -- The application role: quai migrate, as the owner, grants it what the server and the worker need.
+    CREATE ROLE quai_app LOGIN;
 ---
 # The repository's run token: Quai reads its SHA-256 through the chart's RBAC; the smoke test
 # sends the token.
@@ -36,9 +51,14 @@ spec:
             - { name: POSTGRES_DB, value: quai }
             - { name: POSTGRES_HOST_AUTH_METHOD, value: trust } # reachable in this cluster only
           ports: [{ containerPort: 5432 }]
+          volumeMounts:
+            - { name: roles, mountPath: /docker-entrypoint-initdb.d, readOnly: true }
           readinessProbe:
             exec: { command: [pg_isready, -U, quai] }
             periodSeconds: 2
+      volumes:
+        - name: roles
+          configMap: { name: postgres-roles }
 ---
 apiVersion: v1
 kind: Service

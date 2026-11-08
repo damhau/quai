@@ -1,6 +1,6 @@
 # Security and compliance
 
-Status: Draft · 2026-10-26
+Status: Draft · 2026-11-08
 
 ## What must be protected
 
@@ -47,20 +47,70 @@ changes, executor calls, configuration changes.
 {
   "seq": 18234,
   "at": "2026-10-26T09:40:12.331Z",
-  "actor": { "type": "user", "id": "alice", "ip": "10.1.2.3", "authTime": "2026-10-26T09:38:55Z" },
+  "actor": { "type": "user", "id": "pd:5e1c…", "ip": "pd:0b7a…", "authTime": "2026-10-26T09:38:55Z" },
   "action": "request.approved",
   "object": { "type": "request", "id": "3b6f2a8c-…", "resource": "infra-live/vm/prod/web01" },
-  "details": { "changeSet": "9f2c41…", "rule": "production" },
+  "details": { "changeSet": "sha256:9f2c41…", "approvals": ["pd:77d0…"] },
   "prev": "b1d0…",
   "hash": "7a9e…"
 }
 ```
 
-- `hash = SHA-256(prev || canonical JSON of the event)`. Any modification or deletion breaks the chain.
-- The table is written by an insert-only database role; the application role has no `UPDATE` or `DELETE` on it.
+- **The chain.** `hash = SHA-256(prev ‖ JCS(event))`, in hex: `prev` as its 64 hex characters,
+  then the event without `prev` and `hash` in RFC 8785's JSON Canonicalization Scheme. The first
+  event's `prev` is 64 zeros. `at` is UTC to the millisecond, `authTime` to the second
+  ([open question 18](../plan/open-questions.md#still-open)). Any modification or deletion breaks
+  the chain at the event changed, or at the one after the event deleted.
+- **One at a time, with what it records.** An event is written in the transaction of the change it
+  records (`audit.Add` on the transaction `store.Tx` opens), so a change and its event commit or
+  roll back together. Just before committing, the transaction takes a transaction-level advisory
+  lock, its last lock, and appends its events after the last one: `seq` has no gaps, and the
+  lock's holder needs nothing but its own connection to commit and release it.
+- **Insert-only.** `quai migrate` connects as the schema's owner (`database.migrateURL`) and grants
+  the application role the server and the worker connect as (`database.url`) `SELECT` and
+  `INSERT` on the audit tables, nothing more: no `UPDATE`, `DELETE` or `TRUNCATE`, and no change
+  to the migrations' records ([open question 19](../plan/open-questions.md#still-open)). When the
+  two are one role, `quai migrate` and the server warn, and the audit log page says the database
+  does not protect the log. Retention will delete old events through a `SECURITY DEFINER`
+  function of the owner, only those older than the retention and covered by a signed checkpoint
+  (P4-02).
+- **Personal data** (people's names and emails, IP addresses, reasons and comments) is in an event
+  as a pseudonym, `pd:` and the SHA-256 of a random salt and the value; the salt and the value are
+  in a separate table, `audit_personal`, that pseudonymization deletes from without breaking the
+  chain ([data protection](#data-protection)). The API returns the clear values still there with
+  each page; an event whose value was deleted shows "(erased)".
+- **Reviews** keep the reviewer's authentication time (`reviews.reviewer_auth_time`, none with an
+  API token), as do the events of what people do: `actor.authTime` is when they last
+  authenticated with the identity provider. An API token's events carry the person and the
+  token's ID, without an authentication time. `actor.ip` is the address of the connection Quai
+  received, a proxy's behind one ([open question 32](../plan/open-questions.md#still-open)).
 - Every hour (and at shutdown) Quai signs a checkpoint (latest `seq` and `hash`) with an Ed25519 key from the secret store. Checkpoints can also be committed to an audit Git repository, giving an external, timestamped anchor.
 - Export: syslog (RFC 5424, optionally CEF), OpenTelemetry logs, Splunk HEC, or a webhook. Export is at-least-once with a cursor, so the SIEM can detect gaps.
 - `quai audit verify` checks the chain and checkpoints offline.
+
+What is recorded, by action (P4-01; break-glass, executor calls and configuration changes come with
+their features):
+
+| Action | Actor | When |
+| --- | --- | --- |
+| `auth.login`, `auth.logout` | the person | a sign-in (with the method and the grants it gave), a sign-out |
+| `auth.grants_changed` | the person | a sign-in whose grants differ from the person's previous sign-in (`before`, `after`) |
+| `token.created`, `token.revoked` | the person | an API token made or revoked (its ID, name, scopes, expiry; never the token) |
+| `run_token.created` | the person | a run token generated for a repository (its SHA-256; Quai keeps neither, so revoking it is changing the secret it names, outside Quai's view: [open question 33](../plan/open-questions.md#still-open)) |
+| `request.submitted`, `request.cancelled`, `request.retried` | the person, or their token | as named; submitted carries the change set and definitions commit, the reason as a pseudonym |
+| `request.reviewed` | the reviewer | every review: the decision, the comment as a pseudonym, the change set |
+| `request.approved`, `request.rejected` | the reviewer, or Quai | the request's state changes; approved names who approved (pseudonyms); Quai when no rule needs approvals or a plan settles them |
+| `request.stale`, `request.merged`, `request.applied`, `request.failed` | whoever's action made Quai see it: Quai, a repository's runner, or a person | the request's state changes, with what Quai observed (commit, pull request, run, error); never what a person wrote |
+| `request.merged_without_approval` | Quai | a bypass: the pull request merged without Quai's approval |
+| `repository.created`, `repository.updated`, `repository.deleted` | the person, or Quai for the configuration's connections | a repository connection changed (its document's SHA-256 and generation) |
+| `repository.enforcement_lost`, `repository.enforcement_restored` | Quai | the platform stops or starts enforcing `quai/approval` |
+| `definitions.commit` | Quai | the first definitions of a repository, and each commit that changes them: the commit, its author (a pseudonym), the definitions it changes |
+
+Auditors and platform admins read it (`GET /api/v1/audit`, the audit log page under Admin):
+newest first, a page at a time with a `before` cursor, filtered by action (or its prefix, such as
+`request`), actor (a person's name, a repository for its runner, `quai`), object (a request's ID,
+a resource, a repository, a token's ID or a person's name), object type and time. An API token
+cannot read it.
 
 ### Evidence bundle
 

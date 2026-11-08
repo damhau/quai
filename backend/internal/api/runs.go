@@ -18,6 +18,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 
+	"github.com/damhau/quai/backend/internal/audit"
 	"github.com/damhau/quai/backend/internal/authz"
 	"github.com/damhau/quai/backend/internal/engine/locate"
 	"github.com/damhau/quai/backend/internal/engine/tfplan"
@@ -158,6 +159,7 @@ func registerRuns(a huma.API, reg *repositories.Registry, s *store.Store, svc *r
 		if err != nil {
 			return nil, err
 		}
+		ctx = runnerActor(ctx, repo)
 		if s == nil {
 			return nil, huma.Error503ServiceUnavailable("no database")
 		}
@@ -189,6 +191,7 @@ func registerRuns(a huma.API, reg *repositories.Registry, s *store.Store, svc *r
 		if err != nil {
 			return nil, err
 		}
+		ctx = runnerActor(ctx, repo)
 		if s == nil {
 			return nil, huma.Error503ServiceUnavailable("no database")
 		}
@@ -286,6 +289,12 @@ func registerRuns(a huma.API, reg *repositories.Registry, s *store.Store, svc *r
 		}
 		return &out[[]RunView]{Body: views}, nil
 	})
+}
+
+// runnerActor makes the repository's runner the actor of what its report moves on: the audit log
+// records a request applied or failed by its runner.
+func runnerActor(ctx context.Context, repo *repositories.Repo) context.Context {
+	return audit.WithActor(ctx, audit.Actor{Type: audit.Runner, ID: repo.Name, IP: audit.IPFrom(ctx)})
 }
 
 // runTokenRepo returns the repository a run token, sent as authorization, is the token of.

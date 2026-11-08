@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApprovalsRouteImport } from './routes/approvals'
 import { Route as GitRouteImport } from './routes/git'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as AdminAuditRouteImport } from './routes/admin/audit'
 import { Route as DesignerIndexRouteImport } from './routes/designer/index'
 import { Route as InventoryIndexRouteImport } from './routes/inventory/index'
 import { Route as RequestsIndexRouteImport } from './routes/requests/index'
@@ -49,6 +50,11 @@ const GitRoute = GitRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminAuditRoute = AdminAuditRouteImport.update({
+  id: '/admin/audit',
+  path: '/admin/audit',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DesignerIndexRoute = DesignerIndexRouteImport.update({
@@ -150,6 +156,7 @@ export interface FileRoutesByFullPath {
   '/approvals': typeof ApprovalsRoute
   '/git': typeof GitRoute
   '/login': typeof LoginRoute
+  '/admin/audit': typeof AdminAuditRoute
   '/requests/$id': typeof RequestsIdRoute
   '/designer/': typeof DesignerIndexRoute
   '/inventory/': typeof InventoryIndexRoute
@@ -173,6 +180,7 @@ export interface FileRoutesByTo {
   '/approvals': typeof ApprovalsRoute
   '/git': typeof GitRoute
   '/login': typeof LoginRoute
+  '/admin/audit': typeof AdminAuditRoute
   '/requests/$id': typeof RequestsIdRoute
   '/designer': typeof DesignerIndexRoute
   '/inventory': typeof InventoryIndexRoute
@@ -197,6 +205,7 @@ export interface FileRoutesById {
   '/approvals': typeof ApprovalsRoute
   '/git': typeof GitRoute
   '/login': typeof LoginRoute
+  '/admin/audit': typeof AdminAuditRoute
   '/requests/$id': typeof RequestsIdRoute
   '/designer/': typeof DesignerIndexRoute
   '/inventory/': typeof InventoryIndexRoute
@@ -222,6 +231,7 @@ export interface FileRouteTypes {
     | '/approvals'
     | '/git'
     | '/login'
+    | '/admin/audit'
     | '/requests/$id'
     | '/designer/'
     | '/inventory/'
@@ -245,6 +255,7 @@ export interface FileRouteTypes {
     | '/approvals'
     | '/git'
     | '/login'
+    | '/admin/audit'
     | '/requests/$id'
     | '/designer'
     | '/inventory'
@@ -268,6 +279,7 @@ export interface FileRouteTypes {
     | '/approvals'
     | '/git'
     | '/login'
+    | '/admin/audit'
     | '/requests/$id'
     | '/designer/'
     | '/inventory/'
@@ -292,6 +304,7 @@ export interface RootRouteChildren {
   ApprovalsRoute: typeof ApprovalsRoute
   GitRoute: typeof GitRoute
   LoginRoute: typeof LoginRoute
+  AdminAuditRoute: typeof AdminAuditRoute
   RequestsIdRoute: typeof RequestsIdRoute
   DesignerIndexRoute: typeof DesignerIndexRoute
   InventoryIndexRoute: typeof InventoryIndexRoute
@@ -339,6 +352,13 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/audit': {
+      id: '/admin/audit'
+      path: '/admin/audit'
+      fullPath: '/admin/audit'
+      preLoaderRoute: typeof AdminAuditRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/designer/': {
@@ -468,6 +488,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApprovalsRoute: ApprovalsRoute,
   GitRoute: GitRoute,
   LoginRoute: LoginRoute,
+  AdminAuditRoute: AdminAuditRoute,
   RequestsIdRoute: RequestsIdRoute,
   DesignerIndexRoute: DesignerIndexRoute,
   InventoryIndexRoute: InventoryIndexRoute,

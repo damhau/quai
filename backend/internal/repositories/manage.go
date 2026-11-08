@@ -8,8 +8,10 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/damhau/quai/backend/internal/audit"
 	"github.com/damhau/quai/backend/internal/connectors"
 	"github.com/damhau/quai/backend/internal/store/db"
 )
@@ -109,7 +111,13 @@ func (r *Registry) Create(ctx context.Context, d Document) (Connection, error) {
 		return Connection{}, err
 	}
 	var pgErr *pgconn.PgError
-	if err := r.db.CreateRepository(ctx, db.CreateRepositoryParams{Name: d.Metadata.Name, Document: doc}); errors.As(err, &pgErr) && pgErr.Code == "23505" {
+	err = r.db.Tx(ctx, func(tx pgx.Tx, q *db.Queries) error {
+		if err := q.CreateRepository(ctx, db.CreateRepositoryParams{Name: d.Metadata.Name, Document: doc}); err != nil {
+			return err
+		}
+		return audit.Add(ctx, tx, connectionEvent("repository.created", d.Metadata.Name, ManagedByAPI, doc, 1))
+	})
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 		return Connection{}, ErrExists
 	} else if err != nil {
 		return Connection{}, err
@@ -136,7 +144,14 @@ func (r *Registry) Update(ctx context.Context, name string, d Document) (Connect
 	if err != nil {
 		return Connection{}, err
 	}
-	n, err := r.db.UpdateRepository(ctx, db.UpdateRepositoryParams{Name: name, Document: doc})
+	var n int64
+	err = r.db.Tx(ctx, func(tx pgx.Tx, q *db.Queries) error {
+		var err error
+		if n, err = q.UpdateRepository(ctx, db.UpdateRepositoryParams{Name: name, Document: doc}); err != nil || n == 0 {
+			return err
+		}
+		return audit.Add(ctx, tx, connectionEvent("repository.updated", name, ManagedByAPI, doc, 0))
+	})
 	if err != nil {
 		return Connection{}, err
 	}
@@ -154,7 +169,14 @@ func (r *Registry) Delete(ctx context.Context, name string) error {
 	if r.db == nil {
 		return ErrNoDatabase
 	}
-	n, err := r.db.DeleteRepository(ctx, name)
+	var n int64
+	err := r.db.Tx(ctx, func(tx pgx.Tx, q *db.Queries) error {
+		var err error
+		if n, err = q.DeleteRepository(ctx, name); err != nil || n == 0 {
+			return err
+		}
+		return audit.Add(ctx, tx, connectionEvent("repository.deleted", name, ManagedByAPI, nil, 0))
+	})
 	if err != nil {
 		return err
 	}

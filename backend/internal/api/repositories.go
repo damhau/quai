@@ -11,11 +11,14 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/jackc/pgx/v5"
 
+	"github.com/damhau/quai/backend/internal/audit"
 	"github.com/damhau/quai/backend/internal/authz"
 	"github.com/damhau/quai/backend/internal/connectors"
 	"github.com/damhau/quai/backend/internal/repositories"
 	"github.com/damhau/quai/backend/internal/store"
+	"github.com/damhau/quai/backend/internal/store/db"
 )
 
 // Managing repository connections (docs/design/01-repository-connections.md#registering-a-repository):
@@ -282,6 +285,15 @@ func registerRepositories(a huma.API, opts Options) {
 		}
 		token := "quai_run_" + hex.EncodeToString(b)
 		sum := sha256.Sum256([]byte(token))
+		if s != nil {
+			// The hash names the token, as the secret that will hold it does.
+			if err := s.Tx(ctx, func(tx pgx.Tx, _ *db.Queries) error {
+				return audit.Add(ctx, tx, audit.Event{Action: "run_token.created", Object: audit.Object{Type: "repository", ID: in.Repository},
+					Details: map[string]any{"sha256": hex.EncodeToString(sum[:])}})
+			}); err != nil {
+				return nil, err
+			}
+		}
 		return &out[RunTokenView]{Body: RunTokenView{Token: token, SHA256: hex.EncodeToString(sum[:])}}, nil
 	})
 

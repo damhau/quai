@@ -71,6 +71,143 @@
         ],
         "type": "object"
       },
+      "AuditActorView": {
+        "additionalProperties": false,
+        "properties": {
+          "authTime": {
+            "description": "When the person last authenticated with the identity provider",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "ip": {
+            "type": "string"
+          },
+          "token": {
+            "description": "The API token's ID",
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "user",
+              "token",
+              "runner",
+              "system"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "id"
+        ],
+        "type": "object"
+      },
+      "AuditEventView": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "actor": {
+            "$ref": "#/components/schemas/AuditActorView"
+          },
+          "at": {
+            "type": "string"
+          },
+          "details": {
+            "additionalProperties": {},
+            "type": "object"
+          },
+          "hash": {
+            "type": "string"
+          },
+          "object": {
+            "$ref": "#/components/schemas/AuditObjectView"
+          },
+          "prev": {
+            "type": "string"
+          },
+          "seq": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "seq",
+          "at",
+          "actor",
+          "action",
+          "object",
+          "details",
+          "prev",
+          "hash"
+        ],
+        "type": "object"
+      },
+      "AuditObjectView": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "resource": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "id"
+        ],
+        "type": "object"
+      },
+      "AuditPageView": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/api/v1/schemas/AuditPageView.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/AuditEventView"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "next": {
+            "description": "Pass it as before for the next page; absent on the last one",
+            "format": "int64",
+            "type": "integer"
+          },
+          "personal": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "protected": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "events",
+          "personal",
+          "protected"
+        ],
+        "type": "object"
+      },
       "BlueprintInput": {
         "additionalProperties": false,
         "properties": {
@@ -2487,6 +2624,10 @@
             "format": "date-time",
             "type": "string"
           },
+          "authTime": {
+            "format": "date-time",
+            "type": "string"
+          },
           "comment": {
             "type": "string"
           },
@@ -3528,6 +3669,129 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/audit": {
+      "get": {
+        "operationId": "list-audit-events",
+        "parameters": [
+          {
+            "description": "Events before this seq: the next cursor of the page before; 0 or absent, from the newest",
+            "explode": false,
+            "in": "query",
+            "name": "before",
+            "schema": {
+              "description": "Events before this seq: the next cursor of the page before; 0 or absent, from the newest",
+              "format": "int64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 100,
+              "format": "int32",
+              "maximum": 500,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "An action (request.approved), or its prefix (request)",
+            "explode": false,
+            "in": "query",
+            "name": "action",
+            "schema": {
+              "description": "An action (request.approved), or its prefix (request)",
+              "maxLength": 100,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Who acted: a person's name, a repository for its runner, quai for Quai itself",
+            "explode": false,
+            "in": "query",
+            "name": "actor",
+            "schema": {
+              "description": "Who acted: a person's name, a repository for its runner, quai for Quai itself",
+              "maxLength": 500,
+              "type": "string"
+            }
+          },
+          {
+            "description": "What kind of object: request, repository, token, user",
+            "explode": false,
+            "in": "query",
+            "name": "objectType",
+            "schema": {
+              "description": "What kind of object: request, repository, token, user",
+              "maxLength": 100,
+              "type": "string"
+            }
+          },
+          {
+            "description": "What the event is about: a request ID, a resource, a repository, a token ID or a person's name",
+            "explode": false,
+            "in": "query",
+            "name": "object",
+            "schema": {
+              "description": "What the event is about: a request ID, a resource, a repository, a token ID or a person's name",
+              "maxLength": 500,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Events at or after this time",
+            "explode": false,
+            "in": "query",
+            "name": "since",
+            "schema": {
+              "description": "Events at or after this time",
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Events before this time",
+            "explode": false,
+            "in": "query",
+            "name": "until",
+            "schema": {
+              "description": "Events before this time",
+              "format": "date-time",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditPageView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Read the audit log (auditors and platform admins)",
+        "tags": [
+          "Audit"
+        ]
+      }
+    },
     "/api/v1/catalog": {
       "get": {
         "operationId": "list-catalog",

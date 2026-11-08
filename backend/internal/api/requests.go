@@ -102,6 +102,9 @@ type ReviewView struct {
 	Decision string    `json:"decision"`
 	Comment  string    `json:"comment,omitempty"`
 	At       time.Time `json:"at"`
+	// AuthTime is when the reviewer last authenticated with the identity provider before
+	// reviewing; none with an API token.
+	AuthTime *time.Time `json:"authTime,omitempty"`
 }
 
 // EventView is something that happened to a request.
@@ -472,7 +475,11 @@ func requestView(ctx context.Context, svc *requests.Service, s *store.Store, r d
 		}
 	}
 	for _, rv := range reviews {
-		v.Reviews = append(v.Reviews, ReviewView{Reviewer: rv.Reviewer, Decision: rv.Decision, Comment: rv.Comment, At: rv.CreatedAt.Time})
+		rview := ReviewView{Reviewer: rv.Reviewer, Decision: rv.Decision, Comment: rv.Comment, At: rv.CreatedAt.Time}
+		if rv.ReviewerAuthTime.Valid {
+			rview.AuthTime = &rv.ReviewerAuthTime.Time
+		}
+		v.Reviews = append(v.Reviews, rview)
 	}
 	if sets, err := s.ListChangeSets(ctx, r.ID); err == nil {
 		for _, cs := range sets {

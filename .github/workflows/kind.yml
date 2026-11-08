@@ -43,6 +43,12 @@ jobs:
           embedded=$(ls backend/migrations/*.sql | wc -l)
           echo "applied $applied of $embedded"
           test "$applied" -eq "$embedded"
+      - name: The application role cannot change the audit log
+        run: |
+          if kubectl -n quai exec deploy/postgres -- psql -U quai_app -d quai -v ON_ERROR_STOP=1 -c 'delete from audit_events'; then
+            echo "quai_app may delete audit events"; exit 1
+          fi
+          kubectl -n quai exec deploy/postgres -- psql -U quai_app -d quai -tAc 'select count(*) from audit_events'
       - name: Smoke test
         run: |
           kubectl apply -f deploy/kind/smoke.yaml

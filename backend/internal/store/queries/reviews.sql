@@ -1,6 +1,6 @@
 -- name: CreateReview :one
-INSERT INTO reviews (id, request_id, reviewer, groups, decision, comment, change_set_hash, reviewer_email)
-VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE(sqlc.narg(reviewer_email)::text, ''))
+INSERT INTO reviews (id, request_id, reviewer, groups, decision, comment, change_set_hash, reviewer_email, reviewer_auth_time)
+VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE(sqlc.narg(reviewer_email)::text, ''), sqlc.narg(reviewer_auth_time))
 RETURNING *;
 
 -- name: ListReviews :many

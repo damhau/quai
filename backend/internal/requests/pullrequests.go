@@ -558,6 +558,14 @@ func (s *Service) merged(ctx context.Context, r db.Request, d db.Delivery, pr co
 		if err := event(ctx, q, r, kind, "", data); err != nil {
 			return err
 		}
+		if err := recordRequest(ctx, tx, r, kind, map[string]any{"from": from, "commit": pr.MergeCommit, "pullRequest": pr.ID}); err != nil {
+			return err
+		}
+		if to == Applied {
+			if err := recordRequest(ctx, tx, r, "applied", map[string]any{"from": from, "event": kind, "commit": pr.MergeCommit}); err != nil {
+				return err
+			}
+		}
 		if deleteBranch {
 			if err := jobs.InsertTx(ctx, s.jobs, tx, DeleteBranchArgs{RequestID: r.ID}, nil); err != nil {
 				return err

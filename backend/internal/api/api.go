@@ -123,6 +123,7 @@ func build(opts Options, all bool) (*chi.Mux, huma.API) {
 	registerMeta(a, opts)
 	if all || opts.Store != nil {
 		registerIdentity(a, opts.Store)
+		registerAudit(a, opts.Store)
 	}
 	if all || opts.Repositories != nil {
 		registerCatalog(a, opts.Repositories, opts.Store)

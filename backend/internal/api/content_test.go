@@ -220,6 +220,9 @@ func TestMergedWithoutApproval(t *testing.T) {
 	if !hasEvent(r, "merged_without_approval", r.Delivery.PullRequest) {
 		t.Errorf("events = %+v", r.Events)
 	}
+	if ev, _ := h.audited("request.merged_without_approval", r.ID); ev[0].Actor.Type != "system" || ev[0].Details["from"] != "pending_approval" || ev[0].Details["pullRequest"] != r.Delivery.PullRequest {
+		t.Errorf("the bypass in the audit log = %+v", ev[0])
+	}
 	alerts, err := h.store.ListTargetEvents(context.Background(), db.ListTargetEventsParams{Target: "repository:infra-live", MaxRows: 10})
 	if err != nil || len(alerts) != 1 || alerts[0].Kind != "alert_bypass" {
 		t.Fatalf("alerts = %+v, %v", alerts, err)

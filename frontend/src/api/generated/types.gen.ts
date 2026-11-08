@@ -26,6 +26,55 @@ export type ActionView = {
     title?: string;
 };
 
+export type AuditActorView = {
+    /**
+     * When the person last authenticated with the identity provider
+     */
+    authTime?: string;
+    id: string;
+    ip?: string;
+    /**
+     * The API token's ID
+     */
+    token?: string;
+    type: 'user' | 'token' | 'runner' | 'system';
+};
+
+export type AuditEventView = {
+    action: string;
+    actor: AuditActorView;
+    at: string;
+    details: {
+        [key: string]: unknown;
+    };
+    hash: string;
+    object: AuditObjectView;
+    prev: string;
+    seq: number;
+};
+
+export type AuditObjectView = {
+    id: string;
+    resource?: string;
+    type: string;
+};
+
+export type AuditPageView = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    events: Array<AuditEventView> | null;
+    /**
+     * Pass it as before for the next page; absent on the last one
+     */
+    next?: number;
+    personal: {
+        [key: string]: string;
+    };
+    protected: boolean;
+};
+
 export type BlueprintInput = {
     /**
      * A URL to the JSON Schema for this object.
@@ -885,6 +934,7 @@ export type ReviewInputBody = {
 
 export type ReviewView = {
     at: string;
+    authTime?: string;
     comment?: string;
     decision: string;
     reviewer: string;
@@ -1254,6 +1304,18 @@ export type AccessViewWritable = {
      * Absent when the repository could not be read
      */
     scan?: ScanView;
+};
+
+export type AuditPageViewWritable = {
+    events: Array<AuditEventView> | null;
+    /**
+     * Pass it as before for the next page; absent on the last one
+     */
+    next?: number;
+    personal: {
+        [key: string]: string;
+    };
+    protected: boolean;
 };
 
 export type BlueprintInputWritable = {
@@ -1860,6 +1922,61 @@ export type WebhookViewWritable = {
     manual?: string;
     url: string;
 };
+
+export type ListAuditEventsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Events before this seq: the next cursor of the page before; 0 or absent, from the newest
+         */
+        before?: number;
+        limit?: number;
+        /**
+         * An action (request.approved), or its prefix (request)
+         */
+        action?: string;
+        /**
+         * Who acted: a person's name, a repository for its runner, quai for Quai itself
+         */
+        actor?: string;
+        /**
+         * What kind of object: request, repository, token, user
+         */
+        objectType?: string;
+        /**
+         * What the event is about: a request ID, a resource, a repository, a token ID or a person's name
+         */
+        object?: string;
+        /**
+         * Events at or after this time
+         */
+        since?: string;
+        /**
+         * Events before this time
+         */
+        until?: string;
+    };
+    url: '/api/v1/audit';
+};
+
+export type ListAuditEventsErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ListAuditEventsError = ListAuditEventsErrors[keyof ListAuditEventsErrors];
+
+export type ListAuditEventsResponses = {
+    /**
+     * OK
+     */
+    200: AuditPageView;
+};
+
+export type ListAuditEventsResponse = ListAuditEventsResponses[keyof ListAuditEventsResponses];
 
 export type ListCatalogData = {
     body?: never;

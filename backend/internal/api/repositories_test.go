@@ -95,6 +95,16 @@ func TestManageRepositories(t *testing.T) {
 	if len(repos) != 1 {
 		t.Errorf("after disconnecting: %+v", repos)
 	}
+
+	// The audit log has each connection created, changed and deleted, by alice.
+	for _, a := range []struct{ action, name string }{{"repository.created", "dns"}, {"repository.updated", "dns"}, {"repository.deleted", "dns"},
+		{"repository.created", "gone"}, {"repository.deleted", "gone"}} {
+		ev, personal := h.audited(a.action, a.name)
+		byPerson(t, ev[0], personal, "alice")
+		if len(ev) != 1 || ev[0].Details["managedBy"] != "api" || ev[0].Object.Type != "repository" {
+			t.Errorf("%s %s = %+v", a.action, a.name, ev)
+		}
+	}
 }
 
 // TestListConnections: the connections, connected or not, as their admins see them.

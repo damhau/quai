@@ -22,6 +22,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/riverqueue/river"
 
+	"github.com/damhau/quai/backend/internal/audit"
 	"github.com/damhau/quai/backend/internal/auth"
 	"github.com/damhau/quai/backend/internal/authz"
 	"github.com/damhau/quai/backend/internal/engine/definitions"
@@ -501,6 +502,7 @@ func (s *Service) PlanInstanceAction(ctx context.Context, who auth.Identity, in 
 }
 
 func (s *Service) Submit(ctx context.Context, who auth.Identity, p *Plan, reason string) (db.Request, error) {
+	ctx = acting(ctx, who)
 	rules, _ := json.Marshal(p.Rules)
 	inputs, _ := json.Marshal(p.Inputs)
 	if p.Inputs == nil {
@@ -562,8 +564,17 @@ func (s *Service) Submit(ctx context.Context, who auth.Identity, p *Plan, reason
 		if err := event(ctx, q, r, "submitted", who.Principal.Name, nil); err != nil {
 			return err
 		}
+		if err := recordRequest(ctx, tx, r, "submitted", map[string]any{"kind": p.Kind, "action": p.Action, "type": p.Type, "blueprint": p.Blueprint,
+			"repository": p.Repository, "changeSet": p.ChangeSet.Hash, "definitionsCommit": p.Commit, "reason": audit.Personal(reason)}); err != nil {
+			return err
+		}
 		if state == Approved {
 			if err := event(ctx, q, r, "approved", "", map[string]any{"reason": "no approval rule applies"}); err != nil {
+				return err
+			}
+			if err := audit.Add(ctx, tx, audit.Event{Actor: audit.Quai, Action: "request.approved",
+				Object:  audit.Object{Type: "request", ID: r.ID.String(), Resource: r.Target},
+				Details: map[string]any{"changeSet": p.ChangeSet.Hash, "reason": "no approval rule applies"}}); err != nil {
 				return err
 			}
 		}
@@ -645,6 +656,7 @@ type authzPrincipal = authz.Principal
 // Review records an approval or a denial and moves the request on when the rules decide. A
 // request whose regions changed in Git since it was planned becomes stale instead.
 func (s *Service) Review(ctx context.Context, who auth.Identity, id uuid.UUID, decision, comment string) (db.Request, error) {
+	ctx = acting(ctx, who)
 	r, err := s.get(ctx, id)
 	if err != nil {
 		return r, err
@@ -680,11 +692,15 @@ func (s *Service) Review(ctx context.Context, who auth.Identity, id uuid.UUID, d
 		if _, err := q.CreateReview(ctx, db.CreateReviewParams{
 			ID: uuid.New(), RequestID: r.ID, Reviewer: who.Principal.Name, Groups: nonNil(who.Principal.Groups),
 			Decision: decision, Comment: comment, ChangeSetHash: sets[0].Hash,
-			ReviewerEmail: pgtype.Text{String: who.Principal.Email, Valid: true},
+			ReviewerEmail:    pgtype.Text{String: who.Principal.Email, Valid: true},
+			ReviewerAuthTime: pgtype.Timestamptz{Time: who.AuthTime, Valid: !who.AuthTime.IsZero()},
 		}); err != nil {
 			return err
 		}
 		if err := event(ctx, q, r, decision, who.Principal.Name, map[string]any{"comment": comment}); err != nil {
+			return err
+		}
+		if err := recordRequest(ctx, tx, r, "reviewed", map[string]any{"decision": decision, "comment": audit.Personal(comment), "changeSet": sets[0].Hash}); err != nil {
 			return err
 		}
 		all, err := q.ListReviews(ctx, r.ID)
@@ -703,12 +719,18 @@ func (s *Service) Review(ctx context.Context, who auth.Identity, id uuid.UUID, d
 			if err := event(ctx, q, r, "approved", "", nil); err != nil {
 				return err
 			}
+			if err := recordRequest(ctx, tx, r, "approved", map[string]any{"changeSet": sets[0].Hash, "approvals": approvalsOf(reviews)}); err != nil {
+				return err
+			}
 			return jobs.InsertTx(ctx, s.jobs, tx, DeliverArgs{RequestID: r.ID}, nil)
 		case policy.Denied:
 			if next, err = q.TransitionRequest(ctx, db.TransitionRequestParams{ID: r.ID, FromState: PendingApproval, ToState: Rejected}); err != nil {
 				return err
 			}
 			if err := event(ctx, q, r, "rejected", who.Principal.Name, nil); err != nil {
+				return err
+			}
+			if err := recordRequest(ctx, tx, r, "rejected", map[string]any{"changeSet": sets[0].Hash}); err != nil {
 				return err
 			}
 			return s.statusJob(ctx, tx, q, r)
@@ -758,6 +780,7 @@ func Cancellable(state string) bool {
 
 // Cancel withdraws a request that is not delivered yet.
 func (s *Service) Cancel(ctx context.Context, who auth.Identity, id uuid.UUID) (db.Request, error) {
+	ctx = acting(ctx, who)
 	r, err := s.get(ctx, id)
 	if err != nil {
 		return r, err
@@ -770,6 +793,7 @@ func (s *Service) Cancel(ctx context.Context, who auth.Identity, id uuid.UUID) (
 
 // Retry delivers a failed request again.
 func (s *Service) Retry(ctx context.Context, who auth.Identity, id uuid.UUID) (db.Request, error) {
+	ctx = acting(ctx, who)
 	r, err := s.get(ctx, id)
 	if err != nil {
 		return r, err
@@ -787,6 +811,9 @@ func (s *Service) Retry(ctx context.Context, who auth.Identity, id uuid.UUID) (d
 			return conflict(err, r)
 		}
 		if err := event(ctx, q, r, "retried", who.Principal.Name, nil); err != nil {
+			return err
+		}
+		if err := recordRequest(ctx, tx, r, "retried", nil); err != nil {
 			return err
 		}
 		return jobs.InsertTx(ctx, s.jobs, tx, DeliverArgs{RequestID: r.ID}, nil)
@@ -824,6 +851,11 @@ func (s *Service) transition(ctx context.Context, r db.Request, from, to, kind s
 		}
 		if err := event(ctx, q, r, kind, "", data); err != nil {
 			return err
+		}
+		for _, action := range transitionAudit(to, kind) {
+			if err := recordRequest(ctx, tx, r, action, transitionDetails(from, kind, data)); err != nil {
+				return err
+			}
 		}
 		if to == Stale || to == Cancelled || to == Rejected || to == Failed {
 			return s.statusJob(ctx, tx, q, r)

@@ -43,12 +43,12 @@ func TestDefaults(t *testing.T) {
 
 func TestFileAndEnvironment(t *testing.T) {
 	p := write(t, "env: production\nauth: { oidc: { issuer: \"https://idp\", clientID: quai, redirectURL: \"https://quai/auth/callback\" } }\nserver: { addr: \"127.0.0.1:9000\", shutdownTimeout: 5s }\nlog: { level: debug, format: text }\ntelemetry: { otlpEndpoint: \"http://collector:4318\" }\n")
-	c, err := Load(p, env(map[string]string{"QUAI_DATABASE_URL": "postgres://quai@db/quai", "QUAI_LOG_LEVEL": "warn", "QUAI_SERVER_SHUTDOWN_TIMEOUT": "1m", "QUAI_TELEMETRY_SERVICE_NAME": "quai-test"}))
+	c, err := Load(p, env(map[string]string{"QUAI_DATABASE_URL": "postgres://quai@db/quai", "QUAI_DATABASE_MIGRATE_URL": "postgres://owner@db/quai", "QUAI_LOG_LEVEL": "warn", "QUAI_SERVER_SHUTDOWN_TIMEOUT": "1m", "QUAI_TELEMETRY_SERVICE_NAME": "quai-test"}))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if c.Env != Production || c.Server.Addr != "127.0.0.1:9000" || c.Server.ShutdownTimeout != time.Minute ||
-		c.Database.URL != "postgres://quai@db/quai" || c.Log.Level != "warn" || c.Log.Format != "text" || c.Telemetry.OTLPEndpoint != "http://collector:4318" || c.Telemetry.ServiceName != "quai-test" {
+		c.Database.URL != "postgres://quai@db/quai" || c.Database.MigrateURL != "postgres://owner@db/quai" || c.Log.Level != "warn" || c.Log.Format != "text" || c.Telemetry.OTLPEndpoint != "http://collector:4318" || c.Telemetry.ServiceName != "quai-test" {
 		t.Errorf("config = %+v", c)
 	}
 	// QUAI_CONFIG names the file when --config is not given.
@@ -74,6 +74,7 @@ func TestInvalid(t *testing.T) {
 		"duration":         {env: map[string]string{"QUAI_SERVER_SHUTDOWN_TIMEOUT": "soon"}, want: "QUAI_SERVER_SHUTDOWN_TIMEOUT"},
 		"negative timeout": {file: "server: { shutdownTimeout: -1s }\n", want: "must not be negative"},
 		"database":         {env: map[string]string{"QUAI_DATABASE_URL": "mysql://x"}, want: "database.url must be a postgres:// URL"},
+		"migrate database": {env: map[string]string{"QUAI_DATABASE_MIGRATE_URL": "mysql://x"}, want: "database.migrateURL must be a postgres:// URL"},
 		"level":            {env: map[string]string{"QUAI_LOG_LEVEL": "loud"}, want: `log.level must be debug, info, warn or error, not "loud"`},
 		"format":           {env: map[string]string{"QUAI_LOG_FORMAT": "xml"}, want: `log.format must be json or text`},
 		"endpoint":         {env: map[string]string{"QUAI_TELEMETRY_OTLP_ENDPOINT": "collector:4318"}, want: "telemetry.otlpEndpoint must be an http or https URL"},

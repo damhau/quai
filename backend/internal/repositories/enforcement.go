@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/damhau/quai/backend/internal/audit"
 	"github.com/damhau/quai/backend/internal/store"
 	"github.com/damhau/quai/backend/internal/store/db"
 )
@@ -76,7 +77,7 @@ func CheckEnforcement(ctx context.Context, s *store.Store, repo *Repo) (Enforcem
 		problems = []string{}
 	}
 	required := repo.Document.Spec.Delivery.Mode == "pull-request"
-	err = s.Tx(ctx, func(_ pgx.Tx, q *db.Queries) error {
+	err = s.Tx(ctx, func(tx pgx.Tx, q *db.Queries) error {
 		before, err := q.GetRepositorySync(ctx, repo.Name)
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return err
@@ -105,8 +106,16 @@ func CheckEnforcement(ctx context.Context, s *store.Store, repo *Repo) (Enforcem
 		if err != nil {
 			return err
 		}
-		_, err = q.AddEvent(ctx, db.AddEventParams{RequestID: pgtype.UUID{}, Target: "repository:" + repo.Name, Kind: kind, Data: data})
-		return err
+		if _, err = q.AddEvent(ctx, db.AddEventParams{RequestID: pgtype.UUID{}, Target: "repository:" + repo.Name, Kind: kind, Data: data}); err != nil {
+			return err
+		}
+		action := "repository.enforcement_restored"
+		if kind == "alert_enforcement" {
+			action = "repository.enforcement_lost"
+		}
+		// Quai observed it, whoever's request made it look.
+		return audit.Add(ctx, tx, audit.Event{Actor: audit.Quai, Action: action, Object: audit.Object{Type: "repository", ID: repo.Name},
+			Details: map[string]any{"branch": repo.Branch, "check": repo.Document.Spec.Enforcement.RequiredCheck, "problems": problems}})
 	})
 	if err != nil {
 		return EnforcementState{}, err

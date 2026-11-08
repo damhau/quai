@@ -27,6 +27,11 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args: ["migrate"]
           env: {{- include "quai.env" . | nindent 12 }}
+            {{- with .Values.database.migrate.secretName }}
+            # The schema's owner, for this Job alone: the server and the worker never get it.
+            - name: QUAI_DATABASE_MIGRATE_URL
+              valueFrom: { secretKeyRef: { name: {{ . }}, key: {{ $.Values.database.migrate.secretKey }} } }
+            {{- end }}
           securityContext: {{- toYaml .Values.securityContext | nindent 12 }}
           {{- if .Values.network.caBundle.configMap }}
           volumeMounts:

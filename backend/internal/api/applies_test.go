@@ -80,6 +80,12 @@ func TestRequestsAfterMerge(t *testing.T) {
 	if status, _ := bob.do(http.MethodPost, Prefix+"/requests/"+third.ID+"/retry", nil, nil); status != http.StatusConflict {
 		t.Errorf("retrying a failed apply = %d", status)
 	}
+	// The runner's reports are in the audit log, by the repository's runner.
+	for _, a := range []struct{ action, id string }{{"request.applied", first.ID}, {"request.applied", second.ID}, {"request.failed", third.ID}} {
+		if ev, personal := h.audited(a.action, a.id); ev[0].Actor.Type != "runner" || ev[0].Actor.ID != "infra-live" || personal[ev[0].Actor.IP] != "127.0.0.1" {
+			t.Errorf("%s %s by %+v", a.action, a.id, ev[0].Actor)
+		}
+	}
 	if s := bob.read(first.ID).State; s != "applied" {
 		t.Errorf("an earlier request after a later failure: %s", s)
 	}

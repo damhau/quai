@@ -2,6 +2,16 @@ Quai {{ .Chart.AppVersion }} is installed as {{ include "quai.fullname" . }}.
 
 It reads its database URL from the Secret {{ .Values.database.secretName }} ({{ .Values.database.secretKey }})
 {{- if eq (dig "auth" "mode" "" .Values.config) "oidc" }} and its OIDC client secret from {{ .Values.oidc.secretName }} ({{ .Values.oidc.secretKey }}){{ end }}.
+{{- if .Values.database.migrate.secretName }}
+The migrations connect as the schema's owner, from the Secret {{ .Values.database.migrate.secretName }} ({{ .Values.database.migrate.secretKey }}).
+{{- if and .Values.secretStore.kubernetes.enabled (not .Values.secretStore.kubernetes.secretNames) }}
+WARNING: the pods may read every Secret of the namespace, {{ .Values.database.migrate.secretName }} too:
+list the Secrets they need in secretStore.kubernetes.secretNames.
+{{- end }}
+{{- else }}
+WARNING: the migrations connect with the server's database URL: the server can change or delete
+audit events. Set database.migrate.secretName to a Secret with the schema owner's URL.
+{{- end }}
 {{- if .Values.ingress.enabled }}
 Open https://{{ .Values.ingress.host }}.
 {{- else }}

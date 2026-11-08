@@ -92,6 +92,11 @@ func TestEnforcement(t *testing.T) {
 		t.Fatal(err)
 	}
 	refused("without the check", "does not require the status check quai/approval")
+	lost, _ := h.audited("repository.enforcement_lost", "infra-live")
+	restored, _ := h.audited("repository.enforcement_restored", "infra-live")
+	if len(lost) != 2 || len(restored) != 1 || lost[0].Actor.ID != "quai" || lost[0].Details["branch"] != "main" || lost[1].Seq < restored[0].Seq {
+		t.Errorf("the audit log's enforcement = lost %+v, restored %+v", lost, restored)
+	}
 	// The request already open is not affected: its pull request stays, and it can be approved.
 	if status, body := h.as("alice").do(http.MethodPost, Prefix+"/requests/"+r.ID+"/review", map[string]string{"decision": "approve"}, nil); status != http.StatusOK {
 		t.Errorf("approving the open request = %d %s", status, body)
