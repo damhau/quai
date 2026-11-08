@@ -25,17 +25,24 @@ const redacted = "[redacted]"
 // Secret is a secret value. Printing, logging or encoding it shows [redacted]; Reveal gives the
 // value to the code that sends it.
 type Secret struct {
-	value string
+	// value is a pointer because fmt cannot call String on an unexported field: printing a struct
+	// that holds a Secret in one shows this address, not the value.
+	value *string
 	// Expires is when the secret stops working, if its source says (zero otherwise).
 	Expires time.Time
 }
 
 // FromValue makes a Secret of a value Quai has in hand: one it generated (a webhook secret, a
 // run token), or a test's.
-func FromValue(value string) Secret { return Secret{value: value} }
+func FromValue(value string) Secret { return Secret{value: &value} }
 
 // Reveal returns the secret's value.
-func (s Secret) Reveal() string { return s.value }
+func (s Secret) Reveal() string {
+	if s.value == nil {
+		return ""
+	}
+	return *s.value
+}
 
 func (s Secret) String() string               { return redacted }
 func (s Secret) GoString() string             { return redacted }
@@ -117,7 +124,7 @@ func (e Env) Get(_ context.Context, name string) (Secret, error) {
 	if !ok || v == "" {
 		return Secret{}, fmt.Errorf("%w: the environment variable is not set", ErrNotFound)
 	}
-	return Secret{value: v}, nil
+	return FromValue(v), nil
 }
 
 // splitK8s splits namespace/name#key; the key is optional.

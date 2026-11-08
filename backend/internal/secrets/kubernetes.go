@@ -85,7 +85,7 @@ func (k *Kubernetes) Get(ctx context.Context, ref string) (Secret, error) {
 		return Secret{}, fmt.Errorf("%w: the Secret has no key %s", ErrNotFound, key)
 	}
 	// Trimmed: a Secret made from a file often ends with a newline no token has.
-	sec := Secret{value: strings.TrimSpace(string(v))}
+	sec := FromValue(strings.TrimSpace(string(v)))
 	if at := s.Annotations[ExpiresAnnotation]; at != "" {
 		if sec.Expires, err = time.Parse(time.RFC3339, at); err != nil {
 			return Secret{}, fmt.Errorf("annotation %s: %q is not an RFC 3339 time", ExpiresAnnotation, at)

@@ -27,13 +27,18 @@ func TestMain(m *testing.M) { os.Exit(k8stest.Main(m)) }
 const value = "s3cr3t-value"
 
 func TestRedaction(t *testing.T) {
-	s := Secret{value: value}
+	s := FromValue(value)
 	var out bytes.Buffer
 	for _, h := range []slog.Handler{slog.NewTextHandler(&out, nil), slog.NewJSONHandler(&out, nil)} {
 		slog.New(h).Info("resolved", slog.Any("secret", s), "again", s)
 	}
 	b, _ := json.Marshal(struct{ Token Secret }{s})
-	text := strings.Join([]string{fmt.Sprint(s), fmt.Sprintf("%v %+v %#v %s %q", s, s, s, s, s), fmt.Errorf("with %v", s).Error(), out.String(), string(b)}, "\n")
+	// fmt cannot call String on an unexported field, so a Secret held in one, as the store's cache
+	// holds them, must not show its value either.
+	held := struct{ token Secret }{s}
+	store := &Store{cache: map[string]cached{"env:QUAI_PAT": {secret: s}}}
+	text := strings.Join([]string{fmt.Sprint(s), fmt.Sprintf("%v %+v %#v %s %q", s, s, s, s, s), fmt.Errorf("with %v", s).Error(), out.String(), string(b),
+		fmt.Sprintf("%v %+v %#v", held, held, held), fmt.Sprintf("%v %+v %#v", store, store, store)}, "\n")
 	if strings.Contains(text, value) || !strings.Contains(text, redacted) {
 		t.Errorf("the secret shows:\n%s", text)
 	}
@@ -50,7 +55,7 @@ type counting struct{ gets int }
 
 func (c *counting) Get(_ context.Context, name string) (Secret, error) {
 	c.gets++
-	return Secret{value: fmt.Sprintf("%s-%d", name, c.gets)}, nil
+	return FromValue(fmt.Sprintf("%s-%d", name, c.gets)), nil
 }
 
 func TestStore(t *testing.T) {
