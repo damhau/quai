@@ -148,7 +148,7 @@ func (w *openWorker) Work(ctx context.Context, job *river.Job[OpenArgs]) error {
 	if err != nil {
 		return err
 	}
-	return jobs.WithRepositoryLock(ctx, s.store.Pool, repo.Name, 5*time.Second, func(ctx context.Context) error {
+	return jobs.WithRepositoryLock(ctx, s.store.Locks, repo.Name, 5*time.Second, func(ctx context.Context) error {
 		commit, err := s.commit(ctx, r, cs, repo, false)
 		if err != nil {
 			return err
@@ -312,7 +312,7 @@ func (w *statusWorker) Work(ctx context.Context, job *river.Job[StatusArgs]) err
 // publishLatest publishes the request's status from its latest state, one publisher at a time: a
 // job that read the request before a change cannot publish after the one that read it after.
 func (s *Service) publishLatest(ctx context.Context, repo *repositories.Repo, id uuid.UUID, description string) error {
-	return jobs.WithLock(ctx, s.store.Pool, "quai/request-status/"+id.String(), func(ctx context.Context) error {
+	return jobs.WithLock(ctx, s.store.Locks, "quai/request-status/"+id.String(), func(ctx context.Context) error {
 		r, err := s.get(ctx, id)
 		if err != nil {
 			return err
@@ -413,7 +413,7 @@ func (s *Service) deliverPR(ctx context.Context, job *river.Job[DeliverArgs], r 
 	}
 	// One merge at a time per request: approvals, rebuilds and statuses each start a delivery,
 	// and two merges of one pull request at once can each leave a commit on the base.
-	return jobs.WithLock(ctx, s.store.Pool, "quai/request-merge/"+r.ID.String(), func(ctx context.Context) error {
+	return jobs.WithLock(ctx, s.store.Locks, "quai/request-merge/"+r.ID.String(), func(ctx context.Context) error {
 		if pr, err := prs.Get(ctx, d.PullRequest); err != nil {
 			return err
 		} else if pr.State == connectors.PRMerged {
@@ -468,7 +468,7 @@ func (s *Service) mergeMessage(ctx context.Context, r db.Request) (string, error
 // commentApprovals records the approvals on the pull request, once: under a lock, since the
 // approval's delivery and a poll's may both get here.
 func (s *Service) commentApprovals(ctx context.Context, prs connectors.PullRequests, r db.Request, d db.Delivery) error {
-	return jobs.WithLock(ctx, s.store.Pool, "quai/request-comment/"+r.ID.String(), func(ctx context.Context) error {
+	return jobs.WithLock(ctx, s.store.Locks, "quai/request-comment/"+r.ID.String(), func(ctx context.Context) error {
 		events, err := s.store.ListRequestEvents(ctx, pgtype.UUID{Bytes: r.ID, Valid: true})
 		if err != nil {
 			return err

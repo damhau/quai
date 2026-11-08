@@ -5,7 +5,8 @@
 // so workers check the current state before acting.
 //
 // Jobs that change a repository take its advisory lock (WithRepositoryLock): one at a time per
-// repository, the others snoozed rather than failed.
+// repository, the others snoozed rather than failed. Locks are held on a pool of their own
+// (store.Locks), so that holders never take the connections their work and River need.
 package jobs
 
 import (
@@ -21,6 +22,7 @@ import (
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 
+	"github.com/damhau/quai/backend/internal/store"
 	"github.com/damhau/quai/backend/internal/store/db"
 )
 
@@ -86,47 +88,73 @@ var ErrLocked = errors.New("another job holds the repository's lock")
 
 // WithRepositoryLock runs fn while holding the repository's advisory lock in PostgreSQL. When
 // another job holds it, it returns River's snooze error: the job runs again after snooze,
-// without counting as a failed attempt. The lock is held on one connection for the duration of
-// fn and released after it, or by PostgreSQL if the worker dies.
-func WithRepositoryLock(ctx context.Context, pool *pgxpool.Pool, repository string, snooze time.Duration, fn func(context.Context) error) error {
-	conn, err := pool.Acquire(ctx)
-	if err != nil {
-		return err
-	}
-	defer conn.Release()
-	key := lockKey(repository)
-	var locked bool
-	if err := conn.QueryRow(ctx, "SELECT pg_try_advisory_lock($1)", key).Scan(&locked); err != nil {
-		return err
-	}
-	if !locked {
+// without counting as a failed attempt. The lock is held on a connection of the locks' pool
+// (store.Locks) for the duration of fn and released after it, or by PostgreSQL if the worker
+// dies.
+func WithRepositoryLock(ctx context.Context, locks *store.Locks, repository string, snooze time.Duration, fn func(context.Context) error) error {
+	ran, err := tryLocked(ctx, locks, lockKey(repository), fn)
+	if err == nil && !ran {
 		return errors.Join(river.JobSnooze(snooze), ErrLocked)
 	}
-	defer func() {
-		// The connection goes back to the pool: release the lock even if ctx is done.
-		_, _ = conn.Exec(context.WithoutCancel(ctx), "SELECT pg_advisory_unlock($1)", key)
-	}()
-	return fn(ctx)
+	return err
 }
 
 // WithLock runs fn holding the advisory lock named name, waiting for it: work that must not
-// interleave, such as reading a request's state and publishing its status.
-func WithLock(ctx context.Context, pool *pgxpool.Pool, name string, fn func(context.Context) error) error {
-	conn, err := pool.Acquire(ctx)
-	if err != nil {
-		return err
-	}
-	defer conn.Release()
+// interleave, such as reading a request's state and publishing its status. A waiter holds no
+// connection: it tries again after a pause that doubles up to lockRetryMax, until ctx is done.
+func WithLock(ctx context.Context, locks *store.Locks, name string, fn func(context.Context) error) error {
 	h := fnv.New64a()
 	_, _ = h.Write([]byte(name))
 	key := int64(h.Sum64()) // #nosec G115 -- any 64 bits make a key
-	if _, err := conn.Exec(ctx, "SELECT pg_advisory_lock($1)", key); err != nil {
-		return err
+	pause := lockRetryMin
+	for {
+		ran, err := tryLocked(ctx, locks, key, fn)
+		if ran || err != nil {
+			return err
+		}
+		t := time.NewTimer(pause)
+		select {
+		case <-ctx.Done():
+			t.Stop()
+			return ctx.Err()
+		case <-t.C:
+		}
+		pause = min(2*pause, lockRetryMax)
+	}
+}
+
+// The pauses of a waiter for a lock (WithLock).
+const (
+	lockRetryMin = 20 * time.Millisecond
+	lockRetryMax = time.Second
+)
+
+// tryLocked runs fn holding the advisory lock key if no one holds it, and reports whether it
+// did. Locks do not nest: a holder taking another lock would hold two of the locks' connections,
+// and holders waiting for a second one could take them all.
+func tryLocked(ctx context.Context, locks *store.Locks, key int64, fn func(context.Context) error) (bool, error) {
+	conn, err := locks.Pool.Acquire(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer conn.Release()
+	var locked bool
+	if err := conn.QueryRow(ctx, "SELECT pg_try_advisory_lock($1)", key).Scan(&locked); err != nil {
+		return false, err
+	}
+	if !locked {
+		return false, nil
 	}
 	defer func() {
-		_, _ = conn.Exec(context.WithoutCancel(ctx), "SELECT pg_advisory_unlock($1)", key)
+		// The connection goes back to the pool: release the lock even if ctx is done. A session
+		// takes its own advisory locks again, so a connection the lock may still be held on is
+		// closed instead, which releases it.
+		bg := context.WithoutCancel(ctx)
+		if _, err := conn.Exec(bg, "SELECT pg_advisory_unlock($1)", key); err != nil {
+			_ = conn.Conn().Close(bg)
+		}
 	}()
-	return fn(ctx)
+	return true, fn(ctx)
 }
 
 // lockKey maps a repository to the 64-bit key of its advisory lock.

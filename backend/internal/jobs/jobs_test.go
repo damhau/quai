@@ -4,10 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
 	"os/exec"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -17,6 +20,7 @@ import (
 	"github.com/riverqueue/river/rivertype"
 
 	"github.com/damhau/quai/backend/internal/pgtest"
+	"github.com/damhau/quai/backend/internal/store"
 	"github.com/damhau/quai/backend/internal/store/db"
 )
 
@@ -189,7 +193,7 @@ func TestInsertTx(t *testing.T) {
 
 func TestRepositoryLock(t *testing.T) {
 	t.Parallel()
-	p, _ := pool(t)
+	_, p, _ := lockPools(t, 4, 4)
 	ctx := context.Background()
 	held := make(chan struct{})
 	release := make(chan struct{})
@@ -225,6 +229,152 @@ func TestRepositoryLock(t *testing.T) {
 	// The failed run released the lock too.
 	if err := WithRepositoryLock(ctx, p, "infra-live", time.Second, func(context.Context) error { return nil }); err != nil {
 		t.Errorf("after a failed run: %v", err)
+	}
+}
+
+// smallPool is a pool of the test's database with at most max connections.
+func smallPool(t *testing.T, url string, max int32) *pgxpool.Pool {
+	t.Helper()
+	cfg, err := pgxpool.ParseConfig(url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.MaxConns = max
+	p, err := pgxpool.NewWithConfig(context.Background(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(p.Close)
+	return p
+}
+
+// lockPools returns a pool for the work, of work connections, and the locks, of locks
+// connections, on one database.
+func lockPools(t *testing.T, work, locks int32) (*pgxpool.Pool, *store.Locks, string) {
+	t.Helper()
+	url := pgtest.URL(t)
+	return smallPool(t, url, work), &store.Locks{Pool: smallPool(t, url, locks)}, url
+}
+
+// Locks held at once leave the work's pool to the work: holders of more locks than it has
+// connections all hold theirs at once, then query it, and River works a job meanwhile. A lock
+// held on one of its connections, with its work needing another, was how two requests merging
+// together stopped every job until they timed out.
+func TestLocksLeaveThePool(t *testing.T) {
+	t.Parallel()
+	p, locks, _ := lockPools(t, 2, 4)
+	c := start(t, p, Options{Workers: func(w *river.Workers) { river.AddWorker(w, &recordWorker{q: db.New(p)}) }})
+	events, cancel := c.Subscribe(river.EventKindJobCompleted)
+	defer cancel()
+	ctx, stop := context.WithTimeout(context.Background(), 30*time.Second)
+	defer stop()
+	const holders = 4
+	var holding sync.WaitGroup
+	holding.Add(holders)
+	all := make(chan struct{})
+	go func() { holding.Wait(); close(all) }()
+	release := make(chan struct{})
+	errs := make(chan error, holders)
+	for i := range holders {
+		go func() {
+			errs <- WithLock(ctx, locks, fmt.Sprintf("quai/test/%d", i), func(ctx context.Context) error {
+				holding.Done()
+				select {
+				case <-all:
+				case <-ctx.Done():
+					return fmt.Errorf("lock %d: the %d locks were never held at once: %w", i, holders, ctx.Err())
+				}
+				var one int
+				if err := p.QueryRow(ctx, "SELECT 1").Scan(&one); err != nil {
+					return fmt.Errorf("lock %d: its work could not query: %w", i, err)
+				}
+				<-release
+				return nil
+			})
+		}()
+	}
+	select {
+	case <-all:
+		if _, err := c.Insert(ctx, recordArgs{Name: "under-locks"}, nil); err != nil {
+			t.Error(err)
+		} else {
+			wait(t, events, "test_record", 20*time.Second)
+		}
+	case <-ctx.Done():
+	}
+	close(release)
+	for range holders {
+		if err := <-errs; err != nil {
+			t.Error(err)
+		}
+	}
+}
+
+// Waiters for a lock hold no connection while they wait: the holder's work still queries the
+// pool, and each waiter runs in turn, one at a time.
+func TestLockWaitersHoldNoConnection(t *testing.T) {
+	t.Parallel()
+	p, locks, url := lockPools(t, 2, 2)
+	ctx, stop := context.WithTimeout(context.Background(), 60*time.Second)
+	defer stop()
+	watch, err := pgx.Connect(ctx, url) // outside both pools
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = watch.Close(context.Background()) }()
+	const waiters = 6
+	var started sync.WaitGroup
+	started.Add(waiters)
+	var inside, ran atomic.Int32
+	work := func(ctx context.Context) error {
+		if n := inside.Add(1); n != 1 {
+			return fmt.Errorf("%d holders at once", n)
+		}
+		defer inside.Add(-1)
+		var one int
+		if err := p.QueryRow(ctx, "SELECT 1").Scan(&one); err != nil {
+			return fmt.Errorf("the holder's work could not query: %w", err)
+		}
+		ran.Add(1)
+		return nil
+	}
+	errs := make(chan error, waiters)
+	err = WithLock(ctx, locks, "quai/test/shared", func(ctx context.Context) error {
+		for range waiters {
+			go func() {
+				started.Done()
+				errs <- WithLock(ctx, locks, "quai/test/shared", work)
+			}()
+		}
+		started.Wait()
+		time.Sleep(300 * time.Millisecond) // the waiters are waiting
+		var waiting int
+		if err := watch.QueryRow(ctx, "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND NOT granted").Scan(&waiting); err != nil {
+			return err
+		}
+		if waiting != 0 {
+			t.Errorf("%d waiters hold a connection, waiting in PostgreSQL", waiting)
+		}
+		// A waiter gives up when its context is done.
+		short, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
+		defer cancel()
+		if err := WithLock(short, locks, "quai/test/shared", func(context.Context) error { return errors.New("ran while held") }); !errors.Is(err, context.DeadlineExceeded) {
+			t.Errorf("a waiter past its deadline: %v", err)
+		}
+		qctx, qstop := context.WithTimeout(ctx, 5*time.Second)
+		defer qstop()
+		return work(qctx)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range waiters {
+		if err := <-errs; err != nil {
+			t.Error(err)
+		}
+	}
+	if ran.Load() != waiters+1 {
+		t.Errorf("%d of %d ran", ran.Load(), waiters+1)
 	}
 }
 

@@ -241,7 +241,7 @@ func publish(ctx context.Context, repo *repositories.Repo, s *store.Store, me au
 	}
 	file := path.Join(definitions.BlueprintsDir, name+".yaml")
 	var b *definitions.Blueprint
-	err = jobs.WithRepositoryLock(ctx, s.Pool, repo.Name, time.Second, func(ctx context.Context) error {
+	err = jobs.WithRepositoryLock(ctx, s.Locks, repo.Name, time.Second, func(ctx context.Context) error {
 		snap, err := repo.Snapshot(ctx, true)
 		if err != nil {
 			return err

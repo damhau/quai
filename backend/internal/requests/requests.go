@@ -960,7 +960,7 @@ func (w *Worker) Work(ctx context.Context, job *river.Job[DeliverArgs]) error {
 	} else if !errors.Is(err, pgx.ErrNoRows) {
 		return err
 	}
-	return jobs.WithRepositoryLock(ctx, s.store.Pool, repo.Name, 5*time.Second, func(ctx context.Context) error {
+	return jobs.WithRepositoryLock(ctx, s.store.Locks, repo.Name, 5*time.Second, func(ctx context.Context) error {
 		if r.State == Approved {
 			if r, err = s.transition(ctx, r, Approved, Merging, "merging", nil); err != nil {
 				return err

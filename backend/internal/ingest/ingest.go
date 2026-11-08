@@ -272,7 +272,7 @@ func (s *Service) Process(ctx context.Context, name string, events []Event) erro
 		s.log.WarnContext(ctx, "webhook for a repository that is gone", slog.String("repository", name))
 		return nil
 	}
-	return jobs.WithRepositoryLock(ctx, s.store.Pool, name, lockSnooze, func(ctx context.Context) error {
+	return jobs.WithRepositoryLock(ctx, s.store.Locks, name, lockSnooze, func(ctx context.Context) error {
 		prs := map[string]bool{}
 		var pipelineRuns []string
 		fetch := false
@@ -378,7 +378,7 @@ func (s *Service) Poll(ctx context.Context, name string) error {
 	if err != nil {
 		return nil
 	}
-	return jobs.WithRepositoryLock(ctx, s.store.Pool, name, lockSnooze, func(ctx context.Context) error {
+	return jobs.WithRepositoryLock(ctx, s.store.Locks, name, lockSnooze, func(ctx context.Context) error {
 		before, err := s.store.GetRepositorySync(ctx, name)
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return err

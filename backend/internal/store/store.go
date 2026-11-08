@@ -1,6 +1,7 @@
-// Package store is Quai's PostgreSQL storage: a connection pool, the embedded migrations and
-// the typed queries sqlc generates from internal/store/queries into internal/store/db
-// (docs/engineering/backend.md). Queries are written by hand in SQL; there is no ORM.
+// Package store is Quai's PostgreSQL storage: a connection pool (and one for advisory locks),
+// the embedded migrations and the typed queries sqlc generates from internal/store/queries into
+// internal/store/db (docs/engineering/backend.md). Queries are written by hand in SQL; there is
+// no ORM.
 package store
 
 import (
@@ -19,15 +20,28 @@ import (
 	"github.com/damhau/quai/backend/migrations"
 )
 
-// Store is a connection pool with its queries.
+// Store is a connection pool with its queries, and the pool advisory locks are held on.
 type Store struct {
-	Pool *pgxpool.Pool
+	Pool  *pgxpool.Pool
+	Locks *Locks
 	*db.Queries
 }
 
-// Open connects to the database at url and checks that it answers.
+// Locks is the pool PostgreSQL's advisory locks are held on (jobs.WithLock,
+// jobs.WithRepositoryLock), apart from Store.Pool: a lock keeps its connection until it is
+// released, while the work under it queries Store.Pool. Held on Store.Pool's connections, a few
+// locks at once would leave none to that work or to the job queue, each holder waiting for a
+// connection another holds until its job times out.
+type Locks struct{ Pool *pgxpool.Pool }
+
+// Open connects to the database at url and checks that it answers. The locks' pool has the
+// same configuration, pool_max_conns included, and connects when a lock is first taken.
 func Open(ctx context.Context, url string) (*Store, error) {
-	pool, err := pgxpool.New(ctx, url)
+	cfg, err := pgxpool.ParseConfig(url)
+	if err != nil {
+		return nil, fmt.Errorf("database: %w", err)
+	}
+	pool, err := pgxpool.NewWithConfig(ctx, cfg.Copy())
 	if err != nil {
 		return nil, fmt.Errorf("database: %w", err)
 	}
@@ -35,11 +49,19 @@ func Open(ctx context.Context, url string) (*Store, error) {
 		pool.Close()
 		return nil, fmt.Errorf("database: %w", err)
 	}
-	return &Store{Pool: pool, Queries: db.New(pool)}, nil
+	locks, err := pgxpool.NewWithConfig(ctx, cfg.Copy())
+	if err != nil {
+		pool.Close()
+		return nil, fmt.Errorf("database: %w", err)
+	}
+	return &Store{Pool: pool, Locks: &Locks{Pool: locks}, Queries: db.New(pool)}, nil
 }
 
-// Close closes the pool.
-func (s *Store) Close() { s.Pool.Close() }
+// Close closes the pools.
+func (s *Store) Close() {
+	s.Pool.Close()
+	s.Locks.Pool.Close()
+}
 
 // Migrate applies the migrations that are not applied yet, Quai's and then those of the River
 // job queue, and returns how many it applied.
