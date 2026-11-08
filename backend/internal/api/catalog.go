@@ -610,6 +610,10 @@ func typeView(snap *repositories.Snapshot, t *definitions.ResourceType) TypeView
 		v.OwnerField = o.Field
 	}
 	v.ManagedFields = slices.Concat(slices.Collect(maps.Values(t.Spec.ParamFields)), slices.Collect(maps.Keys(t.Spec.Labels)))
+	if lo := t.Spec.Locate; lo.Strategy == locate.Entry && lo.Key != "" {
+		// A list item's key field mirrors its key param (docs/design/02, entry).
+		v.ManagedFields = append(v.ManagedFields, lo.Key)
+	}
 	if v.OwnerField != "" {
 		v.ManagedFields = append(v.ManagedFields, v.OwnerField)
 	}

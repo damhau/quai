@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/schemas/namespace.schema.json",
+  "title": "Namespace",
+  "description": "An entry of clusters/<cluster>/namespaces.yaml, as the variables of modules/namespace accept it.",
+  "type": "object",
+  "required": ["name", "owner", "quota"],
+  "additionalProperties": false,
+  "properties": {
+    "name": { "type": "string", "title": "Name", "pattern": "^[a-z][a-z0-9-]{1,30}[a-z0-9]$" },
+    "owner": { "type": "string", "title": "Owner" },
+    "description": { "type": "string", "title": "Description", "maxLength": 200 },
+    "labels": {
+      "type": "object",
+      "title": "Labels",
+      "additionalProperties": { "type": "string" }
+    },
+    "quota": {
+      "type": "object",
+      "title": "Quota",
+      "description": "The namespace's ResourceQuota.",
+      "required": ["cpu", "memory_gi"],
+      "additionalProperties": false,
+      "properties": {
+        "cpu": { "type": "integer", "title": "CPU (cores)", "minimum": 1, "maximum": 64, "default": 2 },
+        "memory_gi": { "type": "integer", "title": "Memory (GiB)", "minimum": 1, "maximum": 256, "default": 4 },
+        "pods": { "type": "integer", "title": "Pods", "minimum": 10, "maximum": 500, "default": 50 }
+      }
+    }
+  }
+}

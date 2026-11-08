@@ -20,7 +20,7 @@ func runLint(t *testing.T, args ...string) (string, error) {
 
 func TestLintExamples(t *testing.T) {
 	out, err := runLint(t, "../../../examples/gitops-repo")
-	if err != nil || !strings.Contains(out, "1 types, 2 blueprints, 4 resources, 2 golden examples checked: no problems") {
+	if err != nil || !strings.Contains(out, "5 types, 2 blueprints, 20 resources, 4 golden examples checked: no problems") {
 		t.Errorf("lint = %q, %v", out, err)
 	}
 }

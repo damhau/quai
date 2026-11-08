@@ -1,9 +1,10 @@
 // Command fakerunner is the runner of the end-to-end scenarios (docs/engineering/testing.md): it
 // listens to Gitea's webhooks for a repository and reports to Quai with `quai report`, as the
 // repository's pipelines would. A pull request opened or updated is a plan of each stack it
-// changes, a push to main an apply of each stack it changes; plans carry a recorded plan
-// (FAKERUNNER_PLAN). A request's reason picks what happens: "[costly]" makes its plan cost
-// 900 CHF a month (40 otherwise), "[fail-apply]" fails its apply. Each run has a page here.
+// changes, a push to main an apply of each stack it changes; the plans of envs/<env> carry a
+// recorded plan (FAKERUNNER_PLAN). A request's reason picks what happens: "[costly]" makes its
+// plan cost 900 CHF a month (40 otherwise), "[fail-apply]" fails its apply. Each run has a page
+// here.
 //
 // Environment: QUAI_URL, QUAI_REPOSITORY and QUAI_RUN_TOKEN_FILE for quai report; GITEA_URL
 // and GITEA_TOKEN_FILE to read a pull request's files; FAKERUNNER_URL, its own address in the
@@ -109,7 +110,11 @@ func (r *runner) hook(w http.ResponseWriter, req *http.Request) {
 				cost = "900"
 			}
 			for _, stack := range stacks {
-				r.report(ctx, stack, "plan", pr.Head.Sha, strconv.Itoa(pr.Number), "succeeded", "--plan", r.plan, "--cost-monthly-delta", cost, "--cost-currency", "CHF")
+				extra := []string{"--cost-monthly-delta", cost, "--cost-currency", "CHF"}
+				if recordedPlan(stack) {
+					extra = append(extra, "--plan", r.plan)
+				}
+				r.report(ctx, stack, "plan", pr.Head.Sha, strconv.Itoa(pr.Number), "succeeded", extra...)
 			}
 		case event == "push" && e.Ref == "refs/heads/main":
 			var paths []string
@@ -172,18 +177,27 @@ func (r *runner) pullRequestStacks(ctx context.Context, repo string, number int)
 	return stacksOf(paths), nil
 }
 
-// stacksOf returns the stacks of paths: envs/<env> for what is under it.
+// stackRoots are the directories of examples/gitops-repo whose subdirectories are stacks: the
+// VMs of each environment, the namespaces of each cluster, the databases of each environment and
+// the record sets of each DNS zone.
+var stackRoots = []string{"clusters", "databases", "dns", "envs"}
+
+// stacksOf returns the stacks of paths: <root>/<name> for what is under it.
 func stacksOf(paths []string) []string {
 	var out []string
 	for _, p := range paths {
 		parts := strings.SplitN(p, "/", 3)
-		if len(parts) == 3 && parts[0] == "envs" && !slices.Contains(out, "envs/"+parts[1]) {
-			out = append(out, "envs/"+parts[1])
+		if len(parts) == 3 && slices.Contains(stackRoots, parts[0]) && !slices.Contains(out, parts[0]+"/"+parts[1]) {
+			out = append(out, parts[0]+"/"+parts[1])
 		}
 	}
 	slices.Sort(out)
 	return out
 }
+
+// recordedPlan says whether a stack's plans carry the recorded plan, which is of envs/prod's VMs:
+// another kind of stack reports its plans without one, rather than with changes it does not have.
+func recordedPlan(stack string) bool { return strings.HasPrefix(stack, "envs/") }
 
 // page shows what a run did.
 func (r *runner) page(w http.ResponseWriter, req *http.Request) {

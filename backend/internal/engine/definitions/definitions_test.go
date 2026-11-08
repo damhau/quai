@@ -21,8 +21,8 @@ func TestLoadExamples(t *testing.T) {
 	if len(problems) > 0 {
 		t.Fatalf("problems:\n%v", problems)
 	}
-	if len(repo.Types) != 1 || len(repo.Blueprints) != 2 {
-		t.Fatalf("loaded %d types and %d blueprints, want 1 and 2", len(repo.Types), len(repo.Blueprints))
+	if len(repo.Types) != 5 || len(repo.Blueprints) != 2 {
+		t.Fatalf("loaded %d types and %d blueprints, want 5 and 2", len(repo.Types), len(repo.Blueprints))
 	}
 	vm := repo.Types["vm"]
 	if vm.Path != ".quai/types/vm.yaml" || vm.Spec.Locate.Path != "envs/{env}/vms/{name}.yaml" || vm.Spec.Generate.Kind != GenerateIdentity {

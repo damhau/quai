@@ -89,7 +89,7 @@ func TestPublishBlueprint(t *testing.T) {
 	}
 	var items []CatalogItem
 	alice.do(http.MethodGet, Prefix+"/catalog", nil, &items)
-	if len(items) != 4 {
+	if len(items) != 7 {
 		t.Errorf("catalog after publishing = %d items", len(items))
 	}
 	// Publishing the same again changes nothing.

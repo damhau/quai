@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -34,7 +35,8 @@ func TestPreview(t *testing.T) {
 	if status, body := alice.do(http.MethodGet, Prefix+"/repositories/infra-live/preview?branch=vm-v2", nil, &p); status != http.StatusOK {
 		t.Fatalf("preview = %d %s", status, body)
 	}
-	if p.Branch != "vm-v2" || p.Commit == "" || len(p.Problems) != 0 || len(p.Items) == 0 || p.Items[0].Name != "vm" || p.Items[0].Title != "Virtual machine v2" {
+	vm := slices.IndexFunc(p.Items, func(it CatalogItem) bool { return it.Kind == "type" && it.Name == "vm" })
+	if p.Branch != "vm-v2" || p.Commit == "" || len(p.Problems) != 0 || vm < 0 || p.Items[vm].Title != "Virtual machine v2" {
 		t.Errorf("preview = %+v", p)
 	}
 	var vt TypeView

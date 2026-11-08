@@ -18,4 +18,25 @@ end-to-end scenarios.
   validation) and apply it on main, each reporting to Quai with the `quai report`
   step template of `deploy/runners/azure-pipelines`.
 
-Quai edits the YAML files and nothing else.
+Shared files, many resources in one file, each a stack of its own directory:
+
+- `clusters/<cluster>/namespaces.yaml`: a YAML list of namespaces, which
+  `clusters/<cluster>/main.tf` turns into instances of `modules/namespace`. The
+  `namespace` type writes one entry each (`entry` locator); the
+  `namespace-quota` type writes only the `quota` of an entry (`field` locator),
+  owned by the developers rather than the namespace's owner, so that anyone may
+  ask for more.
+- `dns/<zone>/records.auto.tfvars`: an HCL map of record sets, instances of
+  `modules/dns-record`. The `dns-record` type writes one entry each; the
+  `ttl = 24 * 3600` of `shop.internal`'s `shop-db` is an expression, which Quai
+  shows as defined in code and leaves as it is.
+- `databases/<env>/databases.auto.tfvars.json`: a JSON list of databases,
+  instances of `modules/database`. The `database` type's form asks for an engine
+  and a size; its `mapping` generator writes the vCPUs, memory and storage from
+  the size and reads the size back from the vCPUs.
+- `.quai/tests/`: the golden examples `quai lint` runs, the VMs' and, for the
+  shared files, a database created and a record set moved beside its TTL
+  defined in code.
+
+Quai edits these YAML, HCL and JSON files and nothing else; in a shared file, the
+lines of the entry a request changes and nothing else.

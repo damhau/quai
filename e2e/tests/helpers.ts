@@ -53,6 +53,18 @@ export async function onGitea(number: number): Promise<{ merged: boolean; approv
   }
 }
 
+/** fileOnGitea reads a file of infra-live's main branch on Gitea, as it is after the merges. */
+export async function fileOnGitea(path: string): Promise<string> {
+  const api = await gitea()
+  try {
+    const res = await api.get(`/api/v1/repos/quai/infra-live/raw/${path}?ref=main`)
+    expect(res.ok(), `${path} on Gitea: ${res.status()}`).toBe(true)
+    return await res.text()
+  } finally {
+    await api.dispose()
+  }
+}
+
 /** approvalOnGitea waits until Gitea shows quai/approval in state on the pull request. */
 export async function approvalOnGitea(number: number, state: "pending" | "success") {
   await expect.poll(async () => (await onGitea(number)).approval, { timeout: 60_000 }).toBe(state)

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/schemas/database.form.schema.json",
+  "title": "Database",
+  "description": "What a database's form asks: the database type's template makes its resources from the size.",
+  "type": "object",
+  "required": ["engine", "size"],
+  "additionalProperties": false,
+  "properties": {
+    "engine": { "type": "string", "title": "Engine", "enum": ["postgres", "mysql"], "default": "postgres" },
+    "size": {
+      "type": "string",
+      "title": "Size",
+      "description": "small: 2 vCPUs, 4 GB of memory, 20 GB of storage; medium: 4, 16, 100; large: 8, 32, 500.",
+      "enum": ["small", "medium", "large"],
+      "default": "small"
+    }
+  }
+}

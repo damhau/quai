@@ -1,0 +1,8 @@
+# A medium database in dev: the template makes its resources from the size, and the new item
+# goes after its siblings, its key field first.
+kind: create
+params: { env: dev, name: orders-dev }
+owner: carol
+values:
+  engine: postgres
+  size: medium

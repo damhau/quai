@@ -58,7 +58,8 @@ func TestEntryResources(t *testing.T) {
 	bob.do(http.MethodGet, Prefix+"/inventory", nil, &list)
 	var ids []string
 	for _, r := range list {
-		if r.Type == "namespace" {
+		// The namespaces of the files above, not the example's (clusters/dev-1).
+		if r.Type == "namespace" && !strings.HasPrefix(r.Path, "clusters/dev-1/") {
 			ids = append(ids, r.ID+" "+r.Status)
 		}
 	}
@@ -80,5 +81,11 @@ func TestEntryResources(t *testing.T) {
 	}
 	if status, _ := bob.do(http.MethodGet, Prefix+"/resource?id=infra-live/namespace/prod-1/billing", nil, nil); status != http.StatusNotFound {
 		t.Errorf("an entry that does not exist = %d", status)
+	}
+
+	// The key field mirrors the key param: the form leaves it out, as it does the other managed fields.
+	var tv TypeView
+	if status, body := bob.do(http.MethodGet, Prefix+"/repositories/infra-live/types/namespace", nil, &tv); status != http.StatusOK || !slices.Equal(tv.ManagedFields, []string{"name"}) {
+		t.Errorf("the namespace type = %d %s, managed fields %q", status, body, tv.ManagedFields)
 	}
 }

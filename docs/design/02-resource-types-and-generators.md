@@ -346,7 +346,7 @@ The editors and their safety checks are specified in [03-file-editing.md](03-fil
 | Field | Behaviour |
 | --- | --- |
 | Owner (`ownership.field`) | Set to the requester (or their team) on create; locked afterwards; changed only by a `transfer-ownership` action. |
-| Param mirrors (`paramFields`) | Kept equal to the locator params, e.g. `name:` inside `web01.yaml`. Hidden from forms. |
+| Param mirrors (`paramFields`) | Kept equal to the locator params, e.g. `name:` inside `web01.yaml`, and a list entry's key field, which mirrors `keyParam`. Hidden from forms. |
 | Labels (`labels`) | Optional fixed values by dotted field path, e.g. `managed_by: quai`. Off by default: many schemas forbid unknown keys. |
 | Timestamps | Never written to files: they would make every change touch an extra line and make no-op changes impossible to detect. Creation and change dates come from Git history. |
 

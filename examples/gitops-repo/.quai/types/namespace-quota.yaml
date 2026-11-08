@@ -1,0 +1,37 @@
+apiVersion: quai.dev/v1beta1
+kind: ResourceType
+metadata:
+  name: namespace-quota
+  title: Namespace quota
+  description: The quota of a namespace, which any developer may ask to change without owning the namespace. It writes only the quota of an entry of clusters/<cluster>/namespaces.yaml; the namespace type owns the rest.
+  icon: gauge
+  category: Kubernetes
+  version: 1.0.0
+  tags: [terraform, kubernetes, shared-file]
+spec:
+  locate:
+    strategy: field
+    path: clusters/{cluster}/namespaces.yaml
+    collection: namespaces
+    key: name
+    keyParam: name
+    fields: [quota]
+  params:
+    - { name: cluster, title: Cluster, type: enum, discover: true }
+    - { name: name, title: Namespace, pattern: "[a-z][a-z0-9-]{1,30}[a-z0-9]" }
+  schema: catalog/schemas/namespace-quota.schema.json
+  generate: { kind: identity }
+  # The namespace's owner is in the entry, outside the quota: quotas are the developers' to ask
+  # for, and the platform team's to grant.
+  ownership: { team: developers }
+  stack: clusters/{cluster}
+  address: module.namespace["{name}"].terraform_data.quota
+  approval:
+    rules:
+      - name: platform
+        # A quota that grows, and any change on a production cluster.
+        when: >-
+          params.cluster.startsWith('prod-') ||
+          inputs.quota.cpu > previous.quota.cpu || inputs.quota.memory_gi > previous.quota.memory_gi ||
+          inputs.quota.?pods.orValue(50) > previous.quota.?pods.orValue(50)
+        approvers: [group:platform-admins]

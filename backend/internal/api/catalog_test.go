@@ -15,11 +15,16 @@ func TestCatalogAndInventory(t *testing.T) {
 	bob := h.as("bob")
 
 	var items []CatalogItem
-	if status, body := bob.do(http.MethodGet, Prefix+"/catalog", nil, &items); status != http.StatusOK || len(items) != 3 {
+	if status, body := bob.do(http.MethodGet, Prefix+"/catalog", nil, &items); status != http.StatusOK || len(items) != 6 {
 		t.Fatalf("catalog = %d %s", status, body)
 	}
-	if items[0].Kind != "type" || items[0].Name != "vm" || items[1].Name != "app-servers" || items[2].Name != "linux-vm" {
-		t.Errorf("catalog = %+v", items)
+	// The types by name, then the blueprints; a field type (namespace-quota) is not in the catalog.
+	var names []string
+	for _, it := range items {
+		names = append(names, it.Kind+" "+it.Name)
+	}
+	if want := []string{"type database", "type dns-record", "type namespace", "type vm", "blueprint app-servers", "blueprint linux-vm"}; !slices.Equal(names, want) {
+		t.Errorf("catalog = %q", names)
 	}
 
 	var vm TypeView
@@ -45,8 +50,16 @@ func TestCatalogAndInventory(t *testing.T) {
 	}
 
 	var inv []ResourceView
-	if status, body := bob.do(http.MethodGet, Prefix+"/inventory", nil, &inv); status != http.StatusOK || len(inv) != 4 {
+	if status, body := bob.do(http.MethodGet, Prefix+"/inventory", nil, &inv); status != http.StatusOK || len(inv) != 20 {
 		t.Fatalf("inventory = %d %s", status, body)
+	}
+	for _, r := range inv {
+		if r.Status != "conforming" {
+			t.Errorf("resource %+v", r)
+		}
+	}
+	if status, body := bob.do(http.MethodGet, Prefix+"/inventory?type=vm", nil, &inv); status != http.StatusOK || len(inv) != 4 {
+		t.Fatalf("inventory of VMs = %d %s", status, body)
 	}
 	owners := map[string]string{}
 	for _, r := range inv {
@@ -85,7 +98,7 @@ func TestSyncAndProblems(t *testing.T) {
 	h.push("envs/test/vms/wrong.yaml", "cpu: 99\n")
 	h.push(".quai/types/bad.yaml", "apiVersion: quai.dev/v1alpha1\nkind: ResourceType\n")
 	var repo RepositoryView
-	if status, body := alice.do(http.MethodPost, Prefix+"/repositories/infra-live/sync", nil, &repo); status != http.StatusOK || len(repo.Problems) != 1 || repo.Types != 1 {
+	if status, body := alice.do(http.MethodPost, Prefix+"/repositories/infra-live/sync", nil, &repo); status != http.StatusOK || len(repo.Problems) != 1 || repo.Types != 5 {
 		t.Fatalf("sync = %d %s", status, body)
 	}
 	var inv []ResourceView
@@ -119,7 +132,7 @@ func TestAnonymousCatalog(t *testing.T) {
 	// fiona (finops) is a viewer: she sees the inventory but cannot request.
 	fiona := h.as("fiona")
 	var inv []ResourceView
-	if status, _ := fiona.do(http.MethodGet, Prefix+"/inventory", nil, &inv); status != http.StatusOK || len(inv) != 4 {
+	if status, _ := fiona.do(http.MethodGet, Prefix+"/inventory", nil, &inv); status != http.StatusOK || len(inv) != 20 {
 		t.Errorf("fiona's inventory = %d %d", status, len(inv))
 	}
 }

@@ -1,0 +1,11 @@
+# Namespaces on the prod-1 cluster. The platform team reviews every change here.
+namespaces:
+  - name: shop
+    owner: bob
+    description: Shop front-end and API
+    labels: { app: shop, cost_center: "4711" }
+    quota: { cpu: 8, memory_gi: 16 }
+  - name: payments
+    owner: carol
+    description: Payment gateway
+    quota: { cpu: 4, memory_gi: 8, pods: 30 }

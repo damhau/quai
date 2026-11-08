@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/schemas/database.schema.json",
+  "title": "Database",
+  "description": "An item of the databases list in databases/<env>/databases.auto.tfvars.json, as the environment's stack accepts it.",
+  "type": "object",
+  "required": ["name", "owner", "engine", "vcpu", "memory_gb", "storage_gb"],
+  "additionalProperties": false,
+  "properties": {
+    "name": { "type": "string", "title": "Name", "pattern": "^[a-z][a-z0-9-]{1,30}$" },
+    "owner": { "type": "string", "title": "Owner" },
+    "engine": { "type": "string", "title": "Engine", "enum": ["postgres", "mysql"] },
+    "version": { "type": "string", "title": "Engine version", "description": "The service's default when left out." },
+    "vcpu": { "type": "integer", "title": "vCPUs", "minimum": 1, "maximum": 32 },
+    "memory_gb": { "type": "integer", "title": "Memory (GB)", "minimum": 1, "maximum": 256 },
+    "storage_gb": { "type": "integer", "title": "Storage (GB)", "minimum": 10, "maximum": 4096 },
+    "backup_retention_days": { "type": "integer", "title": "Backup retention (days)", "minimum": 1, "maximum": 35 }
+  }
+}

@@ -57,7 +57,7 @@ func TestPilotExamplePass(t *testing.T) {
 
 func TestExamplesPass(t *testing.T) {
 	r := Run(os.DirFS(examples))
-	if len(r.Problems) > 0 || r.Types != 1 || r.Blueprints != 2 || r.Resources != 4 || r.Tests != 2 {
+	if len(r.Problems) > 0 || r.Types != 5 || r.Blueprints != 2 || r.Resources != 20 || r.Tests != 4 {
 		t.Errorf("report = %+v", r)
 	}
 }
@@ -91,8 +91,8 @@ func TestBrokenCopies(t *testing.T) {
 			t.Errorf("no problem contains %q; problems:\n%s", want, text)
 		}
 	}
-	if r.Resources != 7 {
-		t.Errorf("resources = %d, want 7", r.Resources)
+	if r.Resources != 23 {
+		t.Errorf("resources = %d, want 23", r.Resources)
 	}
 }
 
@@ -166,7 +166,7 @@ func TestFormats(t *testing.T) {
 	fsys["hcl/dev/a.tfvars"] = &fstest.MapFile{Data: []byte("template  = \"rhel-9\"\ncpu       = var.cpu # defined in code\nmemory_gb = 4\ndisks     = [{ size_gb = 50 }]\nnetwork   = { vlan = 110 }\n")}
 	fsys["hcl/dev/bad.tfvars"] = &fstest.MapFile{Data: []byte("template = \"rhel-9\"\ncpu = 2\nmemory_gb = \"four\"\ndisks = [{ size_gb = 50 }]\nnetwork = { vlan = 110 }\n")}
 	r := Run(fsys)
-	if r.Types != 3 || r.Resources != 7 || len(r.Problems) != 1 || r.Problems[0].Path != "hcl/dev/bad.tfvars" || r.Problems[0].Field != "memory_gb" {
+	if r.Types != 7 || r.Resources != 23 || len(r.Problems) != 1 || r.Problems[0].Path != "hcl/dev/bad.tfvars" || r.Problems[0].Field != "memory_gb" {
 		t.Errorf("report = %+v", r)
 	}
 }
@@ -174,7 +174,7 @@ func TestFormats(t *testing.T) {
 // TestEntries: the entries of a shared file are checked one by one, each round trip writing the
 // entry back into the whole file; a file whose keys repeat is one problem.
 func TestEntries(t *testing.T) {
-	fsys := copyExamples(t)
+	fsys := fstest.MapFS{} // its own namespaces, not the example's
 	fsys[".quai/types/namespace.yaml"] = &fstest.MapFile{Data: []byte("apiVersion: quai.dev/v1beta1\nkind: ResourceType\n" +
 		"metadata: { name: namespace, title: Namespace }\nspec:\n" +
 		"  locate: { strategy: entry, path: \"clusters/{cluster}/namespaces.yaml\", collection: namespaces, key: name, keyParam: name }\n" +
@@ -194,7 +194,7 @@ func TestEntries(t *testing.T) {
 			t.Errorf("no problem contains %q; problems:\n%s", want, text)
 		}
 	}
-	if len(r.Problems) != 2 || r.Resources != 7 {
+	if len(r.Problems) != 2 || r.Resources != 3 {
 		t.Errorf("%d resources, problems:\n%s", r.Resources, text)
 	}
 }
@@ -202,7 +202,7 @@ func TestEntries(t *testing.T) {
 // TestFields: the fields a field type writes are checked against its schema in each entry, and
 // round-trip without touching the rest of the entry.
 func TestFields(t *testing.T) {
-	fsys := copyExamples(t)
+	fsys := fstest.MapFS{} // its own namespaces, not the example's
 	fsys[".quai/types/quota.yaml"] = &fstest.MapFile{Data: []byte("apiVersion: quai.dev/v1beta1\nkind: ResourceType\n" +
 		"metadata: { name: quota, title: Quota }\nspec:\n" +
 		"  locate: { strategy: field, path: \"clusters/{cluster}/namespaces.yaml\", collection: namespaces, key: name, keyParam: name, fields: [quota] }\n" +
@@ -211,7 +211,7 @@ func TestFields(t *testing.T) {
 	fsys["catalog/schemas/quota.schema.json"] = &fstest.MapFile{Data: []byte(`{"type": "object", "properties": {"quota": {"type": "object", "properties": {"cpu": {"type": "string"}}}}}`)}
 	fsys["clusters/prod-1/namespaces.yaml"] = &fstest.MapFile{Data: []byte("namespaces:\n  - name: shop\n    labels: { team: shop }\n    quota: { cpu: \"8\" }\n  - name: orders\n    quota: { cpu: 4 }\n  - name: search\n")}
 	r := Run(fsys)
-	if len(r.Problems) != 1 || r.Problems[0].String() != "clusters/prod-1/namespaces.yaml (orders): quota.cpu: must be a string (schema catalog/schemas/quota.schema.json)" || r.Resources != 7 {
+	if len(r.Problems) != 1 || r.Problems[0].String() != "clusters/prod-1/namespaces.yaml (orders): quota.cpu: must be a string (schema catalog/schemas/quota.schema.json)" || r.Resources != 3 {
 		t.Errorf("%d resources, problems:\n%s", r.Resources, r.Problems.Error())
 	}
 }
@@ -246,7 +246,7 @@ func TestMappingTypes(t *testing.T) {
 func TestGoldenExamples(t *testing.T) {
 	fsys := copyExamples(t)
 	r := Run(fsys)
-	if len(r.Problems) > 0 || r.Tests != 2 {
+	if len(r.Problems) > 0 || r.Tests != 4 {
 		t.Fatalf("the examples' cases: %d, %v", r.Tests, r.Problems)
 	}
 	created := ".quai/tests/vm/create-dev-vm/after/envs/dev/vms/build-agent-02.yaml"

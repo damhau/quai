@@ -151,7 +151,17 @@ function Field({ schema, path, name, required, ctx }: { schema: JsonSchema; path
   )
 }
 
-type ControlProps = { schema: JsonSchema; path: string; id: string; title: string; required: boolean; disabled: boolean; ctx: Ctx }
+type ControlProps = {
+  schema: JsonSchema
+  path: string
+  id: string
+  title: string
+  required: boolean
+  disabled: boolean
+  ctx: Ctx
+  /** The control's name when no label names it: an item of a list. */
+  label?: string
+}
 
 function describedBy(id: string, schema: JsonSchema, error: string | undefined) {
   return [schema.description && `${id}-desc`, error && `${id}-error`].filter(Boolean).join(" ") || undefined
@@ -162,7 +172,7 @@ function Control(props: ControlProps) {
   const v = getPath(ctx.value, path)
   const t = typeOf(schema)
   const error = ctx.errors[path]
-  const aria = { "aria-invalid": error ? true : undefined, "aria-describedby": describedBy(id, schema, error) }
+  const aria = { "aria-label": props.label, "aria-invalid": error ? true : undefined, "aria-describedby": describedBy(id, schema, error) }
 
   if (schema.enum) return <EnumControl {...props} options={schema.enum} value={v} onChange={(o) => ctx.set(path, o)} />
   if (t === "boolean")
@@ -281,7 +291,7 @@ function ArrayControl({ schema, path, title, disabled, ctx }: ControlProps) {
               {objects ? (
                 <ObjectFields schema={item} path={p} ctx={ctx} />
               ) : (
-                <Control schema={item} path={p} id={fieldId(p)} title={`${title} ${i + 1}`} required disabled={disabled} ctx={ctx} />
+                <Control schema={item} path={p} id={fieldId(p)} title={`${title} ${i + 1}`} label={`${title} ${i + 1}`} required disabled={disabled} ctx={ctx} />
               )}
             </div>
             <Button type="button" variant="ghost" size="icon" disabled={!canRemove} onClick={() => remove(i)} aria-label={`Remove ${title} ${i + 1}`}>

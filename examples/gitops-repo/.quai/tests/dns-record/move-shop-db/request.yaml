@@ -1,0 +1,6 @@
+# The shop's database moves: only its values change; its TTL, defined in code, stays as it is.
+kind: update
+key: shop.internal/shop-db
+values:
+  type: A
+  values: [10.0.13.31]
