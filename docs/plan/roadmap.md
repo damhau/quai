@@ -92,7 +92,7 @@ Goal: what a bank's or insurer's change and access management requires. See
 [identity, access and tenancy](../design/08-identity-access-tenancy.md) and
 [security and compliance](../design/09-security-and-compliance.md).
 
-Epics: [GitHub issues labelled `phase:4`](https://github.com/damhau/quai/issues?q=is%3Aissue%20label%3Aphase%3A4). Each epic is broken into task issues when the phase starts.
+Epics: [GitHub issues labelled `phase:4`](https://github.com/damhau/quai/issues?q=is%3Aissue%20label%3Aphase%3A4). Tasks: issues #138–#160 (`P4-01` to `P4-23`), after #100 (`P4-00`, codeowners, from Phase 2); the loop procedure and the test infrastructure are in the [Phase 4 backlog](phase-4-backlog.md).
 
 **Exit (M2 Beta):** an auditor can sample ten changes and get, for each, the reason, diff, plan, approvers with authentication times, merge commit and apply result from one bundle; the audit chain verifies; break-glass works end to end with alerting.
 

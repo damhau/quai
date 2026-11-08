@@ -19,6 +19,10 @@ every request becomes a reviewed change in their Git repositories. Start with
   titled `P3-NN` (`P3-NN` is `#(114+NN)`); how an iteration works, the test infrastructure
   (Gitea, envtest, kind, the Azure DevOps sandbox, recorded Terraform plans, the GitHub sandbox)
   and when to stop are in [`docs/plan/phase-3-backlog.md`](docs/plan/phase-3-backlog.md).
+  Phase 4 tasks are issues #100 and #138–#160, titled `P4-NN` (`P4-00` is #100, the
+  codeowners task from Phase 2; otherwise `P4-NN` is `#(137+NN)`); what Phase 4 adds to the test
+  infrastructure (fakes of the services with no account, Mailpit) is in
+  [`docs/plan/phase-4-backlog.md`](docs/plan/phase-4-backlog.md).
 
 ## Rules
 
