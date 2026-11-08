@@ -328,6 +328,7 @@ func (a *Authenticator) callback(w http.ResponseWriter, r *http.Request) {
 	}
 	u, err := a.userFromClaims(idt)
 	if err != nil {
+		a.log.WarnContext(ctx, "login refused", slog.Any("error", err))
 		writeProblem(w, http.StatusForbidden, err.Error())
 		return
 	}
@@ -339,6 +340,20 @@ func (a *Authenticator) callback(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, next, http.StatusFound)
 }
 
+// verifiedEmail returns the ID token's email when the identity provider vouches for it: OIDC's
+// email_verified, or Entra ID's optional claim xms_edov (the email's domain is verified by its
+// owner), is the JSON boolean true. Otherwise the person has no email: owners named by email, and
+// email: approvers, would match whoever could set the address (an Entra guest's home tenant).
+func verifiedEmail(claims map[string]any) string {
+	email, _ := claims["email"].(string)
+	for _, c := range []string{"email_verified", "xms_edov"} {
+		if v, ok := claims[c].(bool); ok && v {
+			return email
+		}
+	}
+	return ""
+}
+
 func (a *Authenticator) userFromClaims(idt *oidc.IDToken) (sessionUser, error) {
 	var claims map[string]any
 	if err := idt.Claims(&claims); err != nil {
@@ -348,17 +363,25 @@ func (a *Authenticator) userFromClaims(idt *oidc.IDToken) (sessionUser, error) {
 		return sessionUser{}, errors.New("your account is in more groups than the ID token can list; " +
 			"ask an administrator to emit only the groups assigned to Quai, or to use app roles")
 	}
-	u := sessionUser{AuthTime: time.Now()}
-	for _, c := range []string{a.cfg.OIDC.NameClaim, "preferred_username", "email", "sub"} {
+	u := sessionUser{AuthTime: time.Now(), Email: verifiedEmail(claims)}
+	names := slices.DeleteFunc(slices.Compact([]string{a.cfg.OIDC.NameClaim, "preferred_username"}), func(c string) bool { return c == "" })
+	for _, c := range names {
 		if s, _ := claims[c].(string); s != "" {
 			u.Name = s
 			break
 		}
 	}
-	u.Email, _ = claims["email"].(string)
-	if verified, ok := claims["email_verified"].(bool); ok && !verified {
-		// An address the IdP has not verified names no one: an owner named by email would match it.
-		u.Email = ""
+	if u.Name == "" {
+		// The email names the person only when the IdP vouches for it, as for matching owners.
+		if u.Email == "" {
+			why := "nor an email claim"
+			if e, _ := claims["email"].(string); e != "" {
+				why = "and its email claim is not verified (neither email_verified nor xms_edov is true)"
+			}
+			return sessionUser{}, fmt.Errorf("the identity provider sent no %s claim to name you by, %s; "+
+				"ask an administrator to have it send one of these claims", strings.Join(names, " or "), why)
+		}
+		u.Name = u.Email
 	}
 	switch g := claims[a.cfg.OIDC.GroupsClaim].(type) {
 	case []any:

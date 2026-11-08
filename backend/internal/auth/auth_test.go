@@ -204,7 +204,7 @@ func send(t *testing.T, c *http.Client, method, u string, body any, header ...st
 
 func TestOIDCLogin(t *testing.T) {
 	p := newIDP(t)
-	p.claims = map[string]any{"preferred_username": "bob", "email": "bob@example.com", "groups": []string{"developers", "shop"}}
+	p.claims = map[string]any{"preferred_username": "bob", "email": "bob@example.com", "email_verified": true, "groups": []string{"developers", "shop"}}
 	srv, c := quai(t, p)
 
 	if _, status := getMe(t, c, srv.URL); status != http.StatusUnauthorized {
@@ -253,6 +253,71 @@ func TestOIDCLogin(t *testing.T) {
 	resp.Body.Close()
 	if m, status := getMe(t, c, srv.URL); status != http.StatusOK || m.Name != "bob" || m.Email != "" {
 		t.Errorf("unverified email: me = %d %+v", status, m)
+	}
+}
+
+// TestOIDCEmail: a login's email counts only when the identity provider vouches for it, with
+// email_verified or Entra ID's xms_edov the JSON boolean true; any other email is dropped, since
+// owners named by email would match it. Without a name claim, a vouched-for email names the
+// person, and anything less refuses the login, saying which claims are missing.
+func TestOIDCEmail(t *testing.T) {
+	p := newIDP(t)
+	srv, c := quai(t, p)
+	const email = "erin@example.com"
+	for _, tt := range []struct {
+		name   string
+		claims map[string]any
+		want   string // the session's name and email, or the refusal's words
+		status int
+	}{
+		{"email_verified true", map[string]any{"email_verified": true}, "erin " + email, http.StatusOK},
+		{"email_verified false", map[string]any{"email_verified": false}, "erin ", http.StatusOK},
+		{"email_verified a string", map[string]any{"email_verified": "true"}, "erin ", http.StatusOK},
+		{"email_verified a number", map[string]any{"email_verified": 1}, "erin ", http.StatusOK},
+		{"xms_edov true, email_verified absent", map[string]any{"xms_edov": true}, "erin " + email, http.StatusOK},
+		{"xms_edov false", map[string]any{"xms_edov": false}, "erin ", http.StatusOK},
+		{"xms_edov a string", map[string]any{"xms_edov": "1"}, "erin ", http.StatusOK},
+		{"both absent", map[string]any{}, "erin ", http.StatusOK},
+		{"no name, a verified email", map[string]any{"preferred_username": nil, "email_verified": true}, email + " " + email, http.StatusOK},
+		{"no name, xms_edov", map[string]any{"preferred_username": nil, "xms_edov": true}, email + " " + email, http.StatusOK},
+		{"no name, an unverified email", map[string]any{"preferred_username": nil, "email_verified": false},
+			"no preferred_username claim to name you by, and its email claim is not verified (neither email_verified nor xms_edov is true)", http.StatusForbidden},
+		{"no name, an email without email_verified", map[string]any{"preferred_username": nil},
+			"no preferred_username claim to name you by, and its email claim is not verified", http.StatusForbidden},
+		{"no name, no email", map[string]any{"preferred_username": nil, "email": nil},
+			"no preferred_username claim to name you by, nor an email claim", http.StatusForbidden}, // the sub claim names no one
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			p.claims = map[string]any{"preferred_username": "erin", "email": email, "groups": []string{"developers"}}
+			for k, v := range tt.claims {
+				if v == nil {
+					delete(p.claims, k)
+				} else {
+					p.claims[k] = v
+				}
+			}
+			jar, _ := cookiejar.New(nil)
+			browser := &http.Client{Jar: jar, Transport: c.Transport}
+			resp, err := browser.Get(srv.URL + "/auth/login")
+			if err != nil {
+				t.Fatal(err)
+			}
+			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			m, status := getMe(t, browser, srv.URL)
+			if tt.status == http.StatusOK {
+				if status != http.StatusOK || m.Name+" "+m.Email != tt.want {
+					t.Errorf("me = %d %q %q, want %q", status, m.Name, m.Email, tt.want)
+				}
+				return
+			}
+			if resp.StatusCode != tt.status || !strings.Contains(string(body), tt.want) {
+				t.Errorf("login = %d %s, want %d and %q", resp.StatusCode, body, tt.status, tt.want)
+			}
+			if status != http.StatusUnauthorized {
+				t.Errorf("signed in anyway: me = %d %+v", status, m)
+			}
+		})
 	}
 }
 

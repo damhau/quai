@@ -23,10 +23,11 @@ How it works in the server:
   session) and `/auth/callback` finishes it: state compared, code exchanged with the
   verifier, ID token verified (issuer, audience, expiry, signature, nonce), session
   token renewed against fixation. `next` only redirects to a path on Quai.
-- The person's name comes from `nameClaim` (`preferred_username` by default) and their
-  groups from `groupsClaim` (`groups`, or `roles` for Entra app roles); `auth.roles` maps
-  groups to roles at a scope. Roles are recomputed from the groups on every request, so
-  a mapping change applies at once.
+- The person's name comes from `nameClaim` (`preferred_username` by default), then
+  `preferred_username`, then their email when the IdP vouches for it (below); without any of
+  them the login is refused, naming the missing claims. Their groups come from `groupsClaim`
+  (`groups`, or `roles` for Entra app roles); `auth.roles` maps groups to roles at a scope.
+  Roles are recomputed from the groups on every request, so a mapping change applies at once.
 - The session cookie is `quai_session`. `GET /api/v1/me` returns the session's CSRF token;
   every `POST`, `PUT`, `PATCH` or `DELETE` with a session must send it as `X-CSRF-Token`.
 - API tokens look like `quai_…`, are sent as `Authorization: Bearer`, act with the groups
@@ -62,15 +63,24 @@ too old or too weak, the UI redirects through the IdP with `max_age` (and
      [open question 17](../plan/open-questions.md#still-open)).
 
   Entries that match no one are shown, as the platform writes them, on the plan, the request and
-  the resource. A Quai user's email is the IdP's `email` claim, ignored when the IdP says it is
-  not verified (`email_verified: false`, [open question 30](../plan/open-questions.md#still-open));
-  an approver's email is kept with their review.
+  the resource. A Quai user's email is the IdP's `email` claim **only when the IdP vouches for
+  it**: `email_verified` or Entra ID's optional claim `xms_edov` is the boolean `true`. Otherwise
+  (false, absent, any other value) the user has no email: no owner or `email:` entry matches them
+  by email, and their commits are authored as `<name>@users.quai`
+  ([open question 30](../plan/open-questions.md#still-open)). Development users' emails, set by
+  the administrator in `auth.dev.users`, are trusted. An approver's email is kept with their
+  review.
 
 ### Microsoft Entra ID (the pilot's IdP)
 
 - Quai is registered as a confidential client (authorization code with PKCE). The secret or certificate for that registration is a Kubernetes Secret.
 - **Prefer app roles over raw group claims.** Admins assign Entra groups (synced from on-premises AD in a hybrid setup) to Quai's app roles; the token carries a `roles` claim that Quai maps to teams and roles. This avoids Entra's group overage: a JWT lists at most 200 groups, beyond which Entra sends only a pointer and the groups must be fetched from Microsoft Graph.
 - If raw group claims are used instead, configure the registration to emit only the groups assigned to the application. If an overage still occurs, Quai fetches memberships from Microsoft Graph when that egress is allowed, and otherwise refuses the login with an explicit message rather than silently dropping groups.
+- **Emails:** Entra ID sends no `email_verified`, and a guest's `email` can come from their home
+  tenant. For owners to match by email, add the optional claim `xms_edov` (email domain owner
+  verified) to the ID token in the registration's token configuration; without it, Quai users have
+  no email, and a person named as a code owner matches only through a `user:` entry of the
+  repository's mapping (groups match through `group:` entries either way).
 - The `manager` attribute is not in tokens; it is read from Microsoft Graph (`/users/{id}/manager`) at login, or left out if Graph is not allowed (then `manager` approvers are unavailable and Quai says so).
 - **Step-up:** Entra Conditional Access *authentication contexts* express "MFA required for this action". Quai requests the context for prod approvals and break-glass, checks the `acrs` claim in the returned token, and combines it with `max_age` for recent sign-in.
 
