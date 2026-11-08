@@ -381,5 +381,9 @@ func (repo *Repo) Trust(ctx context.Context) ([]string, error) {
 			break
 		}
 	}
+	// On GitHub, CODEOWNERS only requests reviews unless the branch requires code owners' approval.
+	if c.Info().Platform == "github" && !p.CodeOwnerReview {
+		problems = append(problems, fmt.Sprintf("the branch %s does not require code owners' review: CODEOWNERS only requests reviews of %s/; require a review from code owners in its ruleset or branch protection", spec.Definitions.Branch, dir))
+	}
 	return problems, nil
 }

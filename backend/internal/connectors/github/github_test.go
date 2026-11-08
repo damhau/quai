@@ -287,11 +287,15 @@ func TestConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	info := c.Info()
-	if info.Platform != "github" || !info.Has(connectors.CapPullRequests) || info.Has(connectors.CapAutoComplete) || len(info.MergeMethods) != 3 {
+	if info.Platform != "github" || !info.Has(connectors.CapPullRequests) || !info.Has(connectors.CapEnforcedStatus) || !info.Has(connectors.CapCodeOwnersFile) ||
+		info.Has(connectors.CapAutoComplete) || len(info.MergeMethods) != 3 {
 		t.Errorf("info = %+v", info)
 	}
-	// What a connector lacks is a true nil, which callers compare: P3-17 and P3-18 fill these.
-	if c.Statuses() != nil || c.Policies() != nil || c.Owners() != nil || c.Webhooks() != nil || c.Pipelines() != nil || c.Identities() != nil {
+	if c.Statuses() == nil || c.Policies() == nil || c.Owners() == nil {
+		t.Error("statuses, policies or owners are missing")
+	}
+	// What a connector lacks is a true nil, which callers compare: P3-18 fills webhooks.
+	if c.Webhooks() != nil || c.Pipelines() != nil || c.Identities() != nil {
 		t.Error("a capability the connector lacks is not nil")
 	}
 	if _, err := c.GitAuth(t.Context()); err == nil || !strings.Contains(err.Error(), "spec.credentials.ref") {

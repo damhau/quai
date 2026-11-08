@@ -194,6 +194,9 @@ type Protection struct {
 	ResetOnPush bool
 	// RequiredApprovals from the platform's reviewers, beyond Quai's.
 	RequiredApprovals int
+	// CodeOwnerReview: a change to owned paths needs a code owner's approval (GitHub, where
+	// CODEOWNERS otherwise only requests reviews).
+	CodeOwnerReview bool
 }
 
 // Enforcement is whether a branch really requires a check, and why not.

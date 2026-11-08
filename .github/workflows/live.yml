@@ -8,10 +8,11 @@ name: live
 # sandbox's hosted agents. It needs the AZURE_DEVOPS_PAT repository secret.
 #
 # github, on the GitHub sandbox (docs/plan/phase-3-backlog.md#test-infrastructure): the sandbox's
-# helpers, and the connector's conformance suite and live tests. The suite covers the repository,
-# branch and pull request parts so far; its steps for statuses, checks and webhooks skip until
-# P3-17 and P3-18, and the job's notice names what skipped. It needs the QUAI_TEST_GITHUB_APP_KEY
-# and QUAI_TEST_GITHUB_WEBHOOK_SECRET repository secrets.
+# helpers, the connector's conformance suite and live tests, and Quai's GitHub tests in api and
+# ingest (enforcement recorded, the access test, trust). The suite's step 4 skips, since the
+# sandbox has no second app to publish the check, and its step 7 (webhooks) until P3-18; the job's
+# notice names what skipped. It needs the QUAI_TEST_GITHUB_APP_KEY and
+# QUAI_TEST_GITHUB_WEBHOOK_SECRET repository secrets.
 #
 # Without its secrets, a job says so in a notice and does nothing, so it is green having tested
 # nothing: read the run's annotations before calling it a pass.
@@ -94,6 +95,12 @@ jobs:
         with:
           go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
+      - if: env.HAS_KEY == 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/quai
+          key: test-binaries-${{ runner.os }}-${{ hashFiles('backend/internal/pgtest/*.go', 'backend/internal/k8stest/*.go', 'backend/internal/giteatest/*.go', 'backend/go.sum') }}
+          restore-keys: test-binaries-${{ runner.os }}-
       # The tests read the key and the secret from files only; they are never on a command line.
       - if: env.HAS_KEY == 'true'
         name: The app's key and webhook secret, in files only this job reads
@@ -119,6 +126,7 @@ jobs:
           QUAI_TEST_GITHUB_INSTALLATION_ID: "179566659"
         run: |
           go test -count=1 -v -timeout 30m ./internal/githubtest/... ./internal/connectors/github/... | tee "$RUNNER_TEMP/github-live.log"
+          go test -count=1 -v -timeout 20m -run GitHub ./internal/api/... ./internal/ingest/... | tee -a "$RUNNER_TEMP/github-live.log"
           echo "::notice::GitHub live tests on $QUAI_TEST_GITHUB_ORG, subtests included: $(grep -cE '^ *--- PASS' "$RUNNER_TEMP/github-live.log") passed, $(grep -cE '^ *--- SKIP' "$RUNNER_TEMP/github-live.log") skipped: $(grep -E '^ *--- SKIP' "$RUNNER_TEMP/github-live.log" | awk '{print $3}' | paste -sd ' ' -)."
       - if: always() && env.HAS_KEY == 'true'
         working-directory: .

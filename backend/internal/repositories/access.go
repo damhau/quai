@@ -73,6 +73,16 @@ var permissions = map[string]map[string]string{
 		CheckProtection:  "View project-level information, to read the branch policies",
 		CheckPipelines:   "View builds (Build: Read) on the pipelines spec.runner.pipelines names",
 	},
+	"github": { // #nosec G101 -- the permissions a credential needs, not credentials
+		CheckCredentials: "the GitHub App's private key at spec.credentials.ref, and its ID in spec.credentials.appId",
+		CheckConnector:   "a github.com repository URL (https://github.com/<owner>/<repository>), and the app's ID in spec.credentials.appId",
+		CheckRead:        "the GitHub App installed on the repository, with Contents (read and write)",
+		CheckPush:        "Contents (read and write) for the GitHub App, and no ruleset or branch protection on the branches under %s",
+		CheckPullRequest: "Pull requests (read and write) for the GitHub App",
+		CheckStatus:      "Checks (read and write) for the GitHub App",
+		CheckDelete:      "Contents (read and write) for the GitHub App, and no ruleset or branch protection on the branches under %s",
+		CheckProtection:  "Administration (read) for the GitHub App, to read branch protection and rulesets; on a private repository, a plan with branch protection (GitHub Pro, Team or Enterprise)",
+	},
 	"gitea": { // #nosec G101 -- the permissions a credential needs, not credentials
 		CheckCredentials: "a token at spec.credentials.ref that Quai can read",
 		CheckConnector:   "a Gitea repository URL (https://<host>/<owner>/<repository>.git)",

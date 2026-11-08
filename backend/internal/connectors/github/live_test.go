@@ -33,14 +33,62 @@ func liveConnector(t *testing.T, s *githubtest.Sandbox, name string, client *htt
 	return c.(*Connector)
 }
 
-// liveHarness gives the conformance suite repositories of the sandbox. It offers no enforcement,
-// second identity or webhooks yet, so steps 2, 3, 4, 6 and 7 are skipped: they belong to P3-17 and
-// P3-18.
+// liveHarness gives the conformance suite repositories of the sandbox, enforced by a ruleset
+// requiring the check from the app, and owned by the sandbox's team. The sandbox has one app and
+// no second identity, so step 4 is skipped; GitHub cannot deliver webhooks here, and the
+// connector has none until P3-18, so step 7 is skipped too.
 type liveHarness struct{ s *githubtest.Sandbox }
 
 func (h liveHarness) Setup(t *testing.T, client *http.Client) *conformance.Repository {
 	name, _ := h.s.Repository(t)
-	return &conformance.Repository{Connector: liveConnector(t, h.s, name, client), URL: h.s.URL(name), DefaultBranch: githubtest.Branch}
+	c := liveConnector(t, h.s, name, client)
+	var ruleset int64
+	return &conformance.Repository{Connector: c, URL: h.s.URL(name), DefaultBranch: githubtest.Branch,
+		// The ruleset applies to the default branch, which is the one the suite asks for.
+		RequireCheck: func(ctx context.Context, _, check string) (err error) {
+			ruleset, err = h.s.RequireCheck(ctx, name, check)
+			return err
+		},
+		RemoveEnforcement: func(ctx context.Context, _ string) error {
+			_, err := h.s.Client.Repositories.DeleteRuleset(ctx, h.s.Org, name, ruleset)
+			return err
+		},
+		AddOwner: func(ctx context.Context, pattern string) (string, error) {
+			return addOwner(ctx, h.s, name, c, pattern)
+		},
+	}
+}
+
+// addOwner makes the sandbox's team the owner of pattern. Its CODEOWNERS lands on main through a
+// pull request the app approves, since main requires the check by then.
+func addOwner(ctx context.Context, s *githubtest.Sandbox, name string, c *Connector, pattern string) (string, error) {
+	if err := s.AddTeam(ctx, name); err != nil {
+		return "", err
+	}
+	main, _, err := s.Client.Git.GetRef(ctx, s.Org, name, "heads/"+githubtest.Branch)
+	if err != nil {
+		return "", err
+	}
+	const branch = "quai/owners"
+	if _, _, err := s.Client.Git.CreateRef(ctx, s.Org, name, gh.CreateRef{Ref: "refs/heads/" + branch, SHA: main.GetObject().GetSHA()}); err != nil {
+		return "", err
+	}
+	team := s.Org + "/" + githubtest.Team
+	head, err := s.AddFiles(ctx, name, branch, "Owners", map[string]string{".github/CODEOWNERS": pattern + " @" + team + "\n"})
+	if err != nil {
+		return "", err
+	}
+	pr, err := c.PullRequests().Open(ctx, connectors.NewPullRequest{Source: branch, Target: githubtest.Branch, Title: "Owners"})
+	if err != nil {
+		return "", err
+	}
+	if err := c.Statuses().Set(ctx, connectors.StatusTarget{PullRequest: pr.ID, Commit: head}, connectors.Status{Name: conformance.Check, State: connectors.StatusSuccess}); err != nil {
+		return "", err
+	}
+	if _, err := c.PullRequests().Merge(ctx, pr.ID, connectors.MergeOptions{Head: head, Method: connectors.MergeCommit, Message: "Owners\n", DeleteBranch: true}); err != nil {
+		return "", err
+	}
+	return team, nil
 }
 
 // TestLiveConformance runs the suite's repository, branch and pull request parts on the sandbox.
@@ -209,7 +257,7 @@ func TestLiveAuthentication(t *testing.T) {
 }
 
 // TestLiveAuthenticationPrivate reads and pushes on a private repository, where nothing works
-// without the token.
+// without the token, and finds its enforcement not verified on the free plan.
 func TestLiveAuthenticationPrivate(t *testing.T) {
 	s := githubtest.New(t)
 	ctx := t.Context()
@@ -242,6 +290,17 @@ func TestLiveAuthenticationPrivate(t *testing.T) {
 	}
 	if got := r.head(t, githubtest.Branch); got != merged.MergeCommit {
 		t.Errorf("main is at %s, the merge commit is %s", got, merged.MergeCommit)
+	}
+
+	// The free plan has neither branch protection nor rulesets on a private repository, and GitHub
+	// refuses to show them: enforcement is not verified, never taken as there.
+	e, err := r.c.Policies().Verify(ctx, githubtest.Branch, conformance.Check)
+	if err != nil || e.Enforced || len(e.Problems) != 2 || !strings.Contains(e.Problems[0], "could not be read (GitHub answered 403: Upgrade to GitHub Pro") ||
+		!strings.Contains(e.Problems[1], "not verified") {
+		t.Errorf("verify = %+v, %v", e, err)
+	}
+	if _, err := r.c.Policies().Protection(ctx, githubtest.Branch); err == nil || !strings.Contains(err.Error(), "Upgrade to GitHub Pro") {
+		t.Errorf("protection: %v", err)
 	}
 }
 

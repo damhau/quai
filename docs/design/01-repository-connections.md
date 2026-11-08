@@ -144,7 +144,7 @@ during onboarding.
 | Azure DevOps Services | **1st** | Branch policy "Status check" requiring the `quai/approval` PR status, with Quai as the authorized identity and status reset on new changes |
 | Azure DevOps Server (on-premises) | Future improvement, same connector | Same as Services |
 | Gitea / Forgejo | with the 1st (tests) | Required status check in branch protection |
-| GitHub (github.com; Enterprise Server a future improvement) | 2nd | Required check in branch protection or a ruleset, pinned to the Quai GitHub App |
+| GitHub (github.com; Enterprise Server a future improvement) | 2nd | Required check in an active ruleset or in branch protection†, pinned to the Quai GitHub App and binding it: the app on no bypass list, and branch protection applying to administrators (on the free plan, private repositories have neither) |
 | GitLab.com / self-managed | 3rd | External status checks†, an approval rule requiring the Quai bot†, or a protected branch only the Quai bot may merge |
 | Bitbucket Cloud / Data Center | 4th | Required builds or merge checks† |
 | Generic Git | — | Not enforceable; direct delivery only |
@@ -217,7 +217,7 @@ introduced them is not published yet.
 Definitions are code: whoever can merge to `.quai/` decides what forms show,
 what gets written and which approval rules apply. Quai therefore:
 
-- checks that `.quai/` is covered by `CODEOWNERS` (on Azure DevOps, which has no `CODEOWNERS` file: a required-reviewer branch policy with path filter `/.quai/*`) and that the default branch is protected, and shows a red warning on the repository and its catalog items if not;
+- checks that `.quai/` is covered by `CODEOWNERS` (on GitHub, where `CODEOWNERS` only requests reviews, with the branch also requiring code owners' review; on Azure DevOps, which has no `CODEOWNERS` file: a required-reviewer branch policy with path filter `/.quai/*`) and that the default branch is protected, and shows a red warning on the repository and its catalog items if not;
 - applies the connection's `floorRules` regardless of what types say;
 - records in the audit log every change to definitions, with the commit and its author;
 - never runs code from the repository except WASM plugins pinned by digest, in a sandbox with no file system or network access ([ADR 0004](../adr/0004-structured-generators-no-text-templates.md)).
@@ -225,9 +225,10 @@ what gets written and which approval rules apply. Quai therefore:
 
 How this is implemented: every poll checks that the definitions branch is protected (on Azure
 DevOps, any branch policy) and that required reviewers cover the definitions folder (a `CODEOWNERS`
-rule on Gitea, read as Gitea reads it: an anchored regular expression; an "Automatically included
-reviewers" policy with a path filter such as `/.quai/*` on Azure DevOps), and records what is
-missing. The catalog cards, the request pages and the repository views show it in red. A
+rule on Gitea, read as Gitea reads it: an anchored regular expression; on GitHub, read as GitHub
+reads it, without the owners and lines GitHub reports it ignores, and with a ruleset or branch
+protection requiring code owners' review; an "Automatically included reviewers" policy with a path
+filter such as `/.quai/*` on Azure DevOps), and records what is missing. The catalog cards, the request pages and the repository views show it in red. A
 connector that cannot read branch protection or owners (generic Git) is reported the same way.
 
 Previews (item 4 of loading, above) are at `/preview/<repository>` in the UI and
@@ -330,7 +331,10 @@ Enforcement, in pull-request mode: the connector verifies that the target
 branch requires the check (`spec.enforcement.requiredCheck`, `quai/approval`)
 as Quai needs it; on Azure DevOps, with Quai's identity as the policy's
 authorized identity, reset on new changes, applying by default and without a
-path filter. It is verified at registration (the first time Quai needs it),
+path filter; on GitHub, pinned to Quai's GitHub App, in an active ruleset the
+app cannot bypass or in branch protection that applies to administrators. A
+rule the connector cannot read (GitHub's 403 or 404) is reported as not
+verified, never as enforcement. It is verified at registration (the first time Quai needs it),
 hourly, and on a `PolicyChanged` event; the result and its time are recorded
 with the repository's health (`enforcement` on the repository API). While it
 is missing:

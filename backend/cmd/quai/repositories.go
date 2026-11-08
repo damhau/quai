@@ -11,6 +11,7 @@ import (
 	"github.com/damhau/quai/backend/internal/connectors/azuredevops"
 	"github.com/damhau/quai/backend/internal/connectors/generic"
 	"github.com/damhau/quai/backend/internal/connectors/gitea"
+	"github.com/damhau/quai/backend/internal/connectors/github"
 	"github.com/damhau/quai/backend/internal/netx"
 	"github.com/damhau/quai/backend/internal/repositories"
 	"github.com/damhau/quai/backend/internal/secrets"
@@ -33,7 +34,7 @@ func connectorRegistry(network *netx.Network, log *slog.Logger) *connectors.Regi
 		base = network.Transport()
 	}
 	return &connectors.Registry{
-		Factories: map[string]connectors.Factory{"generic": generic.New, "gitea": gitea.New, "azure-devops": azuredevops.New},
+		Factories: map[string]connectors.Factory{"generic": generic.New, "gitea": gitea.New, "azure-devops": azuredevops.New, "github": github.New},
 		Fallback:  generic.Fallback,
 		HTTP:      connectors.NewHTTPClient(base, log),
 		Log:       log,

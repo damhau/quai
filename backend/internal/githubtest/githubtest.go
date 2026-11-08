@@ -181,6 +181,34 @@ func (s *Sandbox) AddFiles(ctx context.Context, repo, branch, message string, fi
 	return commit.GetSHA(), nil
 }
 
+// ApprovalRuleset is a ruleset on the default branch requiring check from the app, which nobody
+// bypasses: the enforcement Quai needs. Its bypass list is empty rather than left out, which an
+// update would take as "unchanged".
+func (s *Sandbox) ApprovalRuleset(check string) github.RepositoryRuleset {
+	return github.RepositoryRuleset{Name: "quai", Target: github.Ptr(github.RulesetTargetBranch), Enforcement: github.RulesetEnforcementActive,
+		BypassActors: []*github.BypassActor{},
+		Conditions: &github.RepositoryRulesetConditions{RefName: &github.RepositoryRulesetRefConditionParameters{Include: []string{"~DEFAULT_BRANCH"}, Exclude: []string{}}},
+		Rules: &github.RepositoryRulesetRules{RequiredStatusChecks: &github.RequiredStatusChecksRuleParameters{
+			RequiredStatusChecks: []*github.RuleStatusCheck{{Context: check, IntegrationID: github.Ptr(s.AppID)}}}}}
+}
+
+// RequireCheck creates ApprovalRuleset on repo, and returns its ID.
+func (s *Sandbox) RequireCheck(ctx context.Context, repo, check string) (int64, error) {
+	set, _, err := s.Client.Repositories.CreateRuleset(ctx, s.Org, repo, s.ApprovalRuleset(check))
+	if err != nil {
+		return 0, fmt.Errorf("the ruleset: %w", err)
+	}
+	return set.GetID(), nil
+}
+
+// AddTeam gives Team write access to repo, which GitHub needs of a team that owns files.
+func (s *Sandbox) AddTeam(ctx context.Context, repo string) error {
+	if _, err := s.Client.Teams.AddTeamRepoBySlug(ctx, s.Org, Team, s.Org, repo, &github.TeamAddTeamRepoOptions{Permission: "push"}); err != nil {
+		return fmt.Errorf("team %s on %s: %w", Team, repo, err)
+	}
+	return nil
+}
+
 // Delivery is a request GitHub tried to send, as the app's delivery history shows it.
 type Delivery struct {
 	ID     int64

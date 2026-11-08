@@ -7,11 +7,12 @@ Status: Draft · 2026-11-07
 A decision the docs do not settle is added here, with the default the plan assumes until
 the owner answers it. Until M2 closes, work goes on with that default, unless the choice is
 security-sensitive or hard to reverse (decided below). Numbers are not reused: the next question
-is 14.
+is 15.
 
 | # | Question | Why it matters | Default assumed | Needed by |
 | --- | --- | --- | --- | --- |
 | 13 | How the GitHub connector learns which GitHub App it is, and which installation | A connection had one secret and nowhere for an app's ID, and an installation's ID is one more value for an admin to find and keep right | **`spec.credentials.appId` holds the app's ID, in the document since it is public, and `spec.credentials.ref` the private key.** The installation is found from them (`GET /repos/{owner}/{repo}/installation` with the app's JWT, checked on the sandbox), kept in memory, and looked up again after GitHub refuses a token. Tokens are limited to the connection's one repository, whatever the app is installed on ([GitHub](../design/12-git-connectors.md#github-second)) | P3-18, whose wizard form asks for the app's ID |
+| 14 | What makes the definitions trusted on GitHub: a `CODEOWNERS` rule covering `.quai/`, a branch rule requiring code owners' review, or both ([#131](https://github.com/damhau/quai/issues/131) reads "`CODEOWNERS`, or rulesets requiring code owner review") | On GitHub, `CODEOWNERS` alone only requests reviews, so anyone who may approve can merge a change to `.quai/`; a rule requiring code owners' review alone requires nothing of `.quai/` unless `CODEOWNERS` covers it | **Both**: `CODEOWNERS` covering `.quai/` (read as GitHub reads it), and the branch requiring code owners' review in a ruleset or branch protection; each missing part is a trust problem ([trust](../design/01-repository-connections.md#trust)). Accepting either would show an untrusted repository as trusted | GA |
 
 ## Decided
 
