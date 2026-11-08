@@ -126,6 +126,14 @@ func TestIdentitiesAndErrors(t *testing.T) {
 	if _, err := c.Identities().ByEmail(ctx, "nobody@example.com"); !errors.Is(err, connectors.ErrNotFound) {
 		t.Errorf("an unknown email: %v", err)
 	}
+	// The emails of owners named in CODEOWNERS: users only, those Gitea knows.
+	emails, err := c.Owners().Emails(ctx, []string{u.Name, "org/team", "nobody-" + u.Name, "carol@example.com", ""})
+	if err != nil || len(emails) != 1 || strings.Join(emails[u.Name], ",") != u.Name+"@example.com" {
+		t.Errorf("Emails = %v, %v", emails, err)
+	}
+	if !placeholder(u.Name+"@noreply.localhost") || placeholder(u.Name+"@example.com") || placeholder("noreply@example.com") {
+		t.Error("a hidden email is shown as <user>@noreply.<domain>")
+	}
 	if _, err := c.PullRequests().Get(ctx, "999"); !errors.Is(err, connectors.ErrNotFound) {
 		t.Errorf("a missing pull request: %v", err)
 	}

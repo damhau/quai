@@ -101,27 +101,29 @@ type RepositorySync struct {
 }
 
 type Request struct {
-	ID                uuid.UUID
-	OrgID             string
-	Kind              string
-	Action            string
-	Target            string
-	TypeName          string
-	Blueprint         string
-	Requester         string
-	Reason            string
-	Inputs            json.RawMessage
-	State             string
-	DefinitionsCommit string
-	BaseCommit        string
-	CreatedAt         pgtype.Timestamptz
-	UpdatedAt         pgtype.Timestamptz
-	Number            int64
-	RequesterEmail    string
-	Stack             string
-	Rules             json.RawMessage
-	Owners            []string
-	Stacks            []string
+	ID                  uuid.UUID
+	OrgID               string
+	Kind                string
+	Action              string
+	Target              string
+	TypeName            string
+	Blueprint           string
+	Requester           string
+	Reason              string
+	Inputs              json.RawMessage
+	State               string
+	DefinitionsCommit   string
+	BaseCommit          string
+	CreatedAt           pgtype.Timestamptz
+	UpdatedAt           pgtype.Timestamptz
+	Number              int64
+	RequesterEmail      string
+	Stack               string
+	Rules               json.RawMessage
+	Owners              []string
+	Stacks              []string
+	Codeowners          []string
+	CodeownersUnmatched []string
 }
 
 type Review struct {
@@ -133,6 +135,7 @@ type Review struct {
 	Comment       string
 	ChangeSetHash string
 	CreatedAt     pgtype.Timestamptz
+	ReviewerEmail string
 }
 
 type Run struct {

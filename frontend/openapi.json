@@ -454,6 +454,48 @@
         ],
         "type": "object"
       },
+      "CodeownersSpec": {
+        "additionalProperties": false,
+        "properties": {
+          "mapping": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          }
+        },
+        "type": "object"
+      },
+      "CodeownersView": {
+        "additionalProperties": false,
+        "properties": {
+          "owners": {
+            "description": "The owners as Quai matches them: user:\u003cname\u003e, group:\u003cname\u003e or email:\u003caddress\u003e",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "unmatched": {
+            "description": "The owners, as the platform writes them, that match no one: a group without a mapping, a user whose email is unknown",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "owners",
+          "unmatched"
+        ],
+        "type": "object"
+      },
       "CommitText": {
         "additionalProperties": false,
         "properties": {
@@ -1690,6 +1732,10 @@
               "null"
             ]
           },
+          "codeowners": {
+            "$ref": "#/components/schemas/CodeownersView",
+            "description": "When a rule's approvers include codeowners: the owners the Git platform names for the changed paths"
+          },
           "commit": {
             "type": "string"
           },
@@ -2011,6 +2057,10 @@
               "null"
             ]
           },
+          "codeowners": {
+            "$ref": "#/components/schemas/CodeownersView",
+            "description": "When a rule's approvers include codeowners: the owners the Git platform named for the changed paths when the request was submitted"
+          },
           "createdAt": {
             "format": "date-time",
             "type": "string"
@@ -2196,6 +2246,16 @@
           "owner": {
             "type": "string"
           },
+          "owners": {
+            "description": "For a type owned through CODEOWNERS: the owners the Git platform names for its path, as user:\u003cname\u003e, group:\u003cname\u003e or email:\u003caddress\u003e",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "params": {
             "additionalProperties": {
               "type": "string"
@@ -2258,6 +2318,16 @@
           "type": {
             "type": "string"
           },
+          "unmatchedOwners": {
+            "description": "For a type owned through CODEOWNERS: the owners the platform names, as it writes them, that match no one",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "values": {
             "additionalProperties": {},
             "description": "The form's values the edit form starts from: the document for the identity generator, the values read back from it for the mapping generator",
@@ -2299,6 +2369,16 @@
           },
           "owner": {
             "type": "string"
+          },
+          "owners": {
+            "description": "For a type owned through CODEOWNERS: the owners the Git platform names for its path, as user:\u003cname\u003e, group:\u003cname\u003e or email:\u003caddress\u003e",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
           },
           "params": {
             "additionalProperties": {
@@ -2348,6 +2428,16 @@
           },
           "type": {
             "type": "string"
+          },
+          "unmatchedOwners": {
+            "description": "For a type owned through CODEOWNERS: the owners the platform names, as it writes them, that match no one",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
           }
         },
         "required": [
@@ -2895,6 +2985,9 @@
       "Spec": {
         "additionalProperties": false,
         "properties": {
+          "codeowners": {
+            "$ref": "#/components/schemas/CodeownersSpec"
+          },
           "connector": {
             "type": "string"
           },

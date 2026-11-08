@@ -88,6 +88,10 @@ spec:
       - name: production-floor
         when: "params.env == 'prod'"
         approvers: [group:platform-admins]
+  codeowners:
+    mapping:                       # the platform's owners → Quai users or groups (codeowners approvers)
+      '[Infrastructure]\Platform': group:platform-admins
+      alice@acme.ch: user:alice
   runner:
     kind: azure-pipelines          # see runs-status-and-drift.md
     reportToken:
@@ -113,6 +117,7 @@ spec:
 | `spec.definitions` | One repository can host types for itself only. A type cannot point its locator into another repository. |
 | `spec.delivery.mode` | `pull-request` by default ([ADR 0008](../adr/0008-pull-requests-by-default.md)); `direct` exists for sandboxes and demos, and is the only mode of generic Git, which has no pull requests. |
 | `spec.enforcement.floorRules` | Lets admins guarantee, for example, that nothing reaches `prod` without platform approval, whatever a type's author writes. Types can add rules, never remove floor rules. |
+| `spec.codeowners.mapping` | How the owners the platform names for a path (a `CODEOWNERS` entry such as `@org/team` or `@alice`; an Azure DevOps reviewer such as `[Project]\Platform`) match Quai, for the `codeowners` approver kind and `ownership.codeowners`: each key is an owner as the platform writes it (without regard to case or a leading `@`), each value `group:<name>` or `user:<name>`. Tried before any email; the only way a platform group matches. Owners neither mapped nor matched by email match no one and are shown ([identity](08-identity-access-tenancy.md#directory)). |
 | `spec.runner` | Where plan and apply results come from. Optional: without it, resources show *In repo* after merge. |
 | `spec.runner.pipelines` | The platform's pipelines the runner adapter reads (Azure Pipelines): each with its `name`, its `kind` (`plan`, `apply` or `drift-check`) and the `stacks` its runs cover, one stack or a pattern like a type's `stack`. The access test checks that each exists and that its runs can be read. |
 | `spec.runner.driftInterval` | How often each stack's drift is checked with the `drift-check` pipeline of `spec.runner.pipelines` ([drift](06-runs-status-and-drift.md#drift)). Default `24h`, at least `1h`. |

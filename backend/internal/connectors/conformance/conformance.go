@@ -250,6 +250,10 @@ func Run(t *testing.T, h Harness) {
 				rules, err := c.Owners().Rules(ctx, repo.DefaultBranch)
 				return err == nil && slices.ContainsFunc(rules, func(r connectors.OwnerRule) bool { return slices.Contains(r.Owners, owner) })
 			})
+			// Their emails, for Quai to match users: whatever the platform gives, without an error.
+			if emails, err := c.Owners().Emails(ctx, []string{owner}); err != nil || emails == nil {
+				t.Errorf("the emails of %s: %v, %v", owner, emails, err)
+			}
 		}
 		if repo.RemoveEnforcement == nil {
 			return

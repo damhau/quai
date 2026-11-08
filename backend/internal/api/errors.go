@@ -49,6 +49,9 @@ func Problem(err error, prefix string) huma.StatusError {
 		return huma.Error404NotFound(err.Error())
 	case errors.Is(err, requests.ErrConflict), errors.Is(err, repositories.ErrNotEnforced):
 		return huma.Error409Conflict(err.Error())
+	case errors.Is(err, repositories.ErrOwnersUnavailable):
+		// Who may approve, or who owns the resource, is unknown until the platform answers.
+		return huma.Error503ServiceUnavailable(err.Error())
 	case errors.Is(err, requests.ErrNotApprover):
 		return huma.Error403Forbidden(err.Error())
 	case errors.Is(err, plan.ErrExists), errors.Is(err, plan.ErrPin):

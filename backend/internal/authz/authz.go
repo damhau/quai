@@ -57,6 +57,7 @@ type Grant struct {
 // Principal is who asks: a person, or a token acting for one.
 type Principal struct {
 	Name   string
+	Email  string   // from the IdP, when it gives a verified one; empty for an API token
 	Groups []string // IdP groups; a team is the group of the same name
 	Grants []Grant
 	// Scopes narrow what an API token may do (TokenScopes); nil for a browser session.
@@ -100,6 +101,9 @@ type Object struct {
 	// Team and Owner own the object: a resource's owning team (team:<name> owners), or user.
 	Team  string
 	Owner string
+	// Owners own the object too: the owners the Git platform names for its path
+	// (ownership.codeowners), as user:<name>, group:<name> or email:<address> entries.
+	Owners []string
 	// Requester made the request the object is, or belongs to.
 	Requester string
 	// Entitlement is who a catalog item lets see it and request it.
@@ -229,7 +233,22 @@ func (p Principal) has(role Role, o Object) bool {
 
 // owns reports whether p owns o, directly or through their team.
 func (p Principal) owns(o Object) bool {
-	return o.Owner != "" && o.Owner == p.Name || o.Team != "" && slices.Contains(p.Groups, o.Team)
+	return o.Owner != "" && o.Owner == p.Name || o.Team != "" && slices.Contains(p.Groups, o.Team) ||
+		slices.ContainsFunc(o.Owners, p.is)
+}
+
+// is reports whether an owner entry names p: user:<name>, group:<name> or email:<address>.
+func (p Principal) is(entry string) bool {
+	kind, v, _ := strings.Cut(entry, ":")
+	switch kind {
+	case "user":
+		return v != "" && v == p.Name
+	case "group", "team":
+		return v != "" && slices.Contains(p.Groups, v)
+	case "email":
+		return v != "" && p.Email != "" && strings.EqualFold(v, p.Email)
+	}
+	return false
 }
 
 // inAny reports whether p is in one of the group patterns; an empty list allows everyone.

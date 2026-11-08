@@ -14,13 +14,13 @@ import { Switch } from "@/components/ui/switch"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ago } from "@/lib/format"
 import { problemMessage } from "@/lib/problems"
-import { resourceParams } from "@/lib/resources"
+import { ownedBy, ownerText, resourceParams } from "@/lib/resources"
 
 export const Route = createFileRoute("/inventory/")({
   component: Inventory,
 })
 
-const text = (r: ResourceView) => `${r.key} ${r.path} ${r.owner ?? ""} ${Object.values(r.params ?? {}).join(" ")}`.toLowerCase()
+const text = (r: ResourceView) => `${r.key} ${r.path} ${ownerText(r) ?? ""} ${Object.values(r.params ?? {}).join(" ")}`.toLowerCase()
 
 function Inventory() {
   const { data, isPending, error } = useQuery({ ...listInventoryOptions(), refetchInterval: 30_000 })
@@ -31,7 +31,7 @@ function Inventory() {
   const [mine, setMine] = useState(false)
   const resources = useMemo(() => data ?? [], [data])
   const types = useMemo(() => [...new Set(resources.map((r) => `${r.repository}/${r.type}`))].sort(), [resources])
-  const shown = resources.filter((r) => (!type || `${r.repository}/${r.type}` === type) && (!mine || r.owner === me?.name) && q.toLowerCase().split(/\s+/).every((w) => text(r).includes(w)))
+  const shown = resources.filter((r) => (!type || `${r.repository}/${r.type}` === type) && (!mine || ownedBy(r, me)) && q.toLowerCase().split(/\s+/).every((w) => text(r).includes(w)))
   return (
     <section aria-labelledby="inventory-title" className="grid gap-6">
       <header className="grid gap-1">
@@ -124,7 +124,7 @@ function Inventory() {
                 <TableCell className="text-sm">
                   {r.type} <span className="text-muted-foreground">· {r.repository}</span>
                 </TableCell>
-                <TableCell className="text-sm">{r.owner ?? <span className="text-muted-foreground">none</span>}</TableCell>
+                <TableCell className="text-sm">{ownerText(r) ?? <span className="text-muted-foreground">none</span>}</TableCell>
                 <TableCell>
                   <ResourceStatusBadge status={r.status} />
                 </TableCell>

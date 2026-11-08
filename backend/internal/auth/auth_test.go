@@ -246,6 +246,14 @@ func TestOIDCLogin(t *testing.T) {
 	if resp.Request.URL.Host != mustURL(srv.URL).Host || resp.Request.URL.Path != "/" {
 		t.Errorf("open redirect to %s", resp.Request.URL)
 	}
+
+	// An email the IdP says it has not verified is not kept: owners named by email would match it.
+	p.claims["email_verified"] = false
+	resp, _ = c.Get(srv.URL + "/auth/login")
+	resp.Body.Close()
+	if m, status := getMe(t, c, srv.URL); status != http.StatusOK || m.Name != "bob" || m.Email != "" {
+		t.Errorf("unverified email: me = %d %+v", status, m)
+	}
 }
 
 func mustURL(s string) *url.URL {

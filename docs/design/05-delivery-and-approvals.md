@@ -253,7 +253,7 @@ same currency) and `policies` (each `name` and `result`). As decided
 | `group:<name>` | IdP group |
 | `user:<name>` | A named user |
 | `owners` | The resource's owner (user or team) |
-| `codeowners` | `CODEOWNERS` entries for the paths in the change set; on Azure DevOps, the reviewers of "Automatically included reviewers" policies whose path filters match. From Phase 4 ([#100](https://github.com/damhau/quai/issues/100)); until then it matches no one |
+| `codeowners` | `CODEOWNERS` entries for the paths in the change set, on the target branch at the plan's commit; on Azure DevOps, the reviewers of "Automatically included reviewers" policies whose path filters match. Every owner of every changed path counts. They are matched to Quai users and groups as in [identity](08-identity-access-tenancy.md#directory), and kept with the request when it is submitted: a later change to `CODEOWNERS` does not change who may approve it. The plan and the request page list them, and those that match no one. When the platform cannot be read, the plan fails rather than leaving the rule without approvers |
 | `manager` | The requester's manager, from the IdP attribute |
 | `external: <integration>` | An external system (ServiceNow change request, generic webhook) that returns approved or rejected |
 

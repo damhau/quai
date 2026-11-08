@@ -141,9 +141,9 @@ func (c *Connector) Info() connectors.Info {
 		edition = "Gitea " + c.version
 	}
 	return connectors.Info{
-		Platform:     "gitea",
-		Edition:      edition,
-		APIVersion:   "v1",
+		Platform:   "gitea",
+		Edition:    edition,
+		APIVersion: "v1",
 		// No CapAutoComplete: Gitea merges a scheduled pull request on a status change, and Quai
 		// publishes its status more than once (docs/design/12-git-connectors.md).
 		Capabilities: []connectors.Capability{connectors.CapPullRequests, connectors.CapSignedWebhooks, connectors.CapCodeOwnersFile},
@@ -604,6 +604,44 @@ func codeOwnersMatch(pattern string) func(string) bool {
 		return func(string) bool { return false }
 	}
 	return re.MatchString
+}
+
+// Emails reads the email of each user among names: an org/team owner is a team, which has none.
+// Gitea shows a user's email to an admin token, or when the user does not keep it private, and a
+// no-reply placeholder otherwise; a user the token cannot see, or whose email it hides, is left
+// out.
+func (o *owners) Emails(ctx context.Context, names []string) (map[string][]string, error) {
+	c := (*Connector)(o)
+	out := map[string][]string{}
+	var cl *sdk.Client
+	for _, name := range names {
+		if name == "" || strings.ContainsAny(name, "/@") {
+			continue
+		}
+		if cl == nil {
+			var err error
+			if cl, err = c.client(ctx); err != nil {
+				return nil, err
+			}
+		}
+		u, resp, err := cl.GetUserInfo(name)
+		if err := check(resp, err); errors.Is(err, connectors.ErrNotFound) {
+			continue
+		} else if err != nil {
+			return nil, err
+		}
+		if u.Email != "" && !placeholder(u.Email) {
+			out[name] = []string{u.Email}
+		}
+	}
+	return out, nil
+}
+
+// placeholder reports whether email is the no-reply address Gitea shows instead of a hidden one
+// (<user>@noreply.<domain> by default: its no-reply domain has a noreply label).
+func placeholder(email string) bool {
+	_, domain, _ := strings.Cut(strings.ToLower(email), "@")
+	return slices.Contains(strings.Split(domain, "."), "noreply")
 }
 
 func parseCodeOwners(src string) []connectors.OwnerRule {

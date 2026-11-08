@@ -84,6 +84,31 @@ func Path(segments ...string) string {
 // Do calls path (under the organization) with the PAT, sending in as JSON and decoding the answer
 // into out. Errors carry the status and the API's message, never the request's headers.
 func (s *Sandbox) Do(ctx context.Context, method, path string, query url.Values, in, out any) error {
+	return s.do(ctx, s.Collection, method, path, query, in, out)
+}
+
+// GroupID returns the identity ID of the project's group name ([Project]\name), from the
+// organization's identities service, for a branch policy's required reviewers.
+func (s *Sandbox) GroupID(t *testing.T, name string) string {
+	t.Helper()
+	u, err := url.Parse(s.Collection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u.Host = "vssps." + u.Host // dev.azure.com/<organization>: the sandbox is on Services
+	var list struct {
+		Value []struct {
+			ID string `json:"id"`
+		} `json:"value"`
+	}
+	q := url.Values{"searchFilter": {"General"}, "filterValue": {"[" + s.Project + `]\` + name}, "queryMembership": {"None"}}
+	if err := s.do(context.Background(), u.String(), http.MethodGet, "/_apis/identities", q, nil, &list); err != nil || len(list.Value) != 1 {
+		t.Fatalf("the group %s: %+v, %v", name, list.Value, err)
+	}
+	return list.Value[0].ID
+}
+
+func (s *Sandbox) do(ctx context.Context, base, method, path string, query url.Values, in, out any) error {
 	if query == nil {
 		query = url.Values{}
 	}
@@ -96,7 +121,7 @@ func (s *Sandbox) Do(ctx context.Context, method, path string, query url.Values,
 		}
 		body = bytes.NewReader(b)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, s.Collection+path+"?"+query.Encode(), body)
+	req, err := http.NewRequestWithContext(ctx, method, base+path+"?"+query.Encode(), body)
 	if err != nil {
 		return err
 	}

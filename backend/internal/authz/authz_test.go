@@ -10,7 +10,9 @@ var (
 	repo     = Object{Repository: "infra-live"}
 	item     = Object{Repository: "infra-live", CatalogItem: "linux-vm", Entitlement: Entitlement{Visibility: []string{"group:dev*"}, Requesters: []string{"group:developers", "user:zoe"}}}
 	resource = Object{Repository: "infra-live", Team: "shop", Owner: "carol"}
-	request  = Object{Repository: "infra-live", Requester: "bob"}
+	// codeowned is owned through CODEOWNERS (ownership.codeowners).
+	codeowned = Object{Repository: "infra-live", Owners: []string{"user:erin", "group:dba", "email:ivy@acme.ch"}}
+	request   = Object{Repository: "infra-live", Requester: "bob"}
 )
 
 func who(name string, groups []string, grants ...Grant) Principal {
@@ -65,6 +67,12 @@ func TestAuthorize(t *testing.T) {
 		{"operator, team member", who("sam", []string{"shop"}, at(Operator, ScopeTeam, "shop")), OperateResource, resource, true, ""},
 		{"operator, not an owner", who("sam", []string{"blog"}, at(Operator, ScopeGlobal, "")), OperateResource, resource, false, "only the owner"},
 		{"owner without the role", who("carol", nil), OperateResource, resource, false, "operator role"},
+		{"operator, a codeowner by name", who("erin", nil, at(Operator, ScopeGlobal, "")), OperateResource, codeowned, true, ""},
+		{"operator, a codeowner by group", who("sam", []string{"dba"}, at(Operator, ScopeGlobal, "")), OperateResource, codeowned, true, ""},
+		{"operator, a codeowner by email", Principal{Name: "ivy", Email: "IVY@acme.ch", Grants: []Grant{at(Operator, ScopeGlobal, "")}}, OperateResource, codeowned, true, ""},
+		{"operator, another email", Principal{Name: "ivy", Email: "ivy@acme.com", Grants: []Grant{at(Operator, ScopeGlobal, "")}}, OperateResource, codeowned, false, "only the owner"},
+		{"operator, no email", who("ivy", nil, at(Operator, ScopeGlobal, "")), OperateResource, codeowned, false, "only the owner"},
+		{"a codeowner sees their resource", who("erin", nil), ReadInventory, codeowned, true, ""},
 
 		// Catalog author, repository admin, platform admin.
 		{"catalog author previews", who("cat", nil, at(CatalogAuthor, ScopeRepository, "infra-live")), PreviewDefinitions, repo, true, ""},

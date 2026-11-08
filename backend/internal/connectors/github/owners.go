@@ -2,8 +2,10 @@ package github
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"regexp"
 	"slices"
@@ -53,6 +55,83 @@ func (o *owners) Rules(ctx context.Context, branch string) ([]connectors.OwnerRu
 		return ownerRules(lines), nil
 	}
 	return nil, nil
+}
+
+// Emails returns the verified emails of users among names in the domains the organization has
+// verified (GraphQL's organizationVerifiedDomainEmails, read with the Members permission): GitHub
+// gives an app no other email of its users. An org/team owner is a team, an owner written as an
+// email address needs no lookup, and the repository of a user, not an organization, has no verified
+// domains: they are left out, as are users without such an email. A query reads up to 50 users.
+func (o *owners) Emails(ctx context.Context, names []string) (map[string][]string, error) {
+	c := (*Connector)(o)
+	out := map[string][]string{}
+	var logins []string
+	for _, n := range names {
+		if n != "" && !strings.ContainsAny(n, "/@") && !slices.Contains(logins, n) {
+			logins = append(logins, n)
+		}
+	}
+	for batch := range slices.Chunk(logins, 50) {
+		more, err := c.verifiedEmails(ctx, batch)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(out, more)
+	}
+	return out, nil
+}
+
+// verifiedEmails reads the verified-domain emails of logins in one query.
+func (c *Connector) verifiedEmails(ctx context.Context, logins []string) (map[string][]string, error) {
+	out := map[string][]string{}
+	vars := map[string]any{"owner": c.owner}
+	var q strings.Builder
+	q.WriteString("query($owner: String!")
+	for i := range logins {
+		fmt.Fprintf(&q, ", $u%d: String!", i)
+		vars[fmt.Sprintf("u%d", i)] = logins[i]
+	}
+	q.WriteString(") { repositoryOwner(login: $owner) { __typename }")
+	for i := range logins {
+		fmt.Fprintf(&q, " u%d: user(login: $u%d) { organizationVerifiedDomainEmails(login: $owner) }", i, i)
+	}
+	q.WriteString(" }")
+	data, errs, err := c.graphqlData(ctx, q.String(), vars)
+	if err != nil {
+		return nil, err
+	}
+	var answer map[string]json.RawMessage
+	_ = json.Unmarshal(data, &answer)
+	var owner struct {
+		Typename string `json:"__typename"`
+	}
+	if raw := answer["repositoryOwner"]; raw != nil {
+		_ = json.Unmarshal(raw, &owner)
+	}
+	if owner.Typename == "User" {
+		return out, nil // a user's repository: no organization, no verified domains
+	}
+	// A user not found leaves its part null; any other refusal fails the lookup.
+	for _, e := range errs {
+		if e.Type == "RATE_LIMITED" {
+			return nil, fmt.Errorf("%w: %s", connectors.ErrRateLimited, e.Message)
+		}
+		if e.Type != "NOT_FOUND" {
+			return nil, &e
+		}
+	}
+	if owner.Typename != "Organization" {
+		return out, nil
+	}
+	for i, login := range logins {
+		var u struct {
+			Emails []string `json:"organizationVerifiedDomainEmails"`
+		}
+		if raw := answer[fmt.Sprintf("u%d", i)]; raw != nil && json.Unmarshal(raw, &u) == nil && len(u.Emails) > 0 {
+			out[login] = u.Emails
+		}
+	}
+	return out, nil
 }
 
 // ownerLine is a rule of a CODEOWNERS file.

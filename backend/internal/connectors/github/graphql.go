@@ -24,20 +24,12 @@ func (e *graphQLError) Error() string { return "github: " + e.Message }
 // GitHub names is returned: ErrNotFound and ErrRateLimited for those types, a *graphQLError for the
 // others.
 func (c *Connector) graphql(ctx context.Context, query string, vars map[string]any, out any) error {
-	req, err := c.client.NewRequest(ctx, http.MethodPost, "graphql", map[string]any{"query": query, "variables": vars})
+	data, errs, err := c.graphqlData(ctx, query, vars)
 	if err != nil {
 		return err
 	}
-	var answer struct {
-		Data   json.RawMessage `json:"data"`
-		Errors []graphQLError  `json:"errors"`
-	}
-	resp, err := c.client.Do(req, &answer)
-	if err := check(resp, err); err != nil {
-		return err
-	}
-	if len(answer.Errors) > 0 {
-		e := answer.Errors[0]
+	if len(errs) > 0 {
+		e := errs[0]
 		switch e.Type {
 		case "NOT_FOUND":
 			return fmt.Errorf("%w: %s", connectors.ErrNotFound, e.Message)
@@ -49,10 +41,28 @@ func (c *Connector) graphql(ctx context.Context, query string, vars map[string]a
 	if out == nil {
 		return nil
 	}
-	if err := json.Unmarshal(answer.Data, out); err != nil {
+	if err := json.Unmarshal(data, out); err != nil {
 		return fmt.Errorf("github: the GraphQL answer: %w", err)
 	}
 	return nil
+}
+
+// graphqlData runs a query and returns its data with the errors GitHub names, for a query whose
+// parts may fail on their own (one user of several not found) while the others answer.
+func (c *Connector) graphqlData(ctx context.Context, query string, vars map[string]any) (json.RawMessage, []graphQLError, error) {
+	req, err := c.client.NewRequest(ctx, http.MethodPost, "graphql", map[string]any{"query": query, "variables": vars})
+	if err != nil {
+		return nil, nil, err
+	}
+	var answer struct {
+		Data   json.RawMessage `json:"data"`
+		Errors []graphQLError  `json:"errors"`
+	}
+	resp, err := c.client.Do(req, &answer)
+	if err := check(resp, err); err != nil {
+		return nil, nil, err
+	}
+	return answer.Data, answer.Errors, nil
 }
 
 // optional is a GraphQL variable that is null when empty.

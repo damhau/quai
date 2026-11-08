@@ -234,6 +234,11 @@ func Covered(rules []OwnerRule, path string) bool {
 // Owners reads ownership rules: a CODEOWNERS file, or path-filtered reviewer policies.
 type Owners interface {
 	Rules(ctx context.Context, branch string) ([]OwnerRule, error)
+	// Emails returns the email addresses the platform gives of the users among names, owners as
+	// Rules names them, for Quai to match its users by email
+	// (docs/design/08-identity-access-tenancy.md#directory). A group, a name written as an email
+	// address, and a user whose email the platform does not give are left out.
+	Emails(ctx context.Context, names []string) (map[string][]string, error)
 }
 
 // Delivery is a webhook delivery, verified and normalized.

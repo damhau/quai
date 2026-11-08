@@ -163,13 +163,16 @@ type ResourceView struct {
 	Path       string            `json:"path"`
 	Params     map[string]string `json:"params"`
 	Owner      string            `json:"owner,omitempty"`
-	Stack      string            `json:"stack,omitempty"`
-	Status     string            `json:"status" enum:"conforming,non-conforming,unparseable"`
-	Problems   map[string]string `json:"problems,omitempty"`
-	Error      string            `json:"error,omitempty"`
-	LastApply  *RunView          `json:"lastApply,omitempty" doc:"The latest apply reported for the resource's stack"`
-	State      string            `json:"state,omitempty" enum:"in_repo,pending_change,planning,applying,applied,failed,drifted" doc:"What the runs of its stack say since its last change (docs/design/06)"`
-	StateRun   *RunView          `json:"stateRun,omitempty" doc:"The run the state comes from"`
+	Owners     []string          `json:"owners,omitempty" doc:"For a type owned through CODEOWNERS: the owners the Git platform names for its path, as user:<name>, group:<name> or email:<address>"`
+	// UnmatchedOwners are owners the platform names that match no one.
+	UnmatchedOwners []string          `json:"unmatchedOwners,omitempty" doc:"For a type owned through CODEOWNERS: the owners the platform names, as it writes them, that match no one"`
+	Stack           string            `json:"stack,omitempty"`
+	Status          string            `json:"status" enum:"conforming,non-conforming,unparseable"`
+	Problems        map[string]string `json:"problems,omitempty"`
+	Error           string            `json:"error,omitempty"`
+	LastApply       *RunView          `json:"lastApply,omitempty" doc:"The latest apply reported for the resource's stack"`
+	State           string            `json:"state,omitempty" enum:"in_repo,pending_change,planning,applying,applied,failed,drifted" doc:"What the runs of its stack say since its last change (docs/design/06)"`
+	StateRun        *RunView          `json:"stateRun,omitempty" doc:"The run the state comes from"`
 }
 
 // CommitView is a commit in a history.
@@ -668,7 +671,9 @@ func blueprintView(repo string, b *definitions.Blueprint) BlueprintView {
 }
 
 func resourceObject(r inventory.Resource) authz.Object {
-	return ownedObject(r.Repository, r.Type, r.Owner)
+	o := ownedObject(r.Repository, r.Type, r.Owner)
+	o.Owners = r.Owners
+	return o
 }
 
 // ownedObject is something in a repository, made from a catalog item and owned by a person or
@@ -708,7 +713,7 @@ func resourceView(r inventory.Resource) ResourceView {
 		params = map[string]string{}
 	}
 	return ResourceView{ID: r.ID, Repository: r.Repository, Type: r.Type, Key: r.Key, Path: r.Path, Params: params,
-		Owner: r.Owner, Stack: r.Stack, Status: r.Status, Problems: r.Problems, Error: r.Error}
+		Owner: r.Owner, Owners: r.Owners, UnmatchedOwners: r.Unmatched, Stack: r.Stack, Status: r.Status, Problems: r.Problems, Error: r.Error}
 }
 
 func resourceDetail(ctx context.Context, repo *repositories.Repo, snap *repositories.Snapshot, r inventory.Resource) ResourceDetail {

@@ -157,8 +157,8 @@ func verify(branch, check string, quai User, list []policy) connectors.Enforceme
 type owners Connector
 
 // Rules returns the "Automatically included reviewers" policies of branch: their path filters,
-// and the reviewers (as their account name, or display name for a group). A policy without
-// path filters covers every path ("*").
+// and the reviewers (a user as their account name, which is their email on Services; a group as
+// its display name, [Project]\Name). A policy without path filters covers every path ("*").
 func (o *owners) Rules(ctx context.Context, branch string) ([]connectors.OwnerRule, error) {
 	c := (*Connector)(o)
 	list, _, err := c.branchPolicies(ctx, branch)
@@ -193,6 +193,13 @@ func (o *owners) Rules(ctx context.Context, branch string) ([]connectors.OwnerRu
 		}
 	}
 	return rules, nil
+}
+
+// Emails adds nothing: Rules names users by their account name, which Quai matches as written (an
+// email on Services), and groups match only through the repository's mapping
+// (docs/design/08-identity-access-tenancy.md#directory).
+func (o *owners) Emails(context.Context, []string) (map[string][]string, error) {
+	return map[string][]string{}, nil
 }
 
 // pathFilter matches a path as Azure DevOps reads a policy's path filter: a pattern from the
@@ -235,6 +242,7 @@ func (c *Connector) identityClient() (*Client, error) {
 type identity struct {
 	ID                  string `json:"id"`
 	ProviderDisplayName string `json:"providerDisplayName"`
+	IsContainer         bool   `json:"isContainer"` // a group
 	Properties          map[string]struct {
 		Value any `json:"$value"`
 	} `json:"properties"`
@@ -245,7 +253,8 @@ func (i identity) property(key string) string {
 	return v
 }
 
-// identityNames maps identity IDs (lower case) to their account name, or display name.
+// identityNames maps identity IDs (lower case) to a user's account name, or a group's display name
+// ([Project]\Name: a group's account name is only Name).
 func (c *Connector) identityNames(ctx context.Context, ids []string) (map[string]string, error) {
 	names := map[string]string{}
 	slices.Sort(ids)
@@ -266,7 +275,7 @@ func (c *Connector) identityNames(ctx context.Context, ids []string) (map[string
 	}
 	for _, id := range list.Value {
 		name := id.property("Account")
-		if name == "" {
+		if name == "" || id.IsContainer {
 			name = id.ProviderDisplayName
 		}
 		names[strings.ToLower(id.ID)] = name

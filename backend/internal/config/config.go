@@ -165,6 +165,7 @@ type Dev struct {
 // DevUser is a user of the development switcher.
 type DevUser struct {
 	Name   string   `yaml:"name"`
+	Email  string   `yaml:"email"` // matches owners the Git platform names by email
 	Groups []string `yaml:"groups"`
 }
 

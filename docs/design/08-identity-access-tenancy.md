@@ -48,13 +48,23 @@ too old or too weak, the UI redirects through the IdP with `max_age` (and
 - SCIM 2.0 provisioning (optional) keeps users and groups current between logins and deactivates leavers immediately, which matters for pending approvals.
 - The `manager` attribute (for `approvers: [manager]`) comes from a claim or from SCIM.
 - Owners named by a Git platform (a `CODEOWNERS` entry such as `@alice` or `@org/team`; an Azure
-  DevOps reviewer such as `alice@acme.ch` or `[Project]\Platform`) match Quai users by email:
-  Azure DevOps account names and email entries as written, Gitea users through the email the
-  connector reads. Platform groups match Quai groups only through an explicit mapping in the
-  repository document (platform group → Quai group); unmapped entries match no one and are shown
-  on the request. The reviewer's email is kept with their review. From Phase 4, with the
-  `codeowners` approver kind ([#100](https://github.com/damhau/quai/issues/100);
-  [open question 9](../plan/open-questions.md#decided)).
+  DevOps reviewer such as `alice@acme.ch` or `[Project]\Platform`), for the `codeowners` approver
+  kind and `ownership.codeowners`, match Quai in this order
+  ([open question 9](../plan/open-questions.md#decided), [29](../plan/open-questions.md#still-open)):
+  1. the repository document's mapping, `spec.codeowners.mapping` (platform owner →
+     `group:<name>` or `user:<name>`, keys without regard to case or a leading `@`): the only way
+     a platform group (`org/team`, `[Project]\Name`) matches;
+  2. an owner written as an email address (Azure DevOps account names on Services, `CODEOWNERS`
+     email entries): the Quai user with that email;
+  3. a user's email from the platform: on Gitea, the account's email unless it is a `noreply`
+     placeholder; on GitHub, the user's emails in the organization's verified domains
+     (`organizationVerifiedDomainEmails`, none when the organization has no verified domain,
+     [open question 17](../plan/open-questions.md#still-open)).
+
+  Entries that match no one are shown, as the platform writes them, on the plan, the request and
+  the resource. A Quai user's email is the IdP's `email` claim, ignored when the IdP says it is
+  not verified (`email_verified: false`, [open question 30](../plan/open-questions.md#still-open));
+  an approver's email is kept with their review.
 
 ### Microsoft Entra ID (the pilot's IdP)
 

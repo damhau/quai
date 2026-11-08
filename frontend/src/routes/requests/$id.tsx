@@ -13,6 +13,7 @@ import {
 } from "@/api/generated/@tanstack/react-query.gen"
 import type { DeliveryView, RequestView } from "@/api/generated/types.gen"
 import { ApprovalChain } from "@/components/approval/approval-chain"
+import { Codeowners } from "@/components/approval/codeowners"
 import { ChangesView } from "@/components/diff/changes-view"
 import { Plans } from "@/components/requests/plans"
 import { StateBadge } from "@/components/requests/state-badge"
@@ -103,6 +104,7 @@ function RequestPage() {
             </CardHeader>
             <CardContent className="grid gap-5">
               <ApprovalChain rules={r.rules ?? []} />
+              {r.codeowners && <Codeowners codeowners={r.codeowners} />}
               {(r.reviews ?? []).length > 0 && (
                 <ul className="grid gap-3" aria-label="Reviews">
                   {(r.reviews ?? []).map((v) => (

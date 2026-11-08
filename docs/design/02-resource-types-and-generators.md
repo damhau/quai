@@ -355,7 +355,7 @@ The editors and their safety checks are specified in [03-file-editing.md](03-fil
 | Mode | Owner is | Use when |
 | --- | --- | --- |
 | `field: owner` | The value in the file (user or `team:x`) | The schema has an owner field |
-| `codeowners: true` | The `CODEOWNERS` entry for the resource's path | Ownership is already managed through CODEOWNERS. From Phase 4 ([#100](https://github.com/damhau/quai/issues/100)); until then it has no effect |
+| `codeowners: true` | The owners the platform names for the resource's file on the target branch: its `CODEOWNERS` entries; on Azure DevOps, the reviewers of "Automatically included reviewers" policies whose path filters match. They are matched to Quai users and groups as in [identity](08-identity-access-tenancy.md#directory); those that match no one are shown on the resource page. Read again when the branch moves, and kept for a minute; while the platform cannot be read, such resources have no owner | Ownership is already managed through CODEOWNERS or reviewer policies |
 | `team: platform` | A fixed team for every resource of the type | Shared infrastructure |
 
 Resources with no owner can be changed only by admins and the type's

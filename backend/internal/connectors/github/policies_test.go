@@ -2,6 +2,7 @@ package github
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -418,5 +419,80 @@ func TestOwners(t *testing.T) {
 	f.answer("GET /repos/o/r/contents/.github/CODEOWNERS", http.StatusBadGateway, `{}`)
 	if _, err := f.connector().Owners().Rules(t.Context(), "main"); err == nil {
 		t.Error("a server error is not an error")
+	}
+}
+
+// TestOwnerEmails: the verified emails of the users named, in the organization's verified domains,
+// read in one GraphQL query; teams and emails are not looked up, and a user's repository has none.
+func TestOwnerEmails(t *testing.T) {
+	serve := func(t *testing.T, owner string, errs string) (*fakeAPI, *[]map[string]any) {
+		f := newFakeAPI(t)
+		var seen []map[string]any
+		f.handle(graphqlKey, func(w http.ResponseWriter, _ *http.Request) {
+			var req struct {
+				Query     string         `json:"query"`
+				Variables map[string]any `json:"variables"`
+			}
+			if err := json.Unmarshal(f.bodies[graphqlKey], &req); err != nil {
+				t.Errorf("a GraphQL request: %v", err)
+			}
+			seen = append(seen, req.Variables)
+			if !strings.Contains(req.Query, "organizationVerifiedDomainEmails(login: $owner)") {
+				t.Errorf("query = %s", req.Query)
+			}
+			data := map[string]any{"repositoryOwner": map[string]any{"__typename": owner}}
+			for k, v := range req.Variables {
+				switch v {
+				case "alice":
+					data[k] = map[string]any{"organizationVerifiedDomainEmails": []string{"alice@acme.ch", "a.smith@acme.ch"}}
+				case "bob":
+					data[k] = map[string]any{"organizationVerifiedDomainEmails": []string{}}
+				case "ghost":
+					data[k] = nil
+				}
+			}
+			b, _ := json.Marshal(map[string]any{"data": data, "errors": json.RawMessage(errs)})
+			_, _ = w.Write(b)
+		})
+		return f, &seen
+	}
+	notFound := `[{"type":"NOT_FOUND","path":["u2"],"message":"Could not resolve to a User with the login of 'ghost'."}]`
+
+	f, seen := serve(t, "Organization", notFound)
+	got, err := f.connector().Owners().Emails(t.Context(), []string{"alice", "o/platform", "bob", "ghost", "alice", "carol@acme.ch"})
+	if err != nil || fmt.Sprint(got) != "map[alice:[alice@acme.ch a.smith@acme.ch]]" {
+		t.Errorf("Emails = %v, %v", got, err)
+	}
+	if len(*seen) != 1 || fmt.Sprint((*seen)[0]) != "map[owner:o u0:alice u1:bob u2:ghost]" {
+		t.Errorf("queries = %v", *seen)
+	}
+	// Nothing to look up: no query.
+	f, seen = serve(t, "Organization", `[]`)
+	if got, err := f.connector().Owners().Emails(t.Context(), []string{"o/platform", "x@y.z"}); err != nil || len(got) != 0 || len(*seen) != 0 {
+		t.Errorf("no users: %v, %v, %d queries", got, err, len(*seen))
+	}
+	// Many users: 50 by query.
+	f, seen = serve(t, "Organization", `[]`)
+	many := []string{"alice"}
+	for i := range 60 {
+		many = append(many, fmt.Sprintf("user%d", i))
+	}
+	if got, err := f.connector().Owners().Emails(t.Context(), many); err != nil || len(got) != 1 || len(*seen) != 2 {
+		t.Errorf("61 users: %v, %v, %d queries", got, err, len(*seen))
+	}
+	// A user's repository: no organization, no verified domains, and GitHub's refusal to read them
+	// is not an error.
+	f, _ = serve(t, "User", `[{"type":"FORBIDDEN","message":"no organization"}]`)
+	if got, err := f.connector().Owners().Emails(t.Context(), []string{"alice"}); err != nil || len(got) != 0 {
+		t.Errorf("a user's repository: %v, %v", got, err)
+	}
+	// Any other refusal is an error.
+	f, _ = serve(t, "Organization", `[{"type":"FORBIDDEN","message":"Resource not accessible by integration"}]`)
+	if _, err := f.connector().Owners().Emails(t.Context(), []string{"alice"}); err == nil {
+		t.Error("a refusal is not an error")
+	}
+	f, _ = serve(t, "Organization", `[{"type":"RATE_LIMITED","message":"slow down"}]`)
+	if _, err := f.connector().Owners().Emails(t.Context(), []string{"alice"}); !errors.Is(err, connectors.ErrRateLimited) {
+		t.Errorf("rate limited: %v", err)
 	}
 }

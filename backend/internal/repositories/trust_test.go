@@ -14,6 +14,7 @@ type trustConnector struct {
 	platform   string
 	protection connectors.Protection
 	rules      []connectors.OwnerRule
+	emails     map[string][]string // what Emails gives, by owner
 }
 
 func (c trustConnector) Info() connectors.Info         { return connectors.Info{Platform: c.platform} }
@@ -27,6 +28,15 @@ func (c trustConnector) Verify(context.Context, string, string) (connectors.Enfo
 }
 func (c trustConnector) Rules(context.Context, string) ([]connectors.OwnerRule, error) {
 	return c.rules, nil
+}
+func (c trustConnector) Emails(_ context.Context, names []string) (map[string][]string, error) {
+	out := map[string][]string{}
+	for _, n := range names {
+		if e := c.emails[n]; e != nil {
+			out[n] = e
+		}
+	}
+	return out, nil
 }
 
 // TestTrustCodeOwnerReview: on GitHub, CODEOWNERS covering the definitions is not enough; the

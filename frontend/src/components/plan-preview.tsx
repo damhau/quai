@@ -1,6 +1,7 @@
 import type { UseQueryResult } from "@tanstack/react-query"
 import { AlertCircle, GitCommitHorizontal, Loader2 } from "lucide-react"
 import type { PlanView } from "@/api/generated/types.gen"
+import { Codeowners } from "@/components/approval/codeowners"
 import { RulesPreview } from "@/components/approval/rules-preview"
 import { ChangesView } from "@/components/diff/changes-view"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -45,6 +46,7 @@ export function PlanPreview({ ready, hint, plan }: { ready: boolean; hint: strin
             <section className="grid gap-2" aria-label="Approvals">
               <h3 className="text-sm font-medium">Approvals</h3>
               <RulesPreview rules={plan.data.rules ?? []} />
+              {plan.data.codeowners && <Codeowners codeowners={plan.data.codeowners} />}
             </section>
             <section className="grid gap-2" aria-label="Changes">
               <h3 className="text-sm font-medium">Changes</h3>

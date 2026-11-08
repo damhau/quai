@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -43,16 +44,17 @@ type Metadata struct {
 
 // Spec is how Quai works with the repository.
 type Spec struct {
-	Connector     string      `json:"connector" yaml:"connector"`
-	URL           string      `json:"url" yaml:"url"`
-	DefaultBranch string      `json:"defaultBranch,omitempty" yaml:"defaultBranch"`
-	Credentials   Credentials `json:"credentials,omitzero" yaml:"credentials"`
-	Definitions   Definitions `json:"definitions,omitzero" yaml:"definitions"`
-	Delivery      Delivery    `json:"delivery,omitzero" yaml:"delivery"`
-	Enforcement   Enforcement `json:"enforcement,omitzero" yaml:"enforcement"`
-	Runner        Runner      `json:"runner,omitzero" yaml:"runner"`
-	Webhooks      Webhooks    `json:"webhooks,omitzero" yaml:"webhooks"`
-	Sync          Sync        `json:"sync,omitzero" yaml:"sync"`
+	Connector     string         `json:"connector" yaml:"connector"`
+	URL           string         `json:"url" yaml:"url"`
+	DefaultBranch string         `json:"defaultBranch,omitempty" yaml:"defaultBranch"`
+	Credentials   Credentials    `json:"credentials,omitzero" yaml:"credentials"`
+	Definitions   Definitions    `json:"definitions,omitzero" yaml:"definitions"`
+	Delivery      Delivery       `json:"delivery,omitzero" yaml:"delivery"`
+	Enforcement   Enforcement    `json:"enforcement,omitzero" yaml:"enforcement"`
+	Codeowners    CodeownersSpec `json:"codeowners,omitzero" yaml:"codeowners"`
+	Runner        Runner         `json:"runner,omitzero" yaml:"runner"`
+	Webhooks      Webhooks       `json:"webhooks,omitzero" yaml:"webhooks"`
+	Sync          Sync           `json:"sync,omitzero" yaml:"sync"`
 }
 
 // Credentials name the secret Quai authenticates to the platform with. KnownHosts holds the
@@ -97,6 +99,15 @@ type FloorRule struct {
 	When      string   `json:"when,omitempty" yaml:"when"`
 	Approvers []string `json:"approvers" yaml:"approvers"`
 	Min       int      `json:"min,omitempty" yaml:"min"`
+}
+
+// CodeownersSpec says how the owners the platform names (CODEOWNERS entries, Azure DevOps' required
+// reviewers) match Quai's users and groups, for the codeowners approver kind and
+// ownership.codeowners (docs/design/08-identity-access-tenancy.md#directory).
+type CodeownersSpec struct {
+	// Mapping maps an owner as the platform names it (@org/team, @alice, [Project]\Group, an
+	// account name) to group:<name> or user:<name>. A platform group matches no one without it.
+	Mapping map[string]string `json:"mapping,omitempty" yaml:"mapping"`
 }
 
 // Runner says where plan and apply results come from (docs/design/06).
@@ -165,8 +176,9 @@ func (d *Duration) parse(s string) error {
 var Connectors = []string{"azure-devops", "github", "gitlab", "bitbucket", "gitea", "generic"}
 
 var (
-	nameRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
-	refRe  = regexp.MustCompile(`^(env|k8s|vault|azkv):\S+$`)
+	nameRe   = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
+	refRe    = regexp.MustCompile(`^(env|k8s|vault|azkv):\S+$`)
+	mappedRe = regexp.MustCompile(`^(group|user):\S+$`)
 )
 
 // ApplyDefaults fills what the document leaves out.
@@ -288,6 +300,20 @@ func (d *Document) Validate() error {
 	}
 	if s.Sync.PollInterval < Duration(time.Second) || s.Sync.MinInterval < 0 {
 		add("spec.sync.pollInterval must be at least 1s and spec.sync.minInterval not negative")
+	}
+	seen := map[string]string{}
+	for _, k := range slices.Sorted(maps.Keys(s.Codeowners.Mapping)) {
+		v := s.Codeowners.Mapping[k]
+		key := ownerKey(k)
+		switch {
+		case key == "":
+			add("spec.codeowners.mapping: an owner's name is empty")
+		case !mappedRe.MatchString(v):
+			add("spec.codeowners.mapping[%q] must be group:<name> or user:<name>", k)
+		case seen[key] != "":
+			add("spec.codeowners.mapping names one owner twice, %q and %q: owners match without regard to case or a leading @", seen[key], k)
+		}
+		seen[key] = k
 	}
 	env, err := expr.NewEnv(expr.WithPlan()) // floor rules are approval rules
 	if err != nil {

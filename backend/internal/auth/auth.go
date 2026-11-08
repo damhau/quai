@@ -176,8 +176,10 @@ func (a *Authenticator) sessionIdentity(ctx context.Context) (Identity, bool) {
 	if err := json.Unmarshal(raw, &u); err != nil || u.Name == "" {
 		return Identity{}, false
 	}
+	p := a.principal(u.Name, u.Groups, nil)
+	p.Email = u.Email
 	return Identity{
-		Principal: a.principal(u.Name, u.Groups, nil),
+		Principal: p,
 		Email:     u.Email,
 		CSRFToken: a.sessions.GetString(ctx, keyCSRF),
 		AuthTime:  u.AuthTime,
@@ -354,6 +356,10 @@ func (a *Authenticator) userFromClaims(idt *oidc.IDToken) (sessionUser, error) {
 		}
 	}
 	u.Email, _ = claims["email"].(string)
+	if verified, ok := claims["email_verified"].(bool); ok && !verified {
+		// An address the IdP has not verified names no one: an owner named by email would match it.
+		u.Email = ""
+	}
 	switch g := claims[a.cfg.OIDC.GroupsClaim].(type) {
 	case []any:
 		for _, v := range g {
@@ -391,7 +397,7 @@ func (a *Authenticator) devLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u := a.cfg.Dev.Users[i]
-	if err := a.signIn(r.Context(), sessionUser{Name: u.Name, Groups: u.Groups, AuthTime: time.Now()}); err != nil {
+	if err := a.signIn(r.Context(), sessionUser{Name: u.Name, Email: u.Email, Groups: u.Groups, AuthTime: time.Now()}); err != nil {
 		a.fail(w, r, err)
 		return
 	}

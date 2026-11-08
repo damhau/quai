@@ -119,7 +119,10 @@ type Plan struct {
 	ChangeSet                                                *plan.ChangeSet
 	Rules                                                    []policy.Rule
 	Owners                                                   []string
-	Inputs                                                   map[string]any
+	// Codeowners are the owners the Git platform names for the change set's paths, when a rule's
+	// approvers include codeowners (docs/design/05-delivery-and-approvals.md#approver-kinds).
+	Codeowners repositories.Owners
+	Inputs     map[string]any
 	// Unmigrated are the non-conforming resources a migrate request leaves as they are, and why.
 	Unmigrated []plan.Unmigrated
 	// Authorize is the access question the caller must answer yes before showing or submitting:
@@ -161,6 +164,19 @@ func (s *Service) PlanType(ctx context.Context, who auth.Identity, in TypeInput)
 		}
 		req.Params, req.Values = params, in.Values
 		p.Owners = []string{who.Principal.Name}
+		if o := t.Spec.Ownership; o != nil && o.Codeowners {
+			// The new resource's owners are those the platform names for its path.
+			loc, _ := t.Spec.Locate.Locator()
+			region, err := loc.Region(params)
+			if err != nil {
+				return p, err
+			}
+			owners, err := s.codeownersOf(ctx, repo, snap, region.DocumentFile())
+			if err != nil {
+				return p, err
+			}
+			p.Owners = owners.Entries
+		}
 	} else {
 		r, err := inventory.Get(snap, t.Metadata.Name, in.Key)
 		if err != nil {
@@ -177,6 +193,9 @@ func (s *Service) PlanType(ctx context.Context, who auth.Identity, in TypeInput)
 		req.Params, req.Current = r.Params, r.Document
 		if r.Owner != "" {
 			p.Owners = []string{r.Owner}
+		}
+		if r.Owners != nil {
+			p.Owners = r.Owners
 		}
 		switch in.Kind {
 		case generate.Update:
@@ -271,6 +290,9 @@ func (s *Service) PlanType(ctx context.Context, who auth.Identity, in TypeInput)
 		slices.Sort(approvers)
 		p.Rules = []policy.Rule{{Names: []string{"type/deletion"}, Approvers: slices.Compact(approvers), Min: 1, Distinct: true}}
 	}
+	if err := s.withCodeowners(ctx, repo, snap, p); err != nil {
+		return p, err
+	}
 	return p, s.deliverable(ctx, repo)
 }
 
@@ -310,11 +332,15 @@ func (s *Service) PlanBlueprint(ctx context.Context, who auth.Identity, in Bluep
 	if err != nil {
 		return nil, err
 	}
-	return &Plan{
+	p := &Plan{
 		Kind: generate.Create, Target: b.Metadata.Name + "/" + in.Name, Repository: repo.Name, Blueprint: b.Metadata.Name,
 		Stacks: stacksOf(snap, cs.Resources), Commit: snap.Commit, ChangeSet: cs, Rules: rules, Owners: []string{who.Principal.Name}, Inputs: inputs,
 		Authorize: authz.CreateRequest, Object: authz.Object{Repository: repo.Name, CatalogItem: b.Metadata.Name},
-	}, s.deliverable(ctx, repo)
+	}
+	if err := s.withCodeowners(ctx, repo, snap, p); err != nil {
+		return nil, err
+	}
+	return p, s.deliverable(ctx, repo)
 }
 
 // Migratable reports whether a resource does not conform to its type's schema and the type's
@@ -377,6 +403,7 @@ func (s *Service) planMigrate(ctx context.Context, who auth.Identity, repo *repo
 		if r.Owner != "" {
 			owners = append(owners, r.Owner)
 		}
+		owners = append(owners, r.Owners...)
 		if st := stack(t, r.Params); st != "" && !slices.Contains(p.Stacks, st) {
 			p.Stacks = append(p.Stacks, st)
 		}
@@ -392,6 +419,9 @@ func (s *Service) planMigrate(ctx context.Context, who auth.Identity, repo *repo
 		p.Stack = p.Stacks[0]
 	}
 	if p.Rules, err = policy.Match(sets...); err != nil {
+		return p, err
+	}
+	if err := s.withCodeowners(ctx, repo, snap, p); err != nil {
 		return p, err
 	}
 	return p, s.deliverable(ctx, repo)
@@ -464,6 +494,9 @@ func (s *Service) PlanInstanceAction(ctx context.Context, who auth.Identity, in 
 	if p.Rules, err = policy.Match(sets...); err != nil {
 		return p, err
 	}
+	if err := s.withCodeowners(ctx, repo, snap, p); err != nil {
+		return p, err
+	}
 	return p, s.deliverable(ctx, repo)
 }
 
@@ -490,7 +523,7 @@ func (s *Service) Submit(ctx context.Context, who auth.Identity, p *Plan, reason
 		p.Rules = policy.WithoutPlan(p.Rules, "no plan comes before a direct commit")
 		rules, _ = json.Marshal(p.Rules)
 	}
-	outcome := policy.Evaluate(p.Rules, nil, policy.Context{Requester: who.Principal.Name, Owners: owners})
+	outcome := policy.Evaluate(p.Rules, nil, policy.Context{Requester: who.Principal.Name, Owners: owners, Codeowners: p.Codeowners.Entries})
 	state := PendingApproval
 	if outcome.State == policy.Approved {
 		state = Approved
@@ -501,6 +534,7 @@ func (s *Service) Submit(ctx context.Context, who auth.Identity, p *Plan, reason
 			ID: uuid.New(), Kind: p.Kind, Action: p.Action, Target: p.Target, TypeName: p.Type, Blueprint: p.Blueprint,
 			Requester: who.Principal.Name, RequesterEmail: who.Email, Reason: reason, Inputs: inputs, State: state,
 			DefinitionsCommit: p.Commit, BaseCommit: p.Commit, Stack: p.Stack, Rules: rules, Owners: owners, Stacks: nonNil(p.Stacks),
+			Codeowners: nonNil(p.Codeowners.Entries), CodeownersUnmatched: nonNil(p.Codeowners.Unmatched),
 		})
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
@@ -554,6 +588,31 @@ func (s *Service) Submit(ctx context.Context, who auth.Identity, p *Plan, reason
 	return created, err
 }
 
+// withCodeowners fills the plan's codeowners from the owners the platform names for the change
+// set's paths on the branch, when a rule's approvers include codeowners. When they cannot be read,
+// the plan fails: who may approve would be unknown.
+func (s *Service) withCodeowners(ctx context.Context, repo *repositories.Repo, snap *repositories.Snapshot, p *Plan) error {
+	if p.ChangeSet == nil || !slices.ContainsFunc(p.Rules, func(r policy.Rule) bool { return slices.Contains(r.Approvers, "codeowners") }) {
+		return nil
+	}
+	paths := make([]string, 0, len(p.ChangeSet.Changes))
+	for _, c := range p.ChangeSet.Changes {
+		paths = append(paths, c.Path)
+	}
+	owners, err := s.codeownersOf(ctx, repo, snap, paths...)
+	p.Codeowners = owners
+	return err
+}
+
+// codeownersOf returns the owners the platform names for paths on the branch at the snapshot.
+func (s *Service) codeownersOf(ctx context.Context, repo *repositories.Repo, snap *repositories.Snapshot, paths ...string) (repositories.Owners, error) {
+	table, err := repo.Codeowners(ctx, snap.Commit)
+	if err != nil {
+		return table.Of(), err
+	}
+	return table.Of(paths...), nil
+}
+
 // Reviews returns a request's reviews and the decision they make.
 func (s *Service) Reviews(ctx context.Context, r db.Request) ([]db.Review, policy.Outcome, error) {
 	reviews, err := s.reviews(ctx, r)
@@ -562,7 +621,12 @@ func (s *Service) Reviews(ctx context.Context, r db.Request) ([]db.Review, polic
 	}
 	var rules []policy.Rule
 	_ = json.Unmarshal(r.Rules, &rules)
-	return reviews, policy.Evaluate(rules, toReviews(reviews), policy.Context{Requester: r.Requester, Owners: r.Owners}), nil
+	return reviews, policy.Evaluate(rules, toReviews(reviews), contextOf(r)), nil
+}
+
+// contextOf is what the policy needs to know of a request to decide it.
+func contextOf(r db.Request) policy.Context {
+	return policy.Context{Requester: r.Requester, Owners: r.Owners, Codeowners: r.Codeowners}
 }
 
 // CanReview reports whether someone may approve or deny a request.
@@ -572,8 +636,8 @@ func CanReview(r db.Request, p authzPrincipal) bool {
 	}
 	var rules []policy.Rule
 	_ = json.Unmarshal(r.Rules, &rules)
-	ctx := policy.Context{Requester: r.Requester, Owners: r.Owners}
-	return slices.ContainsFunc(rules, func(rule policy.Rule) bool { return policy.CanReview(rule, p.Name, p.Groups, ctx) })
+	ctx := contextOf(r)
+	return slices.ContainsFunc(rules, func(rule policy.Rule) bool { return policy.CanReview(rule, p.Name, p.Email, p.Groups, ctx) })
 }
 
 type authzPrincipal = authz.Principal
@@ -616,6 +680,7 @@ func (s *Service) Review(ctx context.Context, who auth.Identity, id uuid.UUID, d
 		if _, err := q.CreateReview(ctx, db.CreateReviewParams{
 			ID: uuid.New(), RequestID: r.ID, Reviewer: who.Principal.Name, Groups: nonNil(who.Principal.Groups),
 			Decision: decision, Comment: comment, ChangeSetHash: sets[0].Hash,
+			ReviewerEmail: pgtype.Text{String: who.Principal.Email, Valid: true},
 		}); err != nil {
 			return err
 		}
@@ -630,7 +695,7 @@ func (s *Service) Review(ctx context.Context, who auth.Identity, id uuid.UUID, d
 		var rules []policy.Rule
 		_ = json.Unmarshal(r.Rules, &rules)
 		next = r
-		switch policy.Evaluate(rules, toReviews(reviews), policy.Context{Requester: r.Requester, Owners: r.Owners}).State {
+		switch policy.Evaluate(rules, toReviews(reviews), contextOf(r)).State {
 		case policy.Approved:
 			if next, err = q.TransitionRequest(ctx, db.TransitionRequestParams{ID: r.ID, FromState: PendingApproval, ToState: Approved}); err != nil {
 				return err
@@ -1090,7 +1155,7 @@ func bound(all []db.Review, hash string) []db.Review {
 func toReviews(rs []db.Review) []policy.Review {
 	out := make([]policy.Review, len(rs))
 	for i, r := range rs {
-		out[i] = policy.Review{Reviewer: r.Reviewer, Groups: r.Groups, Decision: r.Decision}
+		out[i] = policy.Review{Reviewer: r.Reviewer, Email: r.ReviewerEmail, Groups: r.Groups, Decision: r.Decision}
 	}
 	return out
 }
@@ -1137,7 +1202,9 @@ func findAction(t *definitions.ResourceType, name string) *definitions.Action {
 }
 
 func objectOf(r inventory.Resource) authz.Object {
-	return ownedObject(r.Repository, r.Type, r.Owner)
+	o := ownedObject(r.Repository, r.Type, r.Owner)
+	o.Owners = r.Owners
+	return o
 }
 
 // ownedObject is something in a repository, made from a catalog item and owned by a person or

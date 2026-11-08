@@ -148,6 +148,23 @@ export type CodeView = {
     text: string;
 };
 
+export type CodeownersSpec = {
+    mapping?: {
+        [key: string]: string;
+    };
+};
+
+export type CodeownersView = {
+    /**
+     * The owners as Quai matches them: user:<name>, group:<name> or email:<address>
+     */
+    owners: Array<string> | null;
+    /**
+     * The owners, as the platform writes them, that match no one: a group without a mapping, a user whose email is unknown
+     */
+    unmatched: Array<string> | null;
+};
+
 export type CommitText = {
     /**
      * A URL to the JSON Schema for this object.
@@ -604,6 +621,10 @@ export type PlanView = {
     action?: string;
     blueprint?: string;
     changes: Array<ChangeView> | null;
+    /**
+     * When a rule's approvers include codeowners: the owners the Git platform names for the changed paths
+     */
+    codeowners?: CodeownersView;
     commit: string;
     hash: string;
     kind: string;
@@ -708,6 +729,10 @@ export type RequestView = {
     canRetry: boolean;
     canReview: boolean;
     changes?: Array<ChangeView> | null;
+    /**
+     * When a rule's approvers include codeowners: the owners the Git platform named for the changed paths when the request was submitted
+     */
+    codeowners?: CodeownersView;
     createdAt: string;
     /**
      * The pull request the change goes through; absent in direct mode
@@ -771,6 +796,10 @@ export type ResourceDetail = {
      */
     migratable?: boolean;
     owner?: string;
+    /**
+     * For a type owned through CODEOWNERS: the owners the Git platform names for its path, as user:<name>, group:<name> or email:<address>
+     */
+    owners?: Array<string> | null;
     params: {
         [key: string]: string;
     };
@@ -796,6 +825,10 @@ export type ResourceDetail = {
     status: 'conforming' | 'non-conforming' | 'unparseable';
     type: string;
     /**
+     * For a type owned through CODEOWNERS: the owners the platform names, as it writes them, that match no one
+     */
+    unmatchedOwners?: Array<string> | null;
+    /**
      * The form's values the edit form starts from: the document for the identity generator, the values read back from it for the mapping generator
      */
     values?: {
@@ -812,6 +845,10 @@ export type ResourceView = {
      */
     lastApply?: RunView;
     owner?: string;
+    /**
+     * For a type owned through CODEOWNERS: the owners the Git platform names for its path, as user:<name>, group:<name> or email:<address>
+     */
+    owners?: Array<string> | null;
     params: {
         [key: string]: string;
     };
@@ -831,6 +868,10 @@ export type ResourceView = {
     stateRun?: RunView;
     status: 'conforming' | 'non-conforming' | 'unparseable';
     type: string;
+    /**
+     * For a type owned through CODEOWNERS: the owners the platform names, as it writes them, that match no one
+     */
+    unmatchedOwners?: Array<string> | null;
 };
 
 export type ReviewInputBody = {
@@ -1014,6 +1055,7 @@ export type SecretRef = {
 };
 
 export type Spec = {
+    codeowners?: CodeownersSpec;
     connector: string;
     credentials?: Credentials;
     defaultBranch?: string;
@@ -1448,6 +1490,10 @@ export type PlanViewWritable = {
     action?: string;
     blueprint?: string;
     changes: Array<ChangeView> | null;
+    /**
+     * When a rule's approvers include codeowners: the owners the Git platform names for the changed paths
+     */
+    codeowners?: CodeownersView;
     commit: string;
     hash: string;
     kind: string;
@@ -1511,6 +1557,10 @@ export type RequestViewWritable = {
     canRetry: boolean;
     canReview: boolean;
     changes?: Array<ChangeView> | null;
+    /**
+     * When a rule's approvers include codeowners: the owners the Git platform named for the changed paths when the request was submitted
+     */
+    codeowners?: CodeownersView;
     createdAt: string;
     /**
      * The pull request the change goes through; absent in direct mode
@@ -1570,6 +1620,10 @@ export type ResourceDetailWritable = {
      */
     migratable?: boolean;
     owner?: string;
+    /**
+     * For a type owned through CODEOWNERS: the owners the Git platform names for its path, as user:<name>, group:<name> or email:<address>
+     */
+    owners?: Array<string> | null;
     params: {
         [key: string]: string;
     };
@@ -1595,6 +1649,10 @@ export type ResourceDetailWritable = {
     status: 'conforming' | 'non-conforming' | 'unparseable';
     type: string;
     /**
+     * For a type owned through CODEOWNERS: the owners the platform names, as it writes them, that match no one
+     */
+    unmatchedOwners?: Array<string> | null;
+    /**
      * The form's values the edit form starts from: the document for the identity generator, the values read back from it for the mapping generator
      */
     values?: {
@@ -1611,6 +1669,10 @@ export type ResourceViewWritable = {
      */
     lastApply?: RunViewWritable;
     owner?: string;
+    /**
+     * For a type owned through CODEOWNERS: the owners the Git platform names for its path, as user:<name>, group:<name> or email:<address>
+     */
+    owners?: Array<string> | null;
     params: {
         [key: string]: string;
     };
@@ -1630,6 +1692,10 @@ export type ResourceViewWritable = {
     stateRun?: RunViewWritable;
     status: 'conforming' | 'non-conforming' | 'unparseable';
     type: string;
+    /**
+     * For a type owned through CODEOWNERS: the owners the platform names, as it writes them, that match no one
+     */
+    unmatchedOwners?: Array<string> | null;
 };
 
 export type ReviewInputBodyWritable = {

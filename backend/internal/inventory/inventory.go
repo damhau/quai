@@ -36,8 +36,13 @@ type Resource struct {
 	Path       string
 	Params     map[string]string
 	Owner      string // a user, team:<name>, or empty when nobody owns it
-	Stack      string
-	Status     string
+	// Owners are the owners the Git platform names for the resource's path, for a type owned
+	// through them (ownership.codeowners): user:, group: or email: entries; Unmatched are those
+	// that match no one, as the platform writes them.
+	Owners    []string
+	Unmatched []string
+	Stack     string
+	Status    string
 	// Problems are schema violations by field, for a non-conforming file; Error says why an
 	// unparseable file cannot be read.
 	Problems map[string]string
@@ -137,6 +142,10 @@ func read(snap *repositories.Snapshot, t *definitions.ResourceType, r locate.Reg
 	}
 	if o := t.Spec.Ownership; o != nil && o.Team != "" {
 		res.Owner = "team:" + o.Team
+	}
+	if o := t.Spec.Ownership; o != nil && o.Codeowners {
+		owners := snap.Codeowners.Of(r.DocumentFile())
+		res.Owners, res.Unmatched = owners.Entries, owners.Unmatched
 	}
 	// A directory's document is its record of the values.
 	src, err := fs.ReadFile(snap.FS, r.DocumentFile())

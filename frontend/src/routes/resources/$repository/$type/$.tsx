@@ -3,6 +3,7 @@ import { createFileRoute, Link } from "@tanstack/react-router"
 import { useSuspenseQuery } from "@tanstack/react-query"
 import { AlertCircle, Clock, Pencil, ShieldAlert, Trash2, Wand2, Zap } from "lucide-react"
 import { getResourceOptions, getTypeOptions } from "@/api/generated/@tanstack/react-query.gen"
+import { UnmatchedOwners } from "@/components/approval/codeowners"
 import { Day2Dialog, type Day2 } from "@/components/day2/day2-dialog"
 import { ResourceStateBadge, ResourceStatusBadge, StateBadge } from "@/components/requests/state-badge"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -31,6 +32,7 @@ function ResourcePage() {
   const requests = r.requests ?? []
   const open = requests.find((q) => openStates.includes(q.state))
   const changeable = r.canOperate && r.status === "conforming" && !open
+  const owner = r.owner ?? (r.owners?.length ? `its code owners (${r.owners.join(", ")})` : undefined)
   return (
     <div className="grid gap-6">
       <header className="grid gap-1">
@@ -52,7 +54,7 @@ function ResourcePage() {
           <ResourceStatusBadge status={r.status} />
         </div>
         <p className="text-muted-foreground text-sm">
-          {t.title} · {r.owner ? <>owned by {r.owner}</> : "no owner on record"} · <code className="font-mono">{r.path}</code>
+          {t.title} · {owner ? <>owned by {owner}</> : "no owner on record"} · <code className="font-mono">{r.path}</code>
           {r.stack && (
             <>
               {" "}
@@ -60,6 +62,7 @@ function ResourcePage() {
             </>
           )}
         </p>
+        {(r.unmatchedOwners ?? []).length > 0 && <UnmatchedOwners owners={r.unmatchedOwners ?? []} />}
       </header>
 
       {r.error && (
@@ -107,7 +110,7 @@ function ResourcePage() {
         </Alert>
       )}
       {!r.canOperate && !r.error && (
-        <p className="text-muted-foreground text-sm">{r.owner ? `Only ${r.owner} or an operator can change this resource.` : "Only an operator can change a resource without an owner."}</p>
+        <p className="text-muted-foreground text-sm">{owner ? `Only ${owner} or an operator can change this resource.` : "Only an operator can change a resource without an owner."}</p>
       )}
       {r.canOperate && (
         <div className="flex flex-wrap gap-2" role="toolbar" aria-label="Day-2 actions">

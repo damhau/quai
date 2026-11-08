@@ -9,12 +9,13 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const createReview = `-- name: CreateReview :one
-INSERT INTO reviews (id, request_id, reviewer, groups, decision, comment, change_set_hash)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, request_id, reviewer, groups, decision, comment, change_set_hash, created_at
+INSERT INTO reviews (id, request_id, reviewer, groups, decision, comment, change_set_hash, reviewer_email)
+VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8::text, ''))
+RETURNING id, request_id, reviewer, groups, decision, comment, change_set_hash, created_at, reviewer_email
 `
 
 type CreateReviewParams struct {
@@ -25,6 +26,7 @@ type CreateReviewParams struct {
 	Decision      string
 	Comment       string
 	ChangeSetHash string
+	ReviewerEmail pgtype.Text
 }
 
 func (q *Queries) CreateReview(ctx context.Context, arg CreateReviewParams) (Review, error) {
@@ -36,6 +38,7 @@ func (q *Queries) CreateReview(ctx context.Context, arg CreateReviewParams) (Rev
 		arg.Decision,
 		arg.Comment,
 		arg.ChangeSetHash,
+		arg.ReviewerEmail,
 	)
 	var i Review
 	err := row.Scan(
@@ -47,12 +50,13 @@ func (q *Queries) CreateReview(ctx context.Context, arg CreateReviewParams) (Rev
 		&i.Comment,
 		&i.ChangeSetHash,
 		&i.CreatedAt,
+		&i.ReviewerEmail,
 	)
 	return i, err
 }
 
 const listReviews = `-- name: ListReviews :many
-SELECT id, request_id, reviewer, groups, decision, comment, change_set_hash, created_at FROM reviews WHERE request_id = $1 ORDER BY created_at, id
+SELECT id, request_id, reviewer, groups, decision, comment, change_set_hash, created_at, reviewer_email FROM reviews WHERE request_id = $1 ORDER BY created_at, id
 `
 
 func (q *Queries) ListReviews(ctx context.Context, requestID uuid.UUID) ([]Review, error) {
@@ -73,6 +77,7 @@ func (q *Queries) ListReviews(ctx context.Context, requestID uuid.UUID) ([]Revie
 			&i.Comment,
 			&i.ChangeSetHash,
 			&i.CreatedAt,
+			&i.ReviewerEmail,
 		); err != nil {
 			return nil, err
 		}

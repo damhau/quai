@@ -20,6 +20,26 @@ export const resourceStates: Record<string, { label: string; tone: "neutral" | "
   drifted: { label: "Drifted", tone: "bad" },
 }
 
+type Me = { name: string; email?: string; groups: string[] | null }
+
+/** ownedBy says whether me owns r: through its owner field, or as one of its code owners (docs/design/02). */
+export function ownedBy(r: { owner?: string; owners?: string[] | null }, me: Me | undefined) {
+  if (!me) return false
+  return r.owner === me.name || (r.owners ?? []).some((entry) => {
+    const [kind, v = ""] = entry.split(/:(.*)/s)
+    if (!v) return false
+    if (kind === "user") return v === me.name
+    if (kind === "group" || kind === "team") return (me.groups ?? []).includes(v)
+    if (kind === "email") return !!me.email && v.toLowerCase() === me.email.toLowerCase()
+    return false
+  })
+}
+
+/** ownerText is who owns r, as a list shows it. */
+export function ownerText(r: { owner?: string; owners?: string[] | null }) {
+  return r.owner ?? (r.owners?.length ? r.owners.join(", ") : undefined)
+}
+
 /** resourcePath is the page of a resource, from its id: <repository>/<type>/<key>. */
 export function resourceParams(id: string) {
   const [repository = "", type = "", ...key] = id.split("/")

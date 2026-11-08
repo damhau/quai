@@ -174,6 +174,7 @@ const (
 // Review is one reviewer's decision.
 type Review struct {
 	Reviewer string
+	Email    string   // the reviewer's email when they reviewed, which email: entries match
 	Groups   []string // the reviewer's groups when they reviewed
 	Decision string
 }
@@ -181,8 +182,8 @@ type Review struct {
 // Context holds what the caller resolved for the request.
 type Context struct {
 	Requester  string
-	Owners     []string          // owners of the resources: user names and team:<name> entries
-	Codeowners []string          // CODEOWNERS entries for the changed paths: user names and group:<name>
+	Owners     []string          // owners of the resources: user names and team:, group:, user: or email: entries
+	Codeowners []string          // the platform's owners of the changed paths, as matched: user:, group: or email: entries
 	Manager    string            // the requester's manager
 	External   map[string]string // per external system: approved, rejected, or pending when absent
 }
@@ -207,15 +208,17 @@ type Outcome struct {
 	Rules []Status
 }
 
-// CanReview reports whether a person may approve or deny for a rule.
-func CanReview(r Rule, name string, groups []string, ctx Context) bool {
+// CanReview reports whether a person may approve or deny for a rule: name, their email (empty when
+// unknown) and groups.
+func CanReview(r Rule, name, email string, groups []string, ctx Context) bool {
 	if name == "" || name == ctx.Requester {
 		return false
 	}
 	member := func(entries []string) bool {
 		for _, e := range entries {
 			if kind, v, ok := strings.Cut(e, ":"); ok {
-				if (kind == "team" || kind == "group") && slices.Contains(groups, v) || kind == "user" && v == name {
+				if (kind == "team" || kind == "group") && slices.Contains(groups, v) || kind == "user" && v == name ||
+					kind == "email" && email != "" && strings.EqualFold(v, email) {
 					return true
 				}
 			} else if e == name {
@@ -252,7 +255,7 @@ func Evaluate(rules []Rule, reviews []Review, ctx Context) Outcome {
 		}
 		latest[rv.Reviewer] = rv
 	}
-	eligible := func(r Rule, rv Review) bool { return CanReview(r, rv.Reviewer, rv.Groups, ctx) }
+	eligible := func(r Rule, rv Review) bool { return CanReview(r, rv.Reviewer, rv.Email, rv.Groups, ctx) }
 
 	statuses := make([]Status, len(rules))
 	for i, r := range rules {

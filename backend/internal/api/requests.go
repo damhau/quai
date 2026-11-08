@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -61,9 +62,32 @@ type PlanView struct {
 	Hash       string       `json:"hash"`
 	Changes    []ChangeView `json:"changes"`
 	Rules      []RuleView   `json:"rules"`
+	// Codeowners, when a rule's approvers include codeowners.
+	Codeowners *CodeownersView `json:"codeowners,omitempty" doc:"When a rule's approvers include codeowners: the owners the Git platform names for the changed paths"`
 	// Unmigrated, for a migrate request: the non-conforming resources the migration leaves as
 	// they are, to fix in Git.
 	Unmigrated []UnmigratedView `json:"unmigrated,omitempty" doc:"For a migrate request: the non-conforming resources the type's migration does not fix, and why"`
+}
+
+// CodeownersView is who the Git platform names as owners of a request's paths (CODEOWNERS, or Azure
+// DevOps' automatically included reviewers), as Quai matches them
+// (docs/design/08-identity-access-tenancy.md#directory).
+type CodeownersView struct {
+	Owners    []string `json:"owners" doc:"The owners as Quai matches them: user:<name>, group:<name> or email:<address>"`
+	Unmatched []string `json:"unmatched" doc:"The owners, as the platform writes them, that match no one: a group without a mapping, a user whose email is unknown"`
+}
+
+func codeownersView(rules []policy.Rule, owners, unmatched []string) *CodeownersView {
+	if !slices.ContainsFunc(rules, func(r policy.Rule) bool { return slices.Contains(r.Approvers, "codeowners") }) {
+		return nil
+	}
+	if owners == nil {
+		owners = []string{}
+	}
+	if unmatched == nil {
+		unmatched = []string{}
+	}
+	return &CodeownersView{Owners: owners, Unmatched: unmatched}
 }
 
 // UnmigratedView is a non-conforming resource a migrate request leaves as it is.
@@ -91,30 +115,31 @@ type EventView struct {
 
 // RequestView is a request.
 type RequestView struct {
-	ID         string         `json:"id"`
-	Number     int64          `json:"number"`
-	Kind       string         `json:"kind"`
-	Action     string         `json:"action,omitempty"`
-	Target     string         `json:"target"`
-	Repository string         `json:"repository"`
-	Type       string         `json:"type,omitempty"`
-	Blueprint  string         `json:"blueprint,omitempty"`
-	Requester  string         `json:"requester"`
-	Reason     string         `json:"reason"`
-	State      string         `json:"state"`
-	Stack      string         `json:"stack,omitempty"`
-	Inputs     map[string]any `json:"inputs"`
-	CreatedAt  time.Time      `json:"createdAt"`
-	UpdatedAt  time.Time      `json:"updatedAt"`
-	CanReview  bool           `json:"canReview"`
-	CanCancel  bool           `json:"canCancel"`
-	CanRetry   bool           `json:"canRetry"`
-	Rules      []RuleView     `json:"rules"`
-	Reviews    []ReviewView   `json:"reviews,omitempty"`
-	Changes    []ChangeView   `json:"changes,omitempty"`
-	Events     []EventView    `json:"events,omitempty"`
-	Plans      []RunView      `json:"plans,omitempty" doc:"The latest plan of each stack the request's pull request was planned in"`
-	Delivery   *DeliveryView  `json:"delivery,omitempty" doc:"The pull request the change goes through; absent in direct mode"`
+	ID         string          `json:"id"`
+	Number     int64           `json:"number"`
+	Kind       string          `json:"kind"`
+	Action     string          `json:"action,omitempty"`
+	Target     string          `json:"target"`
+	Repository string          `json:"repository"`
+	Type       string          `json:"type,omitempty"`
+	Blueprint  string          `json:"blueprint,omitempty"`
+	Requester  string          `json:"requester"`
+	Reason     string          `json:"reason"`
+	State      string          `json:"state"`
+	Stack      string          `json:"stack,omitempty"`
+	Inputs     map[string]any  `json:"inputs"`
+	CreatedAt  time.Time       `json:"createdAt"`
+	UpdatedAt  time.Time       `json:"updatedAt"`
+	CanReview  bool            `json:"canReview"`
+	CanCancel  bool            `json:"canCancel"`
+	CanRetry   bool            `json:"canRetry"`
+	Rules      []RuleView      `json:"rules"`
+	Codeowners *CodeownersView `json:"codeowners,omitempty" doc:"When a rule's approvers include codeowners: the owners the Git platform named for the changed paths when the request was submitted"`
+	Reviews    []ReviewView    `json:"reviews,omitempty"`
+	Changes    []ChangeView    `json:"changes,omitempty"`
+	Events     []EventView     `json:"events,omitempty"`
+	Plans      []RunView       `json:"plans,omitempty" doc:"The latest plan of each stack the request's pull request was planned in"`
+	Delivery   *DeliveryView   `json:"delivery,omitempty" doc:"The pull request the change goes through; absent in direct mode"`
 }
 
 // DeliveryView is a request's pull request.
@@ -408,7 +433,8 @@ func ruleViews(rules []policy.Rule, statuses []policy.Status) []RuleView {
 
 func planView(p *requests.Plan) PlanView {
 	v := PlanView{Kind: p.Kind, Action: p.Action, Target: p.Target, Repository: p.Repository, Type: p.Type, Blueprint: p.Blueprint,
-		Stack: p.Stack, Commit: p.Commit, Hash: p.ChangeSet.Hash, Changes: []ChangeView{}, Rules: ruleViews(p.Rules, nil)}
+		Stack: p.Stack, Commit: p.Commit, Hash: p.ChangeSet.Hash, Changes: []ChangeView{}, Rules: ruleViews(p.Rules, nil),
+		Codeowners: codeownersView(p.Rules, p.Codeowners.Entries, p.Codeowners.Unmatched)}
 	for _, c := range p.ChangeSet.Changes {
 		v.Changes = append(v.Changes, ChangeView{Path: c.Path, Op: c.Op, Diff: diffView(c)})
 	}
@@ -433,6 +459,7 @@ func requestView(ctx context.Context, svc *requests.Service, s *store.Store, r d
 		reviews = nil
 	}
 	v.Rules = ruleViews(rules, outcome.Rules)
+	v.Codeowners = codeownersView(rules, r.Codeowners, r.CodeownersUnmatched)
 	if d, err := s.GetDelivery(ctx, r.ID); err == nil {
 		v.Delivery = &DeliveryView{Branch: d.Branch, PullRequest: d.PullRequest, URL: d.Url, MergeCommit: d.MergeCommit}
 	}

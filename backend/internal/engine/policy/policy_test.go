@@ -162,7 +162,7 @@ func TestApproverKinds(t *testing.T) {
 	ctx := Context{
 		Requester:  "bob",
 		Owners:     []string{"carol", "team:shop"},
-		Codeowners: []string{"dave", "group:dba", "user:erin"},
+		Codeowners: []string{"dave", "group:dba", "user:erin", "email:ivy@acme.ch"},
 		Manager:    "mia",
 		External:   map[string]string{"servicenow": "approved", "jira": "rejected"},
 	}
@@ -170,26 +170,41 @@ func TestApproverKinds(t *testing.T) {
 	tests := []struct {
 		rule   Rule
 		name   string
+		email  string
 		groups []string
 		want   bool
 	}{
-		{r("user:zoe"), "zoe", nil, true},
-		{r("user:zoe"), "zed", nil, false},
-		{r("owners"), "carol", nil, true},
-		{r("owners"), "sam", []string{"shop"}, true},
-		{r("owners"), "sam", []string{"other"}, false},
-		{r("codeowners"), "dave", nil, true},
-		{r("codeowners"), "x", []string{"dba"}, true},
-		{r("codeowners"), "erin", nil, true},
-		{r("manager"), "mia", nil, true},
-		{r("manager"), "bob", nil, false},
-		{r("owners"), "bob", []string{"shop"}, false}, // the requester never reviews
-		{r("group:a"), "", []string{"a"}, false},
+		{r("user:zoe"), "zoe", "", nil, true},
+		{r("user:zoe"), "zed", "", nil, false},
+		{r("owners"), "carol", "", nil, true},
+		{r("owners"), "sam", "", []string{"shop"}, true},
+		{r("owners"), "sam", "", []string{"other"}, false},
+		{r("codeowners"), "dave", "", nil, true},
+		{r("codeowners"), "x", "", []string{"dba"}, true},
+		{r("codeowners"), "erin", "", nil, true},
+		{r("codeowners"), "ivy", "Ivy@ACME.ch", nil, true}, // an email matches without case
+		{r("codeowners"), "ivy", "ivy@acme.com", nil, false},
+		{r("codeowners"), "ivy", "", nil, false}, // no email, no match
+		{r("codeowners"), "zed", "", []string{"shop"}, false},
+		{r("owners"), "ivy", "ivy@acme.ch", nil, false}, // the codeowners are not the owners
+		{r("manager"), "mia", "", nil, true},
+		{r("manager"), "bob", "", nil, false},
+		{r("owners"), "bob", "", []string{"shop"}, false}, // the requester never reviews
+		{r("group:a"), "", "", []string{"a"}, false},
 	}
 	for _, tt := range tests {
-		if got := CanReview(tt.rule, tt.name, tt.groups, ctx); got != tt.want {
-			t.Errorf("CanReview(%v, %s, %v) = %v", tt.rule.Approvers, tt.name, tt.groups, got)
+		if got := CanReview(tt.rule, tt.name, tt.email, tt.groups, ctx); got != tt.want {
+			t.Errorf("CanReview(%v, %s, %s, %v) = %v", tt.rule.Approvers, tt.name, tt.email, tt.groups, got)
 		}
+	}
+	// An email entry's review counts with the email the reviewer had when they reviewed.
+	rv := []Review{{Reviewer: "ivy", Email: "ivy@acme.ch", Decision: Approve}}
+	if got := Evaluate([]Rule{r("codeowners")}, rv, ctx).State; got != Approved {
+		t.Errorf("codeowner by email: %s", got)
+	}
+	rv[0].Email = ""
+	if got := Evaluate([]Rule{r("codeowners")}, rv, ctx).State; got != Pending {
+		t.Errorf("codeowner without email: %s", got)
 	}
 	ext := []Rule{{Names: []string{"t/ticket"}, External: "servicenow"}}
 	if got := Evaluate(ext, nil, ctx).State; got != Approved {

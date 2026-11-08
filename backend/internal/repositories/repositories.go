@@ -72,6 +72,8 @@ type Repo struct {
 	previews    map[string]*Snapshot // by commit
 	changesMu   sync.Mutex
 	changes     *ChangeIndex // the last change index built
+	ownersMu    sync.Mutex
+	owners      *Codeowners // the last owners read from the platform
 }
 
 // HasRunner reports whether the repository's runs are reported (spec.runner): a report token, a
@@ -90,7 +92,11 @@ type Snapshot struct {
 	Problems    definitions.Problems
 	Set         DefinitionSet // the active definitions' versions
 	FS          fs.FS
-	worktree    *gitx.Worktree
+	// Codeowners are the owners the platform names for the branch's paths, when a type's
+	// resources are owned through them (ownership.codeowners); nil otherwise, or before they
+	// could be read.
+	Codeowners *Codeowners
+	worktree   *gitx.Worktree
 }
 
 // Stored is a connection as its source holds it.
@@ -508,7 +514,7 @@ func (repo *Repo) Snapshot(ctx context.Context, sync bool) (*Snapshot, error) {
 		return nil, err
 	}
 	if repo.snap != nil && repo.snap.Commit == head {
-		return repo.snap, nil
+		return repo.withOwners(ctx), nil
 	}
 	wt, err := repo.Mirror.Worktree(ctx, head)
 	if err != nil {
@@ -523,5 +529,30 @@ func (repo *Repo) Snapshot(ctx context.Context, sync bool) (*Snapshot, error) {
 	repo.snap = snap
 	repo.log.InfoContext(ctx, "definitions loaded", slog.String("repository", repo.Name), slog.String("commit", head),
 		slog.Int("types", len(defs.Types)), slog.Int("blueprints", len(defs.Blueprints)), slog.Int("problems", len(problems)))
-	return snap, nil
+	return repo.withOwners(ctx), nil
+}
+
+// withOwners returns the current snapshot with the owners the platform names, when a type's
+// resources are owned through them: read again a minute after the last read, or when the commit
+// changes (Repo.Codeowners). When they cannot be read, the snapshot keeps those it had, with a
+// warning: none at first, so that no one owns those resources until they are read. The caller
+// holds repo.mu.
+func (repo *Repo) withOwners(ctx context.Context) *Snapshot {
+	snap := repo.snap
+	if !OwnedByCodeowners(snap.Definitions) {
+		return snap
+	}
+	c, err := repo.Codeowners(ctx, snap.Commit)
+	if err != nil {
+		repo.log.WarnContext(ctx, "owners not read; keeping the last ones", slog.String("repository", repo.Name), slog.Any("error", err))
+		return snap
+	}
+	if c == snap.Codeowners {
+		return snap
+	}
+	// A snapshot is shared and read without a lock: the owners go on a copy.
+	next := *snap
+	next.Codeowners = c
+	repo.snap = &next
+	return repo.snap
 }
