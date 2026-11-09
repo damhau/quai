@@ -14,7 +14,7 @@ import (
 )
 
 const applyingRequests = `-- name: ApplyingRequests :many
-SELECT r.id, r.org_id, r.kind, r.action, r.target, r.type_name, r.blueprint, r.requester, r.reason, r.inputs, r.state, r.definitions_commit, r.base_commit, r.created_at, r.updated_at, r.number, r.requester_email, r.stack, r.rules, r.owners, r.stacks, r.codeowners, r.codeowners_unmatched, r.step_up, r.manager, r.manager_reason, r.separation, r.submitted_at, r.expiry, r.expires_at, r.reminded_at, r.escalated_at, r.expiry_warned_at, r.window_subjects, r.window_held_at, r.window_reason FROM requests r
+SELECT r.id, r.org_id, r.kind, r.action, r.target, r.type_name, r.blueprint, r.requester, r.reason, r.inputs, r.state, r.definitions_commit, r.base_commit, r.created_at, r.updated_at, r.number, r.requester_email, r.stack, r.rules, r.owners, r.stacks, r.codeowners, r.codeowners_unmatched, r.step_up, r.manager, r.manager_reason, r.separation, r.submitted_at, r.expiry, r.expires_at, r.reminded_at, r.escalated_at, r.expiry_warned_at, r.window_subjects, r.window_held_at, r.window_reason, r.break_glass_at, r.break_glass_by FROM requests r
 JOIN change_sets cs ON cs.request_id = r.id
 WHERE r.state = 'applying' AND cs.repository = $1 AND $2::text = ANY(r.stacks)
 `
@@ -71,6 +71,8 @@ func (q *Queries) ApplyingRequests(ctx context.Context, arg ApplyingRequestsPara
 			&i.WindowSubjects,
 			&i.WindowHeldAt,
 			&i.WindowReason,
+			&i.BreakGlassAt,
+			&i.BreakGlassBy,
 		); err != nil {
 			return nil, err
 		}
@@ -91,7 +93,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, C
         $21, $22, COALESCE($23::jsonb, '{}'),
         COALESCE($24::timestamptz, now()), $25, $26,
         $27::jsonb)
-RETURNING id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up, manager, manager_reason, separation, submitted_at, expiry, expires_at, reminded_at, escalated_at, expiry_warned_at, window_subjects, window_held_at, window_reason
+RETURNING id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up, manager, manager_reason, separation, submitted_at, expiry, expires_at, reminded_at, escalated_at, expiry_warned_at, window_subjects, window_held_at, window_reason, break_glass_at, break_glass_by
 `
 
 type CreateRequestParams struct {
@@ -192,12 +194,14 @@ func (q *Queries) CreateRequest(ctx context.Context, arg CreateRequestParams) (R
 		&i.WindowSubjects,
 		&i.WindowHeldAt,
 		&i.WindowReason,
+		&i.BreakGlassAt,
+		&i.BreakGlassBy,
 	)
 	return i, err
 }
 
 const getRequest = `-- name: GetRequest :one
-SELECT id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up, manager, manager_reason, separation, submitted_at, expiry, expires_at, reminded_at, escalated_at, expiry_warned_at, window_subjects, window_held_at, window_reason FROM requests WHERE id = $1
+SELECT id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up, manager, manager_reason, separation, submitted_at, expiry, expires_at, reminded_at, escalated_at, expiry_warned_at, window_subjects, window_held_at, window_reason, break_glass_at, break_glass_by FROM requests WHERE id = $1
 `
 
 func (q *Queries) GetRequest(ctx context.Context, id uuid.UUID) (Request, error) {
@@ -240,12 +244,14 @@ func (q *Queries) GetRequest(ctx context.Context, id uuid.UUID) (Request, error)
 		&i.WindowSubjects,
 		&i.WindowHeldAt,
 		&i.WindowReason,
+		&i.BreakGlassAt,
+		&i.BreakGlassBy,
 	)
 	return i, err
 }
 
 const listApprovedRequests = `-- name: ListApprovedRequests :many
-SELECT id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up, manager, manager_reason, separation, submitted_at, expiry, expires_at, reminded_at, escalated_at, expiry_warned_at, window_subjects, window_held_at, window_reason FROM requests WHERE state IN ('approved', 'merging') ORDER BY updated_at, id
+SELECT id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up, manager, manager_reason, separation, submitted_at, expiry, expires_at, reminded_at, escalated_at, expiry_warned_at, window_subjects, window_held_at, window_reason, break_glass_at, break_glass_by FROM requests WHERE state IN ('approved', 'merging') ORDER BY updated_at, id
 `
 
 // The requests approved and not delivered yet: those the change windows may hold or release.
@@ -295,6 +301,8 @@ func (q *Queries) ListApprovedRequests(ctx context.Context) ([]Request, error) {
 			&i.WindowSubjects,
 			&i.WindowHeldAt,
 			&i.WindowReason,
+			&i.BreakGlassAt,
+			&i.BreakGlassBy,
 		); err != nil {
 			return nil, err
 		}
@@ -307,7 +315,7 @@ func (q *Queries) ListApprovedRequests(ctx context.Context) ([]Request, error) {
 }
 
 const listPendingApproval = `-- name: ListPendingApproval :many
-SELECT id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up, manager, manager_reason, separation, submitted_at, expiry, expires_at, reminded_at, escalated_at, expiry_warned_at, window_subjects, window_held_at, window_reason FROM requests WHERE state = 'pending_approval' ORDER BY submitted_at, id
+SELECT id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up, manager, manager_reason, separation, submitted_at, expiry, expires_at, reminded_at, escalated_at, expiry_warned_at, window_subjects, window_held_at, window_reason, break_glass_at, break_glass_by FROM requests WHERE state = 'pending_approval' ORDER BY submitted_at, id
 `
 
 // The requests that wait for approval, the longest waiting first: those reminders, escalation
@@ -358,6 +366,8 @@ func (q *Queries) ListPendingApproval(ctx context.Context) ([]Request, error) {
 			&i.WindowSubjects,
 			&i.WindowHeldAt,
 			&i.WindowReason,
+			&i.BreakGlassAt,
+			&i.BreakGlassBy,
 		); err != nil {
 			return nil, err
 		}
@@ -370,7 +380,7 @@ func (q *Queries) ListPendingApproval(ctx context.Context) ([]Request, error) {
 }
 
 const listRequests = `-- name: ListRequests :many
-SELECT id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up, manager, manager_reason, separation, submitted_at, expiry, expires_at, reminded_at, escalated_at, expiry_warned_at, window_subjects, window_held_at, window_reason FROM requests
+SELECT id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up, manager, manager_reason, separation, submitted_at, expiry, expires_at, reminded_at, escalated_at, expiry_warned_at, window_subjects, window_held_at, window_reason, break_glass_at, break_glass_by FROM requests
 WHERE (cardinality($1::text[]) = 0 OR state = ANY ($1::text[]))
   AND ($2::text = '' OR requester = $2::text)
   AND ($3::text = '' OR target = $3::text)
@@ -437,6 +447,8 @@ func (q *Queries) ListRequests(ctx context.Context, arg ListRequestsParams) ([]R
 			&i.WindowSubjects,
 			&i.WindowHeldAt,
 			&i.WindowReason,
+			&i.BreakGlassAt,
+			&i.BreakGlassBy,
 		); err != nil {
 			return nil, err
 		}
@@ -449,7 +461,7 @@ func (q *Queries) ListRequests(ctx context.Context, arg ListRequestsParams) ([]R
 }
 
 const lockRequest = `-- name: LockRequest :one
-SELECT id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up, manager, manager_reason, separation, submitted_at, expiry, expires_at, reminded_at, escalated_at, expiry_warned_at, window_subjects, window_held_at, window_reason FROM requests WHERE id = $1 FOR UPDATE
+SELECT id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up, manager, manager_reason, separation, submitted_at, expiry, expires_at, reminded_at, escalated_at, expiry_warned_at, window_subjects, window_held_at, window_reason, break_glass_at, break_glass_by FROM requests WHERE id = $1 FOR UPDATE
 `
 
 // The request, its row locked until the transaction ends: what decides on a request that waits
@@ -494,12 +506,14 @@ func (q *Queries) LockRequest(ctx context.Context, id uuid.UUID) (Request, error
 		&i.WindowSubjects,
 		&i.WindowHeldAt,
 		&i.WindowReason,
+		&i.BreakGlassAt,
+		&i.BreakGlassBy,
 	)
 	return i, err
 }
 
 const pendingReviewedBy = `-- name: PendingReviewedBy :many
-SELECT r.id, r.org_id, r.kind, r.action, r.target, r.type_name, r.blueprint, r.requester, r.reason, r.inputs, r.state, r.definitions_commit, r.base_commit, r.created_at, r.updated_at, r.number, r.requester_email, r.stack, r.rules, r.owners, r.stacks, r.codeowners, r.codeowners_unmatched, r.step_up, r.manager, r.manager_reason, r.separation, r.submitted_at, r.expiry, r.expires_at, r.reminded_at, r.escalated_at, r.expiry_warned_at, r.window_subjects, r.window_held_at, r.window_reason FROM requests r
+SELECT r.id, r.org_id, r.kind, r.action, r.target, r.type_name, r.blueprint, r.requester, r.reason, r.inputs, r.state, r.definitions_commit, r.base_commit, r.created_at, r.updated_at, r.number, r.requester_email, r.stack, r.rules, r.owners, r.stacks, r.codeowners, r.codeowners_unmatched, r.step_up, r.manager, r.manager_reason, r.separation, r.submitted_at, r.expiry, r.expires_at, r.reminded_at, r.escalated_at, r.expiry_warned_at, r.window_subjects, r.window_held_at, r.window_reason, r.break_glass_at, r.break_glass_by FROM requests r
 WHERE r.state = 'pending_approval' AND EXISTS (
     SELECT 1 FROM reviews v WHERE v.request_id = r.id AND v.voided_at IS NULL
       AND (v.reviewer = $1 OR v.on_behalf_of = $1))
@@ -554,6 +568,8 @@ func (q *Queries) PendingReviewedBy(ctx context.Context, name string) ([]Request
 			&i.WindowSubjects,
 			&i.WindowHeldAt,
 			&i.WindowReason,
+			&i.BreakGlassAt,
+			&i.BreakGlassBy,
 		); err != nil {
 			return nil, err
 		}
@@ -563,6 +579,66 @@ func (q *Queries) PendingReviewedBy(ctx context.Context, name string) ([]Request
 		return nil, err
 	}
 	return items, nil
+}
+
+const setRequestBreakGlass = `-- name: SetRequestBreakGlass :one
+UPDATE requests SET break_glass_at = $1, break_glass_by = $2, updated_at = now()
+WHERE id = $3 AND state = 'approved'
+RETURNING id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up, manager, manager_reason, separation, submitted_at, expiry, expires_at, reminded_at, escalated_at, expiry_warned_at, window_subjects, window_held_at, window_reason, break_glass_at, break_glass_by
+`
+
+type SetRequestBreakGlassParams struct {
+	At      pgtype.Timestamptz
+	Breaker string
+	ID      uuid.UUID
+}
+
+// Marks a request, approved, as broken by a member of the break-glass role: it merges without its
+// approvals and whatever its change windows say.
+func (q *Queries) SetRequestBreakGlass(ctx context.Context, arg SetRequestBreakGlassParams) (Request, error) {
+	row := q.db.QueryRow(ctx, setRequestBreakGlass, arg.At, arg.Breaker, arg.ID)
+	var i Request
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Kind,
+		&i.Action,
+		&i.Target,
+		&i.TypeName,
+		&i.Blueprint,
+		&i.Requester,
+		&i.Reason,
+		&i.Inputs,
+		&i.State,
+		&i.DefinitionsCommit,
+		&i.BaseCommit,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Number,
+		&i.RequesterEmail,
+		&i.Stack,
+		&i.Rules,
+		&i.Owners,
+		&i.Stacks,
+		&i.Codeowners,
+		&i.CodeownersUnmatched,
+		&i.StepUp,
+		&i.Manager,
+		&i.ManagerReason,
+		&i.Separation,
+		&i.SubmittedAt,
+		&i.Expiry,
+		&i.ExpiresAt,
+		&i.RemindedAt,
+		&i.EscalatedAt,
+		&i.ExpiryWarnedAt,
+		&i.WindowSubjects,
+		&i.WindowHeldAt,
+		&i.WindowReason,
+		&i.BreakGlassAt,
+		&i.BreakGlassBy,
+	)
+	return i, err
 }
 
 const setRequestEscalated = `-- name: SetRequestEscalated :exec
@@ -640,9 +716,11 @@ func (q *Queries) SetRequestWindowHeld(ctx context.Context, arg SetRequestWindow
 }
 
 const transitionRequest = `-- name: TransitionRequest :one
-UPDATE requests SET state = $1, updated_at = now()
+UPDATE requests SET state = $1, updated_at = now(),
+    break_glass_at = CASE WHEN $1 = 'pending_approval' THEN NULL ELSE break_glass_at END,
+    break_glass_by = CASE WHEN $1 = 'pending_approval' THEN '' ELSE break_glass_by END
 WHERE id = $2 AND state = $3
-RETURNING id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up, manager, manager_reason, separation, submitted_at, expiry, expires_at, reminded_at, escalated_at, expiry_warned_at, window_subjects, window_held_at, window_reason
+RETURNING id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up, manager, manager_reason, separation, submitted_at, expiry, expires_at, reminded_at, escalated_at, expiry_warned_at, window_subjects, window_held_at, window_reason, break_glass_at, break_glass_by
 `
 
 type TransitionRequestParams struct {
@@ -652,7 +730,9 @@ type TransitionRequestParams struct {
 }
 
 // Moves a request from one state to another; no row when it is not in the expected state, so
-// concurrent transitions cannot both succeed.
+// concurrent transitions cannot both succeed. A request back in pending approval (its content
+// changed, a new plan) is no longer broken: its break-glass was for the content it recorded, so
+// its approvals and its change windows apply again (migrations/00030_break_glass.sql).
 func (q *Queries) TransitionRequest(ctx context.Context, arg TransitionRequestParams) (Request, error) {
 	row := q.db.QueryRow(ctx, transitionRequest, arg.ToState, arg.ID, arg.FromState)
 	var i Request
@@ -693,6 +773,8 @@ func (q *Queries) TransitionRequest(ctx context.Context, arg TransitionRequestPa
 		&i.WindowSubjects,
 		&i.WindowHeldAt,
 		&i.WindowReason,
+		&i.BreakGlassAt,
+		&i.BreakGlassBy,
 	)
 	return i, err
 }

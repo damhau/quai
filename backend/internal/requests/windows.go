@@ -91,10 +91,10 @@ func names(ws []*window.Window) []string {
 	return out
 }
 
-// exempt says whether a request merges whatever its change windows say. None does yet: P4-17's
-// break-glass requests will (docs/design/05-delivery-and-approvals.md#break-glass), and this is
-// the one place that lifts the windows for them.
-func exempt(db.Request) bool { return false }
+// exempt says whether a request merges whatever its change windows say: one broken by break-glass
+// (docs/design/05-delivery-and-approvals.md#break-glass). This is the one place that lifts the
+// windows for it.
+func exempt(r db.Request) bool { return broken(r) }
 
 // WindowsOf decides the change windows of r now, by the service's clock, as gate would: the
 // request page shows when it may merge.

@@ -262,7 +262,8 @@ func recordJSON(r audit.Record) ([]byte, error) {
 }
 
 // Severities of the records, as syslog numbers them (RFC 5424, section 6.2.1): what may need
-// someone's attention is a warning, every other event a notice.
+// someone's attention (a broken chain, a bypass, enforcement lost, a break-glass) is a warning,
+// every other event a notice.
 const (
 	severityWarning = 4
 	severityNotice  = 5
@@ -270,7 +271,7 @@ const (
 
 func severity(action string) int {
 	switch action {
-	case "audit.broken", "request.merged_without_approval", "request.merged_outside_window", "repository.enforcement_lost":
+	case "audit.broken", "request.merged_without_approval", "request.merged_outside_window", "repository.enforcement_lost", "request.break_glass":
 		return severityWarning
 	}
 	return severityNotice

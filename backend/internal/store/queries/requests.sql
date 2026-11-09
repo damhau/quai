@@ -23,8 +23,12 @@ LIMIT sqlc.arg(max_rows);
 
 -- name: TransitionRequest :one
 -- Moves a request from one state to another; no row when it is not in the expected state, so
--- concurrent transitions cannot both succeed.
-UPDATE requests SET state = sqlc.arg(to_state), updated_at = now()
+-- concurrent transitions cannot both succeed. A request back in pending approval (its content
+-- changed, a new plan) is no longer broken: its break-glass was for the content it recorded, so
+-- its approvals and its change windows apply again (migrations/00030_break_glass.sql).
+UPDATE requests SET state = sqlc.arg(to_state), updated_at = now(),
+    break_glass_at = CASE WHEN sqlc.arg(to_state) = 'pending_approval' THEN NULL ELSE break_glass_at END,
+    break_glass_by = CASE WHEN sqlc.arg(to_state) = 'pending_approval' THEN '' ELSE break_glass_by END
 WHERE id = sqlc.arg(id) AND state = sqlc.arg(from_state)
 RETURNING *;
 
@@ -65,6 +69,13 @@ SELECT * FROM requests WHERE state IN ('approved', 'merging') ORDER BY updated_a
 -- Holds a request for its change windows (at, with the reason quai/approval gives), or releases
 -- it (NULL, '').
 UPDATE requests SET window_held_at = sqlc.narg(at), window_reason = sqlc.arg(reason) WHERE id = sqlc.arg(id);
+
+-- name: SetRequestBreakGlass :one
+-- Marks a request, approved, as broken by a member of the break-glass role: it merges without its
+-- approvals and whatever its change windows say.
+UPDATE requests SET break_glass_at = sqlc.arg(at), break_glass_by = sqlc.arg(breaker), updated_at = now()
+WHERE id = sqlc.arg(id) AND state = 'approved'
+RETURNING *;
 
 -- name: PendingReviewedBy :many
 -- The requests waiting for approval that a person reviewed, or that were reviewed on their behalf,

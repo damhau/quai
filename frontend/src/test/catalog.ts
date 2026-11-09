@@ -144,6 +144,8 @@ export const submitted: RequestView = {
   reason: "Needed for the launch",
   state: "pending",
   stepUp: false,
+  canBreakGlass: false,
+  breakGlassStepUp: false,
   inputs: {},
   createdAt: "2026-10-27T10:00:00Z",
   updatedAt: "2026-10-27T10:00:00Z",

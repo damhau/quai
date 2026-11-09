@@ -73,8 +73,8 @@ type sweepWorker struct {
 func (w *sweepWorker) Work(ctx context.Context, _ *river.Job[SweepArgs]) error { return w.s.Sweep(ctx) }
 
 // Sweep takes the steps due now for each request that waits for approval: its expiry, or the
-// warning of it, the reminder and the escalation. A step that fails is tried again at the next
-// sweep; the others go on.
+// warning of it, the reminder and the escalation; and reminds the open break-glass reviews due
+// (sweepReviews). A step that fails is tried again at the next sweep; the others go on.
 func (s *Service) Sweep(ctx context.Context) error {
 	list, err := s.store.ListPendingApproval(ctx)
 	if err != nil {
@@ -88,6 +88,10 @@ func (s *Service) Sweep(ctx context.Context) error {
 				errs = append(errs, fmt.Errorf("request %s, %s: %w", r.ID, step, err))
 			}
 		}
+	}
+	// And the reminders of the open break-glass reviews.
+	if err := s.sweepReviews(ctx, now); err != nil {
+		errs = append(errs, err)
 	}
 	return errors.Join(errs...)
 }

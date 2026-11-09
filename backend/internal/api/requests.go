@@ -234,6 +234,13 @@ type RequestView struct {
 	ChangeWindow *ChangeWindowView `json:"changeWindow,omitempty" doc:"What the change windows that apply to it say, while it is pending approval, approved or merging; absent when none applies"`
 	// RequesterNotNotified is set when notifications are configured and do not reach the requester.
 	RequesterNotNotified bool `json:"requesterNotNotified,omitempty" doc:"Notifications do not reach the requester: Quai knows no verified email of theirs"`
+	// ChangeSet is the content's identity, which a break-glass carries back.
+	ChangeSet string `json:"changeSet,omitempty" doc:"The hash of the change set it holds now"`
+	// CanBreakGlass and CannotBreakGlass are the caller's, as a member of the break-glass role.
+	CanBreakGlass    bool            `json:"canBreakGlass" doc:"You may break glass for it now: merge it without its approvals, past its change windows"`
+	CannotBreakGlass string          `json:"cannotBreakGlass,omitempty" doc:"Why you cannot break glass for it, although you hold the break-glass role and its state would let you"`
+	BreakGlassStepUp bool            `json:"breakGlassStepUp" doc:"Break-glass and its review's sign-offs need a recent sign-in (auth.stepUp is configured)"`
+	BreakGlass       *BreakGlassView `json:"breakGlass,omitempty" doc:"Its break-glass and the post-incident review, once glass was broken for it"`
 }
 
 // ChangeWindowView is what the change windows say of a request not merged yet, now
@@ -293,6 +300,7 @@ type DeliveryView struct {
 	Branch      string `json:"branch"`
 	PullRequest string `json:"pullRequest,omitempty" doc:"Its ID on the platform, once opened"`
 	URL         string `json:"url,omitempty"`
+	Head        string `json:"head,omitempty" doc:"The commit of its branch Quai pushed last, the one a merge must be at"`
 	MergeCommit string `json:"mergeCommit,omitempty"`
 }
 
@@ -681,7 +689,7 @@ func requestView(ctx context.Context, svc *requests.Service, s *store.Store, r d
 	v.Manager = managerView(rules, r.Manager, r.ManagerReason)
 	v.Separation = separationView(requests.SeparationOf(r))
 	if d, err := s.GetDelivery(ctx, r.ID); err == nil {
-		v.Delivery = &DeliveryView{Branch: d.Branch, PullRequest: d.PullRequest, URL: d.Url, MergeCommit: d.MergeCommit}
+		v.Delivery = &DeliveryView{Branch: d.Branch, PullRequest: d.PullRequest, URL: d.Url, Head: d.Head, MergeCommit: d.MergeCommit}
 	}
 	if !detail {
 		return v
@@ -712,7 +720,11 @@ func requestView(ctx context.Context, svc *requests.Service, s *store.Store, r d
 		}
 		v.Reviews = append(v.Reviews, rview)
 	}
+	breakGlassOf(ctx, svc, r, me, &v)
 	if sets, err := s.ListChangeSets(ctx, r.ID); err == nil {
+		if len(sets) > 0 {
+			v.ChangeSet = sets[0].Hash
+		}
 		for _, cs := range sets {
 			changes, err := s.ListChanges(ctx, cs.ID)
 			if err != nil {

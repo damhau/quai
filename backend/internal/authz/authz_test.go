@@ -13,6 +13,8 @@ var (
 	// codeowned is owned through CODEOWNERS (ownership.codeowners).
 	codeowned = Object{Repository: "infra-live", Owners: []string{"user:erin", "group:dba", "email:ivy@acme.ch"}}
 	request   = Object{Repository: "infra-live", Requester: "bob"}
+	// broken is a request merged by break-glass, owned by team shop and olga.
+	broken = Object{Repository: "infra-live", Requester: "bob", Owners: []string{"team:shop", "user:olga"}}
 	// teamOwned is owned through team: entries (ownership.codeowners mapped to a team).
 	teamOwned = Object{Repository: "infra-live", Owners: []string{"team:platform"}}
 	// inProd is a request for the item in prod, which narrows its requesters to sre and zoe.
@@ -143,6 +145,17 @@ func TestAuthorize(t *testing.T) {
 		{"break-glass on someone else's request", who("bg", nil, at(BreakGlass, ScopeGlobal, "")), UseBreakGlass, request, true, ""},
 		{"break-glass on one's own request", who("bob", nil, at(BreakGlass, ScopeGlobal, "")), UseBreakGlass, request, false, "your own request"},
 		{"platform admin is not break-glass", who("ada", nil, at(PlatformAdmin, ScopeGlobal, "")), UseBreakGlass, request, false, "break-glass role"},
+		{"break-glass elsewhere", who("bg", nil, at(BreakGlass, ScopeRepository, "dns")), UseBreakGlass, request, false, "break-glass role"},
+		{"break-glass with a token", Principal{Name: "bg", Grants: []Grant{at(BreakGlass, ScopeGlobal, "")}, Scopes: []string{"requests:write", "requests:read"}}, UseBreakGlass, request, false, "scopes"},
+		{"auditor lists break-glass reviews", who("aud", nil, at(Auditor, ScopeGlobal, "")), ReadBreakGlass, Object{}, true, ""},
+		{"platform admin lists break-glass reviews", who("ada", nil, at(PlatformAdmin, ScopeGlobal, "")), ReadBreakGlass, Object{}, true, ""},
+		{"break-glass does not list reviews", who("bg", nil, at(BreakGlass, ScopeGlobal, "")), ReadBreakGlass, Object{}, false, "platform admins and auditors"},
+		{"platform admin signs off", who("ada", nil, at(PlatformAdmin, ScopeGlobal, "")), SignOffBreakGlass, broken, true, ""},
+		{"auditor signs off", who("aud", nil, at(Auditor, ScopeGlobal, "")), SignOffBreakGlass, broken, true, ""},
+		{"owning team signs off", who("carol", []string{"shop"}, at(Viewer, ScopeGlobal, "")), SignOffBreakGlass, broken, true, ""},
+		{"owner by name signs off", who("olga", nil), SignOffBreakGlass, broken, true, ""},
+		{"someone else does not sign off", who("dan", []string{"developers"}, at(Requester, ScopeGlobal, ""), at(BreakGlass, ScopeGlobal, "")), SignOffBreakGlass, broken, false, "platform admin, an auditor or an owner"},
+		{"an auditor's token does not sign off", Principal{Name: "aud", Grants: []Grant{at(Auditor, ScopeGlobal, "")}, Scopes: []string{"requests:write", "requests:read"}}, SignOffBreakGlass, broken, false, "scopes"},
 		{"unknown scope kind", who("x", nil, at(Viewer, "planet", "earth")), ReadInventory, resource, false, "viewer role"},
 
 		// API tokens: the owner's roles, narrowed by the token's scopes.

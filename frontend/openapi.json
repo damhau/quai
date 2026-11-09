@@ -743,6 +743,228 @@
         ],
         "type": "object"
       },
+      "BreakGlassBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/api/v1/schemas/BreakGlassBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "changeSet": {
+            "description": "The change set's hash the page showed (changeSet): refused if the request changed since",
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "head": {
+            "description": "With a pull request, its head commit the page showed (delivery.head)",
+            "maxLength": 128,
+            "type": "string"
+          },
+          "incident": {
+            "description": "The incident's reference, such as INC0012345",
+            "maxLength": 64,
+            "type": "string"
+          },
+          "reason": {
+            "description": "Why the change cannot wait for its approvals; kept in Quai and the audit log, never sent to the platform",
+            "maxLength": 500,
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason",
+          "incident",
+          "changeSet"
+        ],
+        "type": "object"
+      },
+      "BreakGlassItemView": {
+        "additionalProperties": false,
+        "properties": {
+          "breakGlass": {
+            "$ref": "#/components/schemas/BreakGlassView"
+          },
+          "number": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "repository": {
+            "type": "string"
+          },
+          "request": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "requester": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "request",
+          "number",
+          "target",
+          "repository",
+          "requester",
+          "state",
+          "breakGlass"
+        ],
+        "type": "object"
+      },
+      "BreakGlassSignOffBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/api/v1/schemas/BreakGlassSignOffBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "comment": {
+            "description": "What the review found",
+            "maxLength": 2000,
+            "type": "string"
+          }
+        },
+        "required": [
+          "comment"
+        ],
+        "type": "object"
+      },
+      "BreakGlassSignOffView": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "authTime": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "capacity": {
+            "description": "In which capacity they signed it off",
+            "enum": [
+              "platform-admin",
+              "auditor",
+              "owner"
+            ],
+            "type": "string"
+          },
+          "comment": {
+            "type": "string"
+          },
+          "signer": {
+            "type": "string"
+          },
+          "stepUp": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "signer",
+          "capacity",
+          "comment",
+          "at",
+          "stepUp"
+        ],
+        "type": "object"
+      },
+      "BreakGlassView": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "by": {
+            "description": "Who broke glass",
+            "type": "string"
+          },
+          "canSignOff": {
+            "description": "You may sign off its review now",
+            "type": "boolean"
+          },
+          "cannotSignOff": {
+            "description": "Why you cannot sign off its review, when your role or ownership would let you",
+            "type": "string"
+          },
+          "changeSet": {
+            "description": "The change set's hash glass was broken for",
+            "type": "string"
+          },
+          "closedAt": {
+            "description": "When the review's last sign-off closed it",
+            "format": "date-time",
+            "type": "string"
+          },
+          "from": {
+            "description": "The request's state then: pending_approval, or approved and held by its change windows",
+            "type": "string"
+          },
+          "head": {
+            "description": "The pull request's head commit glass was broken for",
+            "type": "string"
+          },
+          "incident": {
+            "description": "The incident's reference",
+            "type": "string"
+          },
+          "needed": {
+            "description": "How many people sign off the review to close it",
+            "format": "int64",
+            "type": "integer"
+          },
+          "open": {
+            "description": "Its post-incident review waits for sign-offs",
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "signOffs": {
+            "items": {
+              "$ref": "#/components/schemas/BreakGlassSignOffView"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "stepUp": {
+            "description": "The breaker's sign-in satisfied the step-up",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "by",
+          "reason",
+          "incident",
+          "at",
+          "from",
+          "changeSet",
+          "stepUp",
+          "open",
+          "needed",
+          "signOffs",
+          "canSignOff"
+        ],
+        "type": "object"
+      },
       "CatalogItem": {
         "additionalProperties": false,
         "properties": {
@@ -1585,6 +1807,10 @@
         "additionalProperties": false,
         "properties": {
           "branch": {
+            "type": "string"
+          },
+          "head": {
+            "description": "The commit of its branch Quai pushed last, the one a merge must be at",
             "type": "string"
           },
           "mergeCommit": {
@@ -3127,6 +3353,18 @@
           "blueprint": {
             "type": "string"
           },
+          "breakGlass": {
+            "$ref": "#/components/schemas/BreakGlassView",
+            "description": "Its break-glass and the post-incident review, once glass was broken for it"
+          },
+          "breakGlassStepUp": {
+            "description": "Break-glass and its review's sign-offs need a recent sign-in (auth.stepUp is configured)",
+            "type": "boolean"
+          },
+          "canBreakGlass": {
+            "description": "You may break glass for it now: merge it without its approvals, past its change windows",
+            "type": "boolean"
+          },
           "canCancel": {
             "type": "boolean"
           },
@@ -3141,8 +3379,16 @@
             "description": "You may review it in your own right",
             "type": "boolean"
           },
+          "cannotBreakGlass": {
+            "description": "Why you cannot break glass for it, although you hold the break-glass role and its state would let you",
+            "type": "string"
+          },
           "cannotReview": {
             "description": "Why you cannot review this request pending approval although a rule names you: you requested it, or you changed its definitions in the separation of duties' period before it",
+            "type": "string"
+          },
+          "changeSet": {
+            "description": "The hash of the change set it holds now",
             "type": "string"
           },
           "changeWindow": {
@@ -3298,7 +3544,9 @@
           "canCancel",
           "canRetry",
           "stepUp",
-          "rules"
+          "rules",
+          "canBreakGlass",
+          "breakGlassStepUp"
         ],
         "type": "object"
       },
@@ -5090,6 +5338,55 @@
         "summary": "Export the audit log, to verify it offline with quai audit verify (auditors and platform admins)",
         "tags": [
           "Audit"
+        ]
+      }
+    },
+    "/api/v1/break-glass": {
+      "get": {
+        "operationId": "list-break-glass",
+        "parameters": [
+          {
+            "description": "Only the open reviews",
+            "explode": false,
+            "in": "query",
+            "name": "open",
+            "schema": {
+              "description": "Only the open reviews",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/BreakGlassItemView"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List the requests merged by break-glass, the open reviews first (auditors and platform admins)",
+        "tags": [
+          "Requests"
         ]
       }
     },
@@ -7058,6 +7355,112 @@
           }
         },
         "summary": "Describe a request",
+        "tags": [
+          "Requests"
+        ]
+      }
+    },
+    "/api/v1/requests/{id}/break-glass": {
+      "post": {
+        "description": "For the break-glass role, in a browser session, after a step-up when auth.stepUp is configured; never on one's own request. The request must be pending approval, or approved and held by its change windows, and still hold the change set (and head) given. It merges through its delivery like any approved request, past its change windows; the platform's own policies still apply. The alert recipients and the owning team are alerted, and a post-incident review opens.",
+        "operationId": "break-glass",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BreakGlassBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Merge a request without its approvals (break-glass)",
+        "tags": [
+          "Requests"
+        ]
+      }
+    },
+    "/api/v1/requests/{id}/break-glass/sign-off": {
+      "post": {
+        "description": "For platform admins, auditors and the request's owners, in a browser session, after a step-up when auth.stepUp is configured; never the person who broke glass, the requester or their delegates. Each person signs off once and a sign-off is never withdrawn; the second closes the review.",
+        "operationId": "sign-off-break-glass",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BreakGlassSignOffBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Sign off the post-incident review of a break-glass",
         "tags": [
           "Requests"
         ]

@@ -342,12 +342,12 @@ func (s *Service) publish(ctx context.Context, repo *repositories.Repo, r db.Req
 		if err != nil {
 			return err
 		}
-		st.State, st.Description = connectors.StatusSuccess, "Approved in Quai"
+		st.State, st.Description = connectors.StatusSuccess, approvalDescription(r)
 		if !w.MayMerge() {
 			st.State, st.Description = connectors.StatusPending, w.Reason()
 		}
 	case Applied:
-		st.State, st.Description = connectors.StatusSuccess, "Approved in Quai"
+		st.State, st.Description = connectors.StatusSuccess, approvalDescription(r)
 	case Rejected:
 		st.State, st.Description, closePR = connectors.StatusFailure, "Rejected in Quai", true
 	case Cancelled:
@@ -453,7 +453,7 @@ func (s *Service) deliverPR(ctx context.Context, job *river.Job[DeliverArgs], r 
 			return err
 		}
 		opts := connectors.MergeOptions{Head: d.Head, Method: connectors.MergeMethod(spec.MergeMethod), Message: msg, DeleteBranch: *spec.DeleteBranch,
-			Approval: connectors.Status{Name: repo.Document.Spec.Enforcement.RequiredCheck, State: connectors.StatusSuccess, Description: "Approved in Quai", URL: s.link(r)}}
+			Approval: connectors.Status{Name: repo.Document.Spec.Enforcement.RequiredCheck, State: connectors.StatusSuccess, Description: approvalDescription(r), URL: s.link(r)}}
 		if repo.Connector.Info().Has(connectors.CapAutoComplete) {
 			err = prs.AutoComplete(ctx, d.PullRequest, opts)
 		} else {
@@ -512,7 +512,11 @@ func (s *Service) commentApprovals(ctx context.Context, prs connectors.PullReque
 			return err
 		}
 		var b strings.Builder
-		fmt.Fprintf(&b, "Approved in Quai (request #%d).\n\n", r.Number)
+		if broken(r) {
+			fmt.Fprintf(&b, "Let through by break-glass in Quai (request #%d), without its approvals: its post-incident review is in Quai.\n\n", r.Number)
+		} else {
+			fmt.Fprintf(&b, "Approved in Quai (request #%d).\n\n", r.Number)
+		}
 		for _, t := range approved {
 			b.WriteString(t.String() + "\n") // one line each (gitx.TrailerValue)
 		}
@@ -559,6 +563,12 @@ func (s *Service) merged(ctx context.Context, r db.Request, d db.Delivery, pr co
 	from := r.State
 	kind := "merged"
 	data := map[string]any{"commit": pr.MergeCommit, "pullRequest": pr.ID}
+	details := map[string]any{"from": from, "commit": pr.MergeCommit, "pullRequest": pr.ID}
+	// A request broken by break-glass is approved, its hold lifted, before Quai asks the platform
+	// for anything: its merge is the break-glass's, never a bypass.
+	if broken(r) {
+		data["breakGlass"], details["breakGlass"] = r.BreakGlassBy, true
+	}
 	bypass := from != Approved && from != Merging
 	message := fmt.Sprintf("pull request %s was merged without Quai's approval: check the branch protection", pr.ID)
 	switch {
@@ -593,7 +603,7 @@ func (s *Service) merged(ctx context.Context, r db.Request, d db.Delivery, pr co
 		if err := s.event(ctx, tx, r, kind, "", data); err != nil {
 			return err
 		}
-		if err := recordRequest(ctx, tx, r, kind, map[string]any{"from": from, "commit": pr.MergeCommit, "pullRequest": pr.ID}); err != nil {
+		if err := recordRequest(ctx, tx, r, kind, details); err != nil {
 			return err
 		}
 		if to == Applied {

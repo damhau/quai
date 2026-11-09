@@ -64,6 +64,35 @@ type AuditRetention struct {
 	Retention pgtype.Interval
 }
 
+type BreakGlass struct {
+	RequestID     uuid.UUID
+	OrgID         string
+	Breaker       string
+	BreakerEmail  string
+	AuthTime      pgtype.Timestamptz
+	Acr           string
+	StepUp        bool
+	Reason        string
+	Incident      string
+	ChangeSetHash string
+	Head          string
+	FromState     string
+	At            pgtype.Timestamptz
+	RemindedAt    pgtype.Timestamptz
+	ClosedAt      pgtype.Timestamptz
+}
+
+type BreakGlassSignOff struct {
+	RequestID   uuid.UUID
+	Signer      string
+	SignerEmail string
+	Capacity    string
+	Comment     string
+	AuthTime    pgtype.Timestamptz
+	StepUp      bool
+	At          pgtype.Timestamptz
+}
+
 type Change struct {
 	ChangeSetID uuid.UUID
 	Path        string
@@ -239,6 +268,8 @@ type Request struct {
 	WindowSubjects      []byte
 	WindowHeldAt        pgtype.Timestamptz
 	WindowReason        string
+	BreakGlassAt        pgtype.Timestamptz
+	BreakGlassBy        string
 }
 
 type Review struct {

@@ -45,6 +45,7 @@ Status: Draft · 2026-11-09
 | The SCIM token leaks, or something else reaches SCIM: SCIM deactivates people and decides their groups, platform admins' included | A credential of its own, never an API token or a session, nor taken by the rest of the API: `quai_scim_` and 256 random bits, made outside Quai (`quai scim-token`); Quai keeps only its SHA-256, in a secret reference, compares it in constant time with each configured token, and refuses a header sent twice. Rotation by a second token, revocation by removing it or changing its secret (within a minute); its last use is in the access report, and every change it makes is in the audit log as the provisioning's, by token name. Rate limited before any work (50 a second, bursts of 100); bounded bodies (1 MiB), types, strings, operations, members and pages; filters parsed by a small strict parser to query parameters, never SQL; errors never carry an internal error. Only `/scim/` exactly (not a path that decodes to it) skips sessions; it is allowed on the webhook host. **Residual:** the rate limit is shared, so a flood of bad requests can slow the real provisioning, which retries ([design 08](08-identity-access-tenancy.md#scim-provisioning), [question 83](../plan/open-questions.md#still-open)). |
 | SCIM grants a privilege, or binds someone to another person's account | SCIM never gives a group the ID token does not: a provisioned person's groups are their last sign-in's, less the groups SCIM provisioned that do not list them, and sessions and tokens act with the groups they were issued with that the person still has, checked at every request, so a removal from the admin group takes effect at once. People are bound by `externalId`, the identity provider's immutable `oid` (or `sub`), never by a name or an email: adoption of someone who signed in needs matching identifiers; a sign-in whose identifier or name disagrees with SCIM's is refused; a rename keeps the person; a deleted person's name stays theirs, so a new person given it is refused rather than inheriting requests, reviews, delegations or groups; `externalId` never changes. Reserved names (break-glass accounts) and development users are out of SCIM's reach. Every membership and group change is audited with the groups and grants before and after ([questions 84, 85 and 88](../plan/open-questions.md#still-open)). |
 | A leaver keeps acting: an open session, an API token, a delegation, a pending approval, a chat link | A SCIM deactivation acts at once: the session epoch moves, so sessions end at their next request; API tokens and delegations, given and received, are revoked; requests not delivered are cancelled; their reviews, and reviews on their behalf, of requests still waiting are voided and the approvers notified again; chat links need their session; nothing is sent to them; their sign-ins are refused. Reactivation restores none of it ([question 86](../plan/open-questions.md#still-open)). A deactivation by hand (the database) refuses sessions and tokens while it lasts. |
+| Break-glass abused: a person merges their own change, or one that changed after they looked, with a stolen session or a token; it bypasses more than Quai; its record lost or its review closed early; its reason injects markup | Its own role, never implied by platform admin; never the requester, the requester's delegate or a definition author the separation excludes; a browser session only (tokens refused, CSRF), a step-up whenever `auth.stepUp` is configured, a deactivated person refused. The call carries the change set and head the page showed, refused when they changed; it goes through the one delivery (the gate, the merge lock, the head pinned) and lifts only Quai's approvals and change windows, never the platform's protection, other checks or `waitForChecks`. The record, its review, the audit event and the alert are written with the state change, under the row lock, before any platform call, so its merge is not taken for a bypass and survives a crash. Reason and incident bounded, control, line-separator and bidirectional characters refused; the reason never reaches the platform or the alerts, and is shown as text; `quai/approval` says "Break-glass by <name>" within 140 characters. Alerts at once to security and the owning team, on every channel, that preferences cannot mute; a review closed only by two different reviewers, never the breaker or the requester, never withdrawn, reminded daily ([break-glass](05-delivery-and-approvals.md#break-glass), [questions 94 to 99](../plan/open-questions.md#still-open)). |
 | Tampering with the audit log | Append-only table, insert-only database role, hash chain, signed checkpoints, export to SIEM. |
 | Supply chain | Small dependency set, `go.sum` and the Go checksum database, `govulncheck`, SBOM, signed images and provenance (see below). |
 
@@ -137,13 +138,13 @@ changes, executor calls, configuration changes.
   can see a gap and verify the chain ([export to a SIEM](#export-to-a-siem)). A webhook comes in
   Phase 7.
 
-What is recorded, by action (P4-01, P4-02, P4-06, P4-08, P4-09, P4-11, P4-13, P4-15; break-glass, executor calls and
+What is recorded, by action (P4-01, P4-02, P4-06, P4-08, P4-09, P4-11, P4-13, P4-15, P4-17; executor calls and
 configuration changes come with their features):
 
 | Action | Actor | When |
 | --- | --- | --- |
 | `auth.login`, `auth.logout` | the person | a sign-in (with the method and the grants it gave; for a step-up login `stepUp`, and the ID token's `acr` and `acrs` when it has them), a sign-out |
-| `auth.step_up_refused` | the person, or their token | an action refused for want of a recent sign-in ([step-up](08-identity-access-tenancy.md#step-up)): what was attempted (`request.review`, `delegation.create`, `repository.create`, `repository.update`, `repository.delete`, `repository.install_webhook`, `run_token.create`) on which object, and why |
+| `auth.step_up_refused` | the person, or their token | an action refused for want of a recent sign-in ([step-up](08-identity-access-tenancy.md#step-up)): what was attempted (`request.review`, `request.break_glass`, `request.break_glass_sign_off`, `delegation.create`, `repository.create`, `repository.update`, `repository.delete`, `repository.install_webhook`, `run_token.create`) on which object, and why |
 | `auth.grants_changed` | the person | a sign-in whose grants differ from the person's previous sign-in (`before`, `after`): a role change, from the IdP's groups or from `auth.roles` |
 | `auth.manager_changed` | the person | a sign-in whose manager differs from the directory's (`before`, `after`: the manager's identifier as a pseudonym, where it came from, and why there is none), including a manager cleared by a failed lookup |
 | `token.created`, `token.revoked` | the person; the provisioning for a token revoked by a deactivation | an API token made or revoked (its ID, name, scopes, expiry; never the token); revoked by a deactivation, the reason and the owner as a pseudonym |
@@ -162,7 +163,11 @@ configuration changes come with their features):
 | `request.expired` | Quai | a request waited for approval longer than its expiry: the expiry, when it was submitted and when it expired, and how many reviews it voided (`voidedReviews`) |
 | `request.pull_request_closed` | Quai | Quai closed a request's pull request (`pullRequest`), and why (`reason`: `expired`), recorded before it closes it |
 | `request.window_waiting`, `request.window_opened` | Quai | an approved request held for its change windows (P4-16): the state it was in (`from`: `approved`, or `merging` when a window closed before it merged), the windows that hold it, when they open (`opens`) or why they cannot be decided (`error`); released, the windows that apply and when they close (`closes`) |
-| `request.stale`, `request.merged`, `request.applied`, `request.failed` | whoever's action made Quai see it: Quai, a repository's runner, or a person | the request's state changes, with what Quai observed (commit, pull request, run, error); never what a person wrote |
+| `request.break_glass` | the person | a request merged by break-glass (P4-17): the state it was broken from (`from`), the change set and head it was broken for, the incident, the reason as a pseudonym, whether the authentication satisfied the step-up (`stepUp`) and its `acr` and `acrs`, and whether it lifted a change window's hold (`windowHeld`) ([break-glass](05-delivery-and-approvals.md#break-glass)) |
+| `request.break_glass_signed_off` | the reviewer | a sign-off of a break-glass's post-incident review: the capacity (`platform-admin`, `auditor`, `owner`), the comment as a pseudonym, the step-up, and how many sign-offs it has of how many needed |
+| `request.break_glass_review_closed` | the reviewer of the second sign-off | the review closed: who signed it off (pseudonyms), the incident, when glass was broken |
+| `request.break_glass_reminded` | Quai | an open review reminded (every 24 hours): the sign-offs it has and needs |
+| `request.stale`, `request.merged`, `request.applied`, `request.failed` | whoever's action made Quai see it: Quai, a repository's runner, or a person | the request's state changes, with what Quai observed (commit, pull request, run, error); never what a person wrote; a merge of a broken request carries `breakGlass` |
 | `request.merged_without_approval` | Quai | a bypass: the pull request merged without Quai's approval |
 | `request.merged_outside_window` | Quai | a bypass: the pull request merged while Quai held the approved request for its change windows (`from`, `commit`, `pullRequest`) |
 | `repository.created`, `repository.updated`, `repository.deleted` | the person, or Quai for the configuration's connections | a repository connection changed (its document's SHA-256 and generation) |
@@ -221,8 +226,8 @@ The worker sends the audit log to the destinations `audit.export` names (P4-03),
   nor in an error.
 - **Syslog** (RFC 5424 over TLS, RFC 5425, or TCP; framed by octet counting, RFC 6587), a
   connection per batch: `PRI` the facility (13, log audit, by default) and the severity, warning
-  (4) for `audit.broken`, `request.merged_without_approval`, `request.merged_outside_window` and
-  `repository.enforcement_lost`, notice (5) otherwise; `TIMESTAMP` the event's `at`; `HOSTNAME`
+  (4) for `audit.broken`, `request.merged_without_approval`, `request.merged_outside_window`,
+  `repository.enforcement_lost` and `request.break_glass`, notice (5) otherwise; `TIMESTAMP` the event's `at`; `HOSTNAME`
   the worker's; `APP-NAME` `quai`;
   `MSGID` the action; no structured data; `MSG` the record in JSON, its non-ASCII characters
   escaped, so with no BOM. A record can exceed RFC 5425's 2048-octet minimum: the receiver must
@@ -249,6 +254,15 @@ approvals with authentication times, merge commit, apply result, and the audit
 events with their hashes. It is what an auditor asks for in a change-management
 sample, and what Quai attaches to ITSM change requests.
 
+For a request merged by break-glass (P4-17), the bundle (P4-18) carries the break-glass record in
+place of the approvals it lacked: who broke glass, their authentication time, `acr` and step-up,
+the incident, the reason, the change set and head it was broken for, the state it was broken from,
+whether it lifted a change window, and when; the post-incident review with each sign-off (who, in
+which capacity, the comment, when, with what authentication), whether and when it closed; the
+`Break-glass-by` and `Break-glass-incident` trailers of the merge commit; and the
+`request.break_glass*` audit events with their hashes. A bundle of a broken request whose review
+is still open says so.
+
 ## Commit signing and attribution
 
 - GitHub: commits created through the GitHub App API are signed by GitHub and shown as verified.
@@ -270,7 +284,8 @@ Candidate mappings, to be confirmed with each customer's compliance team.
 | Change management (ISO/IEC 27001:2022 A.8.32, SOC 2 CC8.1, FINMA operational resilience requirements, DORA ICT change management) | Every change is requested, reasoned, reviewed against the actual diff and plan, approved by the right people, and traceable to a commit and an apply |
 | Segregation of duties (ISO 27001 A.5.3) | No self-approval, distinct approvers, optional definition-author separation and two approvers for destroying changes (`spec.enforcement.separationOfDuties`), break-glass with mandatory review |
 | Access control and reviews (A.5.15–A.5.18) | IdP-based authentication, role scopes, role changes in the audit log, SCIM deprovisioning, the access report (every person, their groups, teams, roles by scope and the group that gives each, their live API tokens; a page and a CSV) for periodic reviews ([directory](08-identity-access-tenancy.md#directory)) |
-| Logging and monitoring (A.8.15, A.8.16) | Hash-chained audit log, SIEM export, alerts on bypass and break-glass |
+| Logging and monitoring (A.8.15, A.8.16) | Hash-chained audit log, SIEM export (a break-glass, a bypass and lost enforcement as warnings), alerts on bypass and break-glass |
+| Emergency changes (ISO 27001 A.8.32, SOC 2 CC8.1, ITIL emergency change) | Break-glass: a dedicated role, a reason and an incident reference, step-up, the content bound, the platform's own protection kept, an immediate alert, and a post-incident review that two reviewers other than the breaker and requester sign off, listed and reminded until it closes |
 | Outsourcing and data location (FINMA outsourcing rules, Swiss nFADP, GDPR) | Self-hosted, no outbound telemetry, data residency under customer control |
 
 ## Security engineering

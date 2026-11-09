@@ -845,13 +845,78 @@ Troubleshooting:
 - **Quai refuses to start, or a repository document is refused**: an entry does not parse (the
   error names it: `changeWindows[0].allow[1]`), or its zone is not an IANA name.
 
+### Break-glass
+
+In an incident, a member of the `break-glass` role merges a request without its approvals and
+past its change windows ([design 05](../design/05-delivery-and-approvals.md#break-glass)). Give the
+role to the on-call group, and make sure alerts reach security:
+
+```yaml
+auth:
+  roles:
+    - { group: sg-quai-oncall, role: break-glass, scope: global }   # or repository:<name>
+    - { group: sg-quai-audit, role: auditor, scope: global }
+  stepUp: { maxAge: 5m }   # with auth.stepUp set, breaking glass and signing off need a recent sign-in
+notifications:
+  alerts: [security@example.com]   # "security": every break-glass alert goes there
+```
+
+- **Who may.** Only the role: a platform admin without it may not. Never for one's own request,
+  one whose requester delegated their approvals to the person, or one whose definitions the person
+  authored within the repository's separation of duties. From the request page, signed in: API
+  tokens cannot break glass. A deactivated person cannot.
+- **What it takes.** A request pending approval, or approved and waiting for its change windows,
+  whose pull request is open. The dialog asks for the incident (a ticket's identifier, at most 64
+  characters: `INC0012345`) and why it cannot wait (one line, at most 500 characters), and binds
+  the content on the page: if the request changed meanwhile, Quai refuses and the page reloads.
+- **What it lifts.** Quai's approvals and Quai's change windows, nothing else: the platform's
+  branch protection, its other required checks and approvals, and `spec.delivery.waitForChecks` still
+  apply. `quai/approval` turns success with "Break-glass by <name>"; the merge commit carries
+  `Break-glass-by` and `Break-glass-incident` trailers. With `merge: manual`, someone merges the
+  pull request as usual. The reason stays in Quai (the request page and the audit log): it is
+  never sent to the platform or in an alert.
+- **Alerts** go at once to the repository's admins, `notifications.alerts` and the request's
+  owners, by email and to the Teams and Slack channels that route alerts for the repository or the
+  owning team; preferences do not mute them. They name the request, who broke glass and the
+  incident, and link to the request.
+- **Audit**: `request.break_glass` (a warning in the SIEM export),
+  `request.break_glass_signed_off`, `request.break_glass_review_closed`,
+  `request.break_glass_reminded`, and `auth.step_up_refused` for an attempt without a recent
+  sign-in. The merge is `request.merged` with `breakGlass`, never a bypass.
+
+#### Reviewing a break-glass
+
+Every break-glass opens a post-incident review, which stays open until two people sign it off.
+The worker reminds the reviewers every 24 hours, from the break-glass, while it is open (by
+email and the alert channels, as `alert_break_glass_review`, not to those who signed it off).
+
+1. Open **Break-glass** in the navigation (platform admins and auditors, global): the open
+   reviews first, with their incident and how many sign-offs they have. **All** lists the closed
+   ones too.
+2. Open the request. Its page shows who broke glass, when, for which incident and why, what was
+   merged (the diff, the plan, the merge commit) and the timeline.
+3. Check the incident: that it was real, that the change was needed then and did what the reason
+   says, and whether something must follow (a fix, a revert as a new request, a permanent change
+   reviewed normally).
+4. Sign it off with what the review found. Platform admins, auditors and the request's owners
+   may, never the person who broke glass, the requester, or a delegate of either; each once; with
+   a recent sign-in when `auth.stepUp` is set. A sign-off cannot be withdrawn: write what you
+   found, including what remains to do.
+5. The second sign-off by another person closes the review (`request.break_glass_review_closed`).
+   Nothing else closes it.
+
+If no one may sign off a review (the request has no owners and the installation has a single
+admin or auditor), grant the auditor role to a second person: the review stays open, and
+reminded, until two people do.
+
 ### Notifications
 
 With `notifications.email`, Quai tells people what happens by email ([what is sent to
 whom](../design/05-delivery-and-approvals.md#notifications)): requesters, of their requests;
 approvers, of a request waiting for them; and of alerts (a pull request merged without Quai's
-approval, approvals no longer enforced), the repository's admins (`metadata.owners`) and the
-addresses of `notifications.alerts`. The server records the events, the worker sends the mail.
+approval, approvals no longer enforced, a break-glass and its review's reminders), the
+repository's admins (`metadata.owners`) and the addresses of `notifications.alerts`, and for a
+break-glass the request's owners too ([break-glass](#break-glass)). The server records the events, the worker sends the mail.
 
 ```yaml
 server:
@@ -1334,4 +1399,5 @@ change, job queue backlog, audit chain verification failure and audit export lag
 first ones, in the audit log's section: [when the chain does not
 verify](#when-the-chain-does-not-verify) and [when the audit export
 lags](#when-the-audit-export-lags)), restore from backup, rotating the
-commit-signing key and [the checkpoint key](#the-checkpoint-key), break-glass review.
+commit-signing key and [the checkpoint key](#the-checkpoint-key), [break-glass
+review](#reviewing-a-break-glass).

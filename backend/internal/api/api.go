@@ -161,6 +161,7 @@ func build(opts Options, all bool) (*chi.Mux, huma.API) {
 	if all || opts.Requests != nil {
 		registerRequests(a, opts.Requests, opts.Store, opts.Logger)
 		registerDelegations(a, opts.Requests)
+		registerBreakGlass(a, opts.Requests, opts.Store)
 		registerHistory(a, opts.Repositories, opts.Store)
 		registerRuns(a, opts.Repositories, opts.Store, opts.Requests, opts.Logger)
 	}

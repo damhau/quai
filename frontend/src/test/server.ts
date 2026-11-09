@@ -26,17 +26,22 @@ function stepUpView() {
     : { satisfied: true, until: "2026-10-27T10:05:00Z", maxAge: 300, admin: state.adminStepUp }
 }
 
-const users: Record<string, string[]> = { bob: ["developers"], alice: ["platform-admins"], dana: ["auditors"] }
+const users: Record<string, string[]> = { bob: ["developers"], alice: ["platform-admins"], dana: ["auditors"], dave: ["oncall"] }
 // Verified emails from the identity provider: dana has none.
-const emails: Record<string, string> = { bob: "bob@acme.ch", alice: "alice@acme.ch" }
+const emails: Record<string, string> = { bob: "bob@acme.ch", alice: "alice@acme.ch", dave: "dave@acme.ch" }
 const roles: Record<string, { role: string; scope: string }[]> = {
   alice: [{ role: "platform-admin", scope: "global" }],
   dana: [{ role: "auditor", scope: "global" }],
+  dave: [
+    { role: "viewer", scope: "global" },
+    { role: "break-glass", scope: "global" },
+  ],
 }
 
 export function resetRequests() {
   requests.current = pendingVM()
   requests.links = []
+  requests.breaks = []
   published.blueprints = []
   resetRepositories()
   resetAudit()

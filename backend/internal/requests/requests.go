@@ -1391,6 +1391,14 @@ func (s *Service) approvals(ctx context.Context, r db.Request) ([]gitx.Trailer, 
 			out = append(out, gitx.Trailer{Key: "Approved-by", Value: onBehalfLabel(v)})
 		}
 	}
+	if broken(r) {
+		// Who broke glass and for which incident; never the reason.
+		bg, err := s.store.GetBreakGlass(ctx, r.ID)
+		if err != nil {
+			return nil, fmt.Errorf("request %s's break-glass: %w", r.ID, err)
+		}
+		out = append(out, gitx.Trailer{Key: "Break-glass-by", Value: printable(bg.Breaker)}, gitx.Trailer{Key: "Break-glass-incident", Value: bg.Incident})
+	}
 	return out, nil
 }
 

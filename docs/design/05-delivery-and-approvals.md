@@ -541,8 +541,9 @@ questions 26 and 89 to 93](../plan/open-questions.md#still-open)):
   pass in that minute) can still land just after the window closes. Quai does not disarm
   auto-merge nor take the pull request out of the queue at close. Change windows govern requests:
   what Quai commits itself (a blueprint published, an audit checkpoint) is not one.
-- **Break-glass** ([below](#break-glass), P4-17) will merge whatever the windows say: `exempt` in
-  `internal/requests/windows.go` is the one place it lifts them.
+- **Break-glass** ([below](#break-glass)) merges whatever the windows say: `exempt` in
+  `internal/requests/windows.go` is the one place it lifts them, for a request broken by
+  break-glass.
 
 ### Break-glass
 
@@ -550,9 +551,80 @@ For incidents, a member of the `break-glass` role can merge a request without
 the normal approvals:
 
 - they must give a reason and an incident reference;
-- `quai/approval` is set to success with "break-glass by <name>";
+- `quai/approval` is set to success with "Break-glass by <name>";
 - security and the owning team are alerted immediately;
 - a post-incident review is created and stays open until two reviewers sign it off.
+
+Built in P4-17 (`internal/requests/breakglass.go`; [open questions 27 and 94 to
+99](../plan/open-questions.md#still-open)):
+
+- **Who.** A member of the `break-glass` role ([roles](08-identity-access-tenancy.md#roles)): a
+  platform admin without it may not. Never the requester, nor a person who holds a delegation of
+  the requester's approvals (active, or starting later, not revoked), nor a definition author the
+  request's separation of duties excludes ([separation of duties](#separation-of-duties)). In a
+  browser session only: an API token is refused, whatever its scopes, since breaking glass is a
+  person's act; CSRF as for every session write; a step-up when `auth.stepUp` is configured,
+  through the same check as reviews ([step-up](08-identity-access-tenancy.md#step-up)); a
+  deactivated person is refused (read again in the transaction). The request page offers the
+  button only to those who may, and says why to a member of the role who may not.
+- **Which requests.** Pending approval, or approved and held by its change windows. Not an
+  approved request its windows do not hold (it merges without break-glass), nor one merging,
+  stale, rejected, cancelled, expired, failed or applied: 409. A request is broken once; if its
+  content changes later (it goes stale and is planned again), the new content needs its approvals.
+- **What is merged.** Exactly what the breaker saw: `POST /api/v1/requests/{id}/break-glass`
+  carries the change set's hash and, with a pull request, its head, as the page showed them, and
+  is refused (409) when the request changed since. A request whose pull request is not opened yet
+  cannot be broken (409: wait for it). Pending approval, the request is checked as a review is
+  first: stale content, changed definitions or tightened separation turn it stale (409).
+- **Recorded first.** Under the request's row lock, in one transaction, before any call to the
+  platform: the request turns *Approved* (from pending approval) or is released from its hold
+  (`window_held_at` cleared), `break_glass_at` and `break_glass_by` are set on it, the
+  `break_glass` row (who, their email, their sign-in time and `acr`, whether they stepped up, the
+  reason, the incident, the change set's hash, the head, the state it was broken from, when) and
+  its review are written, the `break_glass` event and audit event (`request.break_glass`, the
+  reason personal data) and the `alert_break_glass` event are recorded, and the delivery job is
+  queued. A crash after the platform merged still leaves the record; a review, a cancellation or
+  the expiry at the same moment is taken before or after it under the row lock, never both.
+- **One delivery.** Break-glass merges through the request's delivery, as an approval does
+  (`gate` with `exempt` true, the merge lock, the head pinned): it lifts **Quai's approvals and
+  Quai's change windows, nothing else**. The platform's branch protection, its other required
+  checks and its own approvals still apply, as does `spec.delivery.waitForChecks`. `quai/approval`
+  turns success with "Break-glass by <name>" (within the platform's limit; never the reason, which
+  anyone who reads the pull request would see), and the merge (or the direct commit) carries
+  `Break-glass-by` and `Break-glass-incident` trailers after the approvals'. With `merge: manual`,
+  Quai's comment on the pull request says it was let through by break-glass and a person merges.
+  The merge is `merged` with `breakGlass` (event and audit), never a bypass. A new plan of the same
+  content does not take a broken request back to pending approval; a failed one retried stays
+  broken.
+- **Inputs.** The reason is required, one line, at most 500 characters; the incident reference is
+  required, at most 64 characters, a ticket's identifier (letters, digits, then `.`, `_`, `:`,
+  `/`, `#`, `-`: `INC0012345`, `SEC-42`, `PagerDuty#P1A2B3C`). Both refuse control characters, the
+  line and paragraph separators (U+2028, U+2029) and bidirectional marks and overrides (422, by
+  field). The reason stays in Quai and the audit log: it is not sent to the platform nor in the
+  alerts, and the request page shows it as text.
+- **Alerts at once.** `alert_break_glass` goes to the alert audience (the repository's admins and
+  `notifications.alerts`) and the request's owners (its resources' owner entries, matched as an
+  `owners` rule is, deactivated people skipped), on every channel they have: email, and the Teams
+  and Slack channels whose routes take alerts for the repository or the owning team. It carries
+  identifiers only (the request, its state when broken, who broke glass, the incident, the pull
+  request), like every alert, and a person's preferences cannot mute it. Delivery is retried as
+  every notification is ([notifications](#notifications)) and never holds back or undoes the
+  merge.
+- **The post-incident review** opens with the break-glass and closes when **two different
+  people** have signed it off ([open question 27](../plan/open-questions.md#still-open)): each a
+  platform admin, an auditor or an owner of the request (the capacity is recorded), never the
+  breaker or the requester, nor a delegate of either; once each; in a browser session, with a
+  step-up when `auth.stepUp` is configured; with a comment saying what the review found (required,
+  at most 2000 characters, line breaks allowed). `POST /api/v1/requests/{id}/break-glass/sign-off`
+  records `break_glass_signed_off` (event and audit); the second records
+  `break_glass_review_closed` too. A sign-off is never withdrawn and the review closes no other
+  way. The request page shows the break-glass, the reason and the review; `GET
+  /api/v1/break-glass` (`?open=false` for every review) and the *Break-glass* page list them, open
+  first, for platform admins and auditors.
+- **Reminders.** The approvals' sweep ([reminders, escalation, expiry](#reminders-escalation-expiry))
+  reminds an open review 24 hours after the break-glass, then every 24 hours: under the review's
+  row lock, once per period (`break_glass_reminded`, audited), `alert_break_glass_review` to the
+  same audience but the people who signed it off already.
 
 ## ITSM
 
@@ -592,7 +664,8 @@ Built (`internal/notify`):
   requester); `reminded` (the approvers, as approval needed); `escalated` (the
   escalation contacts, as `escalation`: [reminders, escalation,
   expiry](#reminders-escalation-expiry)); `alert_bypass`, `alert_enforcement`,
-  `alert_break_glass` (P4-17 records it), to admins. A cancelled request and
+  `alert_break_glass` and `alert_break_glass_review` to admins and the
+  request's owners ([break-glass](#break-glass)). A cancelled request and
   reviews notify no one.
 - **Recipients**, resolved when the job runs, from the directory (people who
   signed in): the requester, and the people who may give each approval the

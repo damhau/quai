@@ -39,7 +39,8 @@ How it works in the server:
 
 Some actions require a recent, and strong enough, authentication (P4-06): reviewing a request
 whose approval asks for it ([design 05](05-delivery-and-approvals.md#step-up-authentication)),
-break-glass whenever `auth.stepUp` is configured (P4-17), delegating one's approvals whenever
+breaking glass and signing off a break-glass review whenever `auth.stepUp` is configured
+([break-glass](05-delivery-and-approvals.md#break-glass)), delegating one's approvals whenever
 `auth.stepUp` is configured ([delegation](05-delivery-and-approvals.md#delegation)), and, with
 `auth.stepUp.admin`, connecting, changing and disconnecting repositories, installing their webhooks
 and generating their run tokens.
@@ -55,7 +56,8 @@ and generating their run tokens.
 - **On the server**, when the action is made: `auth.StepUp.Require` checks the caller with the
   server's clock, records a refusal as `auth.step_up_refused` (what was attempted, on what, why)
   and returns a `403` problem of type `https://quai.dev/problems/step-up-required`, whose detail
-  says why. Break-glass calls the same check. `GET /api/v1/me` says whether the caller's
+  says why. Break-glass and its sign-offs call the same check (`request.break_glass`,
+  `request.break_glass_sign_off` as what was attempted). `GET /api/v1/me` says whether the caller's
   authentication satisfies a step-up now, why not, until when, and whether repository changes
   need one, for the UI to ask before the action rather than after.
 - **The round trip.** The UI's **Sign in again** goes to `/auth/login?stepUp=1&next=<the page>`:
@@ -274,6 +276,16 @@ the requests Microsoft Entra ID's provisioning service sends, as Microsoft docum
 
 Roles are granted to IdP groups at a scope: global, team, repository or catalog
 item.
+
+**Break-glass** (P4-17) is its own role: being a platform admin does not give it, and it gives
+nothing else (a member reads requests as their other roles allow). It applies at its scope (a
+member with it for one repository breaks glass there only), in a browser session only: API tokens
+carry no scope for it. It never lets a person break glass for their own request, one whose
+requester delegated their approvals to them, or one whose definitions they authored within the
+separation of duties' period ([open question 94](../plan/open-questions.md#still-open)). Its
+post-incident review is signed off by platform admins, auditors and the request's owners (as an
+`owners` rule matches them), and listed for global platform admins and auditors
+([open question 27](../plan/open-questions.md#still-open)).
 
 ### Entitlements
 

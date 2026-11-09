@@ -452,6 +452,26 @@ func (s *Service) alertMessage(e db.Event) Message {
 				}
 			}
 		}
+	case "alert_break_glass":
+		// Who broke glass and for which incident, never why: the reason is the request's text.
+		m.Subject = "[Quai] Alert: break-glass on request #" + str("number") + " in " + repo
+		m.Headline = "Request #" + str("number") + " of " + repo + " is merged by break-glass, without its approvals: its post-incident review stays open until two reviewers sign it off."
+		detail("Request", "number")
+		detail("State then", "state")
+		detail("Broken by", "by")
+		detail("Incident", "incident")
+		detail("Pull request", "pullRequest")
+		if id := str("request"); id != "" {
+			m.Link = s.link("/requests/" + url.PathEscape(id))
+		}
+	case "alert_break_glass_review":
+		m.Subject = "[Quai] Reminder: the break-glass review of request #" + str("number") + " in " + repo + " is open"
+		m.Headline = "The post-incident review of request #" + str("number") + "'s break-glass is still open: " + str("signOffs") + " of " + str("needed") + " sign-offs."
+		detail("Request", "number")
+		detail("Incident", "incident")
+		if id := str("request"); id != "" {
+			m.Link = s.link("/requests/" + url.PathEscape(id))
+		}
 	default:
 		m.Subject = "[Quai] Alert: " + strings.ReplaceAll(strings.TrimPrefix(e.Kind, "alert_"), "_", " ") + " on " + repo
 		// Identifiers only: alerts reach admins and addresses that may not read the request, so

@@ -97,7 +97,9 @@ func (s *Service) PlanReported(ctx context.Context, id uuid.UUID) error {
 				return err
 			}
 			return jobs.InsertTx(ctx, s.jobs, tx, DeliverArgs{RequestID: r.ID}, nil)
-		case r.State == Approved && outcome.State != policy.Approved:
+		case r.State == Approved && outcome.State != policy.Approved && !broken(r):
+			// A request broken by break-glass merges without its approvals, whatever a new plan
+			// of the same content makes apply.
 			next, err := q.TransitionRequest(ctx, db.TransitionRequestParams{ID: r.ID, FromState: Approved, ToState: PendingApproval})
 			if err != nil {
 				return conflict(err, r)

@@ -271,6 +271,112 @@ export type BlueprintView = {
     version?: string;
 };
 
+export type BreakGlassBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * The change set's hash the page showed (changeSet): refused if the request changed since
+     */
+    changeSet: string;
+    /**
+     * With a pull request, its head commit the page showed (delivery.head)
+     */
+    head?: string;
+    /**
+     * The incident's reference, such as INC0012345
+     */
+    incident: string;
+    /**
+     * Why the change cannot wait for its approvals; kept in Quai and the audit log, never sent to the platform
+     */
+    reason: string;
+};
+
+export type BreakGlassItemView = {
+    breakGlass: BreakGlassView;
+    number: number;
+    repository: string;
+    request: string;
+    requester: string;
+    state: string;
+    target: string;
+};
+
+export type BreakGlassSignOffBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * What the review found
+     */
+    comment: string;
+};
+
+export type BreakGlassSignOffView = {
+    at: string;
+    authTime?: string;
+    /**
+     * In which capacity they signed it off
+     */
+    capacity: 'platform-admin' | 'auditor' | 'owner';
+    comment: string;
+    signer: string;
+    stepUp: boolean;
+};
+
+export type BreakGlassView = {
+    at: string;
+    /**
+     * Who broke glass
+     */
+    by: string;
+    /**
+     * You may sign off its review now
+     */
+    canSignOff: boolean;
+    /**
+     * Why you cannot sign off its review, when your role or ownership would let you
+     */
+    cannotSignOff?: string;
+    /**
+     * The change set's hash glass was broken for
+     */
+    changeSet: string;
+    /**
+     * When the review's last sign-off closed it
+     */
+    closedAt?: string;
+    /**
+     * The request's state then: pending_approval, or approved and held by its change windows
+     */
+    from: string;
+    /**
+     * The pull request's head commit glass was broken for
+     */
+    head?: string;
+    /**
+     * The incident's reference
+     */
+    incident: string;
+    /**
+     * How many people sign off the review to close it
+     */
+    needed: number;
+    /**
+     * Its post-incident review waits for sign-offs
+     */
+    open: boolean;
+    reason: string;
+    signOffs: Array<BreakGlassSignOffView> | null;
+    /**
+     * The breaker's sign-in satisfied the step-up
+     */
+    stepUp: boolean;
+};
+
 export type CatalogItem = {
     category?: string;
     description?: string;
@@ -591,6 +697,10 @@ export type Delivery = {
 
 export type DeliveryView = {
     branch: string;
+    /**
+     * The commit of its branch Quai pushed last, the one a merge must be at
+     */
+    head?: string;
     mergeCommit?: string;
     /**
      * Its ID on the platform, once opened
@@ -1171,6 +1281,18 @@ export type RequestView = {
     readonly $schema?: string;
     action?: string;
     blueprint?: string;
+    /**
+     * Its break-glass and the post-incident review, once glass was broken for it
+     */
+    breakGlass?: BreakGlassView;
+    /**
+     * Break-glass and its review's sign-offs need a recent sign-in (auth.stepUp is configured)
+     */
+    breakGlassStepUp: boolean;
+    /**
+     * You may break glass for it now: merge it without its approvals, past its change windows
+     */
+    canBreakGlass: boolean;
     canCancel: boolean;
     canRetry: boolean;
     /**
@@ -1182,9 +1304,17 @@ export type RequestView = {
      */
     canReviewOwn?: boolean;
     /**
+     * Why you cannot break glass for it, although you hold the break-glass role and its state would let you
+     */
+    cannotBreakGlass?: string;
+    /**
      * Why you cannot review this request pending approval although a rule names you: you requested it, or you changed its definitions in the separation of duties' period before it
      */
     cannotReview?: string;
+    /**
+     * The hash of the change set it holds now
+     */
+    changeSet?: string;
     /**
      * What the change windows that apply to it say, while it is pending approval, approved or merging; absent when none applies
      */
@@ -1950,6 +2080,32 @@ export type BlueprintViewWritable = {
     version?: string;
 };
 
+export type BreakGlassBodyWritable = {
+    /**
+     * The change set's hash the page showed (changeSet): refused if the request changed since
+     */
+    changeSet: string;
+    /**
+     * With a pull request, its head commit the page showed (delivery.head)
+     */
+    head?: string;
+    /**
+     * The incident's reference, such as INC0012345
+     */
+    incident: string;
+    /**
+     * Why the change cannot wait for its approvals; kept in Quai and the audit log, never sent to the platform
+     */
+    reason: string;
+};
+
+export type BreakGlassSignOffBodyWritable = {
+    /**
+     * What the review found
+     */
+    comment: string;
+};
+
 export type ChatLinkBodyWritable = {
     link: string;
 };
@@ -2302,6 +2458,18 @@ export type RepositoryViewWritable = {
 export type RequestViewWritable = {
     action?: string;
     blueprint?: string;
+    /**
+     * Its break-glass and the post-incident review, once glass was broken for it
+     */
+    breakGlass?: BreakGlassView;
+    /**
+     * Break-glass and its review's sign-offs need a recent sign-in (auth.stepUp is configured)
+     */
+    breakGlassStepUp: boolean;
+    /**
+     * You may break glass for it now: merge it without its approvals, past its change windows
+     */
+    canBreakGlass: boolean;
     canCancel: boolean;
     canRetry: boolean;
     /**
@@ -2313,9 +2481,17 @@ export type RequestViewWritable = {
      */
     canReviewOwn?: boolean;
     /**
+     * Why you cannot break glass for it, although you hold the break-glass role and its state would let you
+     */
+    cannotBreakGlass?: string;
+    /**
      * Why you cannot review this request pending approval although a rule names you: you requested it, or you changed its definitions in the separation of duties' period before it
      */
     cannotReview?: string;
+    /**
+     * The hash of the change set it holds now
+     */
+    changeSet?: string;
     /**
      * What the change windows that apply to it say, while it is pending approval, approved or merging; absent when none applies
      */
@@ -2799,6 +2975,36 @@ export type ExportAuditLogResponses = {
 };
 
 export type ExportAuditLogResponse = ExportAuditLogResponses[keyof ExportAuditLogResponses];
+
+export type ListBreakGlassData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Only the open reviews
+         */
+        open?: boolean;
+    };
+    url: '/api/v1/break-glass';
+};
+
+export type ListBreakGlassErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ListBreakGlassError = ListBreakGlassErrors[keyof ListBreakGlassErrors];
+
+export type ListBreakGlassResponses = {
+    /**
+     * OK
+     */
+    200: Array<BreakGlassItemView> | null;
+};
+
+export type ListBreakGlassResponse = ListBreakGlassResponses[keyof ListBreakGlassResponses];
 
 export type ListCatalogData = {
     body?: never;
@@ -3979,6 +4185,60 @@ export type GetRequestResponses = {
 };
 
 export type GetRequestResponse = GetRequestResponses[keyof GetRequestResponses];
+
+export type BreakGlassData = {
+    body: BreakGlassBodyWritable;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/requests/{id}/break-glass';
+};
+
+export type BreakGlassErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type BreakGlassError = BreakGlassErrors[keyof BreakGlassErrors];
+
+export type BreakGlassResponses = {
+    /**
+     * OK
+     */
+    200: RequestView;
+};
+
+export type BreakGlassResponse = BreakGlassResponses[keyof BreakGlassResponses];
+
+export type SignOffBreakGlassData = {
+    body: BreakGlassSignOffBodyWritable;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/requests/{id}/break-glass/sign-off';
+};
+
+export type SignOffBreakGlassErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type SignOffBreakGlassError = SignOffBreakGlassErrors[keyof SignOffBreakGlassErrors];
+
+export type SignOffBreakGlassResponses = {
+    /**
+     * OK
+     */
+    200: RequestView;
+};
+
+export type SignOffBreakGlassResponse = SignOffBreakGlassResponses[keyof SignOffBreakGlassResponses];
 
 export type CancelRequestData = {
     body?: never;

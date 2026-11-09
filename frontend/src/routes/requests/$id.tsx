@@ -18,6 +18,7 @@ import { Codeowners } from "@/components/approval/codeowners"
 import { Manager } from "@/components/approval/manager"
 import { Separation } from "@/components/approval/separation"
 import { ChangesView } from "@/components/diff/changes-view"
+import { BreakGlassAction, BreakGlassCard } from "@/components/requests/break-glass"
 import { Plans } from "@/components/requests/plans"
 import { StateBadge } from "@/components/requests/state-badge"
 import { StepUpPrompt } from "@/components/step-up-prompt"
@@ -125,6 +126,7 @@ function RequestPage() {
               <CardTitle>Approval</CardTitle>
             </CardHeader>
             <CardContent className="grid gap-5">
+              {r.breakGlass && <BreakGlassCard request={r} breakGlass={r.breakGlass} />}
               <ApprovalChain rules={r.rules ?? []} />
               {r.codeowners && <Codeowners codeowners={r.codeowners} />}
               {r.manager && <Manager manager={r.manager} submitted />}
@@ -161,6 +163,7 @@ function RequestPage() {
               ) : (
                 r.cannotReview && <CannotReview reason={r.cannotReview} />
               )}
+              <BreakGlassAction request={r} />
               <Actions request={r} />
             </CardContent>
           </Card>

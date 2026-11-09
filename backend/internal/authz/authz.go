@@ -102,6 +102,10 @@ const (
 	ManageOwnDelegations Action = "delegations.manage"
 	// ManageDelegations lists and revokes anyone's delegations, never makes one for someone else.
 	ManageDelegations Action = "delegations.admin"
+	// ReadBreakGlass lists the break-glass records and their post-incident reviews.
+	ReadBreakGlass Action = "break-glass.read"
+	// SignOffBreakGlass signs off the post-incident review of a request merged by break-glass.
+	SignOffBreakGlass Action = "break-glass.sign-off"
 )
 
 // Object is what the action is on. Fields that do not apply are empty.
@@ -246,16 +250,53 @@ func Authorize(_ context.Context, p Principal, a Action, o Object) (Decision, er
 	case ManageDelegations:
 		return deny("revoking someone else's delegation needs the platform admin role"), nil
 	case UseBreakGlass:
+		// In a browser session only: no scope allows it to a token, since breaking glass is a
+		// person's act. The service refuses more (the requester's delegate, a definition author).
 		if !p.has(BreakGlass, o) {
 			return deny("break-glass needs the break-glass role"), nil
 		}
 		if o.Requester == p.Name {
 			return deny("break-glass cannot be used on your own request"), nil
 		}
+	case ReadBreakGlass:
+		if !p.has(Auditor, o) {
+			return deny("the break-glass reviews are for platform admins and auditors"), nil
+		}
+	case SignOffBreakGlass:
+		// Who signs off a post-incident review (open question 27); never the breaker nor the
+		// requester, which the service checks with the record. No scope allows it to a token.
+		if BreakGlassReviewer(p, o) == "" {
+			return deny("signing off a break-glass review needs to be a platform admin, an auditor or an owner of the request"), nil
+		}
 	default:
 		return Decision{}, fmt.Errorf("authz: unknown action %q", a)
 	}
 	return allow(), nil
+}
+
+// Capacities in which someone signs off a break-glass review (BreakGlassReviewer).
+const (
+	CapacityPlatformAdmin = "platform-admin"
+	CapacityAuditor       = "auditor"
+	CapacityOwner         = "owner"
+)
+
+// BreakGlassReviewer returns in which capacity p may sign off the post-incident review of a
+// break-glass on o, a request whose Owners are its resources' owners (open question 27): as a
+// platform admin, an auditor or an owner, the first that holds; "" when none does. Whether p
+// broke glass or requested the change is the service's to check.
+func BreakGlassReviewer(p Principal, o Object) string {
+	switch {
+	case p.Name == "":
+		return ""
+	case p.has(PlatformAdmin, o):
+		return CapacityPlatformAdmin
+	case p.has(Auditor, o):
+		return CapacityAuditor
+	case p.owns(o):
+		return CapacityOwner
+	}
+	return ""
 }
 
 // has reports whether p holds role at a scope that covers o.

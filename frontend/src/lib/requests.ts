@@ -53,6 +53,11 @@ function str(data: unknown, key: string): string | undefined {
   return typeof v === "string" ? v : undefined
 }
 
+function count(data: unknown, key: string): string {
+  const v = data !== null && typeof data === "object" ? (data as Record<string, unknown>)[key] : undefined
+  return typeof v === "number" ? String(v) : "?"
+}
+
 /** eventText says what an event of a request's timeline means. */
 /** planText says how a plan of a request's pull request went, from a plan_reported event. */
 function planText(d: unknown): string {
@@ -125,7 +130,15 @@ export function eventText(e: EventView): string {
     case "modified_outside_quai":
       return str(d, "reason") ?? "the pull request was changed outside Quai"
     case "merged":
-      return `the pull request was merged as ${shortSha(str(d, "commit") ?? "")}`
+      return `the pull request was merged as ${shortSha(str(d, "commit") ?? "")}${str(d, "breakGlass") ? `, by ${str(d, "breakGlass")}'s break-glass` : ""}`
+    case "break_glass":
+      return `broke glass for incident ${str(d, "incident") ?? ""}: it merges ${str(d, "from") === "approved" ? "past its change windows" : "without its approvals"}`
+    case "break_glass_signed_off":
+      return `signed off the break-glass review (${count(d, "signOffs")} of ${count(d, "needed")})`
+    case "break_glass_review_closed":
+      return "the break-glass review is closed: two reviewers signed it off"
+    case "break_glass_reminded":
+      return "reminded the reviewers that the break-glass review is open"
     case "merged_without_approval":
       return `the pull request was merged without Quai's approval, as ${shortSha(str(d, "commit") ?? "")}: the enforcement was bypassed`
     case "merged_outside_window":

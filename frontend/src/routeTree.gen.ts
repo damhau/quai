@@ -16,6 +16,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as AdminAccessRouteImport } from './routes/admin/access'
 import { Route as AdminAuditRouteImport } from './routes/admin/audit'
+import { Route as AdminBreakGlassRouteImport } from './routes/admin/break-glass'
 import { Route as DesignerIndexRouteImport } from './routes/designer/index'
 import { Route as InventoryIndexRouteImport } from './routes/inventory/index'
 import { Route as RequestsIndexRouteImport } from './routes/requests/index'
@@ -67,6 +68,11 @@ const AdminAccessRoute = AdminAccessRouteImport.update({
 const AdminAuditRoute = AdminAuditRouteImport.update({
   id: '/admin/audit',
   path: '/admin/audit',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminBreakGlassRoute = AdminBreakGlassRouteImport.update({
+  id: '/admin/break-glass',
+  path: '/admin/break-glass',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DesignerIndexRoute = DesignerIndexRouteImport.update({
@@ -171,6 +177,7 @@ export interface FileRoutesByFullPath {
   '/profile': typeof ProfileRoute
   '/admin/access': typeof AdminAccessRoute
   '/admin/audit': typeof AdminAuditRoute
+  '/admin/break-glass': typeof AdminBreakGlassRoute
   '/requests/$id': typeof RequestsIdRoute
   '/designer/': typeof DesignerIndexRoute
   '/inventory/': typeof InventoryIndexRoute
@@ -197,6 +204,7 @@ export interface FileRoutesByTo {
   '/profile': typeof ProfileRoute
   '/admin/access': typeof AdminAccessRoute
   '/admin/audit': typeof AdminAuditRoute
+  '/admin/break-glass': typeof AdminBreakGlassRoute
   '/requests/$id': typeof RequestsIdRoute
   '/designer': typeof DesignerIndexRoute
   '/inventory': typeof InventoryIndexRoute
@@ -224,6 +232,7 @@ export interface FileRoutesById {
   '/profile': typeof ProfileRoute
   '/admin/access': typeof AdminAccessRoute
   '/admin/audit': typeof AdminAuditRoute
+  '/admin/break-glass': typeof AdminBreakGlassRoute
   '/requests/$id': typeof RequestsIdRoute
   '/designer/': typeof DesignerIndexRoute
   '/inventory/': typeof InventoryIndexRoute
@@ -252,6 +261,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/admin/access'
     | '/admin/audit'
+    | '/admin/break-glass'
     | '/requests/$id'
     | '/designer/'
     | '/inventory/'
@@ -278,6 +288,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/admin/access'
     | '/admin/audit'
+    | '/admin/break-glass'
     | '/requests/$id'
     | '/designer'
     | '/inventory'
@@ -304,6 +315,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/admin/access'
     | '/admin/audit'
+    | '/admin/break-glass'
     | '/requests/$id'
     | '/designer/'
     | '/inventory/'
@@ -331,6 +343,7 @@ export interface RootRouteChildren {
   ProfileRoute: typeof ProfileRoute
   AdminAccessRoute: typeof AdminAccessRoute
   AdminAuditRoute: typeof AdminAuditRoute
+  AdminBreakGlassRoute: typeof AdminBreakGlassRoute
   RequestsIdRoute: typeof RequestsIdRoute
   DesignerIndexRoute: typeof DesignerIndexRoute
   InventoryIndexRoute: typeof InventoryIndexRoute
@@ -399,6 +412,13 @@ declare module '@tanstack/react-router' {
       path: '/admin/audit'
       fullPath: '/admin/audit'
       preLoaderRoute: typeof AdminAuditRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/break-glass': {
+      id: '/admin/break-glass'
+      path: '/admin/break-glass'
+      fullPath: '/admin/break-glass'
+      preLoaderRoute: typeof AdminBreakGlassRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/designer/': {
@@ -531,6 +551,7 @@ const rootRouteChildren: RootRouteChildren = {
   ProfileRoute: ProfileRoute,
   AdminAccessRoute: AdminAccessRoute,
   AdminAuditRoute: AdminAuditRoute,
+  AdminBreakGlassRoute: AdminBreakGlassRoute,
   RequestsIdRoute: RequestsIdRoute,
   DesignerIndexRoute: DesignerIndexRoute,
   InventoryIndexRoute: InventoryIndexRoute,

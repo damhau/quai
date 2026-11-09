@@ -51,3 +51,17 @@ func TestPrintable(t *testing.T) {
 		}
 	}
 }
+
+// TestSeverity: what may need someone's attention, a break-glass among them, is a warning; its
+// review's sign-offs and every other event a notice.
+func TestSeverity(t *testing.T) {
+	for action, want := range map[string]int{
+		"audit.broken": severityWarning, "request.merged_without_approval": severityWarning, "request.merged_outside_window": severityWarning,
+		"repository.enforcement_lost": severityWarning, "request.break_glass": severityWarning,
+		"request.break_glass_signed_off": severityNotice, "request.break_glass_review_closed": severityNotice, "request.merged": severityNotice,
+	} {
+		if got := severity(action); got != want {
+			t.Errorf("severity(%s) = %d, want %d", action, got, want)
+		}
+	}
+}

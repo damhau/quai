@@ -286,6 +286,9 @@ type audience struct {
 	approvers  string
 	admins     bool
 	escalation bool // the people of approvals.escalation.to
+	// owners: the people and channels of the request's owning team too, which the event's data
+	// names (owners), but those who signed the review off already (signed): break-glass alerts.
+	owners bool
 }
 
 func (a audience) none() bool { return a == audience{} }
@@ -325,8 +328,11 @@ func audienceOf(e db.Event) audience {
 		return audience{requester: ExpiringSoon}
 	case "expired":
 		return audience{requester: Expired}
-	case "alert_bypass", "alert_enforcement", "alert_break_glass":
+	case "alert_bypass", "alert_enforcement":
 		return audience{admins: true}
+	case "alert_break_glass", "alert_break_glass_review":
+		// Security (notifications.alerts) and the owning team, at once (open question 98).
+		return audience{admins: true, owners: true}
 	}
 	return audience{}
 }
@@ -527,8 +533,26 @@ func (s *Service) recipients(ctx context.Context, e db.Event) ([]recipient, erro
 		if err != nil {
 			return nil, err
 		}
+		var owners []string
+		signed := map[string]bool{}
+		if a.owners {
+			var d struct{ Owners, Signed []string }
+			_ = json.Unmarshal(e.Data, &d)
+			owners = d.Owners
+			for _, n := range d.Signed {
+				signed[n] = true
+			}
+			team, err := s.owners(ctx, owners)
+			if err != nil {
+				return nil, err
+			}
+			users = append(users, team...)
+		}
 		addresses := map[string]bool{}
 		for _, u := range users {
+			if signed[u.Name] {
+				continue // a reminder of a review they signed off
+			}
 			add(recipient{id: "user:" + u.Name, user: &u, kind: Alert})
 			if u.Email != "" {
 				addresses[strings.ToLower(u.Email)] = true
@@ -539,7 +563,7 @@ func (s *Service) recipients(ctx context.Context, e db.Event) ([]recipient, erro
 				add(recipient{id: "email:" + addr, kind: Alert, only: "email"})
 			}
 		}
-		for _, p := range s.posts([]string{Alert}, strings.TrimPrefix(e.Target, "repository:"), nil) {
+		for _, p := range s.posts([]string{Alert}, strings.TrimPrefix(e.Target, "repository:"), owners) {
 			add(p)
 		}
 	}
@@ -610,6 +634,27 @@ func (s *Service) admins(ctx context.Context, repository string) ([]db.User, err
 		return nil, nil // disconnected since: no owners to tell
 	}
 	owners := repo.Document.Metadata.Owners
+	if len(owners) == 0 {
+		return nil, nil
+	}
+	users, err := s.opts.Store.ListUsers(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var out []db.User
+	ownersRule := policy.Rule{Approvers: []string{"owners"}}
+	for _, u := range users {
+		p := policy.Person{Name: u.Name, Email: u.Email, Groups: u.Groups, Teams: s.opts.Directory.Teams(u.Groups)}
+		if !u.DeactivatedAt.Valid && policy.CanReview(ownersRule, p, policy.Context{Owners: owners}) {
+			out = append(out, u)
+		}
+	}
+	return out, nil
+}
+
+// owners returns the people of the directory a request's owner entries name (user:, group:,
+// team:, email:), not deactivated: its owning team.
+func (s *Service) owners(ctx context.Context, owners []string) ([]db.User, error) {
 	if len(owners) == 0 {
 		return nil, nil
 	}

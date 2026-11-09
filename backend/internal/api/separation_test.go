@@ -47,7 +47,11 @@ func (u *user) submit(body map[string]any) RequestView {
 // include a change, its authors review again.
 func TestSeparationDefinitionAuthors(t *testing.T) {
 	t.Parallel()
-	h, remote := giteaHarnessOver(t, "manual", "\n  enforcement: { separationOfDuties: { definitionAuthors: 7d } }", nil, nil, giteaconn.New, sodUsers)
+	// The platform admins may break glass too: not for a request whose definitions they changed.
+	h, remote := giteaHarnessOver(t, "manual", "\n  enforcement: { separationOfDuties: { definitionAuthors: 7d } }", nil, nil, giteaconn.New, sodUsers,
+		func(c *config.Config) {
+			c.Auth.Roles = append(c.Auth.Roles, config.RoleMapping{Group: "platform-admins", Role: "break-glass"})
+		})
 	g := giteatest.Get(t)
 	alice, pat, bob := h.as("alice"), h.as("pat"), h.as("bob")
 
@@ -112,6 +116,16 @@ func TestSeparationDefinitionAuthors(t *testing.T) {
 	}
 	if status := pia.tryApprove(r.ID); status != http.StatusForbidden {
 		t.Errorf("pia's approval = %d", status)
+	}
+	// Nor do they break glass for it (open question 94).
+	for _, u := range []*user{pat, pia} {
+		v := u.read(r.ID)
+		if v.CanBreakGlass || !strings.Contains(v.CannotBreakGlass, "definitions") {
+			t.Errorf("a definition author: canBreakGlass %v, %q", v.CanBreakGlass, v.CannotBreakGlass)
+		}
+		if status, raw, _ := u.breakGlass(v, "outage", "INC-1"); status != http.StatusForbidden || !strings.Contains(raw, "definitions") {
+			t.Errorf("a definition author's break-glass = %d %s", status, raw)
+		}
 	}
 	if v := bob.read(r.ID); v.CannotReview != "" {
 		t.Errorf("bob, whom no rule names: %q", v.CannotReview)
