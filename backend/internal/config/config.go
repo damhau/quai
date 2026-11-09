@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net"
 	"net/mail"
 	"net/url"
@@ -20,6 +21,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	_ "time/tzdata" // time zones even where the system has no database of them (TimeZone)
 
 	"go.yaml.in/yaml/v3"
 )
@@ -59,6 +61,75 @@ type Notifications struct {
 	// approval, enforcement lost), besides the repository's owners: alerts only, never a request's
 	// content.
 	Alerts []string `yaml:"alerts"`
+	// Defaults are the preferences of people who have not chosen theirs on their profile page.
+	Defaults NotificationDefaults `yaml:"defaults"`
+}
+
+// NotificationDefaults are what people get until they choose otherwise: per channel and kind of
+// notification, whether it goes at once, in their daily digest or not at all, and when the digest
+// goes.
+type NotificationDefaults struct {
+	// Channels map a channel (email) to kinds (approval_needed, submitted, approved, rejected,
+	// stale, merged, applied, failed, expiring_soon) and their mode (immediate, digest, off). A
+	// kind not listed is immediate. Alerts are not a kind one chooses: they always go at once.
+	Channels map[string]map[string]string `yaml:"channels"`
+	Digest   DigestDefaults               `yaml:"digest"`
+}
+
+// DigestDefaults are when the daily digest goes: at Hour (0 to 23, 8 when unset) in TimeZone (an
+// IANA name such as Europe/Zurich, UTC when unset).
+type DigestDefaults struct {
+	Hour     *int   `yaml:"hour"`
+	TimeZone string `yaml:"timeZone"`
+}
+
+// The vocabulary of notification preferences (docs/design/05-delivery-and-approvals.md#notifications).
+var (
+	// NotificationChannels are the channels Quai knows, configured or not.
+	NotificationChannels = []string{"email"}
+	// NotificationKinds are the kinds of notification people choose how they receive, in the
+	// order the profile page lists them. Alerts are not among them.
+	NotificationKinds = []string{"approval_needed", "submitted", "approved", "rejected", "stale", "merged", "applied", "failed", "expiring_soon"}
+	// NotificationModes are how a kind reaches someone on a channel: at once, in their daily
+	// digest, or not at all.
+	NotificationModes = []string{ModeImmediate, ModeDigest, ModeOff}
+)
+
+// Notification modes.
+const (
+	ModeImmediate = "immediate"
+	ModeDigest    = "digest"
+	ModeOff       = "off"
+)
+
+// DefaultDigestHour is when the digest goes when notifications.defaults.digest.hour is unset.
+const DefaultDigestHour = 8
+
+// Channels returns the channels configured, in NotificationChannels' order.
+func (n *Notifications) Channels() []string {
+	var out []string
+	if n.Email != nil {
+		out = append(out, "email")
+	}
+	return out
+}
+
+// timeZoneRe is an IANA time zone's name: one to three parts of letters, digits, _, + and -,
+// the first starting with a letter (Europe/Zurich, America/Argentina/Buenos_Aires, Etc/GMT+5,
+// UTC). No dots, so no path; Local, Go's name for the machine's zone, is refused apart.
+var timeZoneRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_+-]{0,31}(/[A-Za-z0-9][A-Za-z0-9_+-]{0,31}){0,2}$`)
+
+// TimeZone returns the time zone of an IANA name, from the system's database or the one built
+// into Quai. It refuses anything else: an empty name, Local, a path.
+func TimeZone(name string) (*time.Location, error) {
+	if !timeZoneRe.MatchString(name) || name == "Local" {
+		return nil, fmt.Errorf("%q is not an IANA time zone name, such as Europe/Zurich", name)
+	}
+	loc, err := time.LoadLocation(name)
+	if err != nil {
+		return nil, fmt.Errorf("%q is not a known time zone, such as Europe/Zurich", name)
+	}
+	return loc, nil
 }
 
 // Email is the SMTP server notifications are sent through, over TLS: STARTTLS, which the server
@@ -467,6 +538,13 @@ func (c *Config) defaults() {
 			d.Syslog.Facility = &f
 		}
 	}
+	if d := &c.Notifications.Defaults.Digest; d.Hour == nil {
+		h := DefaultDigestHour
+		d.Hour = &h
+	}
+	if d := &c.Notifications.Defaults.Digest; d.TimeZone == "" {
+		d.TimeZone = "UTC"
+	}
 	if e := c.Notifications.Email; e != nil {
 		if e.Transport == "" {
 			e.Transport = EmailSTARTTLS
@@ -696,6 +774,44 @@ func (n *Notifications) validate(publicURL string) error {
 	}
 	if len(n.Alerts) > 0 && n.Email == nil {
 		errs = append(errs, errors.New("notifications.alerts are email addresses: they need notifications.email"))
+	}
+	errs = append(errs, n.Defaults.validate(n.Channels()))
+	return errors.Join(errs...)
+}
+
+func (d *NotificationDefaults) validate(configured []string) error {
+	var errs []error
+	for _, channel := range slices.Sorted(maps.Keys(d.Channels)) {
+		key := "notifications.defaults.channels." + channel
+		switch {
+		case !slices.Contains(NotificationChannels, channel):
+			errs = append(errs, fmt.Errorf("notifications.defaults.channels: %q is not a channel (%s)", channel, strings.Join(NotificationChannels, ", ")))
+			continue
+		case !slices.Contains(configured, channel):
+			errs = append(errs, fmt.Errorf("%s needs notifications.%s: the channel is not configured", key, channel))
+		}
+		for _, kind := range slices.Sorted(maps.Keys(d.Channels[channel])) {
+			mode := d.Channels[channel][kind]
+			switch {
+			case kind == "alert":
+				errs = append(errs, fmt.Errorf("%s.alert: alerts always go at once; they are not a kind one chooses", key))
+			case !slices.Contains(NotificationKinds, kind):
+				errs = append(errs, fmt.Errorf("%s: %q is not a kind of notification (%s)", key, kind, strings.Join(NotificationKinds, ", ")))
+			case !slices.Contains(NotificationModes, mode):
+				errs = append(errs, fmt.Errorf("%s.%s must be immediate, digest or off, not %q", key, kind, mode))
+			}
+		}
+	}
+	// Approvers hear of the requests that wait for them on some channel: approval_needed cannot be
+	// off on every one.
+	if len(configured) > 0 && !slices.ContainsFunc(configured, func(c string) bool { return d.Channels[c]["approval_needed"] != ModeOff }) {
+		errs = append(errs, errors.New("notifications.defaults.channels: approval_needed cannot be off on every channel: approvers must hear of the requests that wait for them"))
+	}
+	if h := d.Digest.Hour; h != nil && (*h < 0 || *h > 23) {
+		errs = append(errs, fmt.Errorf("notifications.defaults.digest.hour must be 0 to 23, not %d", *h))
+	}
+	if _, err := TimeZone(d.Digest.TimeZone); err != nil {
+		errs = append(errs, fmt.Errorf("notifications.defaults.digest.timeZone: %w", err))
 	}
 	return errors.Join(errs...)
 }

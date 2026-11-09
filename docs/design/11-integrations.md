@@ -21,15 +21,18 @@ delivery log.
 
 | Channel | Notes |
 | --- | --- |
-| Email | SMTP over TLS only: implicit TLS (port 465) or STARTTLS (587), which the server must offer (no fall back to plaintext); the certificate verified against the system's CAs and `network.caFile`; PLAIN authentication, or LOGIN when the server offers only that, with the password a secret reference. Text and HTML parts (the HTML from `html/template`), with the headline, the request's title, reason, diff summary (files and lines added and removed), the plan when there is one (summary, cost, policies, resource addresses and actions) and a link from `server.publicURL`. Headers made from people's names, titles and reasons are folded to one line and encoded (RFC 2047). Sent to a person's verified email from the directory (P4-07, [what is sent to whom](05-delivery-and-approvals.md#notifications)); per-user preferences and a daily digest (P4-08) |
+| Email | SMTP over TLS only: implicit TLS (port 465) or STARTTLS (587), which the server must offer (no fall back to plaintext); the certificate verified against the system's CAs and `network.caFile`; PLAIN authentication, or LOGIN when the server offers only that, with the password a secret reference. Text and HTML parts (the HTML from `html/template`), with the headline, the request's title, reason, diff summary (files and lines added and removed), the plan when there is one (summary, cost, policies, resource addresses and actions) and a link from `server.publicURL`. Headers made from people's names, titles and reasons are folded to one line and encoded (RFC 2047). Sent to a person's verified email from the directory (P4-07, [what is sent to whom](05-delivery-and-approvals.md#notifications)). Each person chooses on their profile page, per kind, at once, in a daily digest (one message a day at their hour, in their time zone) or not at all; alerts always go at once (P4-08) |
 | Microsoft Teams | Incoming webhook (Workflows) for channel posts; a Teams app with Adaptive Cards for personal approval requests with Approve and Deny buttons |
 | Slack | Slack app with interactive messages for approvals |
 
 Each channel implements `notify.Channel`: its name, a person's address on it
 (none: the notification is recorded as skipped, and the request says whom it
 does not reach), and sending a message, which every channel renders from the
-same content. Teams and Slack plug in there; a notification is one row per
-event, recipient and channel.
+same content, a digest's included. Teams and Slack plug in there; a
+notification is one row per event, recipient and channel, and preferences are
+per channel: a new channel joins `config.NotificationChannels`, the API's
+`channel` enum, and `notifications.Channels()` when configured, and people
+choose for it as for email.
 
 Approving from chat: the button opens a signed, short-lived link bound to the
 approver and the change set hash. If the rule requires step-up authentication,

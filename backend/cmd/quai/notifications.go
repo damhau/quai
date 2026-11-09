@@ -25,7 +25,8 @@ func notifications(cfg *config.Config, s *store.Store, reg *repositories.Registr
 		return nil, err
 	}
 	n := notify.New(notify.Options{Store: s, Requests: svc, Repositories: reg, Directory: auth.NewDirectory(cfg.Auth),
-		Channels: []notify.Channel{email}, Alerts: cfg.Notifications.Alerts, PublicURL: cfg.Server.PublicURL, Log: log})
+		Channels: []notify.Channel{email}, Alerts: cfg.Notifications.Alerts, PublicURL: cfg.Server.PublicURL, Log: log,
+		Settings: notify.NewSettings(cfg.Notifications)})
 	s.UseEvents(n.EventRecorded)
 	svc.UseReach(n.Reach)
 	return n, nil

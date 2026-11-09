@@ -1281,6 +1281,48 @@
         ],
         "type": "object"
       },
+      "DigestInput": {
+        "additionalProperties": false,
+        "properties": {
+          "hour": {
+            "format": "int64",
+            "maximum": 23,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "timeZone": {
+            "description": "An IANA time zone, such as Europe/Zurich",
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "hour",
+          "timeZone"
+        ],
+        "type": "object"
+      },
+      "DigestView": {
+        "additionalProperties": false,
+        "properties": {
+          "hour": {
+            "format": "int64",
+            "maximum": 23,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "timeZone": {
+            "description": "An IANA time zone, such as Europe/Zurich",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hour",
+          "timeZone"
+        ],
+        "type": "object"
+      },
       "Document": {
         "additionalProperties": false,
         "properties": {
@@ -1548,6 +1590,106 @@
             "type": "string"
           }
         },
+        "type": "object"
+      },
+      "EventPreferenceInput": {
+        "additionalProperties": false,
+        "properties": {
+          "channel": {
+            "enum": [
+              "email"
+            ],
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "approval_needed",
+              "submitted",
+              "approved",
+              "rejected",
+              "stale",
+              "merged",
+              "applied",
+              "failed",
+              "expiring_soon"
+            ],
+            "type": "string"
+          },
+          "mode": {
+            "enum": [
+              "immediate",
+              "digest",
+              "off"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "channel",
+          "mode"
+        ],
+        "type": "object"
+      },
+      "EventPreferenceView": {
+        "additionalProperties": false,
+        "properties": {
+          "channel": {
+            "enum": [
+              "email"
+            ],
+            "type": "string"
+          },
+          "default": {
+            "description": "The mode until one is chosen (notifications.defaults)",
+            "enum": [
+              "immediate",
+              "digest",
+              "off"
+            ],
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "approval_needed",
+              "submitted",
+              "approved",
+              "rejected",
+              "stale",
+              "merged",
+              "applied",
+              "failed",
+              "expiring_soon"
+            ],
+            "type": "string"
+          },
+          "mode": {
+            "description": "At once, in the daily digest, or not at all",
+            "enum": [
+              "immediate",
+              "digest",
+              "off"
+            ],
+            "type": "string"
+          },
+          "modes": {
+            "description": "The modes one may choose: approval_needed cannot be off on every channel",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "channel",
+          "mode",
+          "default",
+          "modes"
+        ],
         "type": "object"
       },
       "EventView": {
@@ -2295,6 +2437,59 @@
           "hash",
           "changes",
           "rules"
+        ],
+        "type": "object"
+      },
+      "PreferencesOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/api/v1/schemas/PreferencesOutputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "channels": {
+            "description": "The channels configured; none: Quai sends no notifications",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "customized": {
+            "description": "Whether anything differs from the defaults",
+            "type": "boolean"
+          },
+          "defaultDigest": {
+            "$ref": "#/components/schemas/DigestView",
+            "description": "When the digest goes until one chooses (notifications.defaults.digest)"
+          },
+          "digest": {
+            "$ref": "#/components/schemas/DigestView"
+          },
+          "events": {
+            "description": "For each kind one chooses and channel configured. Alerts are not among them: they always go at once",
+            "items": {
+              "$ref": "#/components/schemas/EventPreferenceView"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "channels",
+          "events",
+          "digest",
+          "defaultDigest",
+          "customized"
         ],
         "type": "object"
       },
@@ -4052,6 +4247,38 @@
         ],
         "type": "object"
       },
+      "UpdatePreferencesInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/api/v1/schemas/UpdatePreferencesInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "digest": {
+            "$ref": "#/components/schemas/DigestInput"
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/EventPreferenceInput"
+            },
+            "maxItems": 64,
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "events",
+          "digest"
+        ],
+        "type": "object"
+      },
       "WebhookView": {
         "additionalProperties": false,
         "properties": {
@@ -4580,6 +4807,77 @@
           }
         },
         "summary": "Describe the signed-in user",
+        "tags": [
+          "Identity"
+        ]
+      }
+    },
+    "/api/v1/me/preferences": {
+      "get": {
+        "operationId": "get-preferences",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreferencesOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get your notification preferences",
+        "tags": [
+          "Identity"
+        ]
+      },
+      "put": {
+        "description": "Each kind and channel left out, or chosen as its default, follows the default. Alerts are not a kind one chooses: they always go at once. Approval needed cannot be off on every channel.",
+        "operationId": "update-preferences",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePreferencesInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreferencesOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Set your notification preferences",
         "tags": [
           "Identity"
         ]

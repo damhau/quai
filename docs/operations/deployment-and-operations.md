@@ -74,6 +74,8 @@ single pod with both roles.
   | `notifications.email.from` | | required: the sender, an address with or without a display name (`Quai <quai@example.com>`) |
   | `notifications.email.username`, `.password.ref` | | none: no authentication. PLAIN, or LOGIN when the server offers only that, over TLS only; the password is a secret reference (`k8s:quai/quai-smtp#password`), read at each send |
   | `notifications.alerts` | | none: email addresses that get every alert (a pull request merged without Quai's approval, approvals no longer enforced), besides the repository's admins; alerts only, never a request's content. Needs `notifications.email` |
+  | `notifications.defaults.channels` | | none: every kind at once. What people get until they choose on their profile page: per channel (`email`, which must be configured) and kind (`approval_needed`, `submitted`, `approved`, `rejected`, `stale`, `merged`, `applied`, `failed`, `expiring_soon`), `immediate`, `digest` or `off` ([preferences](#preferences-and-digests)). Not `alert`: alerts always go at once; `approval_needed` is never `off` on every channel |
+  | `notifications.defaults.digest.hour`, `.timeZone` | | `8`, `UTC`: when a digest goes until people choose: an hour (0 to 23) in an IANA time zone (`Europe/Zurich`) |
   | `log.level` | `QUAI_LOG_LEVEL` | `info` (`debug`, `info`, `warn`, `error`) |
   | `log.format` | `QUAI_LOG_FORMAT` | `json` in production, `text` otherwise |
   | `telemetry.otlpEndpoint` | `QUAI_TELEMETRY_OTLP_ENDPOINT` | none: no traces are exported; traces go to `<url>/v1/traces` |
@@ -231,11 +233,15 @@ schema's owner, delete the rows whose value is their name, their emails and thei
 DELETE FROM audit_personal WHERE value IN ('alice', 'alice@example.com');
 ```
 
-Their notifications name them too (`user:alice`, or `email:alice@example.com` for an address of
-`notifications.alerts`), and the error of one that failed may quote their address: delete those
-rows, which nothing else refers to.
+Their notifications and digests name them too (`user:alice`, or `email:alice@example.com` for an
+address of `notifications.alerts`), and the error of one that failed may quote their address:
+delete those rows, which nothing else refers to (a digest's notifications go with it). Their
+preferences go with their row of the directory ([below](#people-and-teams)). The audit log's
+`preferences.changed` events hold their time zone as a pseudonym, which the first statement
+erases with the others when you add it to the list.
 
 ```sql
+DELETE FROM notification_digests WHERE recipient IN ('user:alice');
 DELETE FROM notifications WHERE recipient IN ('user:alice', 'email:alice@example.com');
 ```
 
@@ -421,8 +427,8 @@ upgrade to the version with the directory.
   ```
 
 - **Erasing someone** ([open question 44](../plan/open-questions.md#still-open)): delete their row,
-  which their next sign-in would create again, and pseudonymize them in the audit log
-  ([above](#retention-and-pruning)):
+  which their next sign-in would create again, and with it their notification preferences, and
+  pseudonymize them in the audit log ([above](#retention-and-pruning)):
 
   ```sql
   DELETE FROM users WHERE name = 'alice';
@@ -494,6 +500,10 @@ notifications:
     username: quai        # none: no authentication
     password: { ref: "k8s:quai/quai-smtp#password" }
   alerts: [platform-team@example.com]
+  defaults:               # until people choose on their profile page
+    channels:
+      email: { merged: digest, applied: digest } # the others at once
+    digest: { hour: 8, timeZone: Europe/Zurich }
 ```
 
 - **TLS only.** `starttls` needs the server to offer STARTTLS, and sends nothing when it does
@@ -516,8 +526,31 @@ notifications:
   `notifications.alerts` may not read the request.
 
 The worker counts each message in `quai.notifications` (`channel`, `outcome`: `sent`, `retried`,
-`skipped` or `failed`) and logs `a notification was not sent` with the error: a warning while
-attempts remain, an error after the last.
+`skipped` or `failed`; a notification in a digest counts when its digest goes) and logs `a
+notification was not sent` (`a digest was not sent`) with the error: a warning while attempts
+remain, an error after the last.
+
+#### Preferences and digests
+
+Each person chooses on their profile page (the account menu, **Profile**), per kind of
+notification, whether it goes at once, in a daily digest or not at all, and when their digest
+goes: an hour in their time zone. Until they do, `notifications.defaults` applies; only what
+differs from it is kept (`notification_preferences`), so changing a default changes it for
+everyone who did not choose otherwise. Alerts always go at once, and approval needed cannot be
+turned off: an approver hears of a request at once or in their digest. API tokens can neither
+read nor change preferences ([open question 58](../plan/open-questions.md#still-open)); each
+change is in the audit log (`preferences.changed`).
+
+- **A digest** is one message a day, on days with something in it, a few minutes after the
+  chosen hour (the worker looks every 5 minutes), of the notifications added since the last one.
+  It goes at that hour on the wall clock across changes to and from daylight saving time. It is
+  made once per person, channel and day (`notification_digests`), and checks each notification
+  as an immediate one would, when it is sent: a person deactivated since gets nothing, an
+  approval the request no longer waits for is left out.
+- **Changing the hour or the time zone** takes effect from the next digest: a digest already
+  made that day is the day's, so the next may wait until the following day. Moving to a zone
+  where that day has not yet come may make a second digest the same day ([open question
+  59](../plan/open-questions.md#still-open)).
 
 #### When mail does not arrive
 
@@ -535,7 +568,9 @@ attempts remain, an error after the last.
    | State | What it means | What to do |
    | --- | --- | --- |
    | (no row) | The event notifies no one (a cancellation, a review), no one can be reached (the request says so), or the worker has not run its `notifications` queue yet | The worker's health and logs |
-   | `skipped` | Nothing was sent, `last_error` says why: no verified email, never signed in, deactivated, or the request no longer waits for them | The person signs in once, with an identity provider that sends their verified email |
+   | `skipped` | Nothing was sent, `last_error` says why: no verified email, never signed in, deactivated, turned off in their preferences, or the request no longer waits for them | The person signs in once, with an identity provider that sends their verified email; or changes their preferences |
+   | `digest`, no `digest_id` | It waits for the person's digest, at the hour they chose | Their preferences: `SELECT * FROM notification_preferences WHERE name = '…'` (no row: the defaults) |
+   | `digest`, with a `digest_id` | Its digest is being sent | The digest's row: `SELECT state, attempts, last_error, period, due FROM notification_digests WHERE id = …`, by error below |
    | `pending`, attempts above 0 | It is being retried: `last_error` is the last answer | By error, below |
    | `failed` | Every attempt failed; nothing sends it again | By error, below |
    | `sent` | The mail server accepted it | The server's logs, spam filters, the address in the directory (`SELECT name, email FROM users WHERE name = '…'`) |

@@ -27,6 +27,7 @@ import (
 
 	"github.com/damhau/quai/backend/internal/auth"
 	"github.com/damhau/quai/backend/internal/config"
+	"github.com/damhau/quai/backend/internal/notify"
 	"github.com/damhau/quai/backend/internal/repositories"
 	"github.com/damhau/quai/backend/internal/requests"
 	"github.com/damhau/quai/backend/internal/store"
@@ -61,6 +62,8 @@ type Options struct {
 	// PublicURL is where people reach Quai (server.publicURL): webhooks are installed at it,
 	// unless WebhookHost names their host.
 	PublicURL string
+	// Notifications are what people may choose of their notifications, and the defaults.
+	Notifications notify.Settings
 }
 
 // New returns the HTTP handler of the API.
@@ -128,6 +131,7 @@ func build(opts Options, all bool) (*chi.Mux, huma.API) {
 			su = opts.Auth.StepUp()
 		}
 		registerIdentity(a, opts.Store, su)
+		registerPreferences(a, opts.Store, opts.Notifications)
 		registerAudit(a, opts.Store, opts.Logger)
 		dir := &auth.Directory{} // documenting the API: no mapping
 		if opts.Auth != nil {

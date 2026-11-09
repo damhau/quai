@@ -20,6 +20,7 @@ import (
 	"github.com/damhau/quai/backend/internal/ingest"
 	"github.com/damhau/quai/backend/internal/jobs"
 	"github.com/damhau/quai/backend/internal/netx"
+	"github.com/damhau/quai/backend/internal/notify"
 	"github.com/damhau/quai/backend/internal/requests"
 	"github.com/damhau/quai/backend/internal/store"
 	"github.com/damhau/quai/backend/internal/telemetry"
@@ -79,7 +80,7 @@ func newServerCmd() *cobra.Command {
 // the shutdown timeout. Without a store, nobody can sign in. Outgoing connections go through
 // network (nil: the defaults).
 func serve(ctx context.Context, cfg *config.Config, log *slog.Logger, ln net.Listener, s *store.Store, network *netx.Network) error {
-	opts := api.Options{Version: version, Env: cfg.Env, Logger: log, UI: web.Files()}
+	opts := api.Options{Version: version, Env: cfg.Env, Logger: log, UI: web.Files(), Notifications: notify.NewSettings(cfg.Notifications)}
 	if s != nil {
 		var client *http.Client
 		if network != nil {

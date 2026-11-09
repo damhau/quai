@@ -154,6 +154,8 @@ func TestAuthorize(t *testing.T) {
 		{"tokens cannot make tokens", Principal{Name: "dan", Scopes: []string{"requests:write"}}, ManageOwnTokens, Object{}, false, "scopes"},
 		{"an auditor's token cannot read the access report", Principal{Name: "aud", Grants: []Grant{at(Auditor, ScopeGlobal, "")}, Scopes: []string{"requests:read"}}, ReadAccessReport, Object{}, false, "scopes"},
 		{"a session manages its tokens", who("dan", nil), ManageOwnTokens, Object{}, true, ""},
+		{"tokens cannot manage preferences", Principal{Name: "dan", Scopes: []string{"requests:write", "requests:read", "catalog:read", "inventory:read"}}, ManageOwnPreferences, Object{}, false, "scopes"},
+		{"a session manages its preferences", who("dan", nil), ManageOwnPreferences, Object{}, true, ""},
 	}
 	for _, tt := range tests {
 		d, err := Authorize(context.Background(), tt.p, tt.action, tt.obj)

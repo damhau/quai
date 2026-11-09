@@ -128,6 +128,30 @@ type Notification struct {
 	LastError string
 	CreatedAt pgtype.Timestamptz
 	SentAt    pgtype.Timestamptz
+	DigestID  pgtype.Int8
+}
+
+type NotificationDigest struct {
+	ID        int64
+	OrgID     string
+	Recipient string
+	Channel   string
+	Period    pgtype.Date
+	Due       pgtype.Timestamptz
+	State     string
+	Attempts  int32
+	LastError string
+	CreatedAt pgtype.Timestamptz
+	SentAt    pgtype.Timestamptz
+}
+
+type NotificationPreference struct {
+	OrgID      string
+	Name       string
+	Modes      json.RawMessage
+	DigestHour pgtype.Int2
+	TimeZone   pgtype.Text
+	UpdatedAt  pgtype.Timestamptz
 }
 
 type Repository struct {

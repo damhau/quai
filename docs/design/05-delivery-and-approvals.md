@@ -382,5 +382,52 @@ Built (`internal/notify`):
   approvals whose approvers Quai cannot reach (none signed in with a verified
   email) says so on the request (`noOneToNotify`), and so does a request whose
   requester has none (`requesterNotNotified`).
-- **Preferences** (P4-08) filter the recipients `notify` resolves, before the
-  rows are written; digests group the rows.
+- **Preferences** (P4-08). Each person chooses, per channel and kind of
+  notification (approval needed, submitted, approved, rejected, stale, merged,
+  applied, failed, expiring soon), whether it goes at once (`immediate`), in
+  their daily digest (`digest`) or not at all (`off`), and when their digest
+  goes: an hour of the day (0 to 23) in an IANA time zone. Until they choose,
+  `notifications.defaults` applies (every kind at once, the digest at 08:00
+  UTC, unless configured). Only the choices that differ from the defaults are
+  kept, so a choice equal to a default follows it when the configuration
+  changes. Alerts are not a kind one chooses: they always go at once, on every
+  channel, whatever is stored. Approval needed is never off on every channel
+  (with email alone: at once or in the digest), so a request never waits for
+  someone who hears nothing of it; a stored preference that would turn it off
+  everywhere (a channel removed since) counts as at once. The profile page
+  (`/profile`) sets them through `GET` and `PUT /api/v1/me/preferences`, which
+  act on the caller's own preferences only, named by the session, never by the
+  path or the body, and refuse API tokens ([open question
+  58](../plan/open-questions.md#still-open)). Every value comes from a fixed
+  list or is checked on the server: the kinds, channels (configured ones) and
+  modes; the hour; the time zone, a strict IANA name (no path, no `..`, not
+  `Local`) that `time.LoadLocation` knows, from the system or the database
+  built into Quai. Unknown fields are refused. Each change is in the audit log
+  (`preferences.changed`, the person and their time zone pseudonymised); the
+  same preferences again are not a change.
+- **Fan-out with preferences.** The fan-out applies the recipient's
+  preferences when it writes the rows: `off` is a `skipped` row ("they turned
+  it off in their preferences"), `digest` a row in state `digest` with no send
+  job, `immediate` a `pending` row and its job as before. A person without an
+  address on the channel or deactivated gets nothing, whatever they chose.
+- **Digests** (P4-08). The worker's `notify_digests` job (every 5 minutes)
+  finds the people with notifications waiting for a digest and, once the
+  latest hour of their digest has passed on their wall clock, gathers the
+  notifications added before that hour into one digest
+  (`notification_digests`, unique per recipient, channel and period, the
+  local date of that hour), with a `send_digest` job: the key makes one digest
+  per person, channel and day however often the job runs, a notification
+  joins one digest only (its `digest_id` is set once), and a digest with
+  nothing in it is not made. A notification for the digest is never sent on
+  its own: `send_notification` sends `pending` rows only. The hour is the
+  wall clock's across changes to and from daylight saving time (23 or 25
+  hours between two digests); an hour the change skips is the moment of the
+  change, an hour that happens twice the first. Sending composes each
+  notification under the rules of an immediate one, at that moment: a person
+  deactivated since, a request deleted, an approval the request no longer
+  waits for from them, leave the notification out (`skipped`, with the
+  reason), and a digest with nothing left is `skipped`. One message lists
+  each notification's headline, request and link, with a link to the profile
+  page; immediate messages to people link to it too. Retries are those of a
+  notification; after the last, the digest and its notifications are
+  `failed` ([open question 59](../plan/open-questions.md#still-open)).

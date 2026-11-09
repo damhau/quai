@@ -48,7 +48,8 @@ config:
   # admins and notifications.alerts. Mail goes over TLS only, implicit (tls, port 465) or
   # STARTTLS (starttls, port 587, refused when the server does not offer it), verified with the
   # image's CAs and network.caBundle. The links in it start with server.publicURL, which email
-  # requires.
+  # requires. People choose on their profile page what goes at once, in a daily digest or not
+  # at all; notifications.defaults is what they get until they do (alerts always at once).
   # server:
   #   publicURL: https://quai.example.com
   # notifications:
@@ -60,6 +61,9 @@ config:
   #     username: quai
   #     password: { ref: "k8s:quai/quai-smtp#password" }
   #   alerts: [platform-team@example.com]
+  #   defaults:
+  #     channels: { email: { merged: digest, applied: digest } }
+  #     digest: { hour: 8, timeZone: Europe/Zurich }
 configSecret: "" # an existing Secret with the quai.yaml and repositories.yaml keys, used instead of config and repositories
 
 # The repository connections declared here: Repository documents

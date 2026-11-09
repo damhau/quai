@@ -1,7 +1,7 @@
 import type { ReactNode } from "react"
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { Boxes, ClipboardCheck, FolderGit2, GitCommitHorizontal, LayoutGrid, ListChecks, LogOut, ScrollText, UserCheck, Workflow } from "lucide-react"
+import { Boxes, ClipboardCheck, FolderGit2, GitCommitHorizontal, LayoutGrid, ListChecks, LogOut, ScrollText, UserCheck, UserRound, Workflow } from "lucide-react"
 import { getMeOptions, listRequestsOptions } from "@/api/generated/@tanstack/react-query.gen"
 import { Badge } from "@/components/ui/badge"
 import { canReadAudit } from "@/lib/audit"
@@ -107,6 +107,12 @@ function UserMenu() {
           </DropdownMenuLabel>
         ))}
         <DropdownMenuSeparator />
+        <DropdownMenuItem asChild>
+          <Link to="/profile">
+            <UserRound className="size-4" aria-hidden />
+            Profile
+          </Link>
+        </DropdownMenuItem>
         <DropdownMenuItem
           onSelect={async () => {
             await logout(queryClient)

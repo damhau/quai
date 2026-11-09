@@ -103,12 +103,17 @@ Plan of {{.Stack}} ({{.Status}}): {{.Add}} to add, {{.Change}} to change, {{.Des
 {{end}}{{end}}{{end}}{{with .Alert}}
 Repository: {{.Repository}}
 {{range .Details}}{{.Label}}: {{.Value}}
-{{end}}{{end}}
+{{end}}{{end}}{{range .Digest}}
+{{.Label}}: {{.Headline}}
+{{if .Request}}  {{.Request}}
+{{end}}  {{.Link}}
+{{end}}
 Open it in Quai: {{.Link}}
 
 --
-Quai sent this message because of your role in this request or repository.
-`))
+{{if .Digest}}Quai sent this digest because of your role in these requests.{{else}}Quai sent this message because of your role in this request or repository.{{end}}
+{{with .Preferences}}Choose what Quai sends you, and when: {{.}}
+{{end}}`))
 
 var htmlTemplate = htmltemplate.Must(htmltemplate.New("html").Parse(`<!DOCTYPE html>
 <html lang="en">
@@ -137,8 +142,11 @@ var htmlTemplate = htmltemplate.Must(htmltemplate.New("html").Parse(`<!DOCTYPE h
 <tr><td style="color: #59636e; padding: 2px 12px 2px 0;">Repository</td><td>{{.Repository}}</td></tr>
 {{range .Details}}<tr><td style="color: #59636e; padding: 2px 12px 2px 0; vertical-align: top;">{{.Label}}</td><td>{{.Value}}</td></tr>
 {{end}}</table>
+{{end}}{{if .Digest}}<ul style="margin: 0 0 16px; padding-left: 20px;">
+{{range .Digest}}<li style="margin-bottom: 8px;"><span style="font-weight: 600;">{{.Label}}</span>: {{.Headline}}{{if .Request}}<br><a href="{{.Link}}">{{.Request}}</a>{{end}}</li>
+{{end}}</ul>
 {{end}}<p style="margin: 16px 0;"><a href="{{.Link}}" style="background: #1f2328; color: #ffffff; padding: 8px 14px; border-radius: 6px; text-decoration: none;">Open it in Quai</a></p>
-<p style="color: #59636e; font-size: 12px; margin: 24px 0 0;">Quai sent this message because of your role in this request or repository.</p>
+<p style="color: #59636e; font-size: 12px; margin: 24px 0 0;">{{if .Digest}}Quai sent this digest because of your role in these requests.{{else}}Quai sent this message because of your role in this request or repository.{{end}}{{with .Preferences}} <a href="{{.}}" style="color: #59636e;">Choose what Quai sends you, and when</a>.{{end}}</p>
 </body>
 </html>
 `))

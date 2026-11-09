@@ -15,7 +15,8 @@ import (
 	"github.com/damhau/quai/backend/internal/repositories"
 )
 
-// testClock is a clock the test moves, for step-ups: no test sleeps through maxAge.
+// testClock is a clock the test moves, for step-ups and notifications: no test sleeps through
+// maxAge or until a digest is due. Until it is set, it is the real time.
 type testClock struct {
 	mu sync.Mutex
 	t  time.Time
@@ -24,7 +25,16 @@ type testClock struct {
 func (c *testClock) now() time.Time {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.t.IsZero() {
+		return time.Now()
+	}
 	return c.t
+}
+
+func (c *testClock) set(t time.Time) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.t = t
 }
 
 func (c *testClock) add(d time.Duration) {

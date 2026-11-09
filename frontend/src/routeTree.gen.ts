@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApprovalsRouteImport } from './routes/approvals'
 import { Route as GitRouteImport } from './routes/git'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as AdminAccessRouteImport } from './routes/admin/access'
 import { Route as AdminAuditRouteImport } from './routes/admin/audit'
 import { Route as DesignerIndexRouteImport } from './routes/designer/index'
@@ -51,6 +52,11 @@ const GitRoute = GitRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProfileRoute = ProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminAccessRoute = AdminAccessRouteImport.update({
@@ -162,6 +168,7 @@ export interface FileRoutesByFullPath {
   '/approvals': typeof ApprovalsRoute
   '/git': typeof GitRoute
   '/login': typeof LoginRoute
+  '/profile': typeof ProfileRoute
   '/admin/access': typeof AdminAccessRoute
   '/admin/audit': typeof AdminAuditRoute
   '/requests/$id': typeof RequestsIdRoute
@@ -187,6 +194,7 @@ export interface FileRoutesByTo {
   '/approvals': typeof ApprovalsRoute
   '/git': typeof GitRoute
   '/login': typeof LoginRoute
+  '/profile': typeof ProfileRoute
   '/admin/access': typeof AdminAccessRoute
   '/admin/audit': typeof AdminAuditRoute
   '/requests/$id': typeof RequestsIdRoute
@@ -213,6 +221,7 @@ export interface FileRoutesById {
   '/approvals': typeof ApprovalsRoute
   '/git': typeof GitRoute
   '/login': typeof LoginRoute
+  '/profile': typeof ProfileRoute
   '/admin/access': typeof AdminAccessRoute
   '/admin/audit': typeof AdminAuditRoute
   '/requests/$id': typeof RequestsIdRoute
@@ -240,6 +249,7 @@ export interface FileRouteTypes {
     | '/approvals'
     | '/git'
     | '/login'
+    | '/profile'
     | '/admin/access'
     | '/admin/audit'
     | '/requests/$id'
@@ -265,6 +275,7 @@ export interface FileRouteTypes {
     | '/approvals'
     | '/git'
     | '/login'
+    | '/profile'
     | '/admin/access'
     | '/admin/audit'
     | '/requests/$id'
@@ -290,6 +301,7 @@ export interface FileRouteTypes {
     | '/approvals'
     | '/git'
     | '/login'
+    | '/profile'
     | '/admin/access'
     | '/admin/audit'
     | '/requests/$id'
@@ -316,6 +328,7 @@ export interface RootRouteChildren {
   ApprovalsRoute: typeof ApprovalsRoute
   GitRoute: typeof GitRoute
   LoginRoute: typeof LoginRoute
+  ProfileRoute: typeof ProfileRoute
   AdminAccessRoute: typeof AdminAccessRoute
   AdminAuditRoute: typeof AdminAuditRoute
   RequestsIdRoute: typeof RequestsIdRoute
@@ -365,6 +378,13 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/profile': {
+      id: '/profile'
+      path: '/profile'
+      fullPath: '/profile'
+      preLoaderRoute: typeof ProfileRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/access': {
@@ -508,6 +528,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApprovalsRoute: ApprovalsRoute,
   GitRoute: GitRoute,
   LoginRoute: LoginRoute,
+  ProfileRoute: ProfileRoute,
   AdminAccessRoute: AdminAccessRoute,
   AdminAuditRoute: AdminAuditRoute,
   RequestsIdRoute: RequestsIdRoute,

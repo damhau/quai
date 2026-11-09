@@ -448,6 +448,22 @@ export type DiffLine = {
     text: string;
 };
 
+export type DigestInput = {
+    hour: number;
+    /**
+     * An IANA time zone, such as Europe/Zurich
+     */
+    timeZone: string;
+};
+
+export type DigestView = {
+    hour: number;
+    /**
+     * An IANA time zone, such as Europe/Zurich
+     */
+    timeZone: string;
+};
+
 export type Document = {
     /**
      * A URL to the JSON Schema for this object.
@@ -574,6 +590,29 @@ export type ErrorModel = {
      * A URI reference to human-readable documentation for the error.
      */
     type?: string;
+};
+
+export type EventPreferenceInput = {
+    channel: 'email';
+    kind: 'approval_needed' | 'submitted' | 'approved' | 'rejected' | 'stale' | 'merged' | 'applied' | 'failed' | 'expiring_soon';
+    mode: 'immediate' | 'digest' | 'off';
+};
+
+export type EventPreferenceView = {
+    channel: 'email';
+    /**
+     * The mode until one is chosen (notifications.defaults)
+     */
+    default: 'immediate' | 'digest' | 'off';
+    kind: 'approval_needed' | 'submitted' | 'approved' | 'rejected' | 'stale' | 'merged' | 'applied' | 'failed' | 'expiring_soon';
+    /**
+     * At once, in the daily digest, or not at all
+     */
+    mode: 'immediate' | 'digest' | 'off';
+    /**
+     * The modes one may choose: approval_needed cannot be off on every channel
+     */
+    modes: Array<string> | null;
 };
 
 export type EventView = {
@@ -843,6 +882,30 @@ export type PlanView = {
      * For a migrate request: the non-conforming resources the type's migration does not fix, and why
      */
     unmigrated?: Array<UnmigratedView> | null;
+};
+
+export type PreferencesOutputBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * The channels configured; none: Quai sends no notifications
+     */
+    channels: Array<string> | null;
+    /**
+     * Whether anything differs from the defaults
+     */
+    customized: boolean;
+    /**
+     * When the digest goes until one chooses (notifications.defaults.digest)
+     */
+    defaultDigest: DigestView;
+    digest: DigestView;
+    /**
+     * For each kind one chooses and channel configured. Alerts are not among them: they always go at once
+     */
+    events: Array<EventPreferenceView> | null;
 };
 
 export type PreviewView = {
@@ -1481,6 +1544,15 @@ export type UnmigratedView = {
     reason: string;
 };
 
+export type UpdatePreferencesInputBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    digest: DigestInput;
+    events: Array<EventPreferenceInput> | null;
+};
+
 export type WebhookView = {
     /**
      * A URL to the JSON Schema for this object.
@@ -1792,6 +1864,26 @@ export type PlanViewWritable = {
      * For a migrate request: the non-conforming resources the type's migration does not fix, and why
      */
     unmigrated?: Array<UnmigratedView> | null;
+};
+
+export type PreferencesOutputBodyWritable = {
+    /**
+     * The channels configured; none: Quai sends no notifications
+     */
+    channels: Array<string> | null;
+    /**
+     * Whether anything differs from the defaults
+     */
+    customized: boolean;
+    /**
+     * When the digest goes until one chooses (notifications.defaults.digest)
+     */
+    defaultDigest: DigestView;
+    digest: DigestView;
+    /**
+     * For each kind one chooses and channel configured. Alerts are not among them: they always go at once
+     */
+    events: Array<EventPreferenceView> | null;
 };
 
 export type PreviewViewWritable = {
@@ -2150,6 +2242,11 @@ export type TypeViewWritable = {
     version?: string;
 };
 
+export type UpdatePreferencesInputBodyWritable = {
+    digest: DigestInput;
+    events: Array<EventPreferenceInput> | null;
+};
+
 export type WebhookViewWritable = {
     installed: boolean;
     /**
@@ -2447,6 +2544,56 @@ export type GetMeResponses = {
 };
 
 export type GetMeResponse = GetMeResponses[keyof GetMeResponses];
+
+export type GetPreferencesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/me/preferences';
+};
+
+export type GetPreferencesErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type GetPreferencesError = GetPreferencesErrors[keyof GetPreferencesErrors];
+
+export type GetPreferencesResponses = {
+    /**
+     * OK
+     */
+    200: PreferencesOutputBody;
+};
+
+export type GetPreferencesResponse = GetPreferencesResponses[keyof GetPreferencesResponses];
+
+export type UpdatePreferencesData = {
+    body: UpdatePreferencesInputBodyWritable;
+    path?: never;
+    query?: never;
+    url: '/api/v1/me/preferences';
+};
+
+export type UpdatePreferencesErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type UpdatePreferencesError = UpdatePreferencesErrors[keyof UpdatePreferencesErrors];
+
+export type UpdatePreferencesResponses = {
+    /**
+     * OK
+     */
+    200: PreferencesOutputBody;
+};
+
+export type UpdatePreferencesResponse = UpdatePreferencesResponses[keyof UpdatePreferencesResponses];
 
 export type GetMetaData = {
     body?: never;

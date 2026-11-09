@@ -51,6 +51,8 @@ type harness struct {
 	log    *bytes.Buffer
 	jobs   *jobs.Client
 	notify *notify.Service // with notifications.email configured
+	// clock is the notifications' clock: the time it is set to, the real time until it is.
+	clock *testClock
 }
 
 func git(t *testing.T, dir string, args ...string) string {
@@ -166,6 +168,7 @@ func startRepo(t *testing.T, dir, metadata, spec string, opts repositories.Optio
 	hooks := ingest.New(s, reg, log)
 	hooks.UseHandler(svc)
 	var n *notify.Service
+	clk := &testClock{}
 	if e := cfg.Notifications.Email; e != nil {
 		network, err := netx.New(cfg.Network.CAFile)
 		if err != nil {
@@ -176,7 +179,9 @@ func startRepo(t *testing.T, dir, metadata, spec string, opts repositories.Optio
 			t.Fatal(err)
 		}
 		n = notify.New(notify.Options{Store: s, Requests: svc, Repositories: reg, Directory: auth.NewDirectory(cfg.Auth),
-			Channels: []notify.Channel{email}, Alerts: cfg.Notifications.Alerts, PublicURL: public, Log: log, Backoff: notifyBackoff})
+			Channels: []notify.Channel{email}, Alerts: cfg.Notifications.Alerts, PublicURL: public, Log: log, Backoff: notifyBackoff,
+			Settings: notify.NewSettings(cfg.Notifications)})
+		n.UseClock(clk.now)
 		s.UseEvents(n.EventRecorded)
 		svc.UseReach(n.Reach)
 	}
@@ -204,9 +209,9 @@ func startRepo(t *testing.T, dir, metadata, spec string, opts repositories.Optio
 		_ = worker.StopAndCancel(ctx)
 	})
 	srv := httptest.NewServer(New(Options{Version: "test", Env: cfg.Env, Logger: log, Store: s, Auth: authn, Repositories: reg, Requests: svc, PublicURL: public,
-		Webhooks: hooks.Webhooks()}))
+		Webhooks: hooks.Webhooks(), Notifications: notify.NewSettings(cfg.Notifications)}))
 	t.Cleanup(srv.Close)
-	return &harness{t: t, srv: srv, store: s, reg: reg, ingest: hooks, auth: authn, log: &logs, jobs: worker, notify: n}
+	return &harness{t: t, srv: srv, store: s, reg: reg, ingest: hooks, auth: authn, log: &logs, jobs: worker, notify: n, clock: clk}
 }
 
 // push commits a change to the repository as a person would.

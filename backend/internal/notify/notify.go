@@ -10,6 +10,11 @@
 // (MaxAttempts); notifications have a queue of their own (jobs.QueueNotifications), so a failing
 // or hanging mail server never holds a request back.
 //
+// People choose, per channel and kind, whether a notification goes at once, in their daily digest
+// or not at all (Settings, Preferences); alerts always go at once. A notification for the digest
+// waits (state InDigest) until the digest job (Periodic) gathers it into the recipient's digest
+// for the day, which is sent once.
+//
 // A channel (Channel) renders a Message its own way: email now; Microsoft Teams and Slack later.
 package notify
 
@@ -28,6 +33,7 @@ import (
 	"github.com/riverqueue/river"
 
 	"github.com/damhau/quai/backend/internal/auth"
+	"github.com/damhau/quai/backend/internal/config"
 	"github.com/damhau/quai/backend/internal/engine/policy"
 	"github.com/damhau/quai/backend/internal/jobs"
 	"github.com/damhau/quai/backend/internal/repositories"
@@ -51,12 +57,16 @@ const (
 	Alert          = "alert"
 )
 
-// States of a notification.
+// DigestKind is the kind of a digest's message.
+const DigestKind = "digest"
+
+// States of a notification, and of a digest (pending, sent, skipped, failed).
 const (
-	Pending = "pending"
-	Sent    = "sent"
-	Skipped = "skipped"
-	Failure = "failed"
+	Pending  = "pending"
+	InDigest = "digest" // waits for its digest, or for its digest to be sent
+	Sent     = "sent"
+	Skipped  = "skipped"
+	Failure  = "failed"
 )
 
 // MaxAttempts is how often a notification is tried: with Backoff, for about fourteen hours.
@@ -103,7 +113,9 @@ type Options struct {
 	Alerts []string
 	// PublicURL is server.publicURL: every link in a message starts with it.
 	PublicURL string
-	Log       *slog.Logger
+	// Settings are what people may choose, and the defaults (NewSettings).
+	Settings Settings
+	Log      *slog.Logger
 	// Backoff is how long after a failed attempt a job is tried again; Backoff by default.
 	Backoff func(attempt int) time.Duration
 }
@@ -137,6 +149,10 @@ func New(opts Options) *Service {
 
 // UseJobs sets the client that inserts jobs.
 func (s *Service) UseJobs(c *jobs.Client) { s.jobs = c }
+
+// UseClock sets the clock: when notifications are added, when digests are due, when a failed
+// attempt is tried again.
+func (s *Service) UseClock(now func() time.Time) { s.now = now }
 
 // Reach reports whether a person has an address on a channel: notifications reach them.
 func (s *Service) Reach(u db.User) bool {
@@ -178,6 +194,8 @@ func (SendArgs) InsertOpts() river.InsertOpts {
 func (s *Service) Workers(w *river.Workers) {
 	river.AddWorker(w, &fanOutWorker{s: s})
 	river.AddWorker(w, &sendWorker{s: s})
+	river.AddWorker(w, &digestWorker{s: s})
+	river.AddWorker(w, &sendDigestWorker{s: s})
 }
 
 // EventRecorded is the store's event hook: an event someone must hear of gets its fan-out job,
@@ -279,7 +297,8 @@ type recipient struct {
 // fanOut adds a notification per recipient of an event and channel, each with its send job; a
 // recipient a channel cannot reach gets a skipped row that says why. Recipients are resolved now:
 // the approvers the request waits for at this moment, the people of the directory as they last
-// signed in.
+// signed in. Their preferences say whether it goes at once, waits for their digest (no job: the
+// digest sends it), or is skipped.
 func (s *Service) fanOut(ctx context.Context, id int64) error {
 	e, err := s.opts.Store.GetEvent(ctx, id)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -292,6 +311,15 @@ func (s *Service) fanOut(ctx context.Context, id int64) error {
 	if err != nil || len(rs) == 0 {
 		return err
 	}
+	prefs := map[string]Preferences{}
+	for _, r := range rs {
+		if r.user != nil && r.kind != Alert {
+			if prefs[r.id], err = s.preferences(ctx, r.user.Name); err != nil {
+				return err
+			}
+		}
+	}
+	now := s.now()
 	type outcome struct{ channel, result string }
 	var counts []outcome
 	err = s.opts.Store.Tx(ctx, func(tx pgx.Tx, q *db.Queries) error {
@@ -303,6 +331,13 @@ func (s *Service) fanOut(ctx context.Context, id int64) error {
 				case r.user != nil:
 					if _, ok := c.Address(*r.user); !ok {
 						state, why = Skipped, "Quai knows no address of theirs on this channel (a verified email for email)"
+						break
+					}
+					switch s.opts.Settings.Mode(prefs[r.id], c.Name(), r.kind) {
+					case config.ModeOff:
+						state, why = Skipped, "they turned it off in their preferences"
+					case config.ModeDigest:
+						state = InDigest
 					}
 				case strings.HasPrefix(r.id, "email:"):
 					if c.Name() != "email" {
@@ -312,7 +347,7 @@ func (s *Service) fanOut(ctx context.Context, id int64) error {
 					state, why = Skipped, "not in the directory: they never signed in"
 				}
 				n, err := q.AddNotification(ctx, db.AddNotificationParams{EventID: e.ID, Recipient: r.id, Channel: c.Name(), Kind: r.kind,
-					State: state, LastError: why})
+					State: state, LastError: why, CreatedAt: ts(now)})
 				if errors.Is(err, pgx.ErrNoRows) {
 					continue // added by an earlier run
 				}
@@ -322,6 +357,9 @@ func (s *Service) fanOut(ctx context.Context, id int64) error {
 				if state == Skipped {
 					counts = append(counts, outcome{c.Name(), Skipped})
 					continue
+				}
+				if state == InDigest {
+					continue // counted when its digest goes
 				}
 				if err := jobs.InsertTx(ctx, s.jobs, tx, SendArgs{NotificationID: n.ID}, nil); err != nil {
 					return err
@@ -499,6 +537,9 @@ func (s *Service) send(ctx context.Context, id int64, last bool) error {
 	}
 	if why != "" {
 		return skip(why)
+	}
+	if n.Kind != Alert && strings.HasPrefix(n.Recipient, "user:") {
+		m.Preferences = s.link("/profile")
 	}
 	sctx, cancel := context.WithTimeout(ctx, sendTimeout)
 	err = c.Send(sctx, to, m)

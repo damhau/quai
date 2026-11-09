@@ -121,8 +121,8 @@ changes, executor calls, configuration changes.
   can see a gap and verify the chain ([export to a SIEM](#export-to-a-siem)). A webhook comes in
   Phase 7.
 
-What is recorded, by action (P4-01, P4-02, P4-06; break-glass, executor calls and configuration
-changes come with their features):
+What is recorded, by action (P4-01, P4-02, P4-06, P4-08; break-glass, executor calls and
+configuration changes come with their features):
 
 | Action | Actor | When |
 | --- | --- | --- |
@@ -130,6 +130,7 @@ changes come with their features):
 | `auth.step_up_refused` | the person, or their token | an action refused for want of a recent sign-in ([step-up](08-identity-access-tenancy.md#step-up)): what was attempted (`request.review`, `repository.create`, `repository.update`, `repository.delete`, `repository.install_webhook`, `run_token.create`) on which object, and why |
 | `auth.grants_changed` | the person | a sign-in whose grants differ from the person's previous sign-in (`before`, `after`): a role change, from the IdP's groups or from `auth.roles` |
 | `token.created`, `token.revoked` | the person | an API token made or revoked (its ID, name, scopes, expiry; never the token) |
+| `preferences.changed` | the person | their notification preferences changed (P4-08): the choices that differ from the defaults, the digest's hour, and their time zone as a pseudonym; the same preferences again are not a change ([open question 58](../plan/open-questions.md#still-open)) |
 | `run_token.created` | the person | a run token generated for a repository (its SHA-256; Quai keeps neither, so revoking it is changing the secret it names, outside Quai's view: [open question 33](../plan/open-questions.md#still-open)) |
 | `request.submitted`, `request.cancelled`, `request.retried` | the person, or their token | as named; submitted carries the change set and definitions commit, the reason as a pseudonym |
 | `request.reviewed` | the reviewer | every review: the decision, the comment as a pseudonym, the change set, whether the reviewer's authentication satisfied the step-up (`stepUp`) and its `acr` and `acrs` |

@@ -21,12 +21,16 @@ import (
 
 // Message is what a notification says, whatever the channel: each renders it its own way.
 type Message struct {
-	Kind     string // Submitted, ApprovalNeeded, …, Alert
+	Kind     string // Submitted, ApprovalNeeded, …, Alert, DigestKind
 	Subject  string // one line
 	Headline string // what happened, and what the recipient may do
 	Request  *RequestContent
 	Alert    *AlertContent
-	Link     string // the request's page, or the repository's: always under server.publicURL
+	Digest   []DigestItem // a digest's notifications
+	Link     string       // the request's page, or the repository's: always under server.publicURL
+	// Preferences is the page where the recipient chooses what Quai sends them; empty for an
+	// alert, or an address that is not a person's.
+	Preferences string
 }
 
 // RequestContent is what a message says of a request: what the request page shows, in short.

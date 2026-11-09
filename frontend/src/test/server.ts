@@ -6,6 +6,7 @@ import { catalogHandlers } from "./catalog"
 import { gitHandlers, published } from "./git"
 import { inventoryHandlers } from "./inventory"
 import { repositoryHandlers, resetRepositories } from "./repositories"
+import { preferencesHandlers, resetPreferences } from "./preferences"
 import { pendingVM, requestHandlers, requests } from "./requests"
 
 // A fake backend for the shell: who is signed in, and how this server signs people in; whether
@@ -25,6 +26,8 @@ function stepUpView() {
 }
 
 const users: Record<string, string[]> = { bob: ["developers"], alice: ["platform-admins"], dana: ["auditors"] }
+// Verified emails from the identity provider: dana has none.
+const emails: Record<string, string> = { bob: "bob@acme.ch", alice: "alice@acme.ch" }
 const roles: Record<string, { role: string; scope: string }[]> = {
   alice: [{ role: "platform-admin", scope: "global" }],
   dana: [{ role: "auditor", scope: "global" }],
@@ -36,6 +39,7 @@ export function resetRequests() {
   resetRepositories()
   resetAudit()
   resetAccess()
+  resetPreferences()
 }
 
 export const server = setupServer(
@@ -44,6 +48,7 @@ export const server = setupServer(
     state.user
       ? HttpResponse.json({
           name: state.user,
+          email: emails[state.user],
           groups: users[state.user],
           teams: users[state.user], // no auth.teams: each group is the team of its name
           roles: roles[state.user] ?? [{ role: "requester", scope: "global" }],
@@ -62,6 +67,7 @@ export const server = setupServer(
   ...repositoryHandlers,
   ...auditHandlers,
   ...accessHandlers(() => (state.user ? (roles[state.user] ?? []) : null)),
+  ...preferencesHandlers(() => state.user),
   http.get("*/auth/dev/users", () => HttpResponse.json(Object.entries(users).map(([Name, Groups]) => ({ Name, Groups })))),
   http.post("*/auth/dev/login", async ({ request }) => {
     // As the server's middleware: with a session, a state-changing request needs its CSRF token.

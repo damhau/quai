@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -190,6 +191,57 @@ notifications:
 		}
 		if err == nil || !strings.Contains(err.Error(), tt.want) {
 			t.Errorf("%s: error = %v, want %q", name, err, tt.want)
+		}
+	}
+}
+
+// TestNotificationDefaults: what people get until they choose, checked as strictly as their own
+// choices.
+func TestNotificationDefaults(t *testing.T) {
+	c, err := Load("", env(nil))
+	if err != nil || *c.Notifications.Defaults.Digest.Hour != 8 || c.Notifications.Defaults.Digest.TimeZone != "UTC" || len(c.Notifications.Channels()) != 0 {
+		t.Errorf("default digest = %+v, %v", c.Notifications.Defaults, err)
+	}
+	const email = "server: { publicURL: https://quai.example.com }\nnotifications:\n  email: { host: smtp, from: q@example.com }\n"
+	c, err = Load(write(t, email+"  defaults: { digest: { hour: 0, timeZone: Europe/Zurich }, channels: { email: { approval_needed: digest, submitted: off, merged: immediate } } }\n"), env(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d := c.Notifications.Defaults; *d.Digest.Hour != 0 || d.Digest.TimeZone != "Europe/Zurich" || d.Channels["email"]["submitted"] != ModeOff ||
+		!slices.Equal(c.Notifications.Channels(), []string{"email"}) {
+		t.Errorf("defaults = %+v", d)
+	}
+	for name, tt := range map[string]struct{ file, want string }{
+		"unknown channel":  {email + "  defaults: { channels: { teams: { submitted: off } } }", `"teams" is not a channel`},
+		"not configured":   {"notifications: { defaults: { channels: { email: { submitted: off } } } }", "notifications.defaults.channels.email needs notifications.email"},
+		"alert":            {email + "  defaults: { channels: { email: { alert: off } } }", "alerts always go at once"},
+		"unknown kind":     {email + "  defaults: { channels: { email: { deployed: off } } }", `"deployed" is not a kind of notification`},
+		"unknown mode":     {email + "  defaults: { channels: { email: { submitted: weekly } } }", `notifications.defaults.channels.email.submitted must be immediate, digest or off, not "weekly"`},
+		"approvals off":    {email + "  defaults: { channels: { email: { approval_needed: off } } }", "approval_needed cannot be off on every channel"},
+		"hour":             {email + "  defaults: { digest: { hour: 24 } }", "notifications.defaults.digest.hour must be 0 to 23, not 24"},
+		"negative hour":    {email + "  defaults: { digest: { hour: -1 } }", "must be 0 to 23, not -1"},
+		"local":            {email + "  defaults: { digest: { timeZone: Local } }", `"Local" is not an IANA time zone name`},
+		"path":             {email + "  defaults: { digest: { timeZone: ../../etc/passwd } }", "is not an IANA time zone name"},
+		"unknown timezone": {email + "  defaults: { digest: { timeZone: Mars/Olympus_Mons } }", `"Mars/Olympus_Mons" is not a known time zone`},
+		"unknown field":    {email + "  defaults: { digest: { minute: 30 } }", "field minute not found"},
+	} {
+		if _, err := Load(write(t, tt.file+"\n"), env(nil)); err == nil || !strings.Contains(err.Error(), tt.want) {
+			t.Errorf("%s: error = %v, want %q", name, err, tt.want)
+		}
+	}
+}
+
+// TestTimeZone: an IANA name, never a path, Local or an empty name.
+func TestTimeZone(t *testing.T) {
+	for _, name := range []string{"UTC", "Europe/Zurich", "America/Argentina/Buenos_Aires", "Etc/GMT+5", "Etc/GMT-14", "America/Port-au-Prince", "Asia/Kolkata"} {
+		if loc, err := TimeZone(name); err != nil || loc.String() != name {
+			t.Errorf("TimeZone(%q) = %v, %v", name, loc, err)
+		}
+	}
+	for _, name := range []string{"", "Local", "local", "/etc/localtime", "../etc/passwd", "Europe/../../etc/passwd", "Europe/Zurich/", "Europe//Zurich",
+		"./UTC", "Europe\\Zurich", "Europe/Zurich\x00", "Europe/Zurich ", "zone1970.tab", "Mars/Olympus_Mons", "A/B/C/D", strings.Repeat("A", 40)} {
+		if loc, err := TimeZone(name); err == nil {
+			t.Errorf("TimeZone(%q) = %v, want an error", name, loc)
 		}
 	}
 }

@@ -7,13 +7,57 @@ package db
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const addDigest = `-- name: AddDigest :one
+INSERT INTO notification_digests (recipient, channel, period, due, created_at)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (recipient, channel, period) DO NOTHING
+RETURNING id, org_id, recipient, channel, period, due, state, attempts, last_error, created_at, sent_at
+`
+
+type AddDigestParams struct {
+	Recipient string
+	Channel   string
+	Period    pgtype.Date
+	Due       pgtype.Timestamptz
+	CreatedAt pgtype.Timestamptz
+}
+
+// A recipient's digest on a channel for a period, once: nothing when it exists already
+// (pgx.ErrNoRows), so a job run twice makes one.
+func (q *Queries) AddDigest(ctx context.Context, arg AddDigestParams) (NotificationDigest, error) {
+	row := q.db.QueryRow(ctx, addDigest,
+		arg.Recipient,
+		arg.Channel,
+		arg.Period,
+		arg.Due,
+		arg.CreatedAt,
+	)
+	var i NotificationDigest
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Recipient,
+		&i.Channel,
+		&i.Period,
+		&i.Due,
+		&i.State,
+		&i.Attempts,
+		&i.LastError,
+		&i.CreatedAt,
+		&i.SentAt,
+	)
+	return i, err
+}
+
 const addNotification = `-- name: AddNotification :one
-INSERT INTO notifications (event_id, recipient, channel, kind, state, last_error)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO notifications (event_id, recipient, channel, kind, state, last_error, created_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
 ON CONFLICT (event_id, recipient, channel) DO NOTHING
-RETURNING id, org_id, event_id, recipient, channel, kind, state, attempts, last_error, created_at, sent_at
+RETURNING id, org_id, event_id, recipient, channel, kind, state, attempts, last_error, created_at, sent_at, digest_id
 `
 
 type AddNotificationParams struct {
@@ -23,9 +67,11 @@ type AddNotificationParams struct {
 	Kind      string
 	State     string
 	LastError string
+	CreatedAt pgtype.Timestamptz
 }
 
 // A recipient of an event on a channel, once: nothing when the row exists already (pgx.ErrNoRows).
+// created_at is the notifications' clock: a digest gathers what was added before it was due.
 func (q *Queries) AddNotification(ctx context.Context, arg AddNotificationParams) (Notification, error) {
 	row := q.db.QueryRow(ctx, addNotification,
 		arg.EventID,
@@ -34,6 +80,7 @@ func (q *Queries) AddNotification(ctx context.Context, arg AddNotificationParams
 		arg.Kind,
 		arg.State,
 		arg.LastError,
+		arg.CreatedAt,
 	)
 	var i Notification
 	err := row.Scan(
@@ -48,12 +95,142 @@ func (q *Queries) AddNotification(ctx context.Context, arg AddNotificationParams
 		&i.LastError,
 		&i.CreatedAt,
 		&i.SentAt,
+		&i.DigestID,
+	)
+	return i, err
+}
+
+const digestAttempted = `-- name: DigestAttempted :exec
+UPDATE notification_digests SET attempts = attempts + 1, last_error = $2, state = $3
+WHERE id = $1 AND state = 'pending'
+`
+
+type DigestAttemptedParams struct {
+	ID        int64
+	LastError string
+	State     string
+}
+
+// An attempt that failed: state stays pending while attempts are left, failed after the last.
+func (q *Queries) DigestAttempted(ctx context.Context, arg DigestAttemptedParams) error {
+	_, err := q.db.Exec(ctx, digestAttempted, arg.ID, arg.LastError, arg.State)
+	return err
+}
+
+const digestNotificationsFailed = `-- name: DigestNotificationsFailed :exec
+UPDATE notifications SET state = 'failed', attempts = $1, last_error = $2
+WHERE digest_id = $3 AND state = 'digest'
+`
+
+type DigestNotificationsFailedParams struct {
+	Attempts  int32
+	LastError string
+	DigestID  pgtype.Int8
+}
+
+func (q *Queries) DigestNotificationsFailed(ctx context.Context, arg DigestNotificationsFailedParams) error {
+	_, err := q.db.Exec(ctx, digestNotificationsFailed, arg.Attempts, arg.LastError, arg.DigestID)
+	return err
+}
+
+const digestNotificationsSent = `-- name: DigestNotificationsSent :exec
+UPDATE notifications SET state = 'sent', attempts = attempts + 1, last_error = '', sent_at = $1
+WHERE digest_id = $2 AND state = 'digest'
+`
+
+type DigestNotificationsSentParams struct {
+	SentAt   pgtype.Timestamptz
+	DigestID pgtype.Int8
+}
+
+func (q *Queries) DigestNotificationsSent(ctx context.Context, arg DigestNotificationsSentParams) error {
+	_, err := q.db.Exec(ctx, digestNotificationsSent, arg.SentAt, arg.DigestID)
+	return err
+}
+
+const digestSent = `-- name: DigestSent :exec
+UPDATE notification_digests SET state = 'sent', attempts = attempts + 1, last_error = '', sent_at = $1
+WHERE id = $2 AND state = 'pending'
+`
+
+type DigestSentParams struct {
+	SentAt pgtype.Timestamptz
+	ID     int64
+}
+
+func (q *Queries) DigestSent(ctx context.Context, arg DigestSentParams) error {
+	_, err := q.db.Exec(ctx, digestSent, arg.SentAt, arg.ID)
+	return err
+}
+
+const digestSkipped = `-- name: DigestSkipped :exec
+UPDATE notification_digests SET state = 'skipped', last_error = $2
+WHERE id = $1 AND state = 'pending'
+`
+
+type DigestSkippedParams struct {
+	ID        int64
+	LastError string
+}
+
+func (q *Queries) DigestSkipped(ctx context.Context, arg DigestSkippedParams) error {
+	_, err := q.db.Exec(ctx, digestSkipped, arg.ID, arg.LastError)
+	return err
+}
+
+const gatherDigest = `-- name: GatherDigest :execrows
+UPDATE notifications SET digest_id = $1
+WHERE recipient = $2 AND channel = $3 AND state = 'digest'
+  AND digest_id IS NULL AND created_at < $4
+`
+
+type GatherDigestParams struct {
+	DigestID  pgtype.Int8
+	Recipient string
+	Channel   string
+	Before    pgtype.Timestamptz
+}
+
+// The notifications a digest gathers: those waiting for one, added before it was due. A
+// notification joins one digest only.
+func (q *Queries) GatherDigest(ctx context.Context, arg GatherDigestParams) (int64, error) {
+	result, err := q.db.Exec(ctx, gatherDigest,
+		arg.DigestID,
+		arg.Recipient,
+		arg.Channel,
+		arg.Before,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const getDigest = `-- name: GetDigest :one
+SELECT id, org_id, recipient, channel, period, due, state, attempts, last_error, created_at, sent_at FROM notification_digests WHERE id = $1
+`
+
+func (q *Queries) GetDigest(ctx context.Context, id int64) (NotificationDigest, error) {
+	row := q.db.QueryRow(ctx, getDigest, id)
+	var i NotificationDigest
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Recipient,
+		&i.Channel,
+		&i.Period,
+		&i.Due,
+		&i.State,
+		&i.Attempts,
+		&i.LastError,
+		&i.CreatedAt,
+		&i.SentAt,
 	)
 	return i, err
 }
 
 const getNotification = `-- name: GetNotification :one
-SELECT id, org_id, event_id, recipient, channel, kind, state, attempts, last_error, created_at, sent_at FROM notifications WHERE id = $1
+SELECT id, org_id, event_id, recipient, channel, kind, state, attempts, last_error, created_at, sent_at, digest_id FROM notifications WHERE id = $1
 `
 
 func (q *Queries) GetNotification(ctx context.Context, id int64) (Notification, error) {
@@ -71,12 +248,51 @@ func (q *Queries) GetNotification(ctx context.Context, id int64) (Notification, 
 		&i.LastError,
 		&i.CreatedAt,
 		&i.SentAt,
+		&i.DigestID,
 	)
 	return i, err
 }
 
+const listDigestNotifications = `-- name: ListDigestNotifications :many
+SELECT id, org_id, event_id, recipient, channel, kind, state, attempts, last_error, created_at, sent_at, digest_id FROM notifications WHERE digest_id = $1 AND state = 'digest' ORDER BY id
+`
+
+// The notifications of a digest still to tell.
+func (q *Queries) ListDigestNotifications(ctx context.Context, digestID pgtype.Int8) ([]Notification, error) {
+	rows, err := q.db.Query(ctx, listDigestNotifications, digestID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Notification{}
+	for rows.Next() {
+		var i Notification
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.EventID,
+			&i.Recipient,
+			&i.Channel,
+			&i.Kind,
+			&i.State,
+			&i.Attempts,
+			&i.LastError,
+			&i.CreatedAt,
+			&i.SentAt,
+			&i.DigestID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listEventNotifications = `-- name: ListEventNotifications :many
-SELECT id, org_id, event_id, recipient, channel, kind, state, attempts, last_error, created_at, sent_at FROM notifications WHERE event_id = $1 ORDER BY id
+SELECT id, org_id, event_id, recipient, channel, kind, state, attempts, last_error, created_at, sent_at, digest_id FROM notifications WHERE event_id = $1 ORDER BY id
 `
 
 func (q *Queries) ListEventNotifications(ctx context.Context, eventID int64) ([]Notification, error) {
@@ -100,6 +316,7 @@ func (q *Queries) ListEventNotifications(ctx context.Context, eventID int64) ([]
 			&i.LastError,
 			&i.CreatedAt,
 			&i.SentAt,
+			&i.DigestID,
 		); err != nil {
 			return nil, err
 		}
@@ -140,7 +357,7 @@ func (q *Queries) NotificationSent(ctx context.Context, id int64) error {
 
 const notificationSkipped = `-- name: NotificationSkipped :exec
 UPDATE notifications SET state = 'skipped', last_error = $2
-WHERE id = $1 AND state = 'pending'
+WHERE id = $1 AND state IN ('pending', 'digest')
 `
 
 type NotificationSkippedParams struct {
@@ -148,7 +365,40 @@ type NotificationSkippedParams struct {
 	LastError string
 }
 
+// Nothing to send: before it is sent, or before its digest is.
 func (q *Queries) NotificationSkipped(ctx context.Context, arg NotificationSkippedParams) error {
 	_, err := q.db.Exec(ctx, notificationSkipped, arg.ID, arg.LastError)
 	return err
+}
+
+const waitingForDigest = `-- name: WaitingForDigest :many
+SELECT DISTINCT recipient, channel FROM notifications
+WHERE state = 'digest' AND digest_id IS NULL
+ORDER BY recipient, channel
+`
+
+type WaitingForDigestRow struct {
+	Recipient string
+	Channel   string
+}
+
+// The recipients and channels with notifications that wait for a digest.
+func (q *Queries) WaitingForDigest(ctx context.Context) ([]WaitingForDigestRow, error) {
+	rows, err := q.db.Query(ctx, waitingForDigest)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []WaitingForDigestRow{}
+	for rows.Next() {
+		var i WaitingForDigestRow
+		if err := rows.Scan(&i.Recipient, &i.Channel); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

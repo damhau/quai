@@ -115,6 +115,7 @@ func work(ctx context.Context, cfg *config.Config, log *slog.Logger, s *store.St
 		}
 		if n != nil {
 			workers = append(workers, n.Workers)
+			opts.Periodic = append(opts.Periodic, notify.Periodic())
 		}
 		opts.Periodic = append(opts.Periodic, ingest.Periodic())
 	}

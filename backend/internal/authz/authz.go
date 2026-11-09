@@ -96,6 +96,8 @@ const (
 	UseBreakGlass      Action = "requests.break-glass"
 	ManageOwnTokens    Action = "tokens.manage"
 	PublishBlueprint   Action = "blueprints.publish"
+	// ManageOwnPreferences reads and changes one's notification preferences.
+	ManageOwnPreferences Action = "preferences.manage"
 )
 
 // Object is what the action is on. Fields that do not apply are empty.
@@ -231,6 +233,9 @@ func Authorize(_ context.Context, p Principal, a Action, o Object) (Decision, er
 		}
 	case ManageOwnTokens:
 		// Anyone signed in manages their own tokens; tokens cannot make tokens (scopes above).
+	case ManageOwnPreferences:
+		// Anyone signed in manages their own notification preferences, in a browser session: no
+		// scope allows it to a token (open question 58).
 	case UseBreakGlass:
 		if !p.has(BreakGlass, o) {
 			return deny("break-glass needs the break-glass role"), nil
