@@ -129,7 +129,10 @@ func TestSandbox(t *testing.T) {
 	if d := time.Since(start); d > 5*time.Second {
 		t.Errorf("an endless loop ran for %s", d)
 	}
-	if _, err := m.Write(map[string]any{}, nil, nil, mode("hog")); !errors.Is(err, plugin.ErrMemory) || !strings.Contains(err.Error(), "write is over its memory limit of 32 MiB") {
+	// Allocating 32 MiB can take longer than 500ms on a slow machine (backend CI, 2026-11-09): the
+	// memory limit is checked on a runtime whose time limit cannot come first.
+	hog := load(t, plugin.New(plugin.Limits{Memory: 32 << 20, Time: time.Minute}), "guest")
+	if _, err := hog.Write(map[string]any{}, nil, nil, mode("hog")); !errors.Is(err, plugin.ErrMemory) || !strings.Contains(err.Error(), "write is over its memory limit of 32 MiB") {
 		t.Errorf("a call that allocates without end: err = %v", err)
 	}
 	if _, err := m.Write(map[string]any{}, nil, nil, mode("panic")); err == nil || !strings.Contains(err.Error(), "panic: the plugin gave up") {
