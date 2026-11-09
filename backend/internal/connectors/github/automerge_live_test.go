@@ -2,6 +2,7 @@ package github
 
 import (
 	"errors"
+	"net/http"
 	"slices"
 	"strings"
 	"testing"
@@ -28,13 +29,19 @@ func (r *liveRepo) publish(t *testing.T, pr connectors.PullRequest, head string,
 }
 
 // awaitMerged asks ask, if any, every few seconds as delivery does, until the pull request is
-// merged, and returns it.
+// merged, and returns it. As delivery's job is retried, an ask GitHub answers with a server error
+// is asked again (GraphQL 502 on enqueueing, live, 2026-11-09); any other error fails.
 func (r *liveRepo) awaitMerged(t *testing.T, id string, within time.Duration, ask func() error) connectors.PullRequest {
 	t.Helper()
 	deadline := time.Now().Add(within)
 	for {
 		if ask != nil {
-			if err := ask(); err != nil && !errors.Is(err, connectors.ErrBlocked) {
+			var answer *gh.ErrorResponse
+			switch err := ask(); {
+			case err == nil, errors.Is(err, connectors.ErrBlocked):
+			case errors.As(err, &answer) && answer.Response != nil && answer.Response.StatusCode >= http.StatusInternalServerError:
+				t.Logf("asked again after a server error: %v", err)
+			default:
 				t.Fatal(err)
 			}
 		}
