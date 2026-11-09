@@ -23,10 +23,13 @@ jobs:
           persist-credentials: false
       - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
       - run: helm lint deploy/helm/quai
-      # Every optional object rendered, and checked against the Kubernetes schemas.
+      # Every optional object rendered, and checked against the Kubernetes schemas; the
+      # PrometheusRule against the Prometheus Operator's, from the CRDs catalog at a commit.
       - run: |
-          helm template quai deploy/helm/quai --set server.autoscaling.enabled=true --set ingress.enabled=true > rendered.yaml
-          docker run --rm -v "$PWD:/work:ro" ghcr.io/yannh/kubeconform:v0.7.0@sha256:85dbef6b4b312b99133decc9c6fc9495e9fc5f92293d4ff3b7e1b30f5611823c -strict -summary /work/rendered.yaml
+          helm template quai deploy/helm/quai --set server.autoscaling.enabled=true --set ingress.enabled=true --set prometheusRule.enabled=true > rendered.yaml
+          docker run --rm -v "$PWD:/work:ro" ghcr.io/yannh/kubeconform:v0.7.0@sha256:85dbef6b4b312b99133decc9c6fc9495e9fc5f92293d4ff3b7e1b30f5611823c -strict -summary \
+            -schema-location default -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/49729e49e8f062933e3716a26540d41b0cd0856c/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            /work/rendered.yaml
       - run: docker compose config --quiet
 
   image:

@@ -29,7 +29,7 @@ single pod with both roles.
 ## Packaging
 
 - **Image:** static Go binary on a distroless or UBI-minimal base, plus `git` and `openssh` (needed for transport). Non-root, read-only root file system, no shell in the distroless variant. Today (`Dockerfile`): Alpine with `git` and `openssh-client`, user 10001 in group 0 (OpenShift's arbitrary user ids run in it), the frontend's build embedded in the binary and served by `quai server` at every path the API and `/auth` do not answer, with a strict Content-Security-Policy and year-long caching of hashed assets. It runs with a read-only root file system given a writable `/tmp` and `/var/cache/quai` (the Git mirror cache). Base images are pinned by digest. CI builds the final stage without its layer cache, and that stage upgrades Alpine's packages, so each image has the fixes Alpine has that day, without waiting for a new base image. The Go dependencies compile in a layer of their own, cached while the packages the binaries import and `go.sum` do not change, so a commit compiles only Quai's packages. Each commit on `main` publishes it to `ghcr.io/damhau/quai` as `main`, `sha-<commit>` and `main-<commit time, UTC, YYYYMMDDHHMMSS>-<short commit>`, which sorts by date so that Argo CD Image Updater can follow `main`; the local stack's fake runner (the `fake-runner` target) is published with the same tags to `ghcr.io/damhau/quai-fake-runner`, for demo installations in a cluster.
-- **Helm chart:** server and worker Deployments, PodDisruptionBudgets, HorizontalPodAutoscaler for the server, NetworkPolicies, ServiceMonitor, optional CloudNativePG `Cluster`, configuration via values and a mounted `quai.yaml`. Today (`deploy/helm/quai`, [below](#helm)): server and worker Deployments, the server's Service, PodDisruptionBudget and optional HorizontalPodAutoscaler, an optional Ingress, `quai migrate` as a pre-install and pre-upgrade hook Job (it needs the database Secrets alone, so it runs before the release's other objects exist), the configuration from values (or from an existing Secret when repository URLs carry tokens), the database URL and OIDC client secret from existing Secrets, a Role that lets the pods read the Secrets that repository connections reference (`secretStore.kubernetes`, optionally restricted by name), and the outgoing network setup (`network`: an internal CA from a ConfigMap, the proxy variables). The migrations Job alone connects as the schema's owner, from a Secret of its own (`database.migrate`); the server and the worker never get it. Pods run non-root with a read-only root file system and no capabilities. CI lints it and checks the rendered objects against the Kubernetes schemas, and installs it on kind.
+- **Helm chart:** server and worker Deployments, PodDisruptionBudgets, HorizontalPodAutoscaler for the server, NetworkPolicies, ServiceMonitor, optional CloudNativePG `Cluster`, configuration via values and a mounted `quai.yaml`. Today (`deploy/helm/quai`, [below](#helm)): server and worker Deployments, the server's Service, PodDisruptionBudget and optional HorizontalPodAutoscaler, an optional Ingress, an optional PrometheusRule with the chart's alerts (`prometheusRule`, [observability](#observability)), `quai migrate` as a pre-install and pre-upgrade hook Job (it needs the database Secrets alone, so it runs before the release's other objects exist), the configuration from values (or from an existing Secret when repository URLs carry tokens), the database URL and OIDC client secret from existing Secrets, a Role that lets the pods read the Secrets that repository connections reference (`secretStore.kubernetes`, optionally restricted by name), and the outgoing network setup (`network`: an internal CA from a ConfigMap, the proxy variables). The migrations Job alone connects as the schema's owner, from a Secret of its own (`database.migrate`); the server and the worker never get it. Pods run non-root with a read-only root file system and no capabilities. CI lints it and checks the rendered objects against the Kubernetes schemas (the PrometheusRule against the Prometheus Operator's), and installs it on kind.
 - **Local stack:** `docker compose up --build` runs the server, a worker, PostgreSQL (with the schema's owner, `quai`, which the `migrate` step connects as, and the application role, `quai_app`, which the server and the worker connect as) and Gitea, which a one-shot step seeds with `examples/gitops-repo` as `quai/infra-live` (a random password, and a token and a webhook secret Quai reads from a shared volume). Requests go through pull requests: `main` requires `quai/approval`, and Gitea's webhook reaches Quai's server. A fake runner stands in for the repository's pipelines: on Gitea's webhooks it reports a plan of each pull request and an apply of each push to `main` with `quai report`, so merged requests go through *Applying* to *Applied*. The development sign-in and its demo users are on; `QUAI_PORT`, `GITEA_PORT` and `FAKERUNNER_PORT` move the published ports.
 - **OpenShift:** runs under the `restricted-v2` SCC with an arbitrary UID; a `Route` instead of an `Ingress`; UBI-based image variant.
 - **Air-gapped:** an offline bundle (images, chart, `quai` CLI binaries for Linux, macOS and Windows) with checksums and signatures. Nothing is fetched at runtime: no CDNs, no fonts, no telemetry.
@@ -60,6 +60,10 @@ single pod with both roles.
   | `audit.checkpoints.signingKey.ref` | `QUAI_AUDIT_CHECKPOINTS_SIGNING_KEY_REF` | none: no checkpoint is signed, so nothing is pruned and a rewritten chain goes unnoticed; the worker warns. A reference to an Ed25519 private key in PEM (`k8s:quai/quai-audit-key#private.pem`) the worker signs a checkpoint with every hour ([the checkpoint key](#the-checkpoint-key)) |
   | `audit.checkpoints.previousKeys` | | none: the public keys (PEM) of the signing keys before a rotation, kept as long as the checkpoints they signed |
   | `audit.checkpoints.repository` | `QUAI_AUDIT_CHECKPOINTS_REPOSITORY` | none: the name of a repository connection, with delivery mode `direct`, the worker commits each checkpoint to ([the audit repository](#the-audit-repository)) |
+  | `audit.export` | | none: the SIEMs the worker sends the audit log to, a list of destinations, each a `name` (lowercase letters, digits and `-`, the key of its cursor) and one of `syslog`, `otlp` and `splunk` ([exporting to a SIEM](#exporting-to-a-siem)) |
+  | `audit.export[].syslog.address`, `.transport`, `.facility` | | required `host:port` (RFC 5425's port is 6514); `tls`, or `tcp`, unencrypted, which production refuses except to a loopback address; `13` (log audit) |
+  | `audit.export[].otlp.endpoint`, `.headers` | | required: the collector's URL, `https`, its logs at `/v1/logs` unless it names a path; `http` only to a loopback address in production. Headers by name, each a secret reference (`{ ref: env:OTLP_TOKEN }`) |
+  | `audit.export[].splunk.url`, `.token.ref`, `.index`, `.sourcetype` | | required: the HTTP Event Collector's base URL (`https://splunk.example.com:8088`), `http` only to a loopback address in production; required: a secret reference to the HEC token, a token without indexer acknowledgment; the token's default index; none |
   | `log.level` | `QUAI_LOG_LEVEL` | `info` (`debug`, `info`, `warn`, `error`) |
   | `log.format` | `QUAI_LOG_FORMAT` | `json` in production, `text` otherwise |
   | `telemetry.otlpEndpoint` | `QUAI_TELEMETRY_OTLP_ENDPOINT` | none: no traces are exported; traces go to `<url>/v1/traces` |
@@ -275,7 +279,75 @@ log has grown past them and a new checkpoint is committed, and `quai audit verif
 repository keeps failing there.
 That is the record of the restore: write it in the incident report, with the SIEM's copy of the
 lost events, and verify the log since then with the checkpoints after the restore (`--anchors`
-naming their files).
+naming their files). The restored cursors make the export send again the `seq` the SIEM already
+has from the lost events, with other hashes, and the worker logs `the audit log changed after it
+was exported`: keep both in the SIEM.
+
+#### Exporting to a SIEM
+
+`audit.export` lists the SIEMs the worker sends the audit log to, at least once and in order: a
+destination that was down or refused a batch gets it again at the next run, 30 seconds later, and
+catches up with no gap. A record is the event as `quai audit export` writes it, with its `seq` and
+`hash` and personal data as pseudonyms ([what is sent](../design/09-security-and-compliance.md#export-to-a-siem)):
+de-duplicate on `seq`, and alert in the SIEM on a gap in it.
+
+```yaml
+audit:
+  export:
+    - name: siem                                    # its cursor's key: renaming it sends everything again
+      syslog: { address: "siem.example.com:6514" } # RFC 5424 over TLS, octet counting
+    - name: otel
+      otlp:
+        endpoint: https://otel-collector.example.com:4318
+        headers: { Authorization: { ref: "k8s:quai/quai-otlp#authorization" } }
+    - name: splunk
+      splunk: { url: "https://splunk.example.com:8088", token: { ref: "k8s:quai/quai-splunk#token" }, index: audit, sourcetype: "quai:audit" }
+```
+
+- Certificates are verified against the image's CAs and `network.caFile`, with no way to turn
+  that off: an internal CA goes in `network.caFile` (the chart's `network.caBundle`). Syslog
+  connects directly, not through the proxy; OTLP and HEC go through it.
+- The syslog receiver must accept octet-counted messages larger than 2 KiB (a request's event
+  carries its change set) and close the connection once the worker has closed its side: until
+  it does, the batch does not count as delivered.
+- The HEC token must not require indexer acknowledgment, which Quai does not ask for.
+- A new destination starts with the oldest event the database holds; events pruned before a
+  destination took them are lost to it, and the worker logs an error.
+
+The worker counts each run in `quai.audit.exports` (`destination`, `outcome`: `ok` or `error`),
+logs a warning when one fails, and reports each destination's lag: `quai.audit.export.lag`, in
+seconds, since the database recorded the oldest event the destination has not taken (0 when it
+has them all), and `quai.audit.export.pending`, how many there are. The chart's
+`QuaiAuditExportLagging` alert fires when a lag stays above 10 minutes for 5 minutes.
+
+#### When the audit export lags
+
+`QuaiAuditExportLagging`, or a SIEM missing recent events. Nothing is lost while the events are
+in the database: the export resumes where the destination's cursor is, once it can.
+
+1. **Read the worker's warnings** for the destination: `the audit export failed`, with the error.
+2. **By error**:
+
+   | Error | What to do |
+   | --- | --- |
+   | `connection refused`, `i/o timeout`, `no such host` | The receiver is down or unreachable: its state, the network path (syslog does not use the proxy), `NO_PROXY` for an HTTP destination reached directly |
+   | `certificate signed by unknown authority`, `certificate is valid for …` | Its certificate is not signed by a CA in `network.caFile`, or does not name the address configured |
+   | `the receiver did not close the connection after reading the messages` | A syslog receiver that resets the connection or never closes it: one that rejects messages too large, or not octet-counted |
+   | `the collector answered 4xx`, `HEC answered 4xx: "Invalid token"`, `"Incorrect index"`, `"Token disabled"` | The credential or the index: the secret the reference names, the token's allowed indexes |
+   | `the collector answered 5xx`, `HEC answered 503: "Server is busy"`, `429` | The SIEM is overloaded: it catches up once it takes events again |
+   | `the collector rejected n of m records` | The collector dropped records it took (an OTLP partial success): they are not sent again; its own logs say why |
+   | `answered 3xx` | The URL redirects, which Quai does not follow: configure the address it redirects to |
+
+3. **A lag that keeps growing while runs succeed** means the destination takes the events more
+   slowly than they are recorded: `quai.audit.export.pending` grows. A run sends 500 events at a
+   time for at most a minute every 30 seconds.
+4. **Before the retention runs out**, the oldest pending event is pruned and the destination
+   never gets it (the worker logs `audit events were pruned before they were exported`). If the
+   lag nears `audit.retention`, keep an export of the log (`quai audit export -o`) for the SIEM.
+
+`the audit log changed after it was exported`, an error, means the event after the last one a
+destination took does not link to it: the database was restored from an older backup, or the log
+rewritten. Follow [when the chain does not verify](#when-the-chain-does-not-verify).
 
 ### Runners
 
@@ -369,7 +441,8 @@ Egress needed, all configurable through an HTTP proxy (`HTTPS_PROXY`, `NO_PROXY`
 | Microsoft Graph (`graph.microsoft.com`) | Only if group memberships must be resolved beyond what the token carries (see [identity](../design/08-identity-access-tenancy.md#directory)) |
 | IdP | OIDC discovery, token exchange, JWKS |
 | Secret store | Credentials |
-| ITSM, chat, SIEM | Optional integrations |
+| SIEMs (`audit.export`) | The audit log's export: syslog over TLS straight to the receiver, never through the proxy; OTLP and Splunk HEC over HTTPS |
+| ITSM, chat | Optional integrations |
 | Executors (Kubernetes API, AWX, vCenter) | Imperative actions |
 
 Ingress: users and CLI (HTTPS), Git platform webhooks (Azure DevOps service hooks; on Server this needs a firewall path from the Server to Quai, otherwise Quai runs in polling mode), runner reports. Webhook
@@ -410,8 +483,16 @@ snoozed and retried. Different repositories proceed in parallel.
   - webhook lag and last delivery per repository;
   - credential days-to-expiry; repositories without enforced branch protection;
   - audit checkpoints signed (`quai.audit.checkpoints`, by outcome) and verifications of the audit
-    log (`quai.audit.verifications`: `ok`, `broken`, `error`).
+    log (`quai.audit.verifications`: `ok`, `broken`, `error`);
+  - the audit log's export, by destination: runs (`quai.audit.exports`, by outcome), the lag
+    (`quai.audit.export.lag`, seconds) and the events pending (`quai.audit.export.pending`). Every
+    worker reports the same lag, read from the database.
 - **Dashboards and alerts** shipped with the chart: no webhook from a repository for 1 h while pushes happen, enforcement missing, credential expiring within 14 days, job failure rate above threshold, audit export lagging.
+  Today the chart ships `QuaiAuditExportLagging` (`max by (destination) (quai_audit_export_lag_seconds)`
+  above `prometheusRule.auditExportLag.seconds`, 600, for `.for`, 5m) in a PrometheusRule of the
+  Prometheus Operator, with `prometheusRule.enabled` and the labels its `ruleSelector` matches in
+  `prometheusRule.labels`. The names are those a collector's Prometheus exporter gives the
+  metrics: `quai.audit.export.lag` becomes `quai_audit_export_lag_seconds`.
 
 ## Backup and disaster recovery
 
@@ -437,6 +518,8 @@ before GA and twice a year.
 
 Shipped with the docs, one per alert: webhook silence, enforcement missing,
 credential expired, stuck request, stale request storm after a large base
-change, job queue backlog, audit chain verification failure (the first is in
-[the audit log](#when-the-chain-does-not-verify)), restore from backup, rotating the
+change, job queue backlog, audit chain verification failure and audit export lagging (the
+first ones, in the audit log's section: [when the chain does not
+verify](#when-the-chain-does-not-verify) and [when the audit export
+lags](#when-the-audit-export-lags)), restore from backup, rotating the
 commit-signing key and [the checkpoint key](#the-checkpoint-key), break-glass review.

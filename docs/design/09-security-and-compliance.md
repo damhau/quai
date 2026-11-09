@@ -115,7 +115,10 @@ changes, executor calls, configuration changes.
   it breaks, and the audit log page shows the last outcome and checkpoint ([open question
   31](../plan/open-questions.md#still-open)). What to do then is the operations guide's
   [runbook](../operations/deployment-and-operations.md#when-the-chain-does-not-verify).
-- Export: syslog (RFC 5424, optionally CEF), OpenTelemetry logs, Splunk HEC, or a webhook. Export is at-least-once with a cursor, so the SIEM can detect gaps.
+- **Export** to SIEMs: syslog, OpenTelemetry logs and Splunk's HTTP Event Collector, at least once
+  and in order, with a cursor per destination, each record with its `seq` and `hash` so the SIEM
+  can see a gap and verify the chain ([export to a SIEM](#export-to-a-siem)). A webhook comes in
+  Phase 7.
 
 What is recorded, by action (P4-01, P4-02; break-glass, executor calls and configuration changes
 come with their features):
@@ -143,6 +146,64 @@ newest first, a page at a time with a `before` cursor, filtered by action (or it
 `request`), actor (a person's name, a repository for its runner, `quai`), object (a request's ID,
 a resource, a repository, a token's ID or a person's name), object type and time. An API token
 cannot read it.
+
+### Export to a SIEM
+
+The worker sends the audit log to the destinations `audit.export` names (P4-03), each a
+`syslog`, `otlp` or `splunk` destination with a name of its own:
+
+- **What is sent.** Each event as the log holds it and `quai audit export` writes it: `seq`, `at`,
+  `actor`, `action`, `object`, `details`, `prev` and `hash`, with personal data as pseudonyms and
+  never the clear values of `audit_personal` ([open question 40](../plan/open-questions.md#still-open)).
+  The SIEM sees a gap or a repeat from `seq`, and checks each record's `hash` and its link to the
+  one before with `quai audit verify`, once its copy is de-duplicated by `seq`. Checkpoints are not
+  sent: the audit repository holds them.
+- **At least once, in order.** `audit_export_cursors` holds, per destination, the `seq` and `hash`
+  of the last event it took. Every 30 seconds, and at its start, the worker sends each destination
+  the events after its cursor in `seq` order, in batches of 500 for at most a minute, one worker at
+  a time per destination, and moves the cursor once the destination took a batch. A batch it did
+  not take, or took without the cursor moving (the worker stopped between the two), is sent again
+  at the next run: a destination that was down catches up with no gap, and may get a batch twice.
+  Taken means: for syslog, which has no acknowledgment, that the receiver closed the connection
+  after reading the batch, which the worker waits for after closing its own side; for OTLP, a
+  `200` (a partial success moves the cursor past the records the collector rejected, which OTLP
+  says not to send again, and counts as a failure); for HEC, a `200`, without indexer
+  acknowledgment ([open question 41](../plan/open-questions.md#still-open)). Events commit in
+  `seq` order and without gaps (one at a time, above), so reading after the cursor misses none.
+- **What breaks the order.** A new destination, or one renamed, starts from the oldest event the
+  log holds. Events pruned before a destination took them are a gap: the worker logs an error,
+  and pruning does not wait for the export ([open question 43](../plan/open-questions.md#still-open)).
+  An event after the cursor whose `prev` is not the cursor's `hash` means the log changed since it
+  was exported (a restore from an older backup, a rewrite): the worker logs an error and sends it,
+  and the SIEM sees the break as well. The cursors are not audit tables: the application role
+  writes them, so a cursor moved forward makes a gap the SIEM sees.
+- **Transport.** TLS is always verified, against the system's certificates and `network.caFile`;
+  nothing turns verification off. A syslog `transport: tcp` or an `http://` URL is unencrypted,
+  which production refuses except to a loopback address, a collector or relay on the same host
+  ([open question 42](../plan/open-questions.md#still-open)). HTTP destinations go through the
+  proxy, syslog does not; a redirect is an error, never followed, so credentials go nowhere else.
+  The HEC token and the OTLP headers are secret references, resolved when sending, never logged
+  nor in an error.
+- **Syslog** (RFC 5424 over TLS, RFC 5425, or TCP; framed by octet counting, RFC 6587), a
+  connection per batch: `PRI` the facility (13, log audit, by default) and the severity, warning
+  (4) for `audit.broken`, `request.merged_without_approval` and `repository.enforcement_lost`,
+  notice (5) otherwise; `TIMESTAMP` the event's `at`; `HOSTNAME` the worker's; `APP-NAME` `quai`;
+  `MSGID` the action; no structured data; `MSG` the record in JSON, its non-ASCII characters
+  escaped, so with no BOM. A record can exceed RFC 5425's 2048-octet minimum: the receiver must
+  take larger messages. CEF is not built.
+- **OpenTelemetry logs** (OTLP/HTTP, binary protobuf, to the endpoint's `/v1/logs` when it names
+  no path): a resource with `service.name`, `host.name` and `service.version`, the scope
+  `quai.audit`, and a log record per event: its time the event's `at`, severity `INFO2` (notice)
+  or `WARN` as above, its body the record in JSON, and the attributes `quai.audit.seq`,
+  `quai.audit.hash` and `quai.audit.action`.
+- **Splunk HEC** (`/services/collector/event`, `Authorization: Splunk <token>`): an event per
+  record, its `time` the event's `at` (epoch seconds and milliseconds), `host` the worker,
+  `source` `quai`, the configured `index` and `sourcetype`, and the record as `event`.
+
+The worker counts each run in `quai.audit.exports` (by destination and outcome) and reports each
+destination's lag, `quai.audit.export.lag`, the age of the oldest event it has not taken by the
+database's clock, and their number, `quai.audit.export.pending`; the chart's alert fires when a
+destination lags ([the runbook](../operations/deployment-and-operations.md#when-the-audit-export-lags)).
 
 ### Evidence bundle
 

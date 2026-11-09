@@ -45,6 +45,13 @@ type AuditEvent struct {
 	Recorded pgtype.Timestamptz
 }
 
+type AuditExportCursor struct {
+	Destination string
+	Seq         int64
+	Hash        string
+	Exported    pgtype.Timestamptz
+}
+
 type AuditPersonal struct {
 	Hash  string
 	Seq   int64

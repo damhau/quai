@@ -12,6 +12,25 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const advanceAuditExport = `-- name: AdvanceAuditExport :exec
+INSERT INTO audit_export_cursors (destination, seq, hash, exported) VALUES ($1, $2, $3, now())
+ON CONFLICT (destination) DO UPDATE SET seq = excluded.seq, hash = excluded.hash, exported = excluded.exported
+WHERE audit_export_cursors.seq < excluded.seq
+`
+
+type AdvanceAuditExportParams struct {
+	Destination string
+	Seq         int64
+	Hash        string
+}
+
+// Moves a destination's cursor to an event it took, never back: another worker's late write
+// cannot undo a later one.
+func (q *Queries) AdvanceAuditExport(ctx context.Context, arg AdvanceAuditExportParams) error {
+	_, err := q.db.Exec(ctx, advanceAuditExport, arg.Destination, arg.Seq, arg.Hash)
+	return err
+}
+
 const auditCheckpointAt = `-- name: AuditCheckpointAt :one
 SELECT seq, hash, at, key, signature FROM audit_checkpoints WHERE seq = $1
 `
@@ -103,6 +122,63 @@ func (q *Queries) AuditEventsFrom(ctx context.Context, arg AuditEventsFromParams
 			&i.Hash,
 			&i.Recorded,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const auditExportCursor = `-- name: AuditExportCursor :one
+SELECT destination, seq, hash, exported FROM audit_export_cursors WHERE destination = $1
+`
+
+// The last event a destination took.
+func (q *Queries) AuditExportCursor(ctx context.Context, destination string) (AuditExportCursor, error) {
+	row := q.db.QueryRow(ctx, auditExportCursor, destination)
+	var i AuditExportCursor
+	err := row.Scan(
+		&i.Destination,
+		&i.Seq,
+		&i.Hash,
+		&i.Exported,
+	)
+	return i, err
+}
+
+const auditExportLag = `-- name: AuditExportLag :many
+SELECT d.destination::text AS destination,
+    greatest(coalesce((SELECT max(e.seq) FROM audit_events e), 0) - coalesce(c.seq, 0), 0)::bigint AS pending,
+    coalesce(extract(epoch FROM now() - (
+        SELECT e.recorded FROM audit_events e WHERE e.seq > coalesce(c.seq, 0) ORDER BY e.seq LIMIT 1
+    )), 0)::float8 AS lag
+FROM unnest($1::text[]) AS d (destination)
+LEFT JOIN audit_export_cursors c ON c.destination = d.destination
+ORDER BY d.destination
+`
+
+type AuditExportLagRow struct {
+	Destination string
+	Pending     int64
+	Lag         float64
+}
+
+// For each destination, how many events it has not taken yet (by seq, so counting those pruned
+// before it took them) and how long ago the database recorded the oldest of them, in seconds; 0
+// when it has them all.
+func (q *Queries) AuditExportLag(ctx context.Context, destinations []string) ([]AuditExportLagRow, error) {
+	rows, err := q.db.Query(ctx, auditExportLag, destinations)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AuditExportLagRow{}
+	for rows.Next() {
+		var i AuditExportLagRow
+		if err := rows.Scan(&i.Destination, &i.Pending, &i.Lag); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

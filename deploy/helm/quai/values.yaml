@@ -1,7 +1,7 @@
 # Quai's chart (docs/operations/deployment-and-operations.md#helm): server and worker
 # Deployments, the migrations as a hook Job, the configuration file, and the secrets it refers
-# to. PodDisruptionBudgets, autoscaling and ingress are optional. CI installs it on kind with
-# deploy/kind/values.yaml.
+# to. PodDisruptionBudgets, autoscaling, ingress and the alerts are optional. CI installs it on
+# kind with deploy/kind/values.yaml.
 
 image:
   repository: ghcr.io/damhau/quai
@@ -30,6 +30,13 @@ config:
   #   checkpoints:
   #     signingKey: { ref: "k8s:quai/quai-audit-key#private.pem" }
   #     repository: audit-log # a connection with delivery mode direct, to commit checkpoints to
+  #   # The SIEMs the worker sends the audit log to (docs/operations/deployment-and-operations.md#exporting-to-a-siem):
+  #   # syslog over TLS, OpenTelemetry logs or Splunk's HTTP Event Collector, verified with the
+  #   # image's CAs and network.caBundle.
+  #   export:
+  #     - { name: siem, syslog: { address: "siem.example.com:6514" } }
+  #     - name: splunk
+  #       splunk: { url: "https://splunk.example.com:8088", token: { ref: "k8s:quai/quai-splunk#token" }, index: audit }
 configSecret: "" # an existing Secret with the quai.yaml and repositories.yaml keys, used instead of config and repositories
 
 # The repository connections declared here: Repository documents
@@ -129,6 +136,16 @@ ingress:
   annotations: {}
   host: quai.example.com
   tls: [] # - { secretName: quai-tls, hosts: [quai.example.com] }
+
+# The chart's alerts, as a PrometheusRule of the Prometheus Operator
+# (docs/operations/deployment-and-operations.md#observability). Quai sends its metrics over OTLP;
+# they reach Prometheus through a collector's Prometheus exporter, which names
+# quai.audit.export.lag quai_audit_export_lag_seconds.
+prometheusRule:
+  enabled: false
+  labels: {} # what the Prometheus' ruleSelector matches, such as release: kube-prometheus-stack
+  # QuaiAuditExportLagging: a SIEM has not taken the audit events recorded this long ago.
+  auditExportLag: { seconds: 600, for: 5m }
 
 nodeSelector: {}
 tolerations: []

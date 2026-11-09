@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,10 +17,14 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 
+	"github.com/jackc/pgx/v5"
+
+	"github.com/damhau/quai/backend/internal/audit"
 	"github.com/damhau/quai/backend/internal/audit/keeper"
 	"github.com/damhau/quai/backend/internal/config"
 	"github.com/damhau/quai/backend/internal/pgtest"
 	"github.com/damhau/quai/backend/internal/store"
+	"github.com/damhau/quai/backend/internal/store/db"
 )
 
 func TestMain(m *testing.M) { os.Exit(pgtest.Main(m)) }
@@ -85,7 +90,7 @@ func auditKey(t *testing.T) {
 }
 
 // TestWorker: the worker runs the jobs, among them the audit log's checkpoint and verification
-// at start, and signs a last checkpoint as it stops.
+// at start and its export to a SIEM, and signs a last checkpoint as it stops.
 func TestWorker(t *testing.T) {
 	s := pgtest.Store(t)
 	auditKey(t)
@@ -93,6 +98,29 @@ func TestWorker(t *testing.T) {
 		return map[string]string{"QUAI_AUDIT_CHECKPOINTS_SIGNING_KEY_REF": "env:QUAI_TEST_AUDIT_KEY"}[n], n == "QUAI_AUDIT_CHECKPOINTS_SIGNING_KEY_REF"
 	})
 	if err != nil {
+		t.Fatal(err)
+	}
+	// A syslog receiver over TCP on the loopback, which reads what comes and closes; and an
+	// event for it before the worker starts.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ln.Close() }()
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			_, _ = io.Copy(io.Discard, c)
+			_ = c.Close()
+		}
+	}()
+	cfg.Audit.Export = []config.AuditExport{{Name: "siem", Syslog: &config.SyslogExport{Address: ln.Addr().String(), Transport: config.SyslogTCP}}}
+	if err := s.Tx(context.Background(), func(tx pgx.Tx, _ *db.Queries) error {
+		return audit.Add(context.Background(), tx, audit.Event{Actor: audit.Quai, Action: "test.event", Object: audit.Object{Type: "test", ID: "x"}})
+	}); err != nil {
 		t.Fatal(err)
 	}
 	var logs bytes.Buffer
@@ -107,6 +135,9 @@ func TestWorker(t *testing.T) {
 		sw.mu.Unlock()
 		if _, err := s.LastAuditVerification(ctx); err != nil {
 			started = false // the verification at start is not recorded yet
+		}
+		if _, err := s.AuditExportCursor(ctx, "siem"); err != nil {
+			started = false // the export at start has not sent the event yet
 		}
 		if started || time.Now().After(deadline) {
 			break
@@ -129,6 +160,9 @@ func TestWorker(t *testing.T) {
 	}
 	if c, err := s.LatestAuditCheckpoint(context.Background()); err != nil || c.Seq != v.Seq {
 		t.Errorf("checkpoint at shutdown = %+v, %v; the verification is seq %d", c, err, v.Seq)
+	}
+	if c, err := s.AuditExportCursor(context.Background(), "siem"); err != nil || c.Seq < 1 {
+		t.Errorf("export cursor = %+v, %v", c, err)
 	}
 
 	cmd := newRootCmd()

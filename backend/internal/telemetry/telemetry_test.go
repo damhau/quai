@@ -105,6 +105,12 @@ func TestMetrics(t *testing.T) {
 	AuditVerified(ctx, "ok")
 	AuditVerified(ctx, "broken")
 	AuditVerified(ctx, "error")
+	AuditExported(ctx, "siem", nil)
+	AuditExported(ctx, "siem", errors.New("refused"))
+	ObserveAuditExport(func(context.Context) ([]AuditExportLag, error) {
+		return []AuditExportLag{{Destination: "siem", Pending: 3, Lag: 90 * time.Second}, {Destination: "splunk"}}, nil
+	})
+	t.Cleanup(func() { exportLags.Store(nil) })
 	var rm metricdata.ResourceMetrics
 	if err := reader.Collect(ctx, &rm); err != nil {
 		t.Fatal(err)
@@ -121,10 +127,21 @@ func TestMetrics(t *testing.T) {
 				for _, p := range d.DataPoints {
 					got[m.Name] += int(p.Value)
 				}
+			case metricdata.Gauge[float64]:
+				for _, p := range d.DataPoints {
+					dest, _ := p.Attributes.Value("destination")
+					got[m.Name+"/"+dest.AsString()] = int(p.Value)
+				}
+			case metricdata.Gauge[int64]:
+				for _, p := range d.DataPoints {
+					dest, _ := p.Attributes.Value("destination")
+					got[m.Name+"/"+dest.AsString()] = int(p.Value)
+				}
 			}
 		}
 	}
-	want := map[string]int{"quai.git.fetch.duration": 2, "quai.webhook.lag": 1, "quai.deliveries": 2, "quai.audit.checkpoints": 1, "quai.audit.verifications": 3}
+	want := map[string]int{"quai.git.fetch.duration": 2, "quai.webhook.lag": 1, "quai.deliveries": 2, "quai.audit.checkpoints": 1, "quai.audit.verifications": 3,
+		"quai.audit.exports": 2, "quai.audit.export.lag/siem": 90, "quai.audit.export.lag/splunk": 0, "quai.audit.export.pending/siem": 3, "quai.audit.export.pending/splunk": 0}
 	if !maps.Equal(got, want) {
 		t.Errorf("metrics = %v, want %v", got, want)
 	}

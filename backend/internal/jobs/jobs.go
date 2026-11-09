@@ -103,9 +103,7 @@ func WithRepositoryLock(ctx context.Context, locks *store.Locks, repository stri
 // interleave, such as reading a request's state and publishing its status. A waiter holds no
 // connection: it tries again after a pause that doubles up to lockRetryMax, until ctx is done.
 func WithLock(ctx context.Context, locks *store.Locks, name string, fn func(context.Context) error) error {
-	h := fnv.New64a()
-	_, _ = h.Write([]byte(name))
-	key := int64(h.Sum64()) // #nosec G115 -- any 64 bits make a key
+	key := nameKey(name)
 	pause := lockRetryMin
 	for {
 		ran, err := tryLocked(ctx, locks, key, fn)
@@ -121,6 +119,20 @@ func WithLock(ctx context.Context, locks *store.Locks, name string, fn func(cont
 		}
 		pause = min(2*pause, lockRetryMax)
 	}
+}
+
+// TryLock runs fn holding the advisory lock named name if no one holds it, and reports whether it
+// did: periodic work that another worker is doing already, such as exporting the audit log to a
+// destination, is skipped rather than waited for.
+func TryLock(ctx context.Context, locks *store.Locks, name string, fn func(context.Context) error) (bool, error) {
+	return tryLocked(ctx, locks, nameKey(name), fn)
+}
+
+// nameKey maps a lock's name to the 64-bit key of its advisory lock.
+func nameKey(name string) int64 {
+	h := fnv.New64a()
+	_, _ = h.Write([]byte(name))
+	return int64(h.Sum64()) // #nosec G115 -- any 64 bits make a key
 }
 
 // The pauses of a waiter for a lock (WithLock).

@@ -90,6 +90,30 @@ SELECT coalesce(p.checkpoint, 0)::bigint AS checkpoint, p.events::bigint AS even
 -- name: AuditRetention :one
 SELECT retention FROM audit_retention;
 
+-- name: AuditExportCursor :one
+-- The last event a destination took.
+SELECT * FROM audit_export_cursors WHERE destination = $1;
+
+-- name: AdvanceAuditExport :exec
+-- Moves a destination's cursor to an event it took, never back: another worker's late write
+-- cannot undo a later one.
+INSERT INTO audit_export_cursors (destination, seq, hash, exported) VALUES ($1, $2, $3, now())
+ON CONFLICT (destination) DO UPDATE SET seq = excluded.seq, hash = excluded.hash, exported = excluded.exported
+WHERE audit_export_cursors.seq < excluded.seq;
+
+-- name: AuditExportLag :many
+-- For each destination, how many events it has not taken yet (by seq, so counting those pruned
+-- before it took them) and how long ago the database recorded the oldest of them, in seconds; 0
+-- when it has them all.
+SELECT d.destination::text AS destination,
+    greatest(coalesce((SELECT max(e.seq) FROM audit_events e), 0) - coalesce(c.seq, 0), 0)::bigint AS pending,
+    coalesce(extract(epoch FROM now() - (
+        SELECT e.recorded FROM audit_events e WHERE e.seq > coalesce(c.seq, 0) ORDER BY e.seq LIMIT 1
+    )), 0)::float8 AS lag
+FROM unnest(sqlc.arg(destinations)::text[]) AS d (destination)
+LEFT JOIN audit_export_cursors c ON c.destination = d.destination
+ORDER BY d.destination;
+
 -- name: LastAuditVerification :one
 -- The outcome of the last verification of the chain, which the worker records.
 SELECT * FROM audit_events WHERE action = ANY ('{audit.verified,audit.broken}'::text[]) ORDER BY seq DESC LIMIT 1;

@@ -84,6 +84,21 @@ func TestInvalid(t *testing.T) {
 		"audit repository": {env: map[string]string{"QUAI_AUDIT_CHECKPOINTS_REPOSITORY": "audit"}, want: "audit.checkpoints.repository needs audit.checkpoints.signingKey.ref"},
 		"previous key":     {file: "audit: { checkpoints: { previousKeys: [\"not a key\"] } }\n", want: "audit.checkpoints.previousKeys[0]: must be one PEM"},
 		"previous RSA key": {file: "audit: { checkpoints: { previousKeys: [\"" + strings.ReplaceAll(rsaPublic, "\n", "\\n") + "\"] } }\n", want: "audit.checkpoints.previousKeys[0]: is not an Ed25519 key"},
+		"export name":      {file: "audit: { export: [{ name: SIEM, syslog: { address: siem:6514 } }] }\n", want: `audit.export[0].name must be lowercase letters, digits and dashes, not "SIEM"`},
+		"export twice":     {file: "audit: { export: [{ name: siem, syslog: { address: siem:6514 } }, { name: siem, syslog: { address: other:6514 } }] }\n", want: "audit.export[1].name: siem names another destination already"},
+		"export none":      {file: "audit: { export: [{ name: siem }] }\n", want: "audit.export[0] must have exactly one of syslog, otlp and splunk"},
+		"export two":       {file: "audit: { export: [{ name: siem, syslog: { address: siem:6514 }, otlp: { endpoint: https://otel } }] }\n", want: "audit.export[0] must have exactly one of syslog, otlp and splunk"},
+		"syslog address":   {file: "audit: { export: [{ name: siem, syslog: { address: siem } }] }\n", want: `audit.export[0].syslog.address must be host:port, not "siem"`},
+		"syslog transport": {file: "audit: { export: [{ name: siem, syslog: { address: siem:514, transport: udp } }] }\n", want: `audit.export[0].syslog.transport must be tls or tcp, not "udp"`},
+		"syslog facility":  {file: "audit: { export: [{ name: siem, syslog: { address: siem:6514, facility: 24 } }] }\n", want: "audit.export[0].syslog.facility must be 0 to 23, not 24"},
+		"syslog tcp":       {file: "audit: { export: [{ name: siem, syslog: { address: siem:514, transport: tcp } }] }\n", env: map[string]string{"QUAI_ENV": "production"}, want: "audit.export[0].syslog.transport tcp sends the audit log unencrypted"},
+		"otlp endpoint":    {file: "audit: { export: [{ name: otel, otlp: { endpoint: otel:4318 } }] }\n", want: "audit.export[0].otlp.endpoint must be an https URL"},
+		"otlp http":        {file: "audit: { export: [{ name: otel, otlp: { endpoint: http://otel:4318 } }] }\n", env: map[string]string{"QUAI_ENV": "production"}, want: "audit.export[0].otlp.endpoint: http sends the audit log unencrypted"},
+		"otlp header":      {file: "audit: { export: [{ name: otel, otlp: { endpoint: https://otel, headers: { Authorization: { ref: Bearer x } } } }] }\n", want: "audit.export[0].otlp.headers.Authorization.ref must be a secret reference"},
+		"otlp header name": {file: "audit: { export: [{ name: otel, otlp: { endpoint: https://otel, headers: { \"a b\": { ref: env:X } } } }] }\n", want: `audit.export[0].otlp.headers: "a b" is not a header name`},
+		"splunk url":       {file: "audit: { export: [{ name: splunk, splunk: { url: \"https://u:p@splunk:8088\", token: { ref: env:HEC } } }] }\n", want: "audit.export[0].splunk.url must be an https URL without credentials"},
+		"splunk token":     {file: "audit: { export: [{ name: splunk, splunk: { url: https://splunk:8088 } }] }\n", want: "audit.export[0].splunk.token.ref must be a secret reference"},
+		"splunk http":      {file: "audit: { export: [{ name: splunk, splunk: { url: http://splunk:8088, token: { ref: env:HEC } } }] }\n", env: map[string]string{"QUAI_ENV": "production"}, want: "audit.export[0].splunk.url: http sends the audit log unencrypted"},
 	} {
 		p := ""
 		if tt.file != "" {
@@ -104,6 +119,39 @@ MFwwDQYJKoZIhvcNAQEBBQADSwAwSAJBAL3n9C2gS1BqJ2OAuWGfmfQ6t0TlCqRm
 o7m1z0yOg3xK3Wb1aiwxV0sLhJ2wB0Ilm7v3hSvwj5Fnt2EeE0lJm0kCAwEAAQ==
 -----END PUBLIC KEY-----
 `
+
+// TestAuditExport: the SIEMs the audit log is exported to, with their defaults; unencrypted
+// transports only to a loopback address in production.
+func TestAuditExport(t *testing.T) {
+	p := write(t, `audit:
+  export:
+    - name: siem
+      syslog: { address: "siem.example.com:6514" }
+    - name: local-syslog
+      syslog: { address: "127.0.0.1:514", transport: tcp, facility: 10 }
+    - name: otel
+      otlp:
+        endpoint: http://localhost:4318
+        headers: { Authorization: { ref: "env:OTLP_AUTH" } }
+    - name: splunk
+      splunk: { url: "https://splunk.example.com:8088", token: { ref: "k8s:quai/splunk-hec#token" }, index: audit }
+`)
+	c, err := Load(p, env(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ex := c.Audit.Export
+	if len(ex) != 4 || ex[0].Syslog.Transport != SyslogTLS || *ex[0].Syslog.Facility != DefaultSyslogFacility ||
+		ex[1].Syslog.Transport != SyslogTCP || *ex[1].Syslog.Facility != 10 ||
+		ex[2].OTLP.Headers["Authorization"].Ref != "env:OTLP_AUTH" || ex[3].Splunk.Token.Ref != "k8s:quai/splunk-hec#token" || ex[3].Splunk.Index != "audit" {
+		t.Errorf("export = %+v", ex)
+	}
+	prod := map[string]string{"QUAI_ENV": "production", "QUAI_AUTH_OIDC_ISSUER": "https://idp.example.com",
+		"QUAI_AUTH_OIDC_CLIENT_ID": "quai", "QUAI_AUTH_OIDC_REDIRECT_URL": "https://quai.example.com/auth/callback"}
+	if _, err := Load(p, env(prod)); err != nil {
+		t.Errorf("production with unencrypted destinations on loopback addresses: %v", err)
+	}
+}
 
 // TestAudit: the audit log's retention and checkpoints.
 func TestAudit(t *testing.T) {

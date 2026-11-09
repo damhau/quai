@@ -232,6 +232,39 @@ func TestRepositoryLock(t *testing.T) {
 	}
 }
 
+// TestTryLock: work under a named lock is skipped, not waited for, while another holds it.
+func TestTryLock(t *testing.T) {
+	t.Parallel()
+	_, p, _ := lockPools(t, 4, 4)
+	ctx := context.Background()
+	held := make(chan struct{})
+	release := make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		_, err := TryLock(ctx, p, "quai/test", func(context.Context) error {
+			close(held)
+			<-release
+			return nil
+		})
+		done <- err
+	}()
+	<-held
+	if ran, err := TryLock(ctx, p, "quai/test", func(context.Context) error {
+		t.Error("ran while another held the lock")
+		return nil
+	}); ran || err != nil {
+		t.Errorf("second holder: ran %v, %v", ran, err)
+	}
+	close(release)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	boom := errors.New("boom")
+	if ran, err := TryLock(ctx, p, "quai/test", func(context.Context) error { return boom }); !ran || !errors.Is(err, boom) {
+		t.Errorf("after release: ran %v, %v", ran, err)
+	}
+}
+
 // smallPool is a pool of the test's database with at most max connections.
 func smallPool(t *testing.T, url string, max int32) *pgxpool.Pool {
 	t.Helper()

@@ -18,9 +18,29 @@ type instruments struct {
 	deliveries metric.Int64Counter
 	auditCps   metric.Int64Counter
 	auditVer   metric.Int64Counter
+	auditExp   metric.Int64Counter
 }
 
 var current atomic.Pointer[instruments]
+
+// AuditExportLag is how far a destination of the audit log's export is behind.
+type AuditExportLag struct {
+	Destination string
+	// Pending is how many events the destination has not taken yet.
+	Pending int64
+	// Lag is how long ago the database recorded the oldest of them; zero when there is none.
+	Lag time.Duration
+}
+
+// exportLags reads the export's lag, at each collection (ObserveAuditExport).
+var exportLags atomic.Pointer[func(context.Context) ([]AuditExportLag, error)]
+
+// ObserveAuditExport makes lags the source of the audit export's lag and pending events, which
+// the metrics read at each collection: from the database, so that every worker reports the same
+// values, whichever exported last.
+func ObserveAuditExport(lags func(context.Context) ([]AuditExportLag, error)) {
+	exportLags.Store(&lags)
+}
 
 // use makes the instruments of mp the ones recorded with.
 func use(mp metric.MeterProvider) error {
@@ -45,6 +65,40 @@ func use(mp metric.MeterProvider) error {
 	}
 	if in.auditVer, err = m.Int64Counter("quai.audit.verifications",
 		metric.WithDescription("Daily verifications of the audit log, by outcome (ok, broken, error)")); err != nil {
+		return err
+	}
+	if in.auditExp, err = m.Int64Counter("quai.audit.exports",
+		metric.WithDescription("Runs of the audit log's export to a SIEM, by destination and outcome (ok, error)")); err != nil {
+		return err
+	}
+	lag, err := m.Float64ObservableGauge("quai.audit.export.lag", metric.WithUnit("s"),
+		metric.WithDescription("How long ago the database recorded the oldest audit event a SIEM has not taken yet, by destination; 0 when it has them all"))
+	if err != nil {
+		return err
+	}
+	pending, err := m.Int64ObservableGauge("quai.audit.export.pending",
+		metric.WithDescription("Audit events a SIEM has not taken yet, by destination"))
+	if err != nil {
+		return err
+	}
+	if _, err := m.RegisterCallback(func(ctx context.Context, o metric.Observer) error {
+		read := exportLags.Load()
+		if read == nil {
+			return nil
+		}
+		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+		lags, err := (*read)(ctx)
+		if err != nil {
+			return err
+		}
+		for _, l := range lags {
+			dest := metric.WithAttributes(attribute.String("destination", l.Destination))
+			o.ObserveFloat64(lag, l.Lag.Seconds(), dest)
+			o.ObserveInt64(pending, l.Pending, dest)
+		}
+		return nil
+	}, lag, pending); err != nil {
 		return err
 	}
 	current.Store(&in)
@@ -92,5 +146,12 @@ func AuditCheckpointed(ctx context.Context, err error) {
 func AuditVerified(ctx context.Context, result string) {
 	if in := current.Load(); in != nil {
 		in.auditVer.Add(ctx, 1, metric.WithAttributes(attribute.String("outcome", result)))
+	}
+}
+
+// AuditExported records a run of the audit log's export to a destination.
+func AuditExported(ctx context.Context, destination string, err error) {
+	if in := current.Load(); in != nil {
+		in.auditExp.Add(ctx, 1, metric.WithAttributes(attribute.String("destination", destination), attribute.String("outcome", outcome(err))))
 	}
 }

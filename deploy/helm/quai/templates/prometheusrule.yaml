@@ -1,0 +1,29 @@
+{{- if .Values.prometheusRule.enabled }}
+{{- /* The alerts shipped with the chart (docs/operations/deployment-and-operations.md#observability). */}}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "quai.fullname" . }}
+  labels:
+    {{- include "quai.labels" . | nindent 4 }}
+    {{- with .Values.prometheusRule.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    - name: quai.audit
+      rules:
+        # Every worker reports each destination's lag, read from the database: the same value.
+        - alert: QuaiAuditExportLagging
+          expr: max by (destination) (quai_audit_export_lag_seconds) > {{ .Values.prometheusRule.auditExportLag.seconds }}
+          for: {{ .Values.prometheusRule.auditExportLag.for }}
+          labels:
+            severity: warning
+          annotations:
+            summary: "The audit log's export to {{ "{{ $labels.destination }}" }} is behind"
+            description: >-
+              The oldest audit event {{ "{{ $labels.destination }}" }} has not taken was recorded
+              {{ "{{ $value | humanizeDuration }}" }} ago. Events are kept, and sent once it takes
+              them; past the audit retention, pruning deletes them first.
+            runbook_url: https://github.com/damhau/quai/blob/main/docs/operations/deployment-and-operations.md#when-the-audit-export-lags
+{{- end }}

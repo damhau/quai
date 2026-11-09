@@ -112,7 +112,66 @@ type Audit struct {
 	Retention time.Duration `yaml:"retention"`
 	// Checkpoints configures the signed checkpoints the worker writes every hour and at shutdown.
 	Checkpoints AuditCheckpoints `yaml:"checkpoints"`
+	// Export lists the SIEMs the worker exports the audit log to, each event at least once, in
+	// order.
+	Export []AuditExport `yaml:"export"`
 }
+
+// AuditExport is a SIEM the audit log is exported to: syslog, OpenTelemetry logs or Splunk's HTTP
+// Event Collector, exactly one of them (docs/design/09-security-and-compliance.md#export-to-a-siem).
+type AuditExport struct {
+	// Name names the destination, in metrics and logs; the database keeps how far its export got
+	// under it, so renaming it exports the log again from the first event kept.
+	Name   string        `yaml:"name"`
+	Syslog *SyslogExport `yaml:"syslog"`
+	OTLP   *OTLPExport   `yaml:"otlp"`
+	Splunk *SplunkExport `yaml:"splunk"`
+}
+
+// SyslogExport sends RFC 5424 messages over TCP, framed by octet counting (RFC 6587, RFC 5425).
+type SyslogExport struct {
+	Address string `yaml:"address"` // host:port
+	// Transport is tls (RFC 5425, the default), or tcp, which production refuses but to a
+	// loopback address.
+	Transport string `yaml:"transport"`
+	// Facility is the messages' facility, 0 to 23: 13 (log audit) by default.
+	Facility *int `yaml:"facility"`
+}
+
+// OTLPExport sends OpenTelemetry logs over OTLP/HTTP, in protobuf.
+type OTLPExport struct {
+	// Endpoint is the collector's base URL: logs go to its /v1/logs unless the URL names another
+	// path. https; http only in development or to a loopback address.
+	Endpoint string `yaml:"endpoint"`
+	// Headers are sent with each request, such as an API key: secret references.
+	Headers map[string]SecretRef `yaml:"headers"`
+}
+
+// SplunkExport sends events to a Splunk HTTP Event Collector (/services/collector/event).
+type SplunkExport struct {
+	// URL is the collector's base URL, such as https://splunk.example.com:8088. https; http only in
+	// development or to a loopback address.
+	URL string `yaml:"url"`
+	// Token is the HEC token, a secret reference.
+	Token SecretRef `yaml:"token"`
+	// Index and Sourcetype are the events'; empty: the token's defaults.
+	Index      string `yaml:"index"`
+	Sourcetype string `yaml:"sourcetype"`
+}
+
+// SecretRef names a secret in a secret store: k8s:namespace/name#key, env:NAME.
+type SecretRef struct {
+	Ref string `yaml:"ref"`
+}
+
+// Syslog transports.
+const (
+	SyslogTLS = "tls"
+	SyslogTCP = "tcp"
+)
+
+// DefaultSyslogFacility is log audit (RFC 5424, section 6.2.1).
+const DefaultSyslogFacility = 13
 
 // AuditCheckpoints configures the audit log's checkpoints.
 type AuditCheckpoints struct {
@@ -313,6 +372,15 @@ func (c *Config) defaults() {
 	if c.Audit.Retention == 0 {
 		c.Audit.Retention = 365 * 24 * time.Hour
 	}
+	for _, d := range c.Audit.Export {
+		if d.Syslog != nil && d.Syslog.Transport == "" {
+			d.Syslog.Transport = SyslogTLS
+		}
+		if d.Syslog != nil && d.Syslog.Facility == nil {
+			f := DefaultSyslogFacility
+			d.Syslog.Facility = &f
+		}
+	}
 	if c.Git.Committer.Name == "" {
 		c.Git.Committer = Committer{Name: "Quai", Email: "quai@localhost"}
 	}
@@ -361,7 +429,7 @@ func (c *Config) validate() error {
 	if ref := c.Git.SigningKey.Ref; ref != "" && !signingRefRe.MatchString(ref) {
 		errs = append(errs, fmt.Errorf("git.signingKey.ref must be a secret reference such as k8s:namespace/name#key or env:NAME, not %q", ref))
 	}
-	errs = append(errs, c.Audit.validate())
+	errs = append(errs, c.Audit.validate(c.Env))
 	if c.Env != Development && c.Env != Production {
 		errs = append(errs, fmt.Errorf("env must be %s or %s, not %q", Development, Production, c.Env))
 	}
@@ -397,8 +465,18 @@ func (c *Config) validate() error {
 	return errors.Join(errs...)
 }
 
-func (a *Audit) validate() error {
+func (a *Audit) validate(env string) error {
 	var errs []error
+	names := map[string]bool{}
+	for i, d := range a.Export {
+		if !exportNameRe.MatchString(d.Name) {
+			errs = append(errs, fmt.Errorf("audit.export[%d].name must be lowercase letters, digits and dashes, not %q", i, d.Name))
+		} else if names[d.Name] {
+			errs = append(errs, fmt.Errorf("audit.export[%d].name: %s names another destination already", i, d.Name))
+		}
+		names[d.Name] = true
+		errs = append(errs, d.validate(fmt.Sprintf("audit.export[%d]", i), env))
+	}
 	if a.Retention < MinAuditRetention {
 		errs = append(errs, fmt.Errorf("audit.retention must be at least %s, not %s", MinAuditRetention, a.Retention))
 	}
@@ -415,6 +493,81 @@ func (a *Audit) validate() error {
 		}
 	}
 	return errors.Join(errs...)
+}
+
+var exportNameRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
+
+// headerNameRe is an HTTP header name, an RFC 9110 token.
+var headerNameRe = regexp.MustCompile("^[!#$%&'*+.^_`|~0-9A-Za-z-]+$")
+
+func (d AuditExport) validate(key, env string) error {
+	n := 0
+	for _, set := range []bool{d.Syslog != nil, d.OTLP != nil, d.Splunk != nil} {
+		if set {
+			n++
+		}
+	}
+	if n != 1 {
+		return fmt.Errorf("%s must have exactly one of syslog, otlp and splunk", key)
+	}
+	var errs []error
+	switch {
+	case d.Syslog != nil:
+		s := d.Syslog
+		host, port, err := net.SplitHostPort(s.Address)
+		if err != nil || host == "" || port == "" {
+			errs = append(errs, fmt.Errorf("%s.syslog.address must be host:port, not %q", key, s.Address))
+		}
+		switch s.Transport {
+		case SyslogTLS:
+		case SyslogTCP:
+			if env == Production && !loopback(host) {
+				errs = append(errs, fmt.Errorf("%s.syslog.transport tcp sends the audit log unencrypted: production refuses it but to a loopback address", key))
+			}
+		default:
+			errs = append(errs, fmt.Errorf("%s.syslog.transport must be tls or tcp, not %q", key, s.Transport))
+		}
+		if f := s.Facility; f != nil && (*f < 0 || *f > 23) {
+			errs = append(errs, fmt.Errorf("%s.syslog.facility must be 0 to 23, not %d", key, *f))
+		}
+	case d.OTLP != nil:
+		errs = append(errs, exportURL(key+".otlp.endpoint", d.OTLP.Endpoint, env))
+		for name, h := range d.OTLP.Headers {
+			if !headerNameRe.MatchString(name) {
+				errs = append(errs, fmt.Errorf("%s.otlp.headers: %q is not a header name", key, name))
+			}
+			if !signingRefRe.MatchString(h.Ref) {
+				errs = append(errs, fmt.Errorf("%s.otlp.headers.%s.ref must be a secret reference such as k8s:namespace/name#key or env:NAME", key, name))
+			}
+		}
+	case d.Splunk != nil:
+		errs = append(errs, exportURL(key+".splunk.url", d.Splunk.URL, env))
+		if !signingRefRe.MatchString(d.Splunk.Token.Ref) {
+			errs = append(errs, fmt.Errorf("%s.splunk.token.ref must be a secret reference such as k8s:namespace/name#key or env:NAME", key))
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// exportURL checks a destination's URL: https, or http in development or to a loopback address.
+func exportURL(key, s, env string) error {
+	u, err := url.Parse(s)
+	if err != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") || u.User != nil {
+		return fmt.Errorf("%s must be an https URL without credentials, not %q", key, s)
+	}
+	if u.Scheme == "http" && env == Production && !loopback(u.Hostname()) {
+		return fmt.Errorf("%s: http sends the audit log unencrypted: production refuses it but to a loopback address", key)
+	}
+	return nil
+}
+
+// loopback reports whether host is this machine: localhost or a loopback address.
+func loopback(host string) bool {
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 // ed25519PublicKey checks a PEM Ed25519 public key, as `openssl pkey -pubout` writes it.

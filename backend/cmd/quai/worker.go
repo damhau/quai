@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/damhau/quai/backend/internal/audit/keeper"
+	"github.com/damhau/quai/backend/internal/audit/siem"
 	"github.com/damhau/quai/backend/internal/config"
 	"github.com/damhau/quai/backend/internal/gitx"
 	"github.com/damhau/quai/backend/internal/ingest"
@@ -68,7 +69,8 @@ func newWorkerCmd() *cobra.Command {
 
 // work runs the job queue until ctx ends, then lets jobs in flight finish within the shutdown
 // timeout before cancelling them, and signs a last audit checkpoint; cancelled jobs run again
-// later. Outgoing connections go through network (nil: the defaults).
+// later. It exports the audit log to the SIEMs audit.export names. Outgoing connections go
+// through network (nil: the defaults).
 func work(ctx context.Context, cfg *config.Config, log *slog.Logger, s *store.Store, network *netx.Network) error {
 	opts := jobs.Options{Logger: log}
 	var svc *requests.Service
@@ -77,26 +79,38 @@ func work(ctx context.Context, cfg *config.Config, log *slog.Logger, s *store.St
 	if err != nil {
 		return err
 	}
-	keep := keeper.New(keeper.Options{Store: s, Config: cfg.Audit, Secrets: secretStore(cfg), Repositories: reg,
+	sec := secretStore(cfg)
+	keep := keeper.New(keeper.Options{Store: s, Config: cfg.Audit, Secrets: sec, Repositories: reg,
 		Committer: gitx.Signature{Name: cfg.Git.Committer.Name, Email: cfg.Git.Committer.Email}, Log: log})
 	if !keep.Signs() {
 		log.Warn("audit.checkpoints.signingKey.ref is not set: no audit checkpoint is signed, so the audit log is not pruned " +
 			"and its verification cannot tell a rewritten chain (docs/operations/deployment-and-operations.md#the-checkpoint-key)")
 	}
-	opts.Workers = keep.Workers
+	workers := []func(*river.Workers){keep.Workers}
 	opts.Periodic = append(opts.Periodic, keep.Periodic()...)
+	if len(cfg.Audit.Export) > 0 {
+		exp, err := siem.New(siem.Options{Store: s, Destinations: cfg.Audit.Export, Secrets: sec, Network: network, Log: log,
+			Service: cfg.Telemetry.ServiceName, Version: version})
+		if err != nil {
+			return err
+		}
+		workers = append(workers, exp.Workers)
+		opts.Periodic = append(opts.Periodic, exp.Periodic()...)
+		telemetry.ObserveAuditExport(exp.Lag)
+	}
 	if reg != nil {
 		defer reg.Close()
 		svc = requests.New(s, reg, nil, log)
 		svc.UsePublicURL(cfg.Server.PublicURL)
 		hooks = ingest.New(s, reg, log)
 		hooks.UseHandler(svc)
-		opts.Workers = func(w *river.Workers) {
-			keep.Workers(w)
-			svc.Workers(w)
-			hooks.Workers(w)
-		}
+		workers = append(workers, svc.Workers, hooks.Workers)
 		opts.Periodic = append(opts.Periodic, ingest.Periodic())
+	}
+	opts.Workers = func(w *river.Workers) {
+		for _, add := range workers {
+			add(w)
+		}
 	}
 	c, err := jobs.NewWorker(s.Pool, opts)
 	if err != nil {
