@@ -73,8 +73,12 @@ func quaiEnv(t *testing.T, p *oidctest.Provider, change func(*config.Config)) en
 	browser := http.DefaultTransport
 	if p != nil {
 		// Over HTTPS with a CA of its own, which Quai trusts through network.caFile, as an
-		// internal identity provider would be.
-		network, err := netx.New(p.CAFile(t))
+		// internal identity provider would be; a test that reaches other fakes names a bundle.
+		ca := cfg.Network.CAFile
+		if ca == "" {
+			ca = p.CAFile(t)
+		}
+		network, err := netx.New(ca)
 		if err != nil {
 			t.Fatal(err)
 		}

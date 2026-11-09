@@ -103,7 +103,20 @@ their run tokens.
   `=`, `+`, `-`, `@`, a tab or a carriage return get a leading apostrophe, so that a spreadsheet does
   not run a name or a group from the IdP as a formula, and every cell is quoted.
 - SCIM 2.0 provisioning (optional) keeps users and groups current between logins and deactivates leavers immediately, which matters for pending approvals.
-- The `manager` attribute (for `approvers: [manager]`) comes from a claim or from SCIM.
+- **Manager** (for `approvers: [manager]`, P4-11). Each sign-in keeps the person's manager in the
+  directory as an immutable identifier of the identity provider, never a name or an email: the ID
+  token's claim `auth.oidc.managerClaim` (the manager's `sub`, or their Entra ID `oid`), or Microsoft
+  Graph's `/me/manager` with `auth.graph.manager` (the manager's `oid`); the two are exclusive, and
+  SCIM will be a third source (P4-15). Where it came from is kept with it, and when there is none,
+  why: no claim, a value that is not one identifier, no manager in Graph, a manager who is a contact
+  rather than a user, a Graph lookup that failed, a sign-in from another tenant. A sign-in always
+  replaces them: a failed lookup leaves no manager, never the one found before, since whoever
+  Graph names now may differ. A change is audited (`auth.manager_changed`). When a request is
+  planned, the identifier is resolved to the one person of the directory whose `oid` (or, from a
+  claim, `sub` or `oid`) it is; none, several, a deactivated person or the requester themselves is
+  no manager, with the reason ([open question 69](../plan/open-questions.md#still-open)). The
+  manager is therefore as of the requester's last sign-in, and must have signed in once. Development
+  users have none.
 - Owners named by a Git platform (a `CODEOWNERS` entry such as `@alice` or `@org/team`; an Azure
   DevOps reviewer such as `alice@acme.ch` or `[Project]\Platform`), for the `codeowners` approver
   kind and `ownership.codeowners`, match Quai in this order
@@ -131,13 +144,17 @@ their run tokens.
 
 - Quai is registered as a confidential client (authorization code with PKCE). The secret or certificate for that registration is a Kubernetes Secret.
 - **Prefer app roles over raw group claims.** Admins assign Entra groups (synced from on-premises AD in a hybrid setup) to Quai's app roles; the token carries a `roles` claim that Quai maps to teams and roles. This avoids Entra's group overage: a JWT lists at most 200 groups, beyond which Entra sends only a pointer and the groups must be fetched from Microsoft Graph.
-- If raw group claims are used instead, configure the registration to emit only the groups assigned to the application. If an overage still occurs, Quai fetches memberships from Microsoft Graph when that egress is allowed, and otherwise refuses the login with an explicit message rather than silently dropping groups.
+- If raw group claims are used instead, configure the registration to emit only the groups assigned to the application. If an overage still occurs (the ID token names a source for its groups in `_claim_names`, or says `hasgroups`), Quai reads the groups from Microsoft Graph with `auth.graph.groups`, and otherwise refuses the login with an explicit message rather than silently dropping groups. As built (P4-11, [open question 68](../plan/open-questions.md#still-open)):
+  - **Delegated, from the sign-in itself.** The login asks for Graph's delegated permissions as scopes (`https://graph.microsoft.com/User.Read` for the groups, `.../User.Read.All` for the manager), and Quai uses the access token the code exchange returns, in memory, during the callback, for that person only (`/me`); it is never stored, logged or put in an error. No client secret with tenant-wide application permissions: Graph's `/manager` does not support them, and the sign-in's token reads only what the person may read.
+  - **Only the configured Graph.** Quai calls `auth.graph.baseURL` (https, `https://graph.microsoft.com` by default, a national cloud's root otherwise) through `network`, with TLS verified, and nothing else: it ignores the endpoint `_claim_sources` names, follows no redirect, and follows no `@odata.nextLink`. The ID token's `tid` must equal `auth.graph.tenantId` before Graph is called.
+  - **Groups:** `POST /v1.0/me/getMemberObjects` with `securityEnabledOnly: true`, which Microsoft names for an overage and which `User.Read` allows: the object IDs of the person's security groups, transitive memberships included (so `auth.oidc.groupsClaim` must be `groups`, and `auth.roles` and `auth.teams` name groups by object ID). Its documentation describes no paging; an answer with `@odata.nextLink` is partial, and refused. At most 10,000 groups, an answer of at most 1 MiB, two retries of a 429, 503 or 504 waiting as `Retry-After` says (at most five seconds), twenty seconds in all.
+  - **Fail closed.** An overage Graph cannot resolve (an error, throttling beyond the retries, a token or permission Graph refuses, a partial answer, too many groups, another tenant) refuses the login, logged and counted (`quai.graph.lookups`): letting the person in without their groups would hide what they may and may not do.
 - **Emails:** Entra ID sends no `email_verified`, and a guest's `email` can come from their home
   tenant. For owners to match by email, add the optional claim `xms_edov` (email domain owner
   verified) to the ID token in the registration's token configuration; without it, Quai users have
   no email, and a person named as a code owner matches only through a `user:` entry of the
   repository's mapping (groups match through `group:` entries either way).
-- The `manager` attribute is not in tokens; it is read from Microsoft Graph (`/users/{id}/manager`) at login, or left out if Graph is not allowed (then `manager` approvers are unavailable and Quai says so).
+- The `manager` attribute is not in tokens; with `auth.graph.manager` it is read at each login from Microsoft Graph (`GET /v1.0/me/manager`, delegated `User.Read.All`, which needs an administrator's consent), with the same token, limits and tenant check as the groups. A manager lookup that fails does not refuse the login: the person has no manager until a login finds one, logged and counted, and their requests' manager rules say why. Without Graph or a claim, `manager` approvers are unavailable and requests say so.
 - **Step-up:** Entra Conditional Access *authentication contexts* express "MFA required for this action". Quai requests the context (`auth.stepUp.authContext`) for step-up approvals, break-glass and, with `auth.stepUp.admin`, repository changes, checks the `acrs` claim in the returned ID token, and combines it with `max_age` and `prompt=login` for a recent sign-in. The registration must add the optional claims `auth_time` and `acrs` to the ID token, and the Conditional Access policy on the context should set the sign-in frequency to every time ([operations guide](../operations/deployment-and-operations.md#step-up-authentication)).
 
 ## Tenancy

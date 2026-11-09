@@ -56,12 +56,14 @@ func (r refusal) Error() string { return r.msg }
 // login in the audit log, with the grants the person has now and their change since the person's
 // last login. It is written before the session starts: a login the log cannot record does not
 // happen. It refuses a deactivated person, and a name the directory holds for another subject of
-// the identity provider (open question 45).
+// the identity provider (open question 45). The person's manager is the login's, and a change of it
+// is written too (auth.manager_changed).
 func (a *Authenticator) recordLogin(ctx context.Context, u login) error {
 	grants := GrantNames(a.principal(u.Name, u.Groups, nil).Grants)
 	actor := audit.Actor{Type: audit.User, ID: u.Name, IP: audit.IPFrom(ctx), AuthTime: u.AuthTime}
 	user := audit.Object{Type: "user", ID: u.Name}
 	return a.store.Tx(ctx, func(tx pgx.Tx, q *db.Queries) error {
+		var manager, source string // as the directory had them
 		switch known, err := q.GetUser(ctx, u.Name); {
 		case errors.Is(err, pgx.ErrNoRows):
 		case err != nil:
@@ -71,10 +73,13 @@ func (a *Authenticator) recordLogin(ctx context.Context, u login) error {
 		case u.Subject != "" && known.Subject != "" && known.Subject != u.Subject:
 			return refusal{fmt.Sprintf("the name %q belongs to another account of the identity provider; "+
 				"ask an administrator to check the name claim, or to release the name", u.Name)}
+		default:
+			manager, source = known.ManagerID, known.ManagerSource
 		}
 		switch n, err := q.RecordUserLogin(ctx, db.RecordUserLoginParams{
 			Name: u.Name, Email: u.Email, Groups: nonNil(u.Groups), Subject: u.Subject, ObjectID: u.ObjectID,
-			AuthTime: pgtype.Timestamptz{Time: u.AuthTime, Valid: !u.AuthTime.IsZero()},
+			AuthTime:  pgtype.Timestamptz{Time: u.AuthTime, Valid: !u.AuthTime.IsZero()},
+			ManagerID: u.ManagerID, ManagerSource: u.ManagerSource, ManagerReason: u.ManagerReason,
 		}); {
 		case err != nil:
 			return err
@@ -92,6 +97,15 @@ func (a *Authenticator) recordLogin(ctx context.Context, u login) error {
 			details["acrs"] = u.ACRS
 		}
 		events := []audit.Event{{Actor: actor, Action: "auth.login", Object: user, Details: details}}
+		if manager != u.ManagerID || source != u.ManagerSource {
+			// The identifiers are personal data; why there is none is Quai's words.
+			after := map[string]any{"manager": audit.Personal(u.ManagerID), "source": u.ManagerSource}
+			if u.ManagerReason != "" {
+				after["reason"] = u.ManagerReason
+			}
+			events = append(events, audit.Event{Actor: actor, Action: "auth.manager_changed", Object: user,
+				Details: map[string]any{"before": map[string]any{"manager": audit.Personal(manager), "source": source}, "after": after}})
+		}
 		raw, err := q.LastLoginGrants(ctx, u.Name)
 		switch {
 		case errors.Is(err, pgx.ErrNoRows):

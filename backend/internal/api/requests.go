@@ -65,6 +65,7 @@ type PlanView struct {
 	Rules      []RuleView   `json:"rules"`
 	// Codeowners, when a rule's approvers include codeowners.
 	Codeowners *CodeownersView `json:"codeowners,omitempty" doc:"When a rule's approvers include codeowners: the owners the Git platform names for the changed paths"`
+	Manager    *ManagerView    `json:"manager,omitempty" doc:"When a rule's approvers include manager: the requester's manager, or why there is none"`
 	// Unmigrated, for a migrate request: the non-conforming resources the migration leaves as
 	// they are, to fix in Git.
 	Unmigrated []UnmigratedView `json:"unmigrated,omitempty" doc:"For a migrate request: the non-conforming resources the type's migration does not fix, and why"`
@@ -77,6 +78,21 @@ type PlanView struct {
 type CodeownersView struct {
 	Owners    []string `json:"owners" doc:"The owners as Quai matches them: user:<name>, group:<name> or email:<address>"`
 	Unmatched []string `json:"unmatched" doc:"The owners, as the platform writes them, that match no one: a group without a mapping, a user whose email is unknown"`
+}
+
+// ManagerView is the requester's manager, who may approve for a manager rule
+// (docs/design/05-delivery-and-approvals.md#approver-kinds): a person, or none and why, and then
+// nobody can satisfy the rule.
+type ManagerView struct {
+	Name   string `json:"name,omitempty" doc:"The manager, a person who signed in to Quai; absent when there is none"`
+	Reason string `json:"reason,omitempty" doc:"Why there is no manager: the rule cannot be satisfied"`
+}
+
+func managerView(rules []policy.Rule, name, reason string) *ManagerView {
+	if !slices.ContainsFunc(rules, func(r policy.Rule) bool { return slices.Contains(r.Approvers, "manager") }) {
+		return nil
+	}
+	return &ManagerView{Name: name, Reason: reason}
 }
 
 func codeownersView(rules []policy.Rule, owners, unmatched []string) *CodeownersView {
@@ -143,6 +159,7 @@ type RequestView struct {
 	StepUp     bool            `json:"stepUp" doc:"Reviews count only from people who signed in recently (step-up): the request page asks for it before approve works"`
 	Rules      []RuleView      `json:"rules"`
 	Codeowners *CodeownersView `json:"codeowners,omitempty" doc:"When a rule's approvers include codeowners: the owners the Git platform named for the changed paths when the request was submitted"`
+	Manager    *ManagerView    `json:"manager,omitempty" doc:"When a rule's approvers include manager: the requester's manager when the request was submitted, or why there was none"`
 	Reviews    []ReviewView    `json:"reviews,omitempty"`
 	Changes    []ChangeView    `json:"changes,omitempty"`
 	Events     []EventView     `json:"events,omitempty"`
@@ -483,7 +500,8 @@ func ruleViews(rules []policy.Rule, statuses []policy.Status) []RuleView {
 func planView(p *requests.Plan) PlanView {
 	v := PlanView{Kind: p.Kind, Action: p.Action, Target: p.Target, Repository: p.Repository, Type: p.Type, Blueprint: p.Blueprint,
 		Stack: p.Stack, Commit: p.Commit, Hash: p.ChangeSet.Hash, Changes: []ChangeView{}, Rules: ruleViews(p.Rules, nil),
-		Codeowners: codeownersView(p.Rules, p.Codeowners.Entries, p.Codeowners.Unmatched), StepUp: p.StepUp}
+		Codeowners: codeownersView(p.Rules, p.Codeowners.Entries, p.Codeowners.Unmatched), StepUp: p.StepUp,
+		Manager: managerView(p.Rules, p.Manager, p.ManagerReason)}
 	for _, c := range p.ChangeSet.Changes {
 		v.Changes = append(v.Changes, ChangeView{Path: c.Path, Op: c.Op, Diff: diffView(c)})
 	}
@@ -509,6 +527,7 @@ func requestView(ctx context.Context, svc *requests.Service, s *store.Store, r d
 	}
 	v.Rules = ruleViews(rules, outcome.Rules)
 	v.Codeowners = codeownersView(rules, r.Codeowners, r.CodeownersUnmatched)
+	v.Manager = managerView(rules, r.Manager, r.ManagerReason)
 	if d, err := s.GetDelivery(ctx, r.ID); err == nil {
 		v.Delivery = &DeliveryView{Branch: d.Branch, PullRequest: d.PullRequest, URL: d.Url, MergeCommit: d.MergeCommit}
 	}

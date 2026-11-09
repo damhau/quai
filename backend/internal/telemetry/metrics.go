@@ -20,6 +20,7 @@ type instruments struct {
 	auditVer   metric.Int64Counter
 	auditExp   metric.Int64Counter
 	notified   metric.Int64Counter
+	graph      metric.Int64Counter
 }
 
 var current atomic.Pointer[instruments]
@@ -74,6 +75,10 @@ func use(mp metric.MeterProvider) error {
 	}
 	if in.notified, err = m.Int64Counter("quai.notifications",
 		metric.WithDescription("Notifications, by channel and outcome: sent, retried (an attempt failed), failed (no attempt left), skipped (nothing to send)")); err != nil {
+		return err
+	}
+	if in.graph, err = m.Int64Counter("quai.graph.lookups",
+		metric.WithDescription("Microsoft Graph lookups at sign-ins, by lookup (groups, manager) and outcome: ok, none (no manager), skipped (the tenant does not match), error")); err != nil {
 		return err
 	}
 	lag, err := m.Float64ObservableGauge("quai.audit.export.lag", metric.WithUnit("s"),
@@ -166,5 +171,14 @@ func AuditExported(ctx context.Context, destination string, err error) {
 func Notified(ctx context.Context, channel, result string) {
 	if in := current.Load(); in != nil {
 		in.notified.Add(ctx, 1, metric.WithAttributes(attribute.String("channel", channel), attribute.String("outcome", result)))
+	}
+}
+
+// GraphLookup records a Microsoft Graph lookup at a sign-in: groups (a group overage) or manager,
+// and its outcome: ok, none (Graph says there is no manager), skipped (the sign-in's tenant is not
+// the one configured) or error.
+func GraphLookup(ctx context.Context, lookup, result string) {
+	if in := current.Load(); in != nil {
+		in.graph.Add(ctx, 1, metric.WithAttributes(attribute.String("lookup", lookup), attribute.String("outcome", result)))
 	}
 }

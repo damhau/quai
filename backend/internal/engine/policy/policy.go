@@ -192,7 +192,7 @@ type Context struct {
 	Requester  string
 	Owners     []string          // owners of the resources: user names and team:, group:, user: or email: entries
 	Codeowners []string          // the platform's owners of the changed paths, as matched: user:, group: or email: entries
-	Manager    string            // the requester's manager
+	Manager    string            // the requester's manager, as submission resolved them; empty: none
 	External   map[string]string // per external system: approved, rejected, or pending when absent
 }
 
@@ -242,7 +242,8 @@ func CanReview(r Rule, who Person, ctx Context) bool {
 			kind == "user" && v == who.Name,
 			a == "owners" && member(ctx.Owners),
 			a == "codeowners" && member(ctx.Codeowners),
-			a == "manager" && ctx.Manager != "" && ctx.Manager == who.Name:
+			// Never the requester as their own manager (four eyes).
+			a == "manager" && ctx.Manager != "" && ctx.Manager != ctx.Requester && ctx.Manager == who.Name:
 			return true
 		}
 	}

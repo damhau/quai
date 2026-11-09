@@ -1,8 +1,10 @@
 -- name: CreateRequest :one
 INSERT INTO requests (id, kind, action, target, type_name, blueprint, requester, requester_email, reason, inputs, state,
-                      definitions_commit, base_commit, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up)
+                      definitions_commit, base_commit, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up,
+                      manager, manager_reason)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, COALESCE(sqlc.narg(stacks)::text[], '{}'),
-        COALESCE(sqlc.narg(codeowners)::text[], '{}'), COALESCE(sqlc.narg(codeowners_unmatched)::text[], '{}'), sqlc.arg(step_up))
+        COALESCE(sqlc.narg(codeowners)::text[], '{}'), COALESCE(sqlc.narg(codeowners_unmatched)::text[], '{}'), sqlc.arg(step_up),
+        sqlc.arg(manager), sqlc.arg(manager_reason))
 RETURNING *;
 
 -- name: GetRequest :one

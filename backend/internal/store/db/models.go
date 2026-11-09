@@ -215,6 +215,8 @@ type Request struct {
 	Codeowners          []string
 	CodeownersUnmatched []string
 	StepUp              bool
+	Manager             string
+	ManagerReason       string
 }
 
 type Review struct {
@@ -271,6 +273,9 @@ type User struct {
 	DeactivatedAt pgtype.Timestamptz
 	CreatedAt     pgtype.Timestamptz
 	UpdatedAt     pgtype.Timestamptz
+	ManagerID     string
+	ManagerSource string
+	ManagerReason string
 }
 
 type WebhookDelivery struct {

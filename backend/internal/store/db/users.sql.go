@@ -12,7 +12,7 @@ import (
 )
 
 const getUser = `-- name: GetUser :one
-SELECT org_id, name, email, groups, subject, object_id, last_login, auth_time, deactivated_at, created_at, updated_at FROM users WHERE name = $1
+SELECT org_id, name, email, groups, subject, object_id, last_login, auth_time, deactivated_at, created_at, updated_at, manager_id, manager_source, manager_reason FROM users WHERE name = $1
 `
 
 func (q *Queries) GetUser(ctx context.Context, name string) (User, error) {
@@ -30,12 +30,15 @@ func (q *Queries) GetUser(ctx context.Context, name string) (User, error) {
 		&i.DeactivatedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ManagerID,
+		&i.ManagerSource,
+		&i.ManagerReason,
 	)
 	return i, err
 }
 
 const listUsers = `-- name: ListUsers :many
-SELECT org_id, name, email, groups, subject, object_id, last_login, auth_time, deactivated_at, created_at, updated_at FROM users ORDER BY name COLLATE "C"
+SELECT org_id, name, email, groups, subject, object_id, last_login, auth_time, deactivated_at, created_at, updated_at, manager_id, manager_source, manager_reason FROM users ORDER BY name COLLATE "C"
 `
 
 func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
@@ -59,6 +62,9 @@ func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
 			&i.DeactivatedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ManagerID,
+			&i.ManagerSource,
+			&i.ManagerReason,
 		); err != nil {
 			return nil, err
 		}
@@ -71,30 +77,37 @@ func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
 }
 
 const recordUserLogin = `-- name: RecordUserLogin :execrows
-INSERT INTO users (name, email, groups, subject, object_id, last_login, auth_time)
-VALUES ($1, $2, $3, $4, $5, now(), $6)
+INSERT INTO users (name, email, groups, subject, object_id, last_login, auth_time, manager_id, manager_source, manager_reason)
+VALUES ($1, $2, $3, $4, $5, now(), $6, $7, $8, $9)
 ON CONFLICT (org_id, name) DO UPDATE SET
     email = EXCLUDED.email, groups = EXCLUDED.groups,
     subject = COALESCE(NULLIF(EXCLUDED.subject, ''), users.subject),
     object_id = COALESCE(NULLIF(EXCLUDED.object_id, ''), users.object_id),
-    last_login = EXCLUDED.last_login, auth_time = EXCLUDED.auth_time, updated_at = now()
+    last_login = EXCLUDED.last_login, auth_time = EXCLUDED.auth_time,
+    manager_id = EXCLUDED.manager_id, manager_source = EXCLUDED.manager_source, manager_reason = EXCLUDED.manager_reason,
+    updated_at = now()
 WHERE users.deactivated_at IS NULL
   AND (EXCLUDED.subject = '' OR users.subject = '' OR users.subject = EXCLUDED.subject)
 `
 
 type RecordUserLoginParams struct {
-	Name     string
-	Email    string
-	Groups   []string
-	Subject  string
-	ObjectID string
-	AuthTime pgtype.Timestamptz
+	Name          string
+	Email         string
+	Groups        []string
+	Subject       string
+	ObjectID      string
+	AuthTime      pgtype.Timestamptz
+	ManagerID     string
+	ManagerSource string
+	ManagerReason string
 }
 
 // A login: the person as their ID token (or the development switcher) describes them now. A login
-// without the identity provider's identifiers (a development user) keeps the ones known. It changes
-// no row of a deactivated person, nor one another subject holds (open question 45): no row
-// affected, the login is refused, even when that changed after the caller looked.
+// without the identity provider's identifiers (a development user) keeps the ones known. The
+// manager is always the login's, none included: a lookup that failed leaves no manager, not the
+// one found before (open question 69). It changes no row of a deactivated person, nor one another
+// subject holds (open question 45): no row affected, the login is refused, even when that changed
+// after the caller looked.
 func (q *Queries) RecordUserLogin(ctx context.Context, arg RecordUserLoginParams) (int64, error) {
 	result, err := q.db.Exec(ctx, recordUserLogin,
 		arg.Name,
@@ -103,9 +116,62 @@ func (q *Queries) RecordUserLogin(ctx context.Context, arg RecordUserLoginParams
 		arg.Subject,
 		arg.ObjectID,
 		arg.AuthTime,
+		arg.ManagerID,
+		arg.ManagerSource,
+		arg.ManagerReason,
 	)
 	if err != nil {
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const usersByIdentifier = `-- name: UsersByIdentifier :many
+SELECT org_id, name, email, groups, subject, object_id, last_login, auth_time, deactivated_at, created_at, updated_at, manager_id, manager_source, manager_reason FROM users
+WHERE $1::text <> ''
+  AND (lower(object_id) = lower($1::text) OR ($2::boolean AND subject = $1::text))
+ORDER BY name COLLATE "C"
+LIMIT 2
+`
+
+type UsersByIdentifierParams struct {
+	ID        string
+	BySubject bool
+}
+
+// The people the identity provider's immutable identifier names: by Entra ID oid (object_id, a
+// GUID, in any case), and by sub when by_subject. Two at most: more than one is already ambiguous.
+func (q *Queries) UsersByIdentifier(ctx context.Context, arg UsersByIdentifierParams) ([]User, error) {
+	rows, err := q.db.Query(ctx, usersByIdentifier, arg.ID, arg.BySubject)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []User{}
+	for rows.Next() {
+		var i User
+		if err := rows.Scan(
+			&i.OrgID,
+			&i.Name,
+			&i.Email,
+			&i.Groups,
+			&i.Subject,
+			&i.ObjectID,
+			&i.LastLogin,
+			&i.AuthTime,
+			&i.DeactivatedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.ManagerID,
+			&i.ManagerSource,
+			&i.ManagerReason,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

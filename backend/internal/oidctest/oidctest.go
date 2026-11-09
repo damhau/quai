@@ -21,8 +21,13 @@
 //   - https://learn.microsoft.com/en-us/entra/identity-platform/optional-claims-reference (acrs,
 //     the authentication context IDs, and auth_time).
 //
-// Anything else a login's ID token holds (name, email, groups, Entra ID's oid, and the manager
-// claim P4-11 reads) is a claim the test sets with SetClaims.
+// Anything else a login's ID token holds (name, email, groups, Entra ID's oid and tid, a manager
+// claim) is a claim the test sets with SetClaims, Entra ID's group overage included: without the
+// groups claim, _claim_names {"groups": "src1"} and _claim_sources {"src1": {"endpoint": ...}}, or
+// hasgroups true in the implicit flow, as the ID token claims reference describes
+// (https://learn.microsoft.com/en-us/entra/identity-platform/id-token-claims-reference, read on
+// 2026-11-09). The access token is "at" unless the test issues its own (IssueAccessTokens), as
+// internal/graphtest does for Microsoft Graph.
 package oidctest
 
 import (
@@ -69,10 +74,12 @@ type Provider struct {
 	contexts []string // the authentication contexts a person can satisfy, when asked for
 	sessions map[string]*session
 	asked    []Authorization
+	issue    func(claims map[string]any, scope string) string
 }
 
 // Authorization is what Quai sent to the authorization endpoint.
 type Authorization struct {
+	Scope     string
 	Prompt    string
 	MaxAge    string
 	ACRValues string
@@ -92,8 +99,8 @@ type session struct {
 }
 
 type grant struct {
-	nonce, challenge string
-	claims           map[string]any
+	nonce, challenge, scope string
+	claims                  map[string]any
 }
 
 // New starts a provider, stopped at the end of the test.
@@ -172,6 +179,14 @@ func (p *Provider) SupportAuthContexts(ids ...string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.contexts = ids
+}
+
+// IssueAccessTokens makes the token endpoint answer, as the access token, what issue returns for
+// the ID token's claims and the scope the authorization asked for; nil: "at".
+func (p *Provider) IssueAccessTokens(issue func(claims map[string]any, scope string) string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.issue = issue
 }
 
 // Authorizations returns what the authorization endpoint received, oldest first.
@@ -259,7 +274,7 @@ func (p *Provider) authorize(w http.ResponseWriter, r *http.Request) {
 		s = &session{at: now.Truncate(time.Second), acr: acr, acrs: granted}
 		p.sessions[sub] = s
 	}
-	p.asked = append(p.asked, Authorization{Prompt: q.Get("prompt"), MaxAge: q.Get("max_age"), ACRValues: q.Get("acr_values"),
+	p.asked = append(p.asked, Authorization{Scope: q.Get("scope"), Prompt: q.Get("prompt"), MaxAge: q.Get("max_age"), ACRValues: q.Get("acr_values"),
 		Claims: q.Get("claims"), State: q.Get("state"), Nonce: q.Get("nonce"), Authenticated: again})
 
 	// The authentication's claims, under the test's: a test can remove them, or set its own.
@@ -283,7 +298,7 @@ func (p *Provider) authorize(w http.ResponseWriter, r *http.Request) {
 		auth[k] = v
 	}
 	code := random()
-	p.codes[code] = grant{nonce: q.Get("nonce"), challenge: q.Get("code_challenge"), claims: auth}
+	p.codes[code] = grant{nonce: q.Get("nonce"), challenge: q.Get("code_challenge"), scope: q.Get("scope"), claims: auth}
 	reply(url.Values{"code": {code}})
 }
 
@@ -317,7 +332,7 @@ func (p *Provider) token(w http.ResponseWriter, r *http.Request) {
 	p.mu.Lock()
 	g, ok := p.codes[r.Form.Get("code")]
 	delete(p.codes, r.Form.Get("code"))
-	tamper := p.tamper
+	tamper, issue := p.tamper, p.issue
 	p.mu.Unlock()
 	sum := sha256.Sum256([]byte(r.Form.Get("code_verifier")))
 	if !ok || base64.RawURLEncoding.EncodeToString(sum[:]) != g.challenge {
@@ -348,8 +363,12 @@ func (p *Provider) token(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	access := "at"
+	if issue != nil {
+		access = issue(claims, g.scope)
+	}
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "at", "token_type": "Bearer", "expires_in": 3600, "id_token": idToken})
+	_ = json.NewEncoder(w).Encode(map[string]any{"access_token": access, "token_type": "Bearer", "expires_in": 3600, "id_token": idToken})
 }
 
 func random() string {

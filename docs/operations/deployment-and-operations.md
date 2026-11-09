@@ -47,6 +47,11 @@ single pod with both roles.
   | `auth.mode` | `QUAI_AUTH_MODE` | `oidc`, or `dev` (the user switcher) in development only |
   | `auth.oidc.issuer`, `.clientID`, `.clientSecret`, `.redirectURL` | `QUAI_AUTH_OIDC_ISSUER`, `_CLIENT_ID`, `_CLIENT_SECRET`, `_REDIRECT_URL` | required for `oidc`; https in production |
   | `auth.oidc.scopes`, `.nameClaim`, `.groupsClaim` | | `openid profile email`, `preferred_username`, `groups` |
+  | `auth.oidc.managerClaim` | | none. A claim of the ID token holding the person's manager as an immutable identifier of the identity provider (their `sub`, or Entra ID `oid`), never a name or an email; exclusive with `auth.graph.manager` ([managers and Microsoft Graph](#managers-and-microsoft-graph)) |
+  | `auth.graph` | | none: Quai never calls Microsoft Graph, a group overage refuses the sign-in, and the manager comes from `managerClaim` or nowhere. `oidc` only |
+  | `auth.graph.tenantId` | | required: the Entra ID directory (tenant) ID, a GUID; a sign-in whose `tid` differs is never looked up |
+  | `auth.graph.baseURL` | | `https://graph.microsoft.com`; a national cloud's root (`https://graph.microsoft.us`, `https://dod-graph.microsoft.us`, `https://microsoftgraph.chinacloudapi.cn`), https and no path |
+  | `auth.graph.manager`, `.groups` | | `false`, `false`; at least one. `manager` reads the manager at each sign-in (delegated `User.Read.All`, with admin consent); `groups` reads the groups of a group overage instead of refusing the sign-in (delegated `User.Read`; needs `groupsClaim: groups`). The login asks for these scopes itself |
   | `auth.roles` | | `- { group: sg-quai-admins, role: platform-admin, scope: global }`; scope can be `team:`, `repository:` or `catalog-item:` and a name |
   | `auth.teams` | | none: each group is the team of its own name. `- { group: sg-quai-*, team: "*" }` maps groups to teams, the first entry that matches deciding; once set, a group no entry matches is no team ([people and teams](#people-and-teams)) |
   | `auth.session.lifetime`, `.idleTimeout` | | `8h`, `30m` |
@@ -441,6 +446,77 @@ upgrade to the version with the directory.
   ```sql
   DELETE FROM users WHERE name = 'alice';
   ```
+
+### Managers and Microsoft Graph
+
+An approval rule with `approvers: [manager]` waits for the requester's manager
+([design 05](../design/05-delivery-and-approvals.md#approver-kinds)). Quai learns the manager at
+each sign-in, as an identifier of the identity provider, never a name or an email, and keeps it in
+the directory:
+
+```yaml
+auth:
+  oidc:
+    managerClaim: manager_oid  # a claim the identity provider adds: the manager's sub or oid
+  # or, on Entra ID, from Microsoft Graph:
+  graph:
+    tenantId: 8f2a1c3e-0b6d-4e57-9a41-2c7d5e9b0f13
+    manager: true   # GET /v1.0/me/manager at each sign-in
+    groups: true    # a group overage is read from Graph instead of refusing the sign-in
+```
+
+When a request is planned, the manager is the one person of the directory with that identifier
+(Entra ID's `oid`; from a claim, a `sub` or an `oid`). The plan and the request page name them, or
+say why there is none, in which case nobody can satisfy the rule: the manager has never signed in
+to Quai, is deactivated, or is ambiguous; the requester is their own manager; or the requester's
+last sign-in found none (no claim, none in Graph, a contact rather than a user, a Graph lookup that
+failed, another tenant). The manager is kept with the request when it is submitted: a later change
+does not move who approves it, only new requests. A change of manager is audited
+(`auth.manager_changed`).
+
+**Microsoft Graph.** Quai calls Graph with the access token the person's own sign-in returns, with
+delegated permissions, for that person only (`/me`), during the sign-in, and keeps no token. The
+login asks for the permissions as scopes, on top of `auth.oidc.scopes`:
+
+| Setting | Scope asked | Graph call | Admin consent |
+| --- | --- | --- | --- |
+| `groups: true` | `https://graph.microsoft.com/User.Read` | `POST /v1.0/me/getMemberObjects` with `securityEnabledOnly: true` | no |
+| `manager: true` | `https://graph.microsoft.com/User.Read.All` | `GET /v1.0/me/manager` | **yes** |
+
+(With `baseURL` set, the scopes are under it.) In Quai's app registration, **API permissions**, add
+Microsoft Graph's delegated permissions `User.Read` and, for the manager, `User.Read.All`, then
+**Grant admin consent** for the tenant: people cannot consent to `User.Read.All` themselves, and
+without it Entra ID refuses their sign-in. No application permission and no other client secret is
+needed. `auth.oidc.scopes` may then hold only OpenID Connect scopes and Graph's: an access token is
+for one resource.
+
+With `groups`, the groups Graph answers are object IDs, so `auth.roles` and `auth.teams` name groups
+by object ID, and `auth.oidc.groupsClaim` must be `groups` (the registration's group claims as
+"Group ID"). Only security groups count, transitive memberships included; at most 10,000.
+
+**Failures.** Quai calls `auth.graph.baseURL` and nothing else, through the proxy and
+`network.caFile`, with TLS verified. A 429, 503 or 504 is retried twice, waiting as `Retry-After`
+says when it is five seconds or less; all of a sign-in's calls take at most twenty seconds. Each
+lookup is counted (`quai.graph.lookups`, by `lookup`, `groups` or `manager`, and `outcome`: `ok`,
+`none`, `error`, `skipped` for another tenant) and a failure logged, without the token.
+
+- **"more groups than the ID token can list, and Quai could not read them from Microsoft Graph"**:
+  the sign-in is refused. The log line says what Graph answered: 401 (the token: check the
+  registration's scopes), 403 (`User.Read` not consented), 429 (throttled beyond the retries),
+  a partial answer (`@odata.nextLink`) or more than 10,000 groups. Prefer app roles, or emitting
+  only the groups assigned to Quai, so that no overage happens.
+- **"your directory is not the one Quai reads groups from"**: the ID token's `tid` is not
+  `auth.graph.tenantId` (a guest from another tenant, or a wrong tenant ID).
+- **"more groups than the ID token can list"** without Graph: set `auth.graph.groups`, or reduce
+  the groups in the token.
+- **A request says "Quai could not read their manager from Microsoft Graph"**: the requester's last
+  sign-in could not read it; they get a manager again at their next sign-in that can. Check
+  `quai.graph.lookups{lookup="manager",outcome="error"}` and the log; a 403 is `User.Read.All`
+  without admin consent.
+- **"…'s manager has not signed in to Quai yet"**: the manager must sign in once to be in the
+  directory.
+
+Development users have no manager: the user switcher reads no identity provider.
 
 ### Step-up authentication
 
@@ -884,7 +960,7 @@ Egress needed, all configurable through an HTTP proxy (`HTTPS_PROXY`, `NO_PROXY`
 | --- | --- |
 | Git platforms (HTTPS or SSH) | Fetch, push, platform API: `dev.azure.com` for Azure DevOps Services; the Azure DevOps Server URL (internal, often with an internal CA) once Server is supported |
 | Microsoft Entra ID (`login.microsoftonline.com`) | Quai's own user login (OIDC; the pilot's IdP), and tokens for Azure DevOps Services and Azure Key Vault. Not needed for Azure DevOps Server itself |
-| Microsoft Graph (`graph.microsoft.com`) | Only if group memberships must be resolved beyond what the token carries (see [identity](../design/08-identity-access-tenancy.md#directory)) |
+| Microsoft Graph (`graph.microsoft.com`, or `auth.graph.baseURL`'s host) | HTTPS, through the proxy, with `auth.graph` only: the groups of a group overage and the manager, at sign-in ([managers and Microsoft Graph](#managers-and-microsoft-graph)) |
 | IdP | OIDC discovery, token exchange, JWKS |
 | Secret store | Credentials |
 | SIEMs (`audit.export`) | The audit log's export: syslog over TLS straight to the receiver, never through the proxy; OTLP and Splunk HEC over HTTPS |
@@ -938,7 +1014,10 @@ snoozed and retried. Different repositories proceed in parallel.
     worker reports the same lag, read from the database;
   - notifications (`quai.notifications`, by `channel` and `outcome`: `sent`, `retried`, `skipped`,
     `failed`); a rising `failed` or `retried` is mail that does not go out
-    ([when mail does not arrive](#when-mail-does-not-arrive)).
+    ([when mail does not arrive](#when-mail-does-not-arrive));
+  - Microsoft Graph lookups at sign-in (`quai.graph.lookups`, by `lookup`, `groups` or `manager`,
+    and `outcome`: `ok`, `none`, `error`, `skipped`); a rising `error` is people refused at sign-in
+    (groups) or left without a manager ([managers and Microsoft Graph](#managers-and-microsoft-graph)).
 - **Dashboards and alerts** shipped with the chart: no webhook from a repository for 1 h while pushes happen, enforcement missing, credential expiring within 14 days, job failure rate above threshold, audit export lagging.
   Today the chart ships `QuaiAuditExportLagging` (`max by (destination) (quai_audit_export_lag_seconds)`
   above `prometheusRule.auditExportLag.seconds`, 600, for `.for`, 5m) in a PrometheusRule of the

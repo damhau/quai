@@ -137,7 +137,11 @@ type Plan struct {
 	// Codeowners are the owners the Git platform names for the change set's paths, when a rule's
 	// approvers include codeowners (docs/design/05-delivery-and-approvals.md#approver-kinds).
 	Codeowners repositories.Owners
-	Inputs     map[string]any
+	// Manager is the requester's manager, a person of the directory, when a rule's approvers include
+	// manager; ManagerReason says why there is none (docs/design/05-delivery-and-approvals.md
+	// #approver-kinds). Submitting keeps them with the request.
+	Manager, ManagerReason string
+	Inputs                 map[string]any
 	// Unmigrated are the non-conforming resources a migrate request leaves as they are, and why.
 	Unmigrated []plan.Unmigrated
 	// StepUp says that the approvals must be made with a step-up: the stepUp condition of an
@@ -316,6 +320,9 @@ func (s *Service) PlanType(ctx context.Context, who auth.Identity, in TypeInput)
 	if err := s.withCodeowners(ctx, repo, snap, p); err != nil {
 		return p, err
 	}
+	if err := s.withManager(ctx, who, p); err != nil {
+		return p, err
+	}
 	return p, s.deliverable(ctx, repo)
 }
 
@@ -376,6 +383,9 @@ func (s *Service) PlanBlueprint(ctx context.Context, who auth.Identity, in Bluep
 		return p, err
 	}
 	if err := s.withCodeowners(ctx, repo, snap, p); err != nil {
+		return p, err
+	}
+	if err := s.withManager(ctx, who, p); err != nil {
 		return p, err
 	}
 	return p, s.deliverable(ctx, repo)
@@ -489,6 +499,9 @@ func (s *Service) planMigrate(ctx context.Context, who auth.Identity, repo *repo
 	if err := s.withCodeowners(ctx, repo, snap, p); err != nil {
 		return p, err
 	}
+	if err := s.withManager(ctx, who, p); err != nil {
+		return p, err
+	}
 	return p, s.deliverable(ctx, repo)
 }
 
@@ -565,6 +578,9 @@ func (s *Service) PlanInstanceAction(ctx context.Context, who auth.Identity, in 
 	if err := s.withCodeowners(ctx, repo, snap, p); err != nil {
 		return p, err
 	}
+	if err := s.withManager(ctx, who, p); err != nil {
+		return p, err
+	}
 	return p, s.deliverable(ctx, repo)
 }
 
@@ -592,7 +608,7 @@ func (s *Service) Submit(ctx context.Context, who auth.Identity, p *Plan, reason
 		p.Rules = policy.WithoutPlan(p.Rules, "no plan comes before a direct commit")
 		rules, _ = json.Marshal(p.Rules)
 	}
-	outcome := policy.Evaluate(p.Rules, nil, policy.Context{Requester: who.Principal.Name, Owners: owners, Codeowners: p.Codeowners.Entries})
+	outcome := policy.Evaluate(p.Rules, nil, policy.Context{Requester: who.Principal.Name, Owners: owners, Codeowners: p.Codeowners.Entries, Manager: p.Manager})
 	state := PendingApproval
 	if outcome.State == policy.Approved {
 		state = Approved
@@ -604,6 +620,7 @@ func (s *Service) Submit(ctx context.Context, who auth.Identity, p *Plan, reason
 			Requester: who.Principal.Name, RequesterEmail: who.Email, Reason: reason, Inputs: inputs, State: state,
 			DefinitionsCommit: p.Commit, BaseCommit: p.Commit, Stack: p.Stack, Rules: rules, Owners: owners, Stacks: nonNil(p.Stacks),
 			Codeowners: nonNil(p.Codeowners.Entries), CodeownersUnmatched: nonNil(p.Codeowners.Unmatched), StepUp: p.StepUp,
+			Manager: p.Manager, ManagerReason: p.ManagerReason,
 		})
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
@@ -704,7 +721,7 @@ func (s *Service) Reviews(ctx context.Context, r db.Request) ([]db.Review, polic
 
 // contextOf is what the policy needs to know of a request to decide it.
 func contextOf(r db.Request) policy.Context {
-	return policy.Context{Requester: r.Requester, Owners: r.Owners, Codeowners: r.Codeowners}
+	return policy.Context{Requester: r.Requester, Owners: r.Owners, Codeowners: r.Codeowners, Manager: r.Manager}
 }
 
 // CanReview reports whether someone may approve or deny a request.

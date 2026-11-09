@@ -34,6 +34,9 @@ Status: Draft · 2026-11-09
 | A person's text acts in a Slack message: `<!channel>`, `<@U…>`, `<https://evil\|click>` | Block Kit built from Go structs with `encoding/json`; every text in a block a `plain_text` object, which Slack does not format; the fallback text, which Slack formats, with `&`, `<` and `>` escaped; links do not unfurl. Channel posts carry identifiers, the state and a link only ([question 64](../plan/open-questions.md#still-open)). |
 | A Slack account that is not the person's gets their approval messages | Looked up with the verified email from the directory only; written to only when the account is an active full member of the app's workspace (or its Enterprise organization) with that email: not a guest, a bot, an account of another workspace or one whose email is not confirmed ([question 66](../plan/open-questions.md#still-open)). The message's links open nothing without the approver's own Quai session. |
 | The Slack bot token leaks | A secret reference, resolved at use; sent only in the `Authorization` header to the configured https Web API through `network` with TLS verified, never to an address Slack sends (`response_url` is ignored); never in a URL, a body, an error or a log. |
+| An overage claim or a Graph answer sends Quai, with the person's token, to another host | The endpoint `_claim_sources` names is ignored; Quai calls only `auth.graph.baseURL` (https, configured), through `network` with TLS verified, follows no redirect and no `@odata.nextLink` (a partial answer refuses the login); the ID token's `tid` must be `auth.graph.tenantId` first. The token is the sign-in's own, delegated, for `/me` only, in memory during the callback, never stored, logged or in an error ([question 68](../plan/open-questions.md#still-open)). |
+| A person in too many groups for the ID token signs in without them, and escapes a restriction | A group overage is resolved from Microsoft Graph or the login is refused: an error, throttling, a refused token or permission, a partial answer or more than 10,000 groups refuses it. Bounded: 1 MiB, two retries, five seconds' `Retry-After`, twenty seconds in all. |
+| Someone approves as a requester's manager without being it | The manager is an immutable identifier (`oid`, `sub`) from the identity provider or Graph, never a name or an email, resolved to exactly one person of the directory, otherwise no manager and the rule cannot be satisfied; a failed lookup clears the manager rather than keep a stale one; the requester never approves as their own manager; the manager is kept with the request at submission, so a later change moves nothing; a change of manager is audited ([questions 69 and 70](../plan/open-questions.md#still-open)). |
 | Tampering with the audit log | Append-only table, insert-only database role, hash chain, signed checkpoints, export to SIEM. |
 | Supply chain | Small dependency set, `go.sum` and the Go checksum database, `govulncheck`, SBOM, signed images and provenance (see below). |
 
@@ -126,7 +129,7 @@ changes, executor calls, configuration changes.
   can see a gap and verify the chain ([export to a SIEM](#export-to-a-siem)). A webhook comes in
   Phase 7.
 
-What is recorded, by action (P4-01, P4-02, P4-06, P4-08, P4-09; break-glass, executor calls and
+What is recorded, by action (P4-01, P4-02, P4-06, P4-08, P4-09, P4-11; break-glass, executor calls and
 configuration changes come with their features):
 
 | Action | Actor | When |
@@ -134,6 +137,7 @@ configuration changes come with their features):
 | `auth.login`, `auth.logout` | the person | a sign-in (with the method and the grants it gave; for a step-up login `stepUp`, and the ID token's `acr` and `acrs` when it has them), a sign-out |
 | `auth.step_up_refused` | the person, or their token | an action refused for want of a recent sign-in ([step-up](08-identity-access-tenancy.md#step-up)): what was attempted (`request.review`, `repository.create`, `repository.update`, `repository.delete`, `repository.install_webhook`, `run_token.create`) on which object, and why |
 | `auth.grants_changed` | the person | a sign-in whose grants differ from the person's previous sign-in (`before`, `after`): a role change, from the IdP's groups or from `auth.roles` |
+| `auth.manager_changed` | the person | a sign-in whose manager differs from the directory's (`before`, `after`: the manager's identifier as a pseudonym, where it came from, and why there is none), including a manager cleared by a failed lookup |
 | `token.created`, `token.revoked` | the person | an API token made or revoked (its ID, name, scopes, expiry; never the token) |
 | `preferences.changed` | the person | their notification preferences changed (P4-08): the choices that differ from the defaults, the digest's hour, and their time zone as a pseudonym; the same preferences again are not a change ([open question 58](../plan/open-questions.md#still-open)) |
 | `run_token.created` | the person | a run token generated for a repository (its SHA-256; Quai keeps neither, so revoking it is changing the secret it names, outside Quai's view: [open question 33](../plan/open-questions.md#still-open)) |

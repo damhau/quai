@@ -236,7 +236,7 @@ func TestNotificationDefaults(t *testing.T) {
 // public cloud by default, its endpoints https, its secret a reference, and a key for the links
 // of its approval cards.
 func TestTeams(t *testing.T) {
-	const app, tenant = "6a0d3a2e-6a7c-4a43-9b1f-1d1b2c3d4e5f", "72f988bf-86f1-41af-91ab-2d7cd011db47"
+	const app, tenant = "6a0d3a2e-6a7c-4a43-9b1f-1d1b2c3d4e5f", "8f2a1c3e-0b6d-4e57-9a41-2c7d5e9b0f13"
 	p := write(t, `server: { publicURL: https://quai.example.com }
 notifications:
   links: { key: { ref: "k8s:quai/chat-links#key" }, previousKeys: [{ ref: "k8s:quai/chat-links#previous" }] }
@@ -497,6 +497,55 @@ func TestStepUp(t *testing.T) {
 	}
 	if s := c.Auth.StepUpSettings(); s.MaxAge != 10*time.Minute || len(s.ACRValues) != 2 || s.AuthContext != "c42" || s.Admin {
 		t.Errorf("step-up = %+v", s)
+	}
+}
+
+// TestGraph: auth.graph and auth.oidc.managerClaim (open questions 68 and 69): Graph's root
+// defaults to the global service, the scopes a login asks for follow what is read, and what would
+// make Quai call another host, read groups it cannot match, or take the manager from two places
+// is refused.
+func TestGraph(t *testing.T) {
+	const tenant = "8f2a1c3e-0b6d-4e57-9a41-2c7d5e9b0f13"
+	c, err := Load(write(t, "auth: { graph: { tenantId: "+tenant+", manager: true, groups: true } }\n"), env(oidcEnv))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g := c.Auth.Graph; g.BaseURL != DefaultGraphBaseURL || DefaultGraphBaseURL != "https://graph.microsoft.com" ||
+		!slices.Equal(g.GraphScopes(), []string{"https://graph.microsoft.com/User.Read", "https://graph.microsoft.com/User.Read.All"}) {
+		t.Errorf("graph = %+v, scopes %v", g, g.GraphScopes())
+	}
+	c, err = Load(write(t, "auth: { oidc: { managerClaim: manager_oid }, graph: { tenantId: "+tenant+", baseURL: \"https://graph.microsoft.us/\", groups: true } }\n"), env(oidcEnv))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g := c.Auth.Graph; g.BaseURL != "https://graph.microsoft.us" || !slices.Equal(g.GraphScopes(), []string{"https://graph.microsoft.us/User.Read"}) || c.Auth.OIDC.ManagerClaim != "manager_oid" {
+		t.Errorf("graph = %+v, scopes %v, %+v", g, g.GraphScopes(), c.Auth.OIDC)
+	}
+	if c, err = Load("", env(oidcEnv)); err != nil || c.Auth.Graph != nil || c.Auth.Graph.GraphScopes() != nil {
+		t.Errorf("no graph = %+v, %v", c.Auth.Graph, err)
+	}
+	g := "auth: { graph: { tenantId: " + tenant + ", manager: true, "
+	for name, tt := range map[string]struct {
+		env  map[string]string
+		file string
+		want string
+	}{
+		"graph in dev":         {file: g + "} }\n", want: "auth.graph needs auth.mode oidc"},
+		"a tenant name":        {env: oidcEnv, file: "auth: { graph: { tenantId: contoso.onmicrosoft.com, manager: true } }\n", want: "auth.graph.tenantId must be the directory (tenant) ID"},
+		"an http root":         {env: oidcEnv, file: g + "baseURL: \"http://graph.microsoft.com\" } }\n", want: "auth.graph.baseURL must be Microsoft Graph's https root"},
+		"a path":               {env: oidcEnv, file: g + "baseURL: \"https://graph.microsoft.com/v1.0\" } }\n", want: "auth.graph.baseURL must be"},
+		"a query":              {env: oidcEnv, file: g + "baseURL: \"https://graph.microsoft.com?x=1\" } }\n", want: "auth.graph.baseURL must be"},
+		"credentials":          {env: oidcEnv, file: g + "baseURL: \"https://u:p@graph.microsoft.com\" } }\n", want: "auth.graph.baseURL must be"},
+		"nothing to read":      {env: oidcEnv, file: "auth: { graph: { tenantId: " + tenant + " } }\n", want: "auth.graph needs manager or groups"},
+		"two manager sources":  {env: oidcEnv, file: "auth: { oidc: { managerClaim: m }, graph: { tenantId: " + tenant + ", manager: true } }\n", want: "keep one"},
+		"groups from roles":    {env: oidcEnv, file: "auth: { oidc: { groupsClaim: roles }, graph: { tenantId: " + tenant + ", groups: true } }\n", want: "auth.graph.groups needs auth.oidc.groupsClaim groups"},
+		"another resource":     {env: oidcEnv, file: "auth: { oidc: { scopes: [openid, \"api://quai/read\"] }, graph: { tenantId: " + tenant + ", manager: true } }\n", want: `not "api://quai/read"`},
+		"a manager claim, dev": {file: "auth: { oidc: { managerClaim: manager } }\n", want: "auth.oidc.managerClaim must be a claim's name and needs auth.mode oidc"},
+		"a claim with a space": {env: oidcEnv, file: "auth: { oidc: { managerClaim: \"a b\" } }\n", want: "auth.oidc.managerClaim must be a claim's name"},
+	} {
+		if _, err := Load(write(t, tt.file), env(tt.env)); err == nil || !strings.Contains(err.Error(), tt.want) {
+			t.Errorf("%s: error = %v, want %q", name, err, tt.want)
+		}
 	}
 }
 

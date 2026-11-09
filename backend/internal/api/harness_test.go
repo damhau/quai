@@ -163,7 +163,19 @@ func startRepo(t *testing.T, dir, metadata, spec string, opts repositories.Optio
 	svc := requests.New(s, reg, nil, log)
 	svc.UsePublicURL(public)
 	svc.UseDirectory(auth.NewDirectory(cfg.Auth))
-	authn := auth.New(cfg, s, nil, log)
+	srv := httptest.NewUnstartedServer(nil)
+	var idp *http.Client // reaches the identity provider, and Microsoft Graph, through network.caFile
+	if cfg.Auth.Mode == config.AuthOIDC {
+		if cfg.Auth.OIDC.RedirectURL == "" {
+			cfg.Auth.OIDC.RedirectURL = "http://" + srv.Listener.Addr().String() + "/auth/callback"
+		}
+		network, err := netx.New(cfg.Network.CAFile)
+		if err != nil {
+			t.Fatal(err)
+		}
+		idp = network.Client()
+	}
+	authn := auth.New(cfg, s, idp, log)
 	svc.UseStepUp(authn.StepUp())
 	hooks := ingest.New(s, reg, log)
 	hooks.UseHandler(svc)
@@ -239,7 +251,8 @@ func startRepo(t *testing.T, dir, metadata, spec string, opts repositories.Optio
 		si.UseClock(clk.now)
 		apiOpts.SlackInteractions = si
 	}
-	srv := httptest.NewServer(New(apiOpts))
+	srv.Config.Handler = New(apiOpts)
+	srv.Start()
 	t.Cleanup(srv.Close)
 	return &harness{t: t, srv: srv, store: s, reg: reg, ingest: hooks, auth: authn, log: &logs, jobs: worker, notify: n, clock: clk}
 }

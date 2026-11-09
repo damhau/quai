@@ -2088,6 +2088,20 @@
         ],
         "type": "object"
       },
+      "ManagerView": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "description": "The manager, a person who signed in to Quai; absent when there is none",
+            "type": "string"
+          },
+          "reason": {
+            "description": "Why there is no manager: the rule cannot be satisfied",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "MeOutputBody": {
         "additionalProperties": false,
         "properties": {
@@ -2457,6 +2471,10 @@
           },
           "kind": {
             "type": "string"
+          },
+          "manager": {
+            "$ref": "#/components/schemas/ManagerView",
+            "description": "When a rule's approvers include manager: the requester's manager, or why there is none"
           },
           "repository": {
             "type": "string"
@@ -2857,6 +2875,10 @@
           },
           "kind": {
             "type": "string"
+          },
+          "manager": {
+            "$ref": "#/components/schemas/ManagerView",
+            "description": "When a rule's approvers include manager: the requester's manager when the request was submitted, or why there was none"
           },
           "number": {
             "format": "int64",

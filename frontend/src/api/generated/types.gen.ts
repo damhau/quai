@@ -752,6 +752,17 @@ export type InstanceView = {
     resources: Array<InstanceResource> | null;
 };
 
+export type ManagerView = {
+    /**
+     * The manager, a person who signed in to Quai; absent when there is none
+     */
+    name?: string;
+    /**
+     * Why there is no manager: the rule cannot be satisfied
+     */
+    reason?: string;
+};
+
 export type MeOutputBody = {
     /**
      * A URL to the JSON Schema for this object.
@@ -887,6 +898,10 @@ export type PlanView = {
     commit: string;
     hash: string;
     kind: string;
+    /**
+     * When a rule's approvers include manager: the requester's manager, or why there is none
+     */
+    manager?: ManagerView;
     repository: string;
     rules: Array<RuleView> | null;
     stack?: string;
@@ -1031,6 +1046,10 @@ export type RequestView = {
         [key: string]: unknown;
     };
     kind: string;
+    /**
+     * When a rule's approvers include manager: the requester's manager when the request was submitted, or why there was none
+     */
+    manager?: ManagerView;
     number: number;
     /**
      * The latest plan of each stack the request's pull request was planned in
@@ -1883,6 +1902,10 @@ export type PlanViewWritable = {
     commit: string;
     hash: string;
     kind: string;
+    /**
+     * When a rule's approvers include manager: the requester's manager, or why there is none
+     */
+    manager?: ManagerView;
     repository: string;
     rules: Array<RuleView> | null;
     stack?: string;
@@ -1982,6 +2005,10 @@ export type RequestViewWritable = {
         [key: string]: unknown;
     };
     kind: string;
+    /**
+     * When a rule's approvers include manager: the requester's manager when the request was submitted, or why there was none
+     */
+    manager?: ManagerView;
     number: number;
     /**
      * The latest plan of each stack the request's pull request was planned in

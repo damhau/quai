@@ -452,6 +452,49 @@ type Auth struct {
 	// StepUp configures step-up authentication; nil: not configured, and only approval rules
 	// with stepUp ask for one, with the default maximum age.
 	StepUp *StepUp `yaml:"stepUp"`
+	// Graph lets Quai call Microsoft Graph at an Entra ID sign-in, for the person's manager and the
+	// groups of a group overage; nil: Quai never calls it.
+	Graph *Graph `yaml:"graph"`
+}
+
+// Graph configures the calls to Microsoft Graph at an Entra ID sign-in
+// (docs/design/08-identity-access-tenancy.md#microsoft-entra-id-the-pilots-idp): with the access
+// token the sign-in itself returns (delegated permissions), kept in memory for that sign-in only.
+// Quai calls BaseURL and nothing else: never an endpoint a token or a response names.
+type Graph struct {
+	// TenantID is the Entra ID directory (tenant) ID: the ID token's tid must be it before Quai
+	// calls Graph.
+	TenantID string `yaml:"tenantId"`
+	// BaseURL is Microsoft Graph's root: DefaultGraphBaseURL by default, a national cloud's
+	// (https://graph.microsoft.us, https://dod-graph.microsoft.us,
+	// https://microsoftgraph.chinacloudapi.cn) otherwise. https, a host and nothing after it.
+	BaseURL string `yaml:"baseURL"`
+	// Manager reads the person's manager at each sign-in (GET /v1.0/me/manager), which needs the
+	// delegated permission User.Read.All, with an administrator's consent.
+	Manager bool `yaml:"manager"`
+	// Groups reads the person's security groups from Graph (POST /v1.0/me/getMemberObjects) when
+	// the ID token has too many to list them (a group overage), instead of refusing the sign-in; it
+	// needs the delegated permission User.Read.
+	Groups bool `yaml:"groups"`
+}
+
+// DefaultGraphBaseURL is Microsoft Graph's global service.
+const DefaultGraphBaseURL = "https://graph.microsoft.com"
+
+// GraphScopes returns the delegated permissions a sign-in asks for, as scopes of Graph's resource
+// (https://graph.microsoft.com/User.Read): only those that what is configured needs.
+func (g *Graph) GraphScopes() []string {
+	if g == nil {
+		return nil
+	}
+	var out []string
+	if g.Groups {
+		out = append(out, g.BaseURL+"/User.Read")
+	}
+	if g.Manager {
+		out = append(out, g.BaseURL+"/User.Read.All")
+	}
+	return out
 }
 
 // StepUp configures step-up authentication (docs/design/08-identity-access-tenancy.md#step-up):
@@ -497,6 +540,10 @@ type OIDC struct {
 	Scopes       []string `yaml:"scopes"`       // openid, profile, email by default
 	NameClaim    string   `yaml:"nameClaim"`    // preferred_username by default
 	GroupsClaim  string   `yaml:"groupsClaim"`  // groups by default; roles for Entra app roles
+	// ManagerClaim names a claim of the ID token holding the person's manager as an immutable
+	// identifier of the same identity provider: the manager's sub, or their Entra ID oid. None by
+	// default; never a name or an email. auth.graph.manager reads it from Microsoft Graph instead.
+	ManagerClaim string `yaml:"managerClaim"`
 }
 
 // RoleMapping grants a role to the members of an IdP group at a scope: global (the default),
@@ -705,6 +752,12 @@ func (c *Config) defaults() {
 	}
 	if a.OIDC.GroupsClaim == "" {
 		a.OIDC.GroupsClaim = "groups"
+	}
+	if g := a.Graph; g != nil {
+		if g.BaseURL == "" {
+			g.BaseURL = DefaultGraphBaseURL
+		}
+		g.BaseURL = strings.TrimSuffix(g.BaseURL, "/")
 	}
 	if a.Session.Lifetime == 0 {
 		a.Session.Lifetime = 8 * time.Hour
@@ -1183,6 +1236,45 @@ func (a *Auth) validate(env string) error {
 	}
 	if s := a.StepUp; s != nil {
 		errs = append(errs, s.validate(a.Mode))
+	}
+	if c := a.OIDC.ManagerClaim; c != "" && (a.Mode != AuthOIDC || strings.ContainsAny(c, " \t\r\n")) {
+		errs = append(errs, fmt.Errorf("auth.oidc.managerClaim must be a claim's name and needs auth.mode oidc, not %q", c))
+	}
+	if g := a.Graph; g != nil {
+		errs = append(errs, g.validate(a))
+	}
+	return errors.Join(errs...)
+}
+
+func (g *Graph) validate(a *Auth) error {
+	var errs []error
+	if a.Mode != AuthOIDC {
+		errs = append(errs, errors.New("auth.graph needs auth.mode oidc: Quai calls Microsoft Graph with the token of an Entra ID sign-in"))
+	}
+	if _, err := uuid.Parse(g.TenantID); err != nil {
+		errs = append(errs, fmt.Errorf("auth.graph.tenantId must be the directory (tenant) ID, a GUID, not %q", g.TenantID))
+	}
+	// Scopes are written under it (https://graph.microsoft.com/User.Read): a root, nothing more.
+	if u, err := url.Parse(g.BaseURL); err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.Path != "" ||
+		u.RawQuery != "" || u.Fragment != "" || u.Opaque != "" {
+		errs = append(errs, fmt.Errorf("auth.graph.baseURL must be Microsoft Graph's https root, such as %s, not %q", DefaultGraphBaseURL, g.BaseURL))
+	}
+	if !g.Manager && !g.Groups {
+		errs = append(errs, errors.New("auth.graph needs manager or groups (or both): it says what Quai reads from Microsoft Graph"))
+	}
+	if g.Manager && a.OIDC.ManagerClaim != "" {
+		errs = append(errs, errors.New("auth.graph.manager and auth.oidc.managerClaim both say where the manager comes from: keep one"))
+	}
+	if g.Groups && a.OIDC.GroupsClaim != "groups" {
+		// Graph answers groups' object IDs, which only the groups claim carries.
+		errs = append(errs, fmt.Errorf("auth.graph.groups needs auth.oidc.groupsClaim groups (group object IDs), not %q", a.OIDC.GroupsClaim))
+	}
+	// The sign-in's access token is for one resource, Graph: a scope of another would make Entra ID
+	// refuse the sign-in, or return a token Graph refuses.
+	for _, s := range a.OIDC.Scopes {
+		if !slices.Contains([]string{"openid", "profile", "email", "offline_access"}, s) && !strings.HasPrefix(s, g.BaseURL+"/") {
+			errs = append(errs, fmt.Errorf("auth.oidc.scopes: with auth.graph, a scope is an OpenID Connect one or Microsoft Graph's (%s/...), not %q", g.BaseURL, s))
+		}
 	}
 	return errors.Join(errs...)
 }

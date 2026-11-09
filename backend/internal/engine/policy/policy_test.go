@@ -213,6 +213,29 @@ func TestApproverKinds(t *testing.T) {
 	if got := Evaluate([]Rule{r("owners")}, sam, ctx).State; got != Pending {
 		t.Errorf("owner by a group of another team: %s", got)
 	}
+	// The manager approves; anyone else, the requester included, does not count for the rule.
+	if got := Evaluate([]Rule{r("manager")}, []Review{{Reviewer: "mia", Decision: Approve}}, ctx).State; got != Approved {
+		t.Errorf("the manager's approval: %s", got)
+	}
+	if got := Evaluate([]Rule{r("manager")}, []Review{{Reviewer: "zoe", Groups: []string{"shop"}, Decision: Approve}, {Reviewer: "bob", Decision: Approve}}, ctx).State; got != Pending {
+		t.Errorf("approvals by others than the manager: %s", got)
+	}
+	if got := Evaluate([]Rule{r("manager")}, []Review{{Reviewer: "mia", Decision: Deny}}, ctx).State; got != Denied {
+		t.Errorf("the manager's denial: %s", got)
+	}
+	// Without a manager, or with the requester as their own, nobody can satisfy the rule (four eyes).
+	for _, m := range []string{"", "bob"} {
+		c := ctx
+		c.Manager = m
+		for _, who := range []string{"bob", "mia", ""} {
+			if CanReview(r("manager"), teams(who, ""), c) {
+				t.Errorf("manager %q: %q may review", m, who)
+			}
+		}
+		if got := Evaluate([]Rule{r("manager")}, []Review{{Reviewer: "bob", Decision: Approve}, {Reviewer: "mia", Decision: Approve}}, c).State; got != Pending {
+			t.Errorf("manager %q: %s", m, got)
+		}
+	}
 	// An email entry's review counts with the email the reviewer had when they reviewed.
 	rv := []Review{{Reviewer: "ivy", Email: "ivy@acme.ch", Decision: Approve}}
 	if got := Evaluate([]Rule{r("codeowners")}, rv, ctx).State; got != Approved {

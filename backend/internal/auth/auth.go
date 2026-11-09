@@ -90,6 +90,13 @@ type login struct {
 	Subject  string // the ID token's sub
 	ObjectID string // Entra ID's oid
 	StepUp   bool   // a sign-in again, to step up
+	// The manager the sign-in found: the identity provider's immutable identifier of them, where it
+	// comes from (ManagerFromClaim, ManagerFromGraph; empty when nothing is configured), and why there
+	// is none.
+	ManagerID, ManagerSource, ManagerReason string
+
+	overage bool   // the ID token has too many groups to list them
+	tenant  string // Entra ID's tid
 }
 
 // WebhooksPath is where Git platforms deliver webhooks: no sessions or tokens there, the
@@ -138,6 +145,7 @@ type Authenticator struct {
 	client   *http.Client // reaches the identity provider; nil: the default
 	log      *slog.Logger
 	stepUp   *StepUp
+	graph    *graphClient // nil: Quai does not call Microsoft Graph
 	now      func() time.Time
 
 	mu       sync.Mutex
@@ -158,7 +166,14 @@ func New(cfg *config.Config, s *store.Store, client *http.Client, log *slog.Logg
 	sm.Cookie.Secure = cfg.Env == config.Production
 	sm.Cookie.Path = "/"
 	return &Authenticator{cfg: cfg.Auth, dir: NewDirectory(cfg.Auth), sessions: sm, store: s, client: client, log: log,
-		stepUp: NewStepUp(cfg.Auth, s), now: time.Now}
+		stepUp: NewStepUp(cfg.Auth, s), graph: newGraph(cfg.Auth.Graph, client), now: time.Now}
+}
+
+// UseSleep sets how Microsoft Graph lookups wait before they retry, for tests.
+func (a *Authenticator) UseSleep(sleep func(context.Context, time.Duration) error) {
+	if a.graph != nil {
+		a.graph.sleep = sleep
+	}
 }
 
 // UseClock sets the clock of step-ups and development logins, for tests.
@@ -327,8 +342,20 @@ func (a *Authenticator) oauth(ctx context.Context) (*oidc.Provider, *oauth2.Conf
 		ClientSecret: a.cfg.OIDC.ClientSecret,
 		RedirectURL:  a.cfg.OIDC.RedirectURL,
 		Endpoint:     a.provider.Endpoint(),
-		Scopes:       a.cfg.OIDC.Scopes,
+		Scopes:       a.scopes(),
 	}, nil
+}
+
+// scopes are those a login asks for: auth.oidc.scopes, and the Microsoft Graph permissions that
+// auth.graph needs, which make the access token the login returns one for Graph.
+func (a *Authenticator) scopes() []string {
+	out := slices.Clone(a.cfg.OIDC.Scopes)
+	for _, s := range a.cfg.Graph.GraphScopes() {
+		if !slices.Contains(out, s) {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // login sends the browser to the identity provider, remembering what the callback must check and
@@ -403,6 +430,11 @@ func (a *Authenticator) callback(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, http.StatusForbidden, err.Error())
 		return
 	}
+	// The access token is the sign-in's, for Graph's lookups now, and is dropped with tok.
+	if err := a.fromGraph(ctx, &u, tok.AccessToken); err != nil {
+		a.refuseOrFail(w, r, err)
+		return
+	}
 	u.StepUp = stepUp
 	if stepUp {
 		// The person is signed in either way; the action they come back to says why it still
@@ -442,12 +474,37 @@ func (a *Authenticator) userFromClaims(idt *oidc.IDToken) (login, error) {
 	if err := idt.Claims(&claims); err != nil {
 		return login{}, err
 	}
-	if names, ok := claims["_claim_names"].(map[string]any); ok && names[a.cfg.OIDC.GroupsClaim] != nil {
-		return login{}, errors.New("your account is in more groups than the ID token can list; " +
-			"ask an administrator to emit only the groups assigned to Quai, or to use app roles")
-	}
 	u := login{sessionUser: sessionUser{Email: verifiedEmail(claims)}, Method: config.AuthOIDC, Subject: idt.Subject}
 	u.ObjectID, _ = claims["oid"].(string)
+	u.tenant, _ = claims["tid"].(string)
+	// A group overage: Entra ID names, in _claim_names, a source for the groups claim, whose
+	// endpoint (_claim_sources) Quai ignores; or, in the implicit flow, says hasgroups. Only
+	// Microsoft Graph, at auth.graph.baseURL, can then list the groups.
+	if names, ok := claims["_claim_names"].(map[string]any); ok && names[a.cfg.OIDC.GroupsClaim] != nil {
+		u.overage = true
+	}
+	if has, _ := claims["hasgroups"].(bool); has && a.cfg.OIDC.GroupsClaim == "groups" {
+		u.overage = true
+	}
+	if u.overage && (a.graph == nil || !a.graph.cfg.Groups) {
+		return login{}, errors.New("your account is in more groups than the ID token can list; " +
+			"ask an administrator to emit only the groups assigned to Quai, to use app roles, or to let Quai read groups from Microsoft Graph")
+	}
+	if c := a.cfg.OIDC.ManagerClaim; c != "" {
+		u.ManagerSource = ManagerFromClaim
+		switch v := claims[c].(type) {
+		case nil:
+			u.ManagerReason = "their ID token has no " + c + " claim"
+		case string:
+			if v == "" || len(v) > 256 || strings.ContainsFunc(v, func(r rune) bool { return r <= ' ' || r == 0x7f }) {
+				u.ManagerReason = "the " + c + " claim of their ID token is not an identifier"
+			} else {
+				u.ManagerID = v
+			}
+		default:
+			u.ManagerReason = "the " + c + " claim of their ID token is not a single identifier"
+		}
+	}
 	names := slices.DeleteFunc(slices.Compact([]string{a.cfg.OIDC.NameClaim, "preferred_username"}), func(c string) bool { return c == "" })
 	for _, c := range names {
 		if s, _ := claims[c].(string); s != "" {
