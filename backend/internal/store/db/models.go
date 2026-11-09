@@ -236,6 +236,9 @@ type Request struct {
 	RemindedAt          pgtype.Timestamptz
 	EscalatedAt         pgtype.Timestamptz
 	ExpiryWarnedAt      pgtype.Timestamptz
+	WindowSubjects      []byte
+	WindowHeldAt        pgtype.Timestamptz
+	WindowReason        string
 }
 
 type Review struct {

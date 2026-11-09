@@ -1,6 +1,7 @@
 import type { EventView, RequestView, RuleView } from "@/api/generated/types.gen"
 import { onBehalf } from "@/lib/delegations"
 import { shortSha, webURL } from "@/lib/format"
+import { localTime } from "@/lib/windows"
 
 // How requests read in the UI. States and event kinds are those of backend/internal/requests.
 
@@ -39,6 +40,12 @@ export function requestTitle(r: Pick<RequestView, "kind" | "action" | "target">)
       return `Migrate ${r.target}`
   }
   return r.target
+}
+
+/** list is a list of strings in an event's data, or none. */
+function list(data: unknown, key: string): string[] {
+  const v = (data as Record<string, unknown> | null)?.[key]
+  return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []
 }
 
 function str(data: unknown, key: string): string | undefined {
@@ -121,6 +128,15 @@ export function eventText(e: EventView): string {
       return `the pull request was merged as ${shortSha(str(d, "commit") ?? "")}`
     case "merged_without_approval":
       return `the pull request was merged without Quai's approval, as ${shortSha(str(d, "commit") ?? "")}: the enforcement was bypassed`
+    case "merged_outside_window":
+      return `the pull request was merged while Quai held it for its change windows, as ${shortSha(str(d, "commit") ?? "")}: the enforcement was bypassed`
+    case "window_waiting": {
+      const held = list(d, "windows").length ? ` (${list(d, "windows").join(", ")})` : ""
+      if (str(d, "error")) return `held: its change windows${held} cannot be decided: ${str(d, "error")}`
+      return `waits for its change windows${held}: ${str(d, "opens") ? `the next possible merge is ${localTime(str(d, "opens") ?? "")}` : "none opens within a year"}`
+    }
+    case "window_opened":
+      return `its change windows opened${str(d, "closes") ? `; they close ${localTime(str(d, "closes") ?? "")}` : ""}`
     case "approvals_commented":
       return "recorded the approvals on the pull request"
     case "retried":

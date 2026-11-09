@@ -126,7 +126,7 @@ Expressions inside `${{ }}`, `when`, `visibleIf` and `availableIf` are CEL
 | `doc` | The current region content (read-back and day-2) |
 | `previous` | The values before a day-2 change (absent on create) |
 | `action` | The action's own inputs |
-| `request` | `kind`, `action`, `reason` |
+| `request` | `kind`, `action`, `reason`; `type`, `blueprint` and `repository` as well, which change windows' conditions read ([change windows](05-delivery-and-approvals.md#change-windows-and-freezes)), `reason` being empty there |
 | `user` | `name`, `groups` |
 
 On create, `previous` and `doc` are empty, so conditions test fields first:

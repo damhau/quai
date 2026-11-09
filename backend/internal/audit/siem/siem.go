@@ -270,7 +270,7 @@ const (
 
 func severity(action string) int {
 	switch action {
-	case "audit.broken", "request.merged_without_approval", "repository.enforcement_lost":
+	case "audit.broken", "request.merged_without_approval", "request.merged_outside_window", "repository.enforcement_lost":
 		return severityWarning
 	}
 	return severityNotice

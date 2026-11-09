@@ -170,6 +170,11 @@ func startRepo(t *testing.T, dir, metadata, spec string, opts repositories.Optio
 	svc.UsePublicURL(public)
 	svc.UseDirectory(auth.NewDirectory(cfg.Auth))
 	svc.UseApprovals(cfg.Approvals)
+	windows, err := cfg.Windows()
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc.UseChangeWindows(windows)
 	srv := httptest.NewUnstartedServer(nil)
 	var idp *http.Client // reaches the identity provider, and Microsoft Graph, through network.caFile
 	if cfg.Auth.Mode == config.AuthOIDC {

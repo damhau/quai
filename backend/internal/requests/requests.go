@@ -35,6 +35,7 @@ import (
 	"github.com/damhau/quai/backend/internal/engine/plan"
 	"github.com/damhau/quai/backend/internal/engine/policy"
 	"github.com/damhau/quai/backend/internal/engine/schema"
+	"github.com/damhau/quai/backend/internal/engine/window"
 	"github.com/damhau/quai/backend/internal/gitx"
 	"github.com/damhau/quai/backend/internal/inventory"
 	"github.com/damhau/quai/backend/internal/jobs"
@@ -81,6 +82,7 @@ type Service struct {
 	links     *chatlink.Signer                                                // opens the links of chat cards; nil: none are
 	waiting   config.Approvals                                                // reminders and escalation
 	now       func() time.Time                                                // delegations are judged by it (UseClock)
+	windows   []*window.Window                                                // Quai's configuration's change windows
 }
 
 // New returns the request service. jobsClient inserts the delivery jobs.
@@ -159,6 +161,9 @@ type Plan struct {
 	// as written; "" for none. Submitting keeps it with the request, and when the request expires
 	// (open question 78).
 	Expiry string
+	// Subjects are what the conditions of change windows see of each resource the request changes
+	// (open question 26). Submitting keeps them with the request.
+	Subjects []Subject
 	// Authorize is the access question the caller must answer yes before showing or submitting:
 	// on Object, and on each of Also (a migrate request operates every resource it covers).
 	Authorize authz.Action
@@ -180,7 +185,7 @@ func (s *Service) PlanType(ctx context.Context, who auth.Identity, in TypeInput)
 	}
 	p := &Plan{Kind: in.Kind, Action: in.Action, Repository: repo.Name, Type: t.Metadata.Name, Commit: snap.Commit}
 	req := generate.Request{Kind: in.Kind, Owner: who.Principal.Name}
-	vars := expr.Vars{User: expr.User{Name: who.Principal.Name, Groups: who.Principal.Groups}, Request: expr.Request{Kind: in.Kind, Action: in.Action}}
+	vars := expr.Vars{User: expr.User{Name: who.Principal.Name, Groups: who.Principal.Groups}, Request: expr.Request{Kind: in.Kind, Action: in.Action, Type: t.Metadata.Name, Repository: repo.Name}}
 	var current map[string]any
 	approval := t.Spec.Approval
 
@@ -302,6 +307,7 @@ func (s *Service) PlanType(ctx context.Context, who auth.Identity, in TypeInput)
 		}
 	}
 	p.Inputs = next
+	p.Subjects = []Subject{{Type: t.Metadata.Name, Params: req.Params}}
 	vars.Inputs, vars.Previous, vars.Params = next, current, anyMap(req.Params)
 	if t.Spec.Generate.Kind == definitions.GenerateMapping && (in.Kind == generate.Create || in.Kind == generate.Update) {
 		// The form is not the file: rules read the form's values, the values before the change
@@ -378,11 +384,13 @@ func (s *Service) PlanBlueprint(ctx context.Context, who auth.Identity, in Bluep
 	}
 	p.ChangeSet, p.Stacks = cs, stacksOf(snap, cs.Resources)
 	user := expr.User{Name: who.Principal.Name, Groups: who.Principal.Groups}
-	request := expr.Request{Kind: generate.Create}
+	request := expr.Request{Kind: generate.Create, Blueprint: b.Metadata.Name, Repository: repo.Name}
 	var sets []policy.RuleSet
 	for _, r := range cs.Resources {
 		t := snap.Definitions.Types[r.Type]
 		vars := expr.Vars{Inputs: r.Values, Params: anyMap(r.Params), User: user, Request: request}
+		vars.Request.Type = r.Type
+		p.Subjects = append(p.Subjects, Subject{Type: r.Type, Params: r.Params})
 		sets = append(sets, policy.RuleSet{Source: policy.SourceFloor, Rules: repo.FloorRules, Vars: vars},
 			policy.RuleSet{Source: policy.SourceType, Rules: t.Spec.Approval.Rules, Vars: vars})
 		p.StepUp = p.StepUp || needsStepUp(t.Spec.Approval, vars)
@@ -499,7 +507,9 @@ func (s *Service) planMigrate(ctx context.Context, who auth.Identity, repo *repo
 		}
 		// The rules see each resource as the migration leaves it, and as it was.
 		next, _ := generate.Migrated(t, r.Document, r.Params)
-		vars := expr.Vars{Inputs: next, Previous: r.Document, Params: anyMap(r.Params), User: user, Request: expr.Request{Kind: generate.Migrate}}
+		p.Subjects = append(p.Subjects, Subject{Type: t.Metadata.Name, Params: r.Params})
+		vars := expr.Vars{Inputs: next, Previous: r.Document, Params: anyMap(r.Params), User: user,
+			Request: expr.Request{Kind: generate.Migrate, Type: t.Metadata.Name, Repository: repo.Name}}
 		sets = append(sets, policy.RuleSet{Source: policy.SourceFloor, Rules: repo.FloorRules, Vars: vars},
 			policy.RuleSet{Source: policy.SourceType, Rules: t.Spec.Approval.Rules, Vars: vars})
 		p.StepUp = p.StepUp || needsStepUp(t.Spec.Approval, vars)
@@ -572,7 +582,7 @@ func (s *Service) PlanInstanceAction(ctx context.Context, who auth.Identity, in 
 
 	// Each resource's rules see its document as it will be and as it was; the blueprint's see the
 	// instance's inputs and the action's.
-	request := expr.Request{Kind: generate.Action, Action: in.Action}
+	request := expr.Request{Kind: generate.Action, Action: in.Action, Blueprint: b.Metadata.Name, Repository: repo.Name}
 	var sets []policy.RuleSet
 	for _, r := range cs.Resources {
 		t := snap.Definitions.Types[r.Type]
@@ -581,6 +591,8 @@ func (s *Service) PlanInstanceAction(ctx context.Context, who auth.Identity, in 
 			previous = res.Document
 		}
 		vars := expr.Vars{Inputs: r.Values, Previous: previous, Params: anyMap(r.Params), User: user, Request: request}
+		vars.Request.Type = r.Type
+		p.Subjects = append(p.Subjects, Subject{Type: r.Type, Params: r.Params})
 		sets = append(sets, policy.RuleSet{Source: policy.SourceFloor, Rules: repo.FloorRules, Vars: vars},
 			policy.RuleSet{Source: policy.SourceType, Rules: t.Spec.Approval.Rules, Vars: vars})
 		p.StepUp = p.StepUp || needsStepUp(t.Spec.Approval, vars)
@@ -649,6 +661,12 @@ func (s *Service) Submit(ctx context.Context, who auth.Identity, p *Plan, reason
 	if _, d := definitions.Expiry(definitions.Approval{Expiry: p.Expiry}); d > 0 {
 		expiresAt = pgtype.Timestamptz{Time: submitted.Add(d), Valid: true}
 	}
+	var subjects []byte
+	if len(p.Subjects) > 0 {
+		if subjects, err = json.Marshal(p.Subjects); err != nil {
+			return db.Request{}, err
+		}
+	}
 	var created db.Request
 	err = s.store.Tx(ctx, func(tx pgx.Tx, q *db.Queries) error {
 		r, err := q.CreateRequest(ctx, db.CreateRequestParams{
@@ -658,6 +676,7 @@ func (s *Service) Submit(ctx context.Context, who auth.Identity, p *Plan, reason
 			Codeowners: nonNil(p.Codeowners.Entries), CodeownersUnmatched: nonNil(p.Codeowners.Unmatched), StepUp: p.StepUp,
 			Manager: p.Manager, ManagerReason: p.ManagerReason, Separation: separation,
 			SubmittedAt: pgtype.Timestamptz{Time: submitted, Valid: true}, Expiry: p.Expiry, ExpiresAt: expiresAt,
+			WindowSubjects: subjects,
 		})
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
@@ -1288,10 +1307,11 @@ func (w *Worker) Work(ctx context.Context, job *river.Job[DeliverArgs]) error {
 		return err
 	}
 	return jobs.WithRepositoryLock(ctx, s.store.Locks, repo.Name, 5*time.Second, func(ctx context.Context) error {
-		if r.State == Approved {
-			if r, err = s.transition(ctx, r, Approved, Merging, "merging", nil); err != nil {
-				return err
-			}
+		// The commit is the merge: decided now, under the repository's lock, in the request's
+		// change windows as they are now (a merging request retried included).
+		var ok bool
+		if r, ok, err = s.gate(ctx, r, repo, true, nil); err != nil || !ok {
+			return err
 		}
 		// A request is delivered with the definitions it was planned with: if they changed, it
 		// must be planned again.

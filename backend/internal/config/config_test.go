@@ -609,6 +609,43 @@ func TestRepositories(t *testing.T) {
 	}
 }
 
+// TestChangeWindows: changeWindows (open question 89) are checked at load, their time zones
+// included, and none by default.
+func TestChangeWindows(t *testing.T) {
+	c, err := Load("", env(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ws, err := c.Windows(); err != nil || len(ws) != 0 {
+		t.Errorf("default windows = %v, %v", ws, err)
+	}
+	p := write(t, `changeWindows:
+  - name: prod-business-hours
+    when: "has(params.env) && params.env == 'prod'"
+    allow: ["Mon-Thu 08:00-16:00 Europe/Zurich"]
+  - name: year-end-freeze
+    deny: ["2026-12-18T00:00 to 2027-01-05T00:00 Europe/Zurich"]
+`)
+	if c, err = Load(p, env(nil)); err != nil {
+		t.Fatal(err)
+	}
+	if ws, err := c.Windows(); err != nil || len(ws) != 2 || ws[0].Name != "prod-business-hours" || ws[0].When == nil || ws[1].Deny[0].Zone.String() != "Europe/Zurich" {
+		t.Errorf("windows = %+v, %v", ws, err)
+	}
+	for yaml, want := range map[string]string{
+		"changeWindows: [{ name: w, allow: [\"Mon 08:00-16:00 Europe/Atlantis\"] }]":                         `changeWindows[0].allow[0]: "Mon 08:00-16:00 Europe/Atlantis": "Europe/Atlantis" is not a known time zone`,
+		"changeWindows: [{ name: w, allow: [\"Mon 08:00-16:00 Local\"] }]":                                   "is not an IANA time zone name",
+		"changeWindows: [{ name: w, deny: [\"2027-01-05 to 2026-12-18 UTC\"] }]":                             "changeWindows[0].deny[0]:",
+		"changeWindows: [{ name: w, when: \"user.name == 'x'\", allow: [] }]":                                "changeWindows[0] (w) needs allow or deny entries",
+		"changeWindows: [{ name: w, when: \"user.name == 'x'\", deny: [\"2026-01-01 to 2026-01-02 UTC\"] }]": "not user",
+		"changeWindows: [{ name: w, allow: [x], unknown: 1 }]":                                               "unknown",
+	} {
+		if _, err := Load(write(t, yaml+"\n"), env(nil)); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%s: %v, want %q", yaml, err, want)
+		}
+	}
+}
+
 // TestApprovals: approvals.reminders and approvals.escalation (open question 25): off by default;
 // an escalation needs both when and whom, comes after the reminder, and names groups or users.
 func TestApprovals(t *testing.T) {

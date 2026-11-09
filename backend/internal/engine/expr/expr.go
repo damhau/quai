@@ -34,7 +34,7 @@ const (
 	VarDoc      = "doc"      // the current region content
 	VarPrevious = "previous" // the values before a day-2 change; empty on create
 	VarAction   = "action"   // the action's own inputs
-	VarRequest  = "request"  // kind, action, reason
+	VarRequest  = "request"  // kind, action, reason, type, blueprint, repository
 	VarUser     = "user"     // name, groups
 	// VarPlan is a Terraform plan's summary (add, change, destroy, destroys, cost), declared only
 	// by WithPlan, for approval rules: such a rule is decided once a plan has reported
@@ -303,6 +303,10 @@ type Request struct {
 	Kind   string // create, update, delete, action
 	Action string // the action's name, for kind action
 	Reason string
+	// Type is the resource type of the resource the expression is evaluated for ("" for a
+	// blueprint's own rules), Blueprint the blueprint the request is through ("" for a request
+	// on a type), Repository the repository's name.
+	Type, Blueprint, Repository string
 }
 
 // User is the person who makes the request.
@@ -335,7 +339,8 @@ func (v Vars) activation() (map[string]any, error) {
 		doc = map[string]any{}
 	}
 	act[VarDoc] = doc
-	act[VarRequest] = map[string]string{"kind": v.Request.Kind, "action": v.Request.Action, "reason": v.Request.Reason}
+	act[VarRequest] = map[string]string{"kind": v.Request.Kind, "action": v.Request.Action, "reason": v.Request.Reason,
+		"type": v.Request.Type, "blueprint": v.Request.Blueprint, "repository": v.Request.Repository}
 	groups := make([]any, len(v.User.Groups))
 	for i, g := range v.User.Groups {
 		groups[i] = g

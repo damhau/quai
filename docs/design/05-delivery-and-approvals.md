@@ -74,6 +74,7 @@ sequenceDiagram
 | State | When |
 | --- | --- |
 | `pending` ("Waiting for 1 of 2 approvals") | PR opened, rules not yet satisfied |
+| `pending` ("Approved; waits for the change window, opens Mon 08:00 Europe/Zurich") | Approved, outside its [change windows](#change-windows-and-freezes) |
 | `success` ("Approved by alice, fiona") | All rules satisfied and change window open |
 | `failure` ("Rejected by nora: CIDR overlaps") | A reviewer denied, or the request expired or was cancelled |
 | `neutral` ("Stale: re-plan required") | The owned region changed on the base branch |
@@ -112,7 +113,9 @@ asks again every 20 seconds. Statuses are published one at a time per request, e
 request's latest state, so that one published from an older state never comes last;
 with `merge: manual` it stops at the status. The merge, seen by the job, a webhook or a poll (a
 poll re-reads every pull request Quai waits on), applies the request; one merged before Quai's
-approval is recorded as such (`merged_without_approval`). A pull request closed outside Quai
+approval is recorded as such (`merged_without_approval`), one merged while Quai held it for its
+[change windows](#change-windows-and-freezes) too (`merged_outside_window`). Outside its windows,
+an approved request is neither merged nor asked of the platform. A pull request closed outside Quai
 cancels its request. After a merge the platform made by itself (auto-complete), a job deletes the
 branch when `deleteBranch` is set, since GitHub's auto-merge and merge queue keep it; GitHub
 refuses for a few seconds after its merge queue merged, so the job tries again every 10 seconds,
@@ -175,9 +178,11 @@ holds:
   (a reworded or rebased commit), the approvals stand and `quai/approval` is
   published again on the new head. Beyond those files, the request is
   cancelled and its pull request closed.
-- A bypass is a `merged_without_approval` event on the request and an
+- A bypass is a `merged_without_approval` event on the request (or
+  `merged_outside_window`, approved but held for its change windows) and an
   `alert_bypass` event on the repository's timeline (`repository:<name>`),
-  naming the pull request, the merge commit and the state the request was in.
+  naming the pull request, the merge commit, the state the request was in and
+  the request's event (`event`).
 - "Requester notified": the requester sees the stale state and its reason on
   the request, and is sent a `stale` notification when a channel is configured
   ([notifications](#notifications)).
@@ -457,16 +462,87 @@ authentication context when set ([design 08](08-identity-access-tenancy.md#step-
 ### Change windows and freezes
 
 ```yaml
-changeWindows:
+changeWindows:            # Quai's configuration; spec.enforcement.changeWindows in a repository document
   - name: prod-business-hours
-    when: "params.env == 'prod'"
+    when: "has(params.env) && params.env == 'prod'"
     allow: ["Mon-Thu 08:00-16:00 Europe/Zurich"]
   - name: year-end-freeze
     deny: ["2026-12-18T00:00 to 2027-01-05T00:00 Europe/Zurich"]
 ```
 
 An approved request outside its window waits in *Approved* and merges when the
-window opens. The request page shows the next possible merge time.
+window opens. The request page shows the next possible merge time. As built
+(P4-16, `internal/engine/window` and `internal/requests/windows.go`; [open
+questions 26 and 89 to 93](../plan/open-questions.md#still-open)):
+
+- **Where.** Quai's configuration (`changeWindows`, every repository) and the repository document
+  (`spec.enforcement.changeWindows`, that repository); never types or blueprints. **Every window
+  that applies must be open**, so the repository document only narrows what the configuration
+  allows: it adds freezes or restricts hours, and can neither widen a window nor lift a freeze of
+  the configuration. At most 32 windows in each, 32 allow and 32 deny entries in a window; names
+  (letters, digits, `.`, `_`, `-`) unique in each.
+- **Entries.** An allow entry is `<days> <HH:MM>-<HH:MM> <zone>`: days `Mon` to `Sun`, as a list
+  and ranges (`Mon,Wed`, `Mon-Thu`, `Fri-Mon` wraps), hours from `00:00` to `24:00`, the end after
+  the start (an entry does not cross midnight: write `Fri 22:00-24:00` and `Sat 00:00-02:00`). A
+  deny entry (a freeze) is `<from> to <to> <zone>`, each `YYYY-MM-DDTHH:MM` or a date (its
+  midnight), from before to. The zone is an IANA name (`Europe/Zurich`, `UTC`), checked when the
+  configuration or the document loads, from the system's database or the one built into Quai;
+  `Local` and paths are refused. A window with allow entries is open only within one of them, one
+  without at any time; a deny entry closes it. Overlapping allow entries add up, overlapping
+  freezes too, and a freeze wins over an allow entry.
+- **Wall-clock time and DST.** An allow entry holds while the zone's clock reads a time inside it,
+  on one of its days. On the day the clock springs forward, the skipped hour never comes
+  (`08:00-16:00` is unaffected; `02:00-03:00` is empty that day); on the day it falls back, the
+  repeated hour comes twice (`02:00-03:00` lasts two hours). A freeze runs from the first instant
+  the clock reads its start to the last instant it reads its end, a time in a skipped hour being
+  the jump: an ambiguous freeze is the longer one.
+- **`when`** is CEL with `params` and `request` (`kind`, `action`, `type`, `blueprint`,
+  `repository`; [the expression language](02-resource-types-and-generators.md#type-specification)),
+  evaluated for each of the request's resources as planned (a blueprint's each): the window applies
+  when it holds for one. It sees no `inputs`, `doc`, `previous`, `action`, `user` or `plan`, and
+  not the request's reason: what a requester writes never decides when a change merges. **A
+  condition that fails holds the request**, whatever the time, with the error shown (a param a type
+  does not have fails: write `has(params.env) && …`). A request planned before P4-16 has no
+  resources recorded: every window with a `when` applies to it.
+- **Decided at merge time.** Quai decides when it would merge, under the request's row lock, and in
+  pull-request mode again under its merge lock right before it asks the platform, with the windows
+  as they are stored then (the configuration, and the repository document as stored, read again
+  when the registry has not reloaded it yet), never as they were at approval: a freeze added while
+  a request waits holds it. One function moves an approved request to merging (`gate`); the
+  delivery around it checks everything it checked before.
+- **Waiting.** Outside its windows, an approved request stays *Approved*, held: `quai/approval` is
+  pending with the reason ("Approved; waits for the change window, opens Mon 08:00
+  Europe/Zurich", "Approved; waits for the change window: none opens within a year", "Approved;
+  held: change window gold: no such key: tier"); Quai neither merges nor asks the platform to (no
+  auto-complete, no merge queue, no approval of a merge group); in direct mode, nothing is
+  committed. The hold is recorded once (`window_waiting`, audited as `request.window_waiting`
+  with the windows that hold it and when they open).
+- **The windows' sweep** (the worker's `window_sweep` job, every minute and at start, by the
+  service's clock): a held request whose windows opened is released (`window_opened`, audited)
+  and delivered again, through the same delivery; an approved request whose windows closed is held
+  and its `quai/approval` turns pending (with `merge: manual`, a person can no longer merge it);
+  a held request's `quai/approval` follows its reason when it changes (a freeze added meanwhile); a
+  merging request whose windows closed is delivered again, and its delivery takes it back to
+  approved under the merge lock. Each is decided again under its row lock, so a sweep run twice or
+  after a restart converges, and a request merges once. A request merges within a minute of its
+  windows opening.
+- **The request page** says, while a request is pending approval, approved or merging and a window
+  applies: when its windows open next, the next possible merge, in the browser's time zone and in
+  the window's; until when they stay open; why they cannot be decided; or that none opens within
+  366 days, in which case it waits until the windows change.
+- **Expiry** applies to pending approval only: an approved request waiting for its windows does not
+  expire.
+- **A merge on the platform while Quai holds the request** (its protection bypassed) is a bypass:
+  the request is applied as merged (`merged_outside_window`, audited) and the bypass alert goes
+  to the admins, as for a merge without approval.
+- **What remains.** Quai turns `quai/approval` pending within a minute of a window closing, which
+  as a required check stops a merge the platform was asked for in the window (auto-merge,
+  auto-complete); a merge already under way then (a merge group GitHub has approved, checks that
+  pass in that minute) can still land just after the window closes. Quai does not disarm
+  auto-merge nor take the pull request out of the queue at close. Change windows govern requests:
+  what Quai commits itself (a blueprint published, an audit checkpoint) is not one.
+- **Break-glass** ([below](#break-glass), P4-17) will merge whatever the windows say: `exempt` in
+  `internal/requests/windows.go` is the one place it lifts them.
 
 ### Break-glass
 
@@ -510,7 +586,8 @@ Built (`internal/notify`):
   applies, and the approvers), `approval_needed`, `plan_decided` and
   `modified_outside_quai` with a new content hash (the approvers);
   `approved`, `rejected`, `stale` (the requester); `merged`,
-  `merged_without_approval` and `committed` (the requester, as merged);
+  `merged_without_approval`, `merged_outside_window` and `committed` (the
+  requester, as merged);
   `applied`; `failed` and `apply_failed`; `expiring_soon` and `expired` (the
   requester); `reminded` (the approvers, as approval needed); `escalated` (the
   escalation contacts, as `escalation`: [reminders, escalation,

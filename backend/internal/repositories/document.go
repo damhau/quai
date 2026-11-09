@@ -18,7 +18,9 @@ import (
 	"go.yaml.in/yaml/v3"
 	"golang.org/x/crypto/ssh"
 
+	"github.com/damhau/quai/backend/internal/config"
 	"github.com/damhau/quai/backend/internal/engine/expr"
+	"github.com/damhau/quai/backend/internal/engine/window"
 )
 
 // The Repository document of docs/design/01-repository-connections.md.
@@ -95,6 +97,10 @@ type Enforcement struct {
 	// SeparationOfDuties are the repository's separation-of-duties options, which no type can set
 	// (docs/design/05-delivery-and-approvals.md#separation-of-duties).
 	SeparationOfDuties SeparationOfDuties `json:"separationOfDuties,omitzero" yaml:"separationOfDuties"`
+	// ChangeWindows are the repository's change windows and freezes
+	// (docs/design/05-delivery-and-approvals.md#change-windows-and-freezes). They apply with those
+	// of Quai's configuration, which they narrow and never lift (open question 89).
+	ChangeWindows []window.ChangeWindow `json:"changeWindows,omitempty" yaml:"changeWindows"`
 }
 
 // SeparationOfDuties are the options of docs/design/05-delivery-and-approvals.md#separation-of-duties,
@@ -295,6 +301,19 @@ func (d *Document) ApplyDefaults() {
 	}
 }
 
+// Windows compiles the repository's change windows (spec.enforcement.changeWindows).
+func (d *Document) Windows() ([]*window.Window, error) {
+	return window.Compile(d.Spec.Enforcement.ChangeWindows, "spec.enforcement.changeWindows", config.TimeZone)
+}
+
+// unjoin returns the errors err joins, or err.
+func unjoin(err error) []error {
+	if j, ok := err.(interface{ Unwrap() []error }); ok {
+		return j.Unwrap()
+	}
+	return []error{err}
+}
+
 // Validate checks a document with its defaults applied. It reports every problem, by field.
 func (d *Document) Validate() error {
 	var errs []string
@@ -401,6 +420,11 @@ func (d *Document) Validate() error {
 	}
 	if d := s.Enforcement.SeparationOfDuties.Destroys; d != "" && d != RequireTwo {
 		add("spec.enforcement.separationOfDuties.destroys must be %s", RequireTwo)
+	}
+	if _, err := d.Windows(); err != nil {
+		for _, e := range unjoin(err) {
+			add("%v", e)
+		}
 	}
 	if len(errs) > 0 {
 		return &InvalidError{Name: d.Metadata.Name, Problems: errs}

@@ -141,8 +141,14 @@ spec:
   credentials: { ref: "k8s:quai/infra-live#token" }
   enforcement:
     floorRules: [{ name: production-floor, when: "params.env == 'prod'", approvers: [group:platform-admins] }]
+    changeWindows:
+      - { name: prod-hours, when: "has(params.env) && params.env == 'prod'", allow: ["Mon-Thu 08:00-16:00 Europe/Zurich"] }
+      - { name: freeze, deny: ["2026-12-18 to 2027-01-05 Europe/Zurich"] }
   sync: { pollInterval: 1m }
 `)
+	if ws, err := d.Windows(); err != nil || len(ws) != 2 || ws[1].Name != "freeze" {
+		t.Errorf("windows = %+v, %v", ws, err)
+	}
 	s := d.Spec
 	if d.Metadata.Title != "infra-live" || s.DefaultBranch != "main" || s.Definitions != (Definitions{Path: ".quai", Branch: "main"}) ||
 		s.Delivery.Mode != "pull-request" || s.Delivery.BranchPrefix != "quai/" || s.Delivery.Merge != "auto" || s.Delivery.MergeMethod != "squash" ||
@@ -190,6 +196,9 @@ spec:
 		"secret":        {"apiVersion: quai.dev/v1beta1\nkind: Repository\nmetadata: { name: a }\nspec: { connector: gitea, url: x, credentials: { ref: hunter2 } }\n", "spec.credentials.ref must be a secret reference"},
 		"delivery":      {"apiVersion: quai.dev/v1beta1\nkind: Repository\nmetadata: { name: a }\nspec: { connector: generic, url: x, delivery: { mode: pull-request } }\n", "generic Git has no pull requests"},
 		"floor":         {"apiVersion: quai.dev/v1beta1\nkind: Repository\nmetadata: { name: a }\nspec: { connector: gitea, url: x, enforcement: { floorRules: [{ name: f, when: \"params.env ==\", approvers: [owners] }] } }\n", "floorRules[0].when"},
+		"window zone":   {"apiVersion: quai.dev/v1beta1\nkind: Repository\nmetadata: { name: a }\nspec: { connector: gitea, url: x, enforcement: { changeWindows: [{ name: w, allow: [\"Mon 08:00-16:00 Mars/Olympus\"] }] } }\n", "spec.enforcement.changeWindows[0].allow[0]: \"Mon 08:00-16:00 Mars/Olympus\": \"Mars/Olympus\" is not a known time zone"},
+		"window when":   {"apiVersion: quai.dev/v1beta1\nkind: Repository\nmetadata: { name: a }\nspec: { connector: gitea, url: x, enforcement: { changeWindows: [{ name: w, when: \"user.name == 'x'\", deny: [\"2026-01-01 to 2026-01-02 UTC\"] }] } }\n", "spec.enforcement.changeWindows[0].when: a change window's condition sees params and request only, not user"},
+		"window name":   {"apiVersion: quai.dev/v1beta1\nkind: Repository\nmetadata: { name: a }\nspec: { connector: gitea, url: x, enforcement: { changeWindows: [{ deny: [\"2026-01-01 to 2026-01-02 UTC\"] }] } }\n", "spec.enforcement.changeWindows[0].name must be"},
 		"run token":     {"apiVersion: quai.dev/v1beta1\nkind: Repository\nmetadata: { name: a }\nspec: { connector: gitea, url: x, runner: { reportToken: { ref: token123 } } }\n", "spec.runner.reportToken.ref must be a secret reference"},
 		"duration":      {"apiVersion: quai.dev/v1beta1\nkind: Repository\nmetadata: { name: a }\nspec: { connector: gitea, url: x, sync: { pollInterval: often } }\n", "is not a duration"},
 		"sod period":    {"apiVersion: quai.dev/v1beta1\nkind: Repository\nmetadata: { name: a }\nspec: { connector: gitea, url: x, enforcement: { separationOfDuties: { definitionAuthors: a week } } }\n", "is not a period"},

@@ -91,6 +91,9 @@ spec:
     separationOfDuties:            # optional; see delivery-and-approvals.md#separation-of-duties
       definitionAuthors: 7d        # who changed a request's definitions in the 7 days before it cannot approve it
       destroys: requireTwo         # a plan that destroys, or none yet, needs two different approvers
+    changeWindows:                 # optional; narrows Quai's configuration's, see delivery-and-approvals.md#change-windows-and-freezes
+      - name: maintenance-freeze
+        deny: ["2026-11-16 to 2026-11-17 Europe/Zurich"]
   codeowners:
     mapping:                       # the platform's owners → Quai users or groups (codeowners approvers)
       '[Infrastructure]\Platform': group:platform-admins
@@ -120,6 +123,7 @@ spec:
 | `spec.definitions` | One repository can host types for itself only. A type cannot point its locator into another repository. |
 | `spec.delivery.mode` | `pull-request` by default ([ADR 0008](../adr/0008-pull-requests-by-default.md)); `direct` exists for sandboxes and demos, and is the only mode of generic Git, which has no pull requests. |
 | `spec.enforcement.floorRules` | Lets admins guarantee, for example, that nothing reaches `prod` without platform approval, whatever a type's author writes. Types can add rules, never remove floor rules. |
+| `spec.enforcement.changeWindows` | Optional; types and blueprints cannot set it. When this repository's approved requests may merge: windows of `allow` entries (`Mon-Thu 08:00-16:00 Europe/Zurich`) and `deny` entries, freezes (`2026-12-18T00:00 to 2027-01-05T00:00 Europe/Zurich`), each with an optional `when` on the request's `params` and `request`. They add to the windows of Quai's configuration: every window that applies must be open, so a repository's windows only narrow those, never lift a freeze of the configuration. Zones are IANA names, checked when the document loads; an invalid entry refuses the document. Read at merge time, as stored then ([change windows and freezes](05-delivery-and-approvals.md#change-windows-and-freezes)). |
 | `spec.enforcement.separationOfDuties` | Optional; types and blueprints cannot set it. `definitionAuthors`: a period, `Nd` (days) or a duration such as `36h`, positive and at most `90d`: the people who changed the files of a request's type or blueprint in that period before it is planned, as Quai recorded the definitions, cannot approve it. `destroys`: `requireTwo` (the only value): a request whose plan destroys something, or that has no plan yet, needs two different approvers. Unknown fields and values are refused. A request keeps the options it was planned with; stricter ones make a request pending approval stale ([separation of duties](05-delivery-and-approvals.md#separation-of-duties)). |
 | `spec.codeowners.mapping` | How the owners the platform names for a path (a `CODEOWNERS` entry such as `@org/team` or `@alice`; an Azure DevOps reviewer such as `[Project]\Platform`) match Quai, for the `codeowners` approver kind and `ownership.codeowners`: each key is an owner as the platform writes it (without regard to case or a leading `@`), each value `group:<name>` or `user:<name>`. Tried before any email; the only way a platform group matches. Owners neither mapped nor matched by email match no one and are shown ([identity](08-identity-access-tenancy.md#directory)). |
 | `spec.runner` | Where plan and apply results come from. Optional: without it, resources show *In repo* after merge. |

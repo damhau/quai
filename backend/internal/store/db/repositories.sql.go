@@ -63,6 +63,29 @@ func (q *Queries) DeleteRepository(ctx context.Context, name string) (int64, err
 	return result.RowsAffected(), nil
 }
 
+const getRepository = `-- name: GetRepository :one
+SELECT name, document, managed_by, generation FROM repositories WHERE name = $1
+`
+
+type GetRepositoryRow struct {
+	Name       string
+	Document   json.RawMessage
+	ManagedBy  string
+	Generation int64
+}
+
+func (q *Queries) GetRepository(ctx context.Context, name string) (GetRepositoryRow, error) {
+	row := q.db.QueryRow(ctx, getRepository, name)
+	var i GetRepositoryRow
+	err := row.Scan(
+		&i.Name,
+		&i.Document,
+		&i.ManagedBy,
+		&i.Generation,
+	)
+	return i, err
+}
+
 const listRepositories = `-- name: ListRepositories :many
 SELECT name, document, managed_by, generation FROM repositories ORDER BY name
 `

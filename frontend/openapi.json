@@ -848,6 +848,100 @@
         ],
         "type": "object"
       },
+      "ChangeWindow": {
+        "additionalProperties": false,
+        "properties": {
+          "allow": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "deny": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "when": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "ChangeWindowView": {
+        "additionalProperties": false,
+        "properties": {
+          "closes": {
+            "description": "When open: when its windows close next; absent when they stay open beyond a year",
+            "format": "date-time",
+            "type": "string"
+          },
+          "error": {
+            "description": "Why its windows cannot be decided: it waits, whatever the time, until that is fixed",
+            "type": "string"
+          },
+          "held": {
+            "description": "Approved, Quai holds it until its windows open: quai/approval is pending with the reason, nothing is merged",
+            "type": "boolean"
+          },
+          "holding": {
+            "description": "Those closed now; when open, those that close first",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "open": {
+            "description": "Its windows are open: approved, it may merge now",
+            "type": "boolean"
+          },
+          "opens": {
+            "description": "When closed: when its windows open next, the earliest it can merge (within a minute of it); absent when none opens within a year, or with error",
+            "format": "date-time",
+            "type": "string"
+          },
+          "reason": {
+            "description": "Approved, what quai/approval says while it waits",
+            "type": "string"
+          },
+          "windows": {
+            "description": "The change windows that apply to it, Quai's configuration's first",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "zone": {
+            "description": "The IANA time zone of the window that holds it (or closes first), for its times as the window is written",
+            "type": "string"
+          }
+        },
+        "required": [
+          "open",
+          "held",
+          "windows"
+        ],
+        "type": "object"
+      },
       "ChatLinkBody": {
         "additionalProperties": false,
         "properties": {
@@ -1627,6 +1721,15 @@
       "Enforcement": {
         "additionalProperties": false,
         "properties": {
+          "changeWindows": {
+            "items": {
+              "$ref": "#/components/schemas/ChangeWindow"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "floorRules": {
             "items": {
               "$ref": "#/components/schemas/FloorRule"
@@ -3041,6 +3144,10 @@
           "cannotReview": {
             "description": "Why you cannot review this request pending approval although a rule names you: you requested it, or you changed its definitions in the separation of duties' period before it",
             "type": "string"
+          },
+          "changeWindow": {
+            "$ref": "#/components/schemas/ChangeWindowView",
+            "description": "What the change windows that apply to it say, while it is pending approval, approved or merging; absent when none applies"
           },
           "changes": {
             "items": {

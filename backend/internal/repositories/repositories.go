@@ -30,6 +30,7 @@ import (
 	"github.com/damhau/quai/backend/internal/connectors/generic"
 	"github.com/damhau/quai/backend/internal/engine/definitions"
 	"github.com/damhau/quai/backend/internal/engine/expr"
+	"github.com/damhau/quai/backend/internal/engine/window"
 	"github.com/damhau/quai/backend/internal/gitx"
 	"github.com/damhau/quai/backend/internal/netx"
 	"github.com/damhau/quai/backend/internal/secrets"
@@ -56,8 +57,10 @@ type Repo struct {
 	Branch     string
 	Delivery   string
 	FloorRules []definitions.Rule
-	Mirror     *gitx.Mirror
-	Connector  connectors.Connector // the platform, as spec.connector names it
+	// ChangeWindows are the document's change windows (spec.enforcement.changeWindows), compiled.
+	ChangeWindows []*window.Window
+	Mirror        *gitx.Mirror
+	Connector     connectors.Connector // the platform, as spec.connector names it
 	// Document is the connection as declared; Generation moves when it changes.
 	Document   Document
 	Generation int64
@@ -372,6 +375,9 @@ func (r *Registry) open(ctx context.Context, s Stored, prev *Repo) (*Repo, error
 			}
 		}
 		repo.FloorRules = append(repo.FloorRules, rule)
+	}
+	if repo.ChangeWindows, err = d.Windows(); err != nil {
+		return nil, err
 	}
 	// The mirror is kept while git reaches the remote the same way.
 	if prev != nil && prev.Document.Spec.URL == d.Spec.URL && prev.Document.Spec.Connector == d.Spec.Connector &&

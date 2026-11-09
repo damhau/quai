@@ -25,6 +25,8 @@ import (
 
 	"github.com/google/uuid"
 	"go.yaml.in/yaml/v3"
+
+	"github.com/damhau/quai/backend/internal/engine/window"
 )
 
 // Environments.
@@ -49,8 +51,18 @@ type Config struct {
 	Audit         Audit         `yaml:"audit"`
 	Notifications Notifications `yaml:"notifications"`
 	Approvals     Approvals     `yaml:"approvals"`
-	Log           Log           `yaml:"log"`
-	Telemetry     Telemetry     `yaml:"telemetry"`
+	// ChangeWindows are the change windows and freezes of every repository
+	// (docs/design/05-delivery-and-approvals.md#change-windows-and-freezes): an approved request
+	// merges only when each that applies to it is open. A repository document adds its own,
+	// which narrow these and never lift them (open question 89).
+	ChangeWindows []window.ChangeWindow `yaml:"changeWindows"`
+	Log           Log                   `yaml:"log"`
+	Telemetry     Telemetry             `yaml:"telemetry"`
+}
+
+// Windows compiles the change windows (changeWindows), their times in the zones TimeZone knows.
+func (c *Config) Windows() ([]*window.Window, error) {
+	return window.Compile(c.ChangeWindows, "changeWindows", TimeZone)
 }
 
 // Approvals configures what Quai does about requests that wait for approval: it reminds their
@@ -933,6 +945,9 @@ func (c *Config) validate() error {
 	errs = append(errs, c.Auth.validate(c.Env))
 	errs = append(errs, c.Notifications.validate(c.Server.PublicURL))
 	errs = append(errs, c.Approvals.validate())
+	if _, err := c.Windows(); err != nil {
+		errs = append(errs, err)
+	}
 	if _, err := c.Log.SlogLevel(); err != nil {
 		errs = append(errs, err)
 	}

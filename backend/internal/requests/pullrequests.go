@@ -41,6 +41,7 @@ func (s *Service) Workers(w *river.Workers) {
 	river.AddWorker(w, &statusWorker{s: s})
 	river.AddWorker(w, &deleteBranchWorker{s: s})
 	river.AddWorker(w, &sweepWorker{s: s})
+	river.AddWorker(w, &windowSweepWorker{s: s})
 }
 
 var slugRe = regexp.MustCompile(`[^a-z0-9]+`)
@@ -328,14 +329,24 @@ func (s *Service) publishLatest(ctx context.Context, repo *repositories.Repo, id
 
 // publish sets quai/approval for the request's state, with description if given; a rejected or
 // cancelled request's pull request is closed and its branch deleted, an expired one's as
-// closeExpired says.
+// closeExpired says. An approved request succeeds only while its change windows are open, as
+// they are now: outside them, it is pending with the reason.
 func (s *Service) publish(ctx context.Context, repo *repositories.Repo, r db.Request, d db.Delivery, description string) error {
 	st := connectors.Status{Name: repo.Document.Spec.Enforcement.RequiredCheck, URL: s.link(r)}
 	closePR := false
 	switch r.State {
 	case PendingApproval:
 		st.State, st.Description = connectors.StatusPending, "Waiting for approval in Quai"
-	case Approved, Merging, Applied:
+	case Approved, Merging:
+		w, err := s.windowsOf(ctx, s.store.Queries, r, repo, s.now())
+		if err != nil {
+			return err
+		}
+		st.State, st.Description = connectors.StatusSuccess, "Approved in Quai"
+		if !w.MayMerge() {
+			st.State, st.Description = connectors.StatusPending, w.Reason()
+		}
+	case Applied:
 		st.State, st.Description = connectors.StatusSuccess, "Approved in Quai"
 	case Rejected:
 		st.State, st.Description, closePR = connectors.StatusFailure, "Rejected in Quai", true
@@ -366,7 +377,8 @@ func (s *Service) publish(ctx context.Context, repo *repositories.Repo, r db.Req
 }
 
 // deliverPR takes an approved request through its pull request: quai/approval succeeds, then,
-// with merge: auto and once the waitForChecks pass, the platform is asked to merge.
+// with merge: auto and once the waitForChecks pass, the platform is asked to merge. Outside its
+// change windows, it waits (gate): quai/approval pending, nothing merged or armed.
 func (s *Service) deliverPR(ctx context.Context, job *river.Job[DeliverArgs], r db.Request, d db.Delivery, repo *repositories.Repo) error {
 	if d.PullRequest == "" {
 		return river.JobSnooze(5 * time.Second) // the pull request is being opened
@@ -397,6 +409,13 @@ func (s *Service) deliverPR(ctx context.Context, job *river.Job[DeliverArgs], r 
 				return err
 			}
 		}
+		// Outside its change windows, the request waits, held, until they open (the windows'
+		// sweep delivers it again then); a person merging it (merge: manual) sees quai/approval
+		// pending meanwhile.
+		var ok bool
+		if r, ok, err = s.gate(ctx, r, repo, false, nil); err != nil || !ok {
+			return err
+		}
 		if spec.Merge == "manual" {
 			return nil // a person merges; the merge applies the request
 		}
@@ -408,7 +427,7 @@ func (s *Service) deliverPR(ctx context.Context, job *river.Job[DeliverArgs], r 
 			s.log.InfoContext(ctx, "waiting for checks before merging", slog.String("request", r.ID.String()), slog.Any("checks", waiting))
 			return river.JobSnooze(30 * time.Second)
 		}
-		if r, err = s.transition(ctx, r, Approved, Merging, "merging", map[string]any{"pullRequest": d.PullRequest}); err != nil {
+		if r, ok, err = s.gate(ctx, r, repo, true, map[string]any{"pullRequest": d.PullRequest}); err != nil || !ok {
 			return err
 		}
 	}
@@ -422,6 +441,12 @@ func (s *Service) deliverPR(ctx context.Context, job *river.Job[DeliverArgs], r 
 			return err
 		} else if pr.State == connectors.PRMerged {
 			return s.merged(ctx, r, d, pr)
+		}
+		// The decision to merge is taken now, under this lock, with the windows as they are now:
+		// closed since, the request goes back to approved and waits.
+		r, ok, err := s.gate(ctx, r, repo, true, nil)
+		if err != nil || !ok {
+			return err
 		}
 		msg, err := s.mergeMessage(ctx, r)
 		if err != nil {
@@ -535,9 +560,15 @@ func (s *Service) merged(ctx context.Context, r db.Request, d db.Delivery, pr co
 	kind := "merged"
 	data := map[string]any{"commit": pr.MergeCommit, "pullRequest": pr.ID}
 	bypass := from != Approved && from != Merging
-	if bypass {
+	message := fmt.Sprintf("pull request %s was merged without Quai's approval: check the branch protection", pr.ID)
+	switch {
+	case bypass:
 		// Merged without Quai's approval: the enforcement was bypassed.
 		kind = "merged_without_approval"
+	case r.WindowHeldAt.Valid:
+		// Approved, but merged while Quai held it for its change windows, quai/approval pending.
+		kind, bypass = "merged_outside_window", true
+		message = fmt.Sprintf("pull request %s was merged while Quai held it outside its change windows: check the branch protection", pr.ID)
 	}
 	// The platform merged on Quai's request (auto-complete): its branch is deleted by a job of its
 	// own, since GitHub's auto-merge and merge queue keep it. Merge deleted it already otherwise.
@@ -577,7 +608,7 @@ func (s *Service) merged(ctx context.Context, r db.Request, d db.Delivery, pr co
 		}
 		if bypass {
 			return s.alert(ctx, tx, d.Repository, "bypass", map[string]any{"request": r.ID.String(), "number": r.Number, "state": from,
-				"pullRequest": pr.ID, "commit": pr.MergeCommit, "message": fmt.Sprintf("pull request %s was merged without Quai's approval: check the branch protection", pr.ID)})
+				"pullRequest": pr.ID, "commit": pr.MergeCommit, "event": kind, "message": message})
 		}
 		return nil
 	})

@@ -315,7 +315,7 @@ func audienceOf(e db.Event) audience {
 		return audience{requester: Rejected}
 	case "stale":
 		return audience{requester: Stale}
-	case "merged", "merged_without_approval", "committed":
+	case "merged", "merged_without_approval", "merged_outside_window", "committed":
 		return audience{requester: Merged}
 	case "applied":
 		return audience{requester: Applied}

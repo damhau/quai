@@ -148,7 +148,7 @@ func TestVariables(t *testing.T) {
 		Doc:      map[string]any{"cpu": 4},
 		Previous: map[string]any{"cpu": 4},
 		Action:   map[string]any{"size": "large"},
-		Request:  Request{Kind: "action", Action: "resize", Reason: "load"},
+		Request:  Request{Kind: "action", Action: "resize", Reason: "load", Type: "vm", Repository: "infra-live"},
 		User:     User{Name: "alice", Groups: []string{"platform-admins"}},
 	}
 	tests := []struct {
@@ -160,6 +160,7 @@ func TestVariables(t *testing.T) {
 		{"inputs.cpu > 8 && !(has(previous.cpu) && previous.cpu > 8)", true},
 		{"action.size", "large"},
 		{"request.kind == 'action' && request.action == 'resize' && request.reason == 'load'", true},
+		{"request.type == 'vm' && request.blueprint == '' && request.repository == 'infra-live'", true},
 		{"user.name == 'alice' && 'platform-admins' in user.groups", true},
 	}
 	for _, tt := range tests {

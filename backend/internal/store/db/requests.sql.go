@@ -14,7 +14,7 @@ import (
 )
 
 const applyingRequests = `-- name: ApplyingRequests :many
-SELECT r.id, r.org_id, r.kind, r.action, r.target, r.type_name, r.blueprint, r.requester, r.reason, r.inputs, r.state, r.definitions_commit, r.base_commit, r.created_at, r.updated_at, r.number, r.requester_email, r.stack, r.rules, r.owners, r.stacks, r.codeowners, r.codeowners_unmatched, r.step_up, r.manager, r.manager_reason, r.separation, r.submitted_at, r.expiry, r.expires_at, r.reminded_at, r.escalated_at, r.expiry_warned_at FROM requests r
+SELECT r.id, r.org_id, r.kind, r.action, r.target, r.type_name, r.blueprint, r.requester, r.reason, r.inputs, r.state, r.definitions_commit, r.base_commit, r.created_at, r.updated_at, r.number, r.requester_email, r.stack, r.rules, r.owners, r.stacks, r.codeowners, r.codeowners_unmatched, r.step_up, r.manager, r.manager_reason, r.separation, r.submitted_at, r.expiry, r.expires_at, r.reminded_at, r.escalated_at, r.expiry_warned_at, r.window_subjects, r.window_held_at, r.window_reason FROM requests r
 JOIN change_sets cs ON cs.request_id = r.id
 WHERE r.state = 'applying' AND cs.repository = $1 AND $2::text = ANY(r.stacks)
 `
@@ -68,6 +68,9 @@ func (q *Queries) ApplyingRequests(ctx context.Context, arg ApplyingRequestsPara
 			&i.RemindedAt,
 			&i.EscalatedAt,
 			&i.ExpiryWarnedAt,
+			&i.WindowSubjects,
+			&i.WindowHeldAt,
+			&i.WindowReason,
 		); err != nil {
 			return nil, err
 		}
@@ -82,12 +85,13 @@ func (q *Queries) ApplyingRequests(ctx context.Context, arg ApplyingRequestsPara
 const createRequest = `-- name: CreateRequest :one
 INSERT INTO requests (id, kind, action, target, type_name, blueprint, requester, requester_email, reason, inputs, state,
                       definitions_commit, base_commit, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up,
-                      manager, manager_reason, separation, submitted_at, expiry, expires_at)
+                      manager, manager_reason, separation, submitted_at, expiry, expires_at, window_subjects)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, COALESCE($17::text[], '{}'),
         COALESCE($18::text[], '{}'), COALESCE($19::text[], '{}'), $20,
         $21, $22, COALESCE($23::jsonb, '{}'),
-        COALESCE($24::timestamptz, now()), $25, $26)
-RETURNING id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up, manager, manager_reason, separation, submitted_at, expiry, expires_at, reminded_at, escalated_at, expiry_warned_at
+        COALESCE($24::timestamptz, now()), $25, $26,
+        $27::jsonb)
+RETURNING id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up, manager, manager_reason, separation, submitted_at, expiry, expires_at, reminded_at, escalated_at, expiry_warned_at, window_subjects, window_held_at, window_reason
 `
 
 type CreateRequestParams struct {
@@ -117,6 +121,7 @@ type CreateRequestParams struct {
 	SubmittedAt         pgtype.Timestamptz
 	Expiry              string
 	ExpiresAt           pgtype.Timestamptz
+	WindowSubjects      []byte
 }
 
 func (q *Queries) CreateRequest(ctx context.Context, arg CreateRequestParams) (Request, error) {
@@ -147,6 +152,7 @@ func (q *Queries) CreateRequest(ctx context.Context, arg CreateRequestParams) (R
 		arg.SubmittedAt,
 		arg.Expiry,
 		arg.ExpiresAt,
+		arg.WindowSubjects,
 	)
 	var i Request
 	err := row.Scan(
@@ -183,12 +189,15 @@ func (q *Queries) CreateRequest(ctx context.Context, arg CreateRequestParams) (R
 		&i.RemindedAt,
 		&i.EscalatedAt,
 		&i.ExpiryWarnedAt,
+		&i.WindowSubjects,
+		&i.WindowHeldAt,
+		&i.WindowReason,
 	)
 	return i, err
 }
 
 const getRequest = `-- name: GetRequest :one
-SELECT id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up, manager, manager_reason, separation, submitted_at, expiry, expires_at, reminded_at, escalated_at, expiry_warned_at FROM requests WHERE id = $1
+SELECT id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up, manager, manager_reason, separation, submitted_at, expiry, expires_at, reminded_at, escalated_at, expiry_warned_at, window_subjects, window_held_at, window_reason FROM requests WHERE id = $1
 `
 
 func (q *Queries) GetRequest(ctx context.Context, id uuid.UUID) (Request, error) {
@@ -228,12 +237,77 @@ func (q *Queries) GetRequest(ctx context.Context, id uuid.UUID) (Request, error)
 		&i.RemindedAt,
 		&i.EscalatedAt,
 		&i.ExpiryWarnedAt,
+		&i.WindowSubjects,
+		&i.WindowHeldAt,
+		&i.WindowReason,
 	)
 	return i, err
 }
 
+const listApprovedRequests = `-- name: ListApprovedRequests :many
+SELECT id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up, manager, manager_reason, separation, submitted_at, expiry, expires_at, reminded_at, escalated_at, expiry_warned_at, window_subjects, window_held_at, window_reason FROM requests WHERE state IN ('approved', 'merging') ORDER BY updated_at, id
+`
+
+// The requests approved and not delivered yet: those the change windows may hold or release.
+func (q *Queries) ListApprovedRequests(ctx context.Context) ([]Request, error) {
+	rows, err := q.db.Query(ctx, listApprovedRequests)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Request{}
+	for rows.Next() {
+		var i Request
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.Kind,
+			&i.Action,
+			&i.Target,
+			&i.TypeName,
+			&i.Blueprint,
+			&i.Requester,
+			&i.Reason,
+			&i.Inputs,
+			&i.State,
+			&i.DefinitionsCommit,
+			&i.BaseCommit,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Number,
+			&i.RequesterEmail,
+			&i.Stack,
+			&i.Rules,
+			&i.Owners,
+			&i.Stacks,
+			&i.Codeowners,
+			&i.CodeownersUnmatched,
+			&i.StepUp,
+			&i.Manager,
+			&i.ManagerReason,
+			&i.Separation,
+			&i.SubmittedAt,
+			&i.Expiry,
+			&i.ExpiresAt,
+			&i.RemindedAt,
+			&i.EscalatedAt,
+			&i.ExpiryWarnedAt,
+			&i.WindowSubjects,
+			&i.WindowHeldAt,
+			&i.WindowReason,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPendingApproval = `-- name: ListPendingApproval :many
-SELECT id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up, manager, manager_reason, separation, submitted_at, expiry, expires_at, reminded_at, escalated_at, expiry_warned_at FROM requests WHERE state = 'pending_approval' ORDER BY submitted_at, id
+SELECT id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up, manager, manager_reason, separation, submitted_at, expiry, expires_at, reminded_at, escalated_at, expiry_warned_at, window_subjects, window_held_at, window_reason FROM requests WHERE state = 'pending_approval' ORDER BY submitted_at, id
 `
 
 // The requests that wait for approval, the longest waiting first: those reminders, escalation
@@ -281,6 +355,9 @@ func (q *Queries) ListPendingApproval(ctx context.Context) ([]Request, error) {
 			&i.RemindedAt,
 			&i.EscalatedAt,
 			&i.ExpiryWarnedAt,
+			&i.WindowSubjects,
+			&i.WindowHeldAt,
+			&i.WindowReason,
 		); err != nil {
 			return nil, err
 		}
@@ -293,7 +370,7 @@ func (q *Queries) ListPendingApproval(ctx context.Context) ([]Request, error) {
 }
 
 const listRequests = `-- name: ListRequests :many
-SELECT id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up, manager, manager_reason, separation, submitted_at, expiry, expires_at, reminded_at, escalated_at, expiry_warned_at FROM requests
+SELECT id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up, manager, manager_reason, separation, submitted_at, expiry, expires_at, reminded_at, escalated_at, expiry_warned_at, window_subjects, window_held_at, window_reason FROM requests
 WHERE (cardinality($1::text[]) = 0 OR state = ANY ($1::text[]))
   AND ($2::text = '' OR requester = $2::text)
   AND ($3::text = '' OR target = $3::text)
@@ -357,6 +434,9 @@ func (q *Queries) ListRequests(ctx context.Context, arg ListRequestsParams) ([]R
 			&i.RemindedAt,
 			&i.EscalatedAt,
 			&i.ExpiryWarnedAt,
+			&i.WindowSubjects,
+			&i.WindowHeldAt,
+			&i.WindowReason,
 		); err != nil {
 			return nil, err
 		}
@@ -369,7 +449,7 @@ func (q *Queries) ListRequests(ctx context.Context, arg ListRequestsParams) ([]R
 }
 
 const lockRequest = `-- name: LockRequest :one
-SELECT id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up, manager, manager_reason, separation, submitted_at, expiry, expires_at, reminded_at, escalated_at, expiry_warned_at FROM requests WHERE id = $1 FOR UPDATE
+SELECT id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up, manager, manager_reason, separation, submitted_at, expiry, expires_at, reminded_at, escalated_at, expiry_warned_at, window_subjects, window_held_at, window_reason FROM requests WHERE id = $1 FOR UPDATE
 `
 
 // The request, its row locked until the transaction ends: what decides on a request that waits
@@ -411,12 +491,15 @@ func (q *Queries) LockRequest(ctx context.Context, id uuid.UUID) (Request, error
 		&i.RemindedAt,
 		&i.EscalatedAt,
 		&i.ExpiryWarnedAt,
+		&i.WindowSubjects,
+		&i.WindowHeldAt,
+		&i.WindowReason,
 	)
 	return i, err
 }
 
 const pendingReviewedBy = `-- name: PendingReviewedBy :many
-SELECT r.id, r.org_id, r.kind, r.action, r.target, r.type_name, r.blueprint, r.requester, r.reason, r.inputs, r.state, r.definitions_commit, r.base_commit, r.created_at, r.updated_at, r.number, r.requester_email, r.stack, r.rules, r.owners, r.stacks, r.codeowners, r.codeowners_unmatched, r.step_up, r.manager, r.manager_reason, r.separation, r.submitted_at, r.expiry, r.expires_at, r.reminded_at, r.escalated_at, r.expiry_warned_at FROM requests r
+SELECT r.id, r.org_id, r.kind, r.action, r.target, r.type_name, r.blueprint, r.requester, r.reason, r.inputs, r.state, r.definitions_commit, r.base_commit, r.created_at, r.updated_at, r.number, r.requester_email, r.stack, r.rules, r.owners, r.stacks, r.codeowners, r.codeowners_unmatched, r.step_up, r.manager, r.manager_reason, r.separation, r.submitted_at, r.expiry, r.expires_at, r.reminded_at, r.escalated_at, r.expiry_warned_at, r.window_subjects, r.window_held_at, r.window_reason FROM requests r
 WHERE r.state = 'pending_approval' AND EXISTS (
     SELECT 1 FROM reviews v WHERE v.request_id = r.id AND v.voided_at IS NULL
       AND (v.reviewer = $1 OR v.on_behalf_of = $1))
@@ -468,6 +551,9 @@ func (q *Queries) PendingReviewedBy(ctx context.Context, name string) ([]Request
 			&i.RemindedAt,
 			&i.EscalatedAt,
 			&i.ExpiryWarnedAt,
+			&i.WindowSubjects,
+			&i.WindowHeldAt,
+			&i.WindowReason,
 		); err != nil {
 			return nil, err
 		}
@@ -536,10 +622,27 @@ func (q *Queries) SetRequestRules(ctx context.Context, arg SetRequestRulesParams
 	return err
 }
 
+const setRequestWindowHeld = `-- name: SetRequestWindowHeld :exec
+UPDATE requests SET window_held_at = $1, window_reason = $2 WHERE id = $3
+`
+
+type SetRequestWindowHeldParams struct {
+	At     pgtype.Timestamptz
+	Reason string
+	ID     uuid.UUID
+}
+
+// Holds a request for its change windows (at, with the reason quai/approval gives), or releases
+// it (NULL, ”).
+func (q *Queries) SetRequestWindowHeld(ctx context.Context, arg SetRequestWindowHeldParams) error {
+	_, err := q.db.Exec(ctx, setRequestWindowHeld, arg.At, arg.Reason, arg.ID)
+	return err
+}
+
 const transitionRequest = `-- name: TransitionRequest :one
 UPDATE requests SET state = $1, updated_at = now()
 WHERE id = $2 AND state = $3
-RETURNING id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up, manager, manager_reason, separation, submitted_at, expiry, expires_at, reminded_at, escalated_at, expiry_warned_at
+RETURNING id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up, manager, manager_reason, separation, submitted_at, expiry, expires_at, reminded_at, escalated_at, expiry_warned_at, window_subjects, window_held_at, window_reason
 `
 
 type TransitionRequestParams struct {
@@ -587,6 +690,9 @@ func (q *Queries) TransitionRequest(ctx context.Context, arg TransitionRequestPa
 		&i.RemindedAt,
 		&i.EscalatedAt,
 		&i.ExpiryWarnedAt,
+		&i.WindowSubjects,
+		&i.WindowHeldAt,
+		&i.WindowReason,
 	)
 	return i, err
 }

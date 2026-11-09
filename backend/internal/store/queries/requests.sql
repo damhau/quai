@@ -1,11 +1,12 @@
 -- name: CreateRequest :one
 INSERT INTO requests (id, kind, action, target, type_name, blueprint, requester, requester_email, reason, inputs, state,
                       definitions_commit, base_commit, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up,
-                      manager, manager_reason, separation, submitted_at, expiry, expires_at)
+                      manager, manager_reason, separation, submitted_at, expiry, expires_at, window_subjects)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, COALESCE(sqlc.narg(stacks)::text[], '{}'),
         COALESCE(sqlc.narg(codeowners)::text[], '{}'), COALESCE(sqlc.narg(codeowners_unmatched)::text[], '{}'), sqlc.arg(step_up),
         sqlc.arg(manager), sqlc.arg(manager_reason), COALESCE(sqlc.narg(separation)::jsonb, '{}'),
-        COALESCE(sqlc.narg(submitted_at)::timestamptz, now()), sqlc.arg(expiry), sqlc.narg(expires_at))
+        COALESCE(sqlc.narg(submitted_at)::timestamptz, now()), sqlc.arg(expiry), sqlc.narg(expires_at),
+        sqlc.narg(window_subjects)::jsonb)
 RETURNING *;
 
 -- name: GetRequest :one
@@ -55,6 +56,15 @@ UPDATE requests SET escalated_at = sqlc.arg(at) WHERE id = sqlc.arg(id);
 
 -- name: SetRequestExpiryWarned :exec
 UPDATE requests SET expiry_warned_at = sqlc.arg(at) WHERE id = sqlc.arg(id);
+
+-- name: ListApprovedRequests :many
+-- The requests approved and not delivered yet: those the change windows may hold or release.
+SELECT * FROM requests WHERE state IN ('approved', 'merging') ORDER BY updated_at, id;
+
+-- name: SetRequestWindowHeld :exec
+-- Holds a request for its change windows (at, with the reason quai/approval gives), or releases
+-- it (NULL, '').
+UPDATE requests SET window_held_at = sqlc.narg(at), window_reason = sqlc.arg(reason) WHERE id = sqlc.arg(id);
 
 -- name: PendingReviewedBy :many
 -- The requests waiting for approval that a person reviewed, or that were reviewed on their behalf,

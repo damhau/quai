@@ -77,6 +77,7 @@ single pod with both roles.
   | `audit.export[].splunk.url`, `.token.ref`, `.index`, `.sourcetype` | | required: the HTTP Event Collector's base URL (`https://splunk.example.com:8088`), `http` only to a loopback address in production; required: a secret reference to the HEC token, a token without indexer acknowledgment; the token's default index; none |
   | `approvals.reminders.after` | | none: no reminder. How long after its submission a request still waiting for approval reminds the people it waits for, once: a Go duration (`48h`) ([reminders, escalation and expiry](#reminders-escalation-and-expiry)) |
   | `approvals.escalation.after`, `.to` | | none: no escalation. How long after its submission a request still waiting for approval is escalated, once, after the reminder, and to whom: `group:<name>` and `user:<name>` entries; one needs the other |
+  | `changeWindows` | | none: requests merge whenever approved. Windows and freezes for every repository, each a `name`, an optional `when` (CEL on `params` and `request`), `allow` entries (`Mon-Thu 08:00-16:00 Europe/Zurich`) and `deny` entries (`2026-12-18T00:00 to 2027-01-05T00:00 Europe/Zurich`); zones are IANA names, checked at start; a repository document's own windows only narrow these ([change windows and freezes](#change-windows-and-freezes)) |
   | `notifications.email.host`, `.port`, `.transport` | | none: no email is sent ([notifications](#notifications)). The SMTP server's host name or address; `587` with `starttls`, `465` with `tls`; `starttls` (the default), which the server must offer, or `tls` from the first byte. There is no plaintext transport, and the certificate is verified against the system's CAs and `network.caFile` |
   | `notifications.email.from` | | required: the sender, an address with or without a display name (`Quai <quai@example.com>`) |
   | `notifications.email.username`, `.password.ref` | | none: no authentication. PLAIN, or LOGIN when the server offers only that, over TLS only; the password is a secret reference (`k8s:quai/quai-smtp#password`), read at each send |
@@ -800,6 +801,49 @@ Troubleshooting:
 - **Someone got no reminder**: they were not among those the request waits for then (they
   reviewed it, their rule was satisfied, they delegated), their preferences put it in their
   digest, or Quai has no address of theirs.
+
+### Change windows and freezes
+
+Approved requests can be kept from merging outside working hours, or during a freeze ([design
+05](../design/05-delivery-and-approvals.md#change-windows-and-freezes)). Windows for every
+repository are in Quai's configuration; a repository document adds its own under
+`spec.enforcement.changeWindows`, which can only narrow these:
+
+```yaml
+changeWindows:
+  - name: prod-business-hours
+    when: "has(params.env) && params.env == 'prod'"   # production only; without when, every request
+    allow: ["Mon-Thu 08:00-16:00 Europe/Zurich"]
+  - name: year-end-freeze
+    deny: ["2026-12-18 to 2027-01-05 Europe/Zurich"]
+```
+
+- **The worker** holds and releases requests: its `window_sweep` job runs every minute and at
+  start. Without a worker running, an approved request outside its windows waits, and one whose
+  windows opened is not delivered until it runs again. A request merges within a minute of its
+  windows opening; times are those of the worker's clock (keep it synchronized with NTP).
+- **While a request waits**, it stays *Approved*: its page says when it can merge next, in the
+  reader's time zone and the window's; its pull request's `quai/approval` is pending with the
+  same reason, so neither Quai nor a person merges it (the branch protection requires the check);
+  in direct mode nothing is committed. It does not expire meanwhile; its requester can still
+  cancel it.
+- **A freeze added** in the configuration (after a restart) or in a repository document holds
+  every request that has not merged yet, from the next decision on, even one approved before.
+  Removing it releases them at the next sweep.
+- **Audit**: `request.window_waiting`, `request.window_opened`, and `request.merged_outside_window`
+  for a pull request merged while Quai held it (the bypass alert goes to the admins).
+
+Troubleshooting:
+
+- **A request says "held: change window …: no such key"**: the window's `when` reads a param the
+  request's type does not have. A condition that fails holds the request rather than guess; write
+  `has(params.env) && params.env == 'prod'`, then the request goes on at the next sweep.
+- **A request waits although its window is open**: another window that applies to it is closed
+  (the page names the windows that hold it); every window that applies, the configuration's and
+  the repository's, must be open. "None opens within a year" means they never are all open within
+  366 days.
+- **Quai refuses to start, or a repository document is refused**: an entry does not parse (the
+  error names it: `changeWindows[0].allow[1]`), or its zone is not an IANA name.
 
 ### Notifications
 

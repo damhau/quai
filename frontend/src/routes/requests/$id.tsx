@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import { createFileRoute, Link } from "@tanstack/react-router"
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query"
-import { AlertCircle, BellOff, Check, GitPullRequest, Hourglass, KeyRound, MessageSquare, RotateCcw, UserX, X } from "lucide-react"
+import { AlertCircle, BellOff, CalendarClock, Check, GitPullRequest, Hourglass, KeyRound, MessageSquare, RotateCcw, UserX, X } from "lucide-react"
 import {
   cancelRequestMutation,
   getMeOptions,
@@ -32,6 +32,7 @@ import { capacitiesOf, onBehalf, when } from "@/lib/delegations"
 import { ago } from "@/lib/format"
 import { fieldErrors, hasFieldErrors, isStepUpRequired, problemMessage } from "@/lib/problems"
 import { eventText, inProgress, requestTitle, runURL } from "@/lib/requests"
+import { windowText } from "@/lib/windows"
 
 // link is the link of an approval card in chat (Microsoft Teams) that opened the page.
 type Search = { link?: string }
@@ -89,6 +90,7 @@ function RequestPage() {
           </p>
         )}
         <ExpiryLine request={r} />
+        <ChangeWindowLine request={r} />
       </header>
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <div className="grid gap-6">
@@ -476,6 +478,21 @@ function ExpiryLine({ request: r }: { request: RequestView }) {
     <p className="text-muted-foreground flex items-center gap-1 text-sm">
       <Hourglass className="size-4 shrink-0" aria-hidden />
       Expires on {new Date(r.expiresAt).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })} unless it is approved by then (expiry {r.expiry}).
+    </p>
+  )
+}
+
+/**
+ * ChangeWindowLine says what the change windows mean for a request not merged yet: the next
+ * possible merge while they are closed, in the browser's time zone and in the window's own
+ * (docs/design/05-delivery-and-approvals.md#change-windows-and-freezes).
+ */
+function ChangeWindowLine({ request: r }: { request: RequestView }) {
+  if (!r.changeWindow) return null
+  return (
+    <p className="text-muted-foreground flex items-center gap-1 text-sm" data-testid="change-window">
+      <CalendarClock className="size-4 shrink-0" aria-hidden />
+      {windowText(r.state, r.changeWindow)}
     </p>
   )
 }

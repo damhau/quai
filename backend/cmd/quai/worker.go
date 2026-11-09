@@ -108,6 +108,11 @@ func work(ctx context.Context, cfg *config.Config, log *slog.Logger, s *store.St
 		svc.UseDirectory(auth.NewDirectory(cfg.Auth))
 		svc.UseStepUp(auth.NewStepUp(cfg.Auth, s))
 		svc.UseApprovals(cfg.Approvals)
+		windows, err := cfg.Windows()
+		if err != nil {
+			return err
+		}
+		svc.UseChangeWindows(windows)
 		hooks = ingest.New(s, reg, log)
 		hooks.UseHandler(svc)
 		workers = append(workers, svc.Workers, hooks.Workers)
@@ -118,7 +123,7 @@ func work(ctx context.Context, cfg *config.Config, log *slog.Logger, s *store.St
 			workers = append(workers, n.Workers)
 			opts.Periodic = append(opts.Periodic, notify.Periodic())
 		}
-		opts.Periodic = append(opts.Periodic, ingest.Periodic(), requests.Periodic())
+		opts.Periodic = append(opts.Periodic, ingest.Periodic(), requests.Periodic(), requests.WindowsPeriodic())
 	}
 	opts.Workers = func(w *river.Workers) {
 		for _, add := range workers {

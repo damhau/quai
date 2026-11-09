@@ -290,6 +290,8 @@ func (s *Service) requestMessage(ctx context.Context, kind string, e db.Event, r
 			m.Headline = "Your request " + num + " was committed."
 		case "merged_without_approval":
 			m.Headline = "Your request " + num + "'s pull request was merged without Quai's approval."
+		case "merged_outside_window":
+			m.Headline = "Your request " + num + "'s pull request was merged outside its change windows."
 		default:
 			m.Headline = "Your request " + num + " was merged."
 		}
@@ -509,6 +511,8 @@ func (s *Service) channelMessage(ctx context.Context, n db.Notification, e db.Ev
 			m.Headline = "Request " + num + " was committed."
 		case "merged_without_approval":
 			m.Headline = "Request " + num + "'s pull request was merged without Quai's approval."
+		case "merged_outside_window":
+			m.Headline = "Request " + num + "'s pull request was merged outside its change windows."
 		}
 	case Applied:
 		m.Headline = "Request " + num + " was applied."

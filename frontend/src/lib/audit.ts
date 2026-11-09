@@ -41,6 +41,9 @@ const labels: Record<string, string> = {
   "request.stale": "Request stale",
   "request.merged": "Request merged",
   "request.merged_without_approval": "Merged without approval",
+  "request.merged_outside_window": "Merged outside its change windows",
+  "request.window_waiting": "Waiting for a change window",
+  "request.window_opened": "Change window opened",
   "request.applied": "Request applied",
   "request.failed": "Request failed",
   "request.reviews_voided": "Approvals voided: approver deactivated",
@@ -69,7 +72,10 @@ export const actionLabel = (action: string) => labels[action] ?? action
 
 /** alarming says whether an action is one an auditor looks at first. */
 export const alarming = (action: string) =>
-  action === "request.merged_without_approval" || action === "repository.enforcement_lost" || action === "audit.broken"
+  action === "request.merged_without_approval" ||
+  action === "request.merged_outside_window" ||
+  action === "repository.enforcement_lost" ||
+  action === "audit.broken"
 
 /** The filter's groups of actions, by prefix. */
 export const actionGroups = [

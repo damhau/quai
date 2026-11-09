@@ -216,23 +216,76 @@ type RequestView struct {
 	ReviewFor    []ReviewForView `json:"reviewFor,omitempty" doc:"The people whose approvals you hold now, through a delegation, and may review it for"`
 	// CannotReview says why the viewer cannot review a request pending approval that a rule
 	// names them for.
-	CannotReview string          `json:"cannotReview,omitempty" doc:"Why you cannot review this request pending approval although a rule names you: you requested it, or you changed its definitions in the separation of duties' period before it"`
-	CanCancel    bool            `json:"canCancel"`
-	CanRetry     bool            `json:"canRetry"`
-	StepUp       bool            `json:"stepUp" doc:"Reviews count only from people who signed in recently (step-up): the request page asks for it before approve works"`
-	Expiry       string          `json:"expiry,omitempty" doc:"The approval expiry its definitions set when it was planned, as written (7d): a request still pending approval then expires"`
-	ExpiresAt    *time.Time      `json:"expiresAt,omitempty" doc:"When it expires if it still waits for approval: its submission and its expiry"`
-	Rules        []RuleView      `json:"rules"`
-	Codeowners   *CodeownersView `json:"codeowners,omitempty" doc:"When a rule's approvers include codeowners: the owners the Git platform named for the changed paths when the request was submitted"`
-	Manager      *ManagerView    `json:"manager,omitempty" doc:"When a rule's approvers include manager: the requester's manager when the request was submitted, or why there was none"`
-	Separation   *SeparationView `json:"separation,omitempty" doc:"The repository's separation of duties when the request was planned: a later change of the options does not change it"`
-	Reviews      []ReviewView    `json:"reviews,omitempty"`
-	Changes      []ChangeView    `json:"changes,omitempty"`
-	Events       []EventView     `json:"events,omitempty"`
-	Plans        []RunView       `json:"plans,omitempty" doc:"The latest plan of each stack the request's pull request was planned in"`
-	Delivery     *DeliveryView   `json:"delivery,omitempty" doc:"The pull request the change goes through; absent in direct mode"`
+	CannotReview string            `json:"cannotReview,omitempty" doc:"Why you cannot review this request pending approval although a rule names you: you requested it, or you changed its definitions in the separation of duties' period before it"`
+	CanCancel    bool              `json:"canCancel"`
+	CanRetry     bool              `json:"canRetry"`
+	StepUp       bool              `json:"stepUp" doc:"Reviews count only from people who signed in recently (step-up): the request page asks for it before approve works"`
+	Expiry       string            `json:"expiry,omitempty" doc:"The approval expiry its definitions set when it was planned, as written (7d): a request still pending approval then expires"`
+	ExpiresAt    *time.Time        `json:"expiresAt,omitempty" doc:"When it expires if it still waits for approval: its submission and its expiry"`
+	Rules        []RuleView        `json:"rules"`
+	Codeowners   *CodeownersView   `json:"codeowners,omitempty" doc:"When a rule's approvers include codeowners: the owners the Git platform named for the changed paths when the request was submitted"`
+	Manager      *ManagerView      `json:"manager,omitempty" doc:"When a rule's approvers include manager: the requester's manager when the request was submitted, or why there was none"`
+	Separation   *SeparationView   `json:"separation,omitempty" doc:"The repository's separation of duties when the request was planned: a later change of the options does not change it"`
+	Reviews      []ReviewView      `json:"reviews,omitempty"`
+	Changes      []ChangeView      `json:"changes,omitempty"`
+	Events       []EventView       `json:"events,omitempty"`
+	Plans        []RunView         `json:"plans,omitempty" doc:"The latest plan of each stack the request's pull request was planned in"`
+	Delivery     *DeliveryView     `json:"delivery,omitempty" doc:"The pull request the change goes through; absent in direct mode"`
+	ChangeWindow *ChangeWindowView `json:"changeWindow,omitempty" doc:"What the change windows that apply to it say, while it is pending approval, approved or merging; absent when none applies"`
 	// RequesterNotNotified is set when notifications are configured and do not reach the requester.
 	RequesterNotNotified bool `json:"requesterNotNotified,omitempty" doc:"Notifications do not reach the requester: Quai knows no verified email of theirs"`
+}
+
+// ChangeWindowView is what the change windows say of a request not merged yet, now
+// (docs/design/05-delivery-and-approvals.md#change-windows-and-freezes).
+type ChangeWindowView struct {
+	Open    bool       `json:"open" doc:"Its windows are open: approved, it may merge now"`
+	Held    bool       `json:"held" doc:"Approved, Quai holds it until its windows open: quai/approval is pending with the reason, nothing is merged"`
+	Opens   *time.Time `json:"opens,omitempty" doc:"When closed: when its windows open next, the earliest it can merge (within a minute of it); absent when none opens within a year, or with error"`
+	Closes  *time.Time `json:"closes,omitempty" doc:"When open: when its windows close next; absent when they stay open beyond a year"`
+	Zone    string     `json:"zone,omitempty" doc:"The IANA time zone of the window that holds it (or closes first), for its times as the window is written"`
+	Windows []string   `json:"windows" doc:"The change windows that apply to it, Quai's configuration's first"`
+	Holding []string   `json:"holding,omitempty" doc:"Those closed now; when open, those that close first"`
+	Error   string     `json:"error,omitempty" doc:"Why its windows cannot be decided: it waits, whatever the time, until that is fixed"`
+	Reason  string     `json:"reason,omitempty" doc:"Approved, what quai/approval says while it waits"`
+}
+
+// changeWindowView decides the change windows of a request not merged yet; nil when none applies
+// and it is not held.
+func changeWindowView(ctx context.Context, svc *requests.Service, r db.Request) *ChangeWindowView {
+	if r.State != requests.PendingApproval && r.State != requests.Approved && r.State != requests.Merging {
+		return nil
+	}
+	w, err := svc.WindowsOf(ctx, r)
+	if err != nil {
+		return nil
+	}
+	held := r.State == requests.Approved && r.WindowHeldAt.Valid
+	if len(w.Applied) == 0 && w.Err == nil && !held {
+		return nil
+	}
+	v := &ChangeWindowView{Open: w.MayMerge(), Held: held, Windows: []string{}}
+	for _, x := range w.Applied {
+		v.Windows = append(v.Windows, x.Name)
+	}
+	for _, x := range w.Holding {
+		v.Holding = append(v.Holding, x.Name)
+	}
+	switch {
+	case w.Err != nil:
+		v.Error = w.Err.Error()
+	case w.Open && !w.Closes.IsZero():
+		v.Closes = &w.Closes
+	case !w.Open && !w.Opens.IsZero():
+		v.Opens = &w.Opens
+	}
+	if len(w.Holding) > 0 {
+		v.Zone = w.Zone().String()
+	}
+	if !v.Open && r.State != requests.PendingApproval {
+		v.Reason = w.Reason()
+	}
+	return v
 }
 
 // DeliveryView is a request's pull request.
@@ -633,6 +686,7 @@ func requestView(ctx context.Context, svc *requests.Service, s *store.Store, r d
 	if !detail {
 		return v
 	}
+	v.ChangeWindow = changeWindowView(ctx, svc, r)
 	// Who notifications do not reach (docs/design/05-delivery-and-approvals.md#notifications).
 	if requester, rules, ok, err := svc.Unnotified(ctx, r); err == nil && ok {
 		v.RequesterNotNotified = requester

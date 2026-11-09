@@ -111,6 +111,11 @@ func serve(ctx context.Context, cfg *config.Config, log *slog.Logger, ln net.Lis
 			opts.Requests.UsePublicURL(cfg.Server.PublicURL)
 			opts.Requests.UseDirectory(auth.NewDirectory(cfg.Auth))
 			opts.Requests.UseStepUp(opts.Auth.StepUp())
+			windows, err := cfg.Windows()
+			if err != nil {
+				return err
+			}
+			opts.Requests.UseChangeWindows(windows)
 			n, err := notifications(cfg, s, reg, opts.Requests, network, log)
 			if err != nil {
 				return err

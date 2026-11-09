@@ -1,6 +1,9 @@
 -- name: ListRepositories :many
 SELECT name, document, managed_by, generation FROM repositories ORDER BY name;
 
+-- name: GetRepository :one
+SELECT name, document, managed_by, generation FROM repositories WHERE name = $1;
+
 -- name: LockRepositories :exec
 -- Serializes reconciliations of the repositories declared in configuration, between processes.
 SELECT pg_advisory_xact_lock(hashtext('quai.repositories'));

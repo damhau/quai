@@ -301,6 +301,52 @@ export type ChangeView = {
     path: string;
 };
 
+export type ChangeWindow = {
+    allow?: Array<string> | null;
+    deny?: Array<string> | null;
+    name: string;
+    when?: string;
+};
+
+export type ChangeWindowView = {
+    /**
+     * When open: when its windows close next; absent when they stay open beyond a year
+     */
+    closes?: string;
+    /**
+     * Why its windows cannot be decided: it waits, whatever the time, until that is fixed
+     */
+    error?: string;
+    /**
+     * Approved, Quai holds it until its windows open: quai/approval is pending with the reason, nothing is merged
+     */
+    held: boolean;
+    /**
+     * Those closed now; when open, those that close first
+     */
+    holding?: Array<string> | null;
+    /**
+     * Its windows are open: approved, it may merge now
+     */
+    open: boolean;
+    /**
+     * When closed: when its windows open next, the earliest it can merge (within a minute of it); absent when none opens within a year, or with error
+     */
+    opens?: string;
+    /**
+     * Approved, what quai/approval says while it waits
+     */
+    reason?: string;
+    /**
+     * The change windows that apply to it, Quai's configuration's first
+     */
+    windows: Array<string> | null;
+    /**
+     * The IANA time zone of the window that holds it (or closes first), for its times as the window is written
+     */
+    zone?: string;
+};
+
 export type ChatLinkBody = {
     /**
      * A URL to the JSON Schema for this object.
@@ -597,6 +643,7 @@ export type DriftInputBody = {
 };
 
 export type Enforcement = {
+    changeWindows?: Array<ChangeWindow> | null;
     floorRules?: Array<FloorRule> | null;
     requiredCheck?: string;
     separationOfDuties?: SeparationOfDuties;
@@ -1138,6 +1185,10 @@ export type RequestView = {
      * Why you cannot review this request pending approval although a rule names you: you requested it, or you changed its definitions in the separation of duties' period before it
      */
     cannotReview?: string;
+    /**
+     * What the change windows that apply to it say, while it is pending approval, approved or merging; absent when none applies
+     */
+    changeWindow?: ChangeWindowView;
     changes?: Array<ChangeView> | null;
     /**
      * When a rule's approvers include codeowners: the owners the Git platform named for the changed paths when the request was submitted
@@ -2265,6 +2316,10 @@ export type RequestViewWritable = {
      * Why you cannot review this request pending approval although a rule names you: you requested it, or you changed its definitions in the separation of duties' period before it
      */
     cannotReview?: string;
+    /**
+     * What the change windows that apply to it say, while it is pending approval, approved or merging; absent when none applies
+     */
+    changeWindow?: ChangeWindowView;
     changes?: Array<ChangeView> | null;
     /**
      * When a rule's approvers include codeowners: the owners the Git platform named for the changed paths when the request was submitted
