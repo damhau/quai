@@ -25,6 +25,7 @@ import (
 	"github.com/damhau/quai/backend/internal/audit"
 	"github.com/damhau/quai/backend/internal/auth"
 	"github.com/damhau/quai/backend/internal/authz"
+	"github.com/damhau/quai/backend/internal/chatlink"
 	"github.com/damhau/quai/backend/internal/config"
 	"github.com/damhau/quai/backend/internal/engine/definitions"
 	"github.com/damhau/quai/backend/internal/engine/edit"
@@ -75,7 +76,8 @@ type Service struct {
 	publicURL string          // for the links in pull requests; "" leaves them out
 	dir       *auth.Directory // the teams of the groups of reviews from before auth.teams
 	stepUp    *auth.StepUp
-	reach     func(db.User) bool // whether notifications reach a person; nil without a channel
+	reach     func(ctx context.Context, u db.User, kind string) (bool, error) // whether notifications reach a person; nil without a channel
+	links     *chatlink.Signer                                                // opens the links of chat cards; nil: none are
 }
 
 // New returns the request service. jobsClient inserts the delivery jobs.
@@ -722,10 +724,25 @@ type authzPrincipal = authz.Principal
 // Review records an approval or a denial and moves the request on when the rules decide. A
 // request whose regions changed in Git since it was planned becomes stale instead.
 func (s *Service) Review(ctx context.Context, who auth.Identity, id uuid.UUID, decision, comment string) (db.Request, error) {
+	return s.ReviewLink(ctx, who, id, decision, comment, "")
+}
+
+// ReviewLink is Review confirming the decision of a link from a chat card (link; "" for none):
+// the link's checks (OpenLink) come first, on top of every check of a review, and the change set
+// reviewed must be the one the link is bound to.
+func (s *Service) ReviewLink(ctx context.Context, who auth.Identity, id uuid.UUID, decision, comment, link string) (db.Request, error) {
 	ctx = acting(ctx, who)
 	r, err := s.get(ctx, id)
 	if err != nil {
 		return r, err
+	}
+	var opened *chatlink.Link
+	if link != "" {
+		l, err := s.OpenLink(ctx, who, r, link, decision)
+		if err != nil {
+			return r, err
+		}
+		opened = &l
 	}
 	if r.State != PendingApproval {
 		return r, fmt.Errorf("%w: the request is %s", ErrConflict, r.State)
@@ -751,6 +768,11 @@ func (s *Service) Review(ctx context.Context, who auth.Identity, id uuid.UUID, d
 	sets, err := s.store.ListChangeSets(ctx, r.ID)
 	if err != nil {
 		return r, err
+	}
+	if opened != nil && (len(sets) == 0 || sets[0].Hash != opened.ChangeSet) {
+		// Changed since the link was checked.
+		return r, s.linkRefused(ctx, who, r, opened, &chatlink.Refusal{Code: chatlink.Changed,
+			Reason: "the request changed since the card was sent: review its new content here"})
 	}
 	if stale, err := s.stale(ctx, sets); err != nil {
 		return r, err

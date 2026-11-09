@@ -498,7 +498,7 @@ func (a *Authenticator) devLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	du := a.cfg.Dev.Users[i]
-	u := login{sessionUser: sessionUser{Name: du.Name, Email: du.Email, Groups: du.Groups, AuthTime: a.now().Truncate(time.Second)}, Method: config.AuthDev}
+	u := login{sessionUser: sessionUser{Name: du.Name, Email: du.Email, Groups: du.Groups, AuthTime: a.now().Truncate(time.Second)}, Method: config.AuthDev, ObjectID: du.ObjectID}
 	if err := a.recordLogin(r.Context(), u); err != nil {
 		a.refuseOrFail(w, r, err)
 		return

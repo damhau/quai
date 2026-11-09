@@ -8,8 +8,39 @@ package db
 import (
 	"context"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
+
+const addChatCard = `-- name: AddChatCard :exec
+INSERT INTO chat_cards (notification_id, request_id, channel, recipient, conversation, message, change_set)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+ON CONFLICT (notification_id) DO NOTHING
+`
+
+type AddChatCardParams struct {
+	NotificationID int64
+	RequestID      uuid.UUID
+	Channel        string
+	Recipient      string
+	Conversation   string
+	Message        string
+	ChangeSet      string
+}
+
+// An approval card sent in chat, to update once the request no longer waits for its recipient.
+func (q *Queries) AddChatCard(ctx context.Context, arg AddChatCardParams) error {
+	_, err := q.db.Exec(ctx, addChatCard,
+		arg.NotificationID,
+		arg.RequestID,
+		arg.Channel,
+		arg.Recipient,
+		arg.Conversation,
+		arg.Message,
+		arg.ChangeSet,
+	)
+	return err
+}
 
 const addDigest = `-- name: AddDigest :one
 INSERT INTO notification_digests (recipient, channel, period, due, created_at)
@@ -98,6 +129,24 @@ func (q *Queries) AddNotification(ctx context.Context, arg AddNotificationParams
 		&i.DigestID,
 	)
 	return i, err
+}
+
+const closeChatCard = `-- name: CloseChatCard :execrows
+UPDATE chat_cards SET closed_at = $1 WHERE notification_id = $2 AND closed_at IS NULL
+`
+
+type CloseChatCardParams struct {
+	ClosedAt       pgtype.Timestamptz
+	NotificationID int64
+}
+
+// Takes a card to update: 0 rows when another job took it.
+func (q *Queries) CloseChatCard(ctx context.Context, arg CloseChatCardParams) (int64, error) {
+	result, err := q.db.Exec(ctx, closeChatCard, arg.ClosedAt, arg.NotificationID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const digestAttempted = `-- name: DigestAttempted :exec
@@ -253,6 +302,17 @@ func (q *Queries) GetNotification(ctx context.Context, id int64) (Notification, 
 	return i, err
 }
 
+const hasOpenChatCards = `-- name: HasOpenChatCards :one
+SELECT EXISTS (SELECT 1 FROM chat_cards WHERE request_id = $1 AND closed_at IS NULL)
+`
+
+func (q *Queries) HasOpenChatCards(ctx context.Context, requestID uuid.UUID) (bool, error) {
+	row := q.db.QueryRow(ctx, hasOpenChatCards, requestID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const listDigestNotifications = `-- name: ListDigestNotifications :many
 SELECT id, org_id, event_id, recipient, channel, kind, state, attempts, last_error, created_at, sent_at, digest_id FROM notifications WHERE digest_id = $1 AND state = 'digest' ORDER BY id
 `
@@ -368,6 +428,52 @@ type NotificationSkippedParams struct {
 // Nothing to send: before it is sent, or before its digest is.
 func (q *Queries) NotificationSkipped(ctx context.Context, arg NotificationSkippedParams) error {
 	_, err := q.db.Exec(ctx, notificationSkipped, arg.ID, arg.LastError)
+	return err
+}
+
+const openChatCards = `-- name: OpenChatCards :many
+SELECT notification_id, org_id, request_id, channel, recipient, conversation, message, change_set, created_at, closed_at FROM chat_cards WHERE request_id = $1 AND closed_at IS NULL ORDER BY notification_id
+`
+
+// A request's cards not yet updated.
+func (q *Queries) OpenChatCards(ctx context.Context, requestID uuid.UUID) ([]ChatCard, error) {
+	rows, err := q.db.Query(ctx, openChatCards, requestID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ChatCard{}
+	for rows.Next() {
+		var i ChatCard
+		if err := rows.Scan(
+			&i.NotificationID,
+			&i.OrgID,
+			&i.RequestID,
+			&i.Channel,
+			&i.Recipient,
+			&i.Conversation,
+			&i.Message,
+			&i.ChangeSet,
+			&i.CreatedAt,
+			&i.ClosedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const reopenChatCard = `-- name: ReopenChatCard :exec
+UPDATE chat_cards SET closed_at = NULL WHERE notification_id = $1
+`
+
+// A card whose update failed, to try again.
+func (q *Queries) ReopenChatCard(ctx context.Context, notificationID int64) error {
+	_, err := q.db.Exec(ctx, reopenChatCard, notificationID)
 	return err
 }
 

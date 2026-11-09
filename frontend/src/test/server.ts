@@ -35,6 +35,7 @@ const roles: Record<string, { role: string; scope: string }[]> = {
 
 export function resetRequests() {
   requests.current = pendingVM()
+  requests.links = []
   published.blueprints = []
   resetRepositories()
   resetAudit()

@@ -83,6 +83,19 @@ type ChangeSet struct {
 	Commit       string
 }
 
+type ChatCard struct {
+	NotificationID int64
+	OrgID          string
+	RequestID      uuid.UUID
+	Channel        string
+	Recipient      string
+	Conversation   string
+	Message        string
+	ChangeSet      string
+	CreatedAt      pgtype.Timestamptz
+	ClosedAt       pgtype.Timestamptz
+}
+
 type DefinitionSet struct {
 	OrgID      string
 	Repository string

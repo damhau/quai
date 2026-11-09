@@ -74,3 +74,24 @@ WHERE digest_id = sqlc.arg(digest_id) AND state = 'digest';
 -- name: DigestSkipped :exec
 UPDATE notification_digests SET state = 'skipped', last_error = $2
 WHERE id = $1 AND state = 'pending';
+
+-- name: AddChatCard :exec
+-- An approval card sent in chat, to update once the request no longer waits for its recipient.
+INSERT INTO chat_cards (notification_id, request_id, channel, recipient, conversation, message, change_set)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+ON CONFLICT (notification_id) DO NOTHING;
+
+-- name: OpenChatCards :many
+-- A request's cards not yet updated.
+SELECT * FROM chat_cards WHERE request_id = $1 AND closed_at IS NULL ORDER BY notification_id;
+
+-- name: HasOpenChatCards :one
+SELECT EXISTS (SELECT 1 FROM chat_cards WHERE request_id = $1 AND closed_at IS NULL);
+
+-- name: CloseChatCard :execrows
+-- Takes a card to update: 0 rows when another job took it.
+UPDATE chat_cards SET closed_at = sqlc.arg(closed_at) WHERE notification_id = sqlc.arg(notification_id) AND closed_at IS NULL;
+
+-- name: ReopenChatCard :exec
+-- A card whose update failed, to try again.
+UPDATE chat_cards SET closed_at = NULL WHERE notification_id = $1;

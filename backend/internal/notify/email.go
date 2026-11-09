@@ -69,24 +69,27 @@ func (e *Email) Address(u db.User) (string, bool) {
 	return u.Email, true
 }
 
-// Send sends a message to one address.
-func (e *Email) Send(ctx context.Context, to Recipient, m Message) error {
+// NoAddress says why someone has no address: no verified email.
+func (e *Email) NoAddress() string { return "Quai knows no verified email of theirs" }
+
+// Send sends a message to one address. An email cannot be updated: the receipt is empty.
+func (e *Email) Send(ctx context.Context, to Recipient, m Message) (Receipt, error) {
 	if _, err := config.MailAddress(to.Address, false); err != nil {
-		return err
+		return Receipt{}, err
 	}
 	body, err := e.message(to, m)
 	if err != nil {
-		return err
+		return Receipt{}, err
 	}
 	var password string
 	if e.cfg.Username != "" {
 		s, err := e.secrets.Resolve(ctx, e.cfg.Password.Ref)
 		if err != nil {
-			return fmt.Errorf("the SMTP password: %w", err) // names the reference, never the value
+			return Receipt{}, fmt.Errorf("the SMTP password: %w", err) // names the reference, never the value
 		}
 		password = s.Reveal()
 	}
-	return redact(e.deliver(ctx, to.Address, body, password), password)
+	return Receipt{}, redact(e.deliver(ctx, to.Address, body, password), password)
 }
 
 func (e *Email) deliver(ctx context.Context, to string, body []byte, password string) error {

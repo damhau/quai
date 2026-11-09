@@ -45,7 +45,8 @@ func send(t *testing.T, e *Email, to Recipient, m Message) error {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	return e.Send(ctx, to, m)
+	_, err := e.Send(ctx, to, m)
+	return err
 }
 
 func TestEmailSTARTTLS(t *testing.T) {

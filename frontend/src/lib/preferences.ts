@@ -27,7 +27,7 @@ export const modes: Record<Mode, string> = {
   off: "Off",
 }
 
-export const channels: Record<string, string> = { email: "Email" }
+export const channels: Record<string, string> = { email: "Email", teams: "Microsoft Teams" }
 
 /** Choices are the form's modes, by kind and channel. */
 export type Choices = Record<string, Mode>

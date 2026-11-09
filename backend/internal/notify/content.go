@@ -31,10 +31,20 @@ type Message struct {
 	// Preferences is the page where the recipient chooses what Quai sends them; empty for an
 	// alert, or an address that is not a person's.
 	Preferences string
+	// Approve and Deny open the request with that decision ready: signed links (internal/chatlink)
+	// on an approval card in chat; empty elsewhere.
+	Approve, Deny string
+	// Closed is a card updated once the request no longer waits for its recipient, and Status
+	// says why; it then shows identifiers only.
+	Closed bool
+	Status string
 }
 
 // RequestContent is what a message says of a request: what the request page shows, in short.
 type RequestContent struct {
+	ID         uuid.UUID
+	State      string
+	ChangeSet  string // the hash of its change set; empty before it has one
 	Number     int64
 	Title      string
 	Repository string
@@ -96,11 +106,13 @@ func (s *Service) compose(ctx context.Context, n db.Notification, c Channel) (Re
 		}
 		addr, ok := c.Address(*u)
 		if !ok {
-			return to, Message{}, "Quai knows no address of theirs on this channel (a verified email for email)", nil
+			return to, Message{}, c.NoAddress(), nil
 		}
 		to = Recipient{ID: n.Recipient, Name: u.Name, Address: addr}
 	case "email":
 		to = Recipient{ID: n.Recipient, Address: v}
+	case "teams-channel":
+		to = Recipient{ID: n.Recipient}
 	default:
 		return to, Message{}, "an unknown recipient", nil
 	}
@@ -113,6 +125,9 @@ func (s *Service) compose(ctx context.Context, n db.Notification, c Channel) (Re
 	}
 	if n.Kind == Alert {
 		return to, s.alertMessage(e), "", nil
+	}
+	if strings.HasPrefix(n.Recipient, ChannelRecipient) {
+		return s.channelMessage(ctx, n, e, to)
 	}
 	if !e.RequestID.Valid {
 		return to, Message{}, "the event is not a request's", nil
@@ -178,7 +193,8 @@ var subjects = map[string]string{
 }
 
 func (s *Service) requestMessage(ctx context.Context, kind string, e db.Event, r db.Request, awaiting []requests.Awaiting) (Message, error) {
-	rc := &RequestContent{Number: r.Number, Title: title(r), Repository: s.opts.Requests.Repository(ctx, r), Requester: r.Requester, Reason: r.Reason}
+	rc := &RequestContent{ID: r.ID, State: r.State, Number: r.Number, Title: title(r), Repository: s.opts.Requests.Repository(ctx, r),
+		Requester: r.Requester, Reason: r.Reason}
 	for _, a := range awaiting {
 		if !a.Rule.Undecided() {
 			w := strings.Join(a.Rule.Names, ", ")
@@ -253,6 +269,9 @@ func (s *Service) changes(ctx context.Context, r db.Request, rc *RequestContent)
 	sets, err := s.opts.Store.ListChangeSets(ctx, r.ID)
 	if err != nil {
 		return err
+	}
+	if len(sets) > 0 {
+		rc.ChangeSet = sets[0].Hash // what a review approves (requests.Review)
 	}
 	for _, cs := range sets {
 		changes, err := s.opts.Store.ListChanges(ctx, cs.ID)
@@ -375,4 +394,59 @@ func (s *Service) alertMessage(e db.Event) Message {
 		detail("Request", "number")
 	}
 	return m
+}
+
+// channelMessage is a post to a group channel (a Teams channel): its people may not all read the
+// request, so it says what an alert says, identifiers and the state, and links to the request; never
+// its reason, files or plan (open question 64). An approval needed is posted while the request
+// still waits for approval.
+func (s *Service) channelMessage(ctx context.Context, n db.Notification, e db.Event, to Recipient) (Recipient, Message, string, error) {
+	if !e.RequestID.Valid {
+		return to, Message{}, "the event is not a request's", nil
+	}
+	r, err := s.opts.Requests.Get(ctx, uuid.UUID(e.RequestID.Bytes))
+	if errors.Is(err, requests.ErrNotFound) {
+		return to, Message{}, "the request was deleted", nil
+	}
+	if err != nil {
+		return to, Message{}, "", err
+	}
+	if n.Kind == ApprovalNeeded && r.State != requests.PendingApproval {
+		return to, Message{}, "the request no longer waits for approval", nil
+	}
+	num := fmt.Sprintf("#%d", r.Number)
+	// No title either: it names the resource, as an alert does not (open question 55).
+	rc := &RequestContent{ID: r.ID, State: r.State, Number: r.Number, Repository: s.opts.Requests.Repository(ctx, r)}
+	m := Message{Kind: n.Kind, Subject: fmt.Sprintf("[Quai] %s: #%d", subjects[n.Kind], r.Number), Request: rc,
+		Link: s.link("/requests/" + url.PathEscape(r.ID.String()))}
+	switch n.Kind {
+	case Submitted:
+		m.Headline = "Request " + num + " was submitted."
+	case ApprovalNeeded:
+		m.Headline = "Request " + num + " waits for approval."
+		if e.Kind == "modified_outside_quai" {
+			m.Headline = "Request " + num + " was changed outside Quai: it waits for approval of its new content."
+		}
+	case Approved:
+		m.Headline = "Request " + num + " was approved."
+	case Rejected:
+		m.Headline = "Request " + num + " was rejected."
+	case Stale:
+		m.Headline = "Request " + num + " is stale."
+	case Merged:
+		m.Headline = "Request " + num + " was merged."
+		switch e.Kind {
+		case "committed":
+			m.Headline = "Request " + num + " was committed."
+		case "merged_without_approval":
+			m.Headline = "Request " + num + "'s pull request was merged without Quai's approval."
+		}
+	case Applied:
+		m.Headline = "Request " + num + " was applied."
+	case Failed:
+		m.Headline = "Delivering request " + num + " failed."
+	default:
+		m.Headline = "Request " + num + ": " + strings.ReplaceAll(n.Kind, "_", " ") + "."
+	}
+	return to, m, "", nil
 }

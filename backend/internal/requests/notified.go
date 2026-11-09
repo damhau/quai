@@ -65,13 +65,17 @@ func (s *Service) Awaiting(ctx context.Context, r db.Request) ([]Awaiting, error
 }
 
 // UseReach says whom notifications reach: reach reports whether a person has an address on a
-// configured channel (a verified email). Without it, no channel is configured and Unnotified
-// says nothing.
-func (s *Service) UseReach(reach func(db.User) bool) { s.reach = reach }
+// configured channel (a verified email, an Entra ID object ID for Teams) and, for a kind of
+// notification (not ""), has not turned it off there. Without it, no channel is configured and
+// Unnotified says nothing.
+func (s *Service) UseReach(reach func(ctx context.Context, u db.User, kind string) (bool, error)) {
+	s.reach = reach
+}
 
-// Unnotified says whom the notifications of a request do not reach: whether its requester, and
-// the positions of the rules that wait for approvals no one who may give them would be told of.
-// ok is false when no notification channel is configured.
+// Unnotified says whom the notifications of a request do not reach: whether its requester (no
+// address on any channel), and the positions of the rules that wait for approvals no one who may
+// give them would be told of (no address, or approvals needed turned off on every channel they
+// have one). ok is false when no notification channel is configured.
 func (s *Service) Unnotified(ctx context.Context, r db.Request) (requester bool, rules []int, ok bool, err error) {
 	if s.reach == nil {
 		return false, nil, false, nil
@@ -82,8 +86,14 @@ func (s *Service) Unnotified(ctx context.Context, r db.Request) (requester bool,
 		requester = true
 	case err != nil:
 		return false, nil, false, err
+	case u.DeactivatedAt.Valid:
+		requester = true
 	default:
-		requester = u.DeactivatedAt.Valid || !s.reach(u)
+		reached, err := s.reach(ctx, u, "")
+		if err != nil {
+			return false, nil, false, err
+		}
+		requester = !reached
 	}
 	awaiting, err := s.Awaiting(ctx, r)
 	if err != nil {
@@ -92,7 +102,12 @@ func (s *Service) Unnotified(ctx context.Context, r db.Request) (requester bool,
 	for _, a := range awaiting {
 		reached := false
 		for _, p := range a.People {
-			reached = reached || s.reach(p)
+			if reached, err = s.reach(ctx, p, "approval_needed"); err != nil {
+				return false, nil, false, err
+			}
+			if reached {
+				break
+			}
 		}
 		if !reached {
 			rules = append(rules, a.Index)

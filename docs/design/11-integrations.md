@@ -1,6 +1,6 @@
 # Integrations
 
-Status: Draft · 2026-10-26
+Status: Draft · 2026-11-09
 
 ## API
 
@@ -22,21 +22,48 @@ delivery log.
 | Channel | Notes |
 | --- | --- |
 | Email | SMTP over TLS only: implicit TLS (port 465) or STARTTLS (587), which the server must offer (no fall back to plaintext); the certificate verified against the system's CAs and `network.caFile`; PLAIN authentication, or LOGIN when the server offers only that, with the password a secret reference. Text and HTML parts (the HTML from `html/template`), with the headline, the request's title, reason, diff summary (files and lines added and removed), the plan when there is one (summary, cost, policies, resource addresses and actions) and a link from `server.publicURL`. Headers made from people's names, titles and reasons are folded to one line and encoded (RFC 2047). Sent to a person's verified email from the directory (P4-07, [what is sent to whom](05-delivery-and-approvals.md#notifications)). Each person chooses on their profile page, per kind, at once, in a daily digest (one message a day at their hour, in their time zone) or not at all; alerts always go at once (P4-08) |
-| Microsoft Teams | Incoming webhook (Workflows) for channel posts; a Teams app with Adaptive Cards for personal approval requests with Approve and Deny buttons |
+| Microsoft Teams | **Channel posts** through a Workflows webhook ("When a Teams webhook request is received"), one per channel in `notifications.teams.channels`, the URL a secret reference since its signature is the only credential: the events a channel chooses (kinds of notification and `alert`), for the repositories and owning teams it names, as an Adaptive Card with identifiers, the state and a link only, never a reason, diff or plan ([question 64](../plan/open-questions.md#still-open)). **Personal cards** from a bot (`notifications.teams.bot`: a single-tenant Entra ID application with a client secret, its Teams app installed for the people): a proactive message to the person's Entra ID object ID (`oid`, from their sign-in; without one they are skipped and the request says so). An approval needed is a card with the request, its diff summary and plan (as email, [question 54](../plan/open-questions.md#still-open)) and **Approve** and **Deny**, which open [a signed link](#approving-from-chat); the card is updated, without its buttons, once the request no longer waits for that person. Other kinds and digests are cards without buttons. The bot's tokens come from Entra ID's token endpoint (client credentials, scope `https://api.botframework.com/.default`) and are kept in memory until five minutes before they expire. Cards are Adaptive Cards 1.2 built from Go structs, people's text in `TextRun`s (never Markdown), with `Action.OpenUrl` only, under 24 KB; nothing comes in from Teams: Quai has no messaging endpoint. Every endpoint is https, from the configuration only, called through `network` with TLS verified; a webhook's URL never appears in an error or a log (P4-09, [question 63](../plan/open-questions.md#still-open)) |
 | Slack | Slack app with interactive messages for approvals |
 
 Each channel implements `notify.Channel`: its name, a person's address on it
 (none: the notification is recorded as skipped, and the request says whom it
 does not reach), and sending a message, which every channel renders from the
-same content, a digest's included. Teams and Slack plug in there; a
-notification is one row per event, recipient and channel, and preferences are
-per channel: a new channel joins `config.NotificationChannels`, the API's
-`channel` enum, and `notifications.Channels()` when configured, and people
-choose for it as for email.
+same content, a digest's included. A channel that updates what it sent
+(`notify.Updater`, Teams) gets an approval card's buttons and is told when the
+card no longer asks for a decision; a channel that posts to a chat channel
+(`notify.Poster`) adds rows per channel (`teams-channel:<name>`) to the
+fan-out. A notification is one row per event, recipient and channel, and
+preferences are per channel: a new channel joins `config.NotificationChannels`,
+the API's `channel` enum, and `notifications.Channels()` when configured, and
+people choose for it as for email. Slack (P4-10) plugs in the same way.
 
-Approving from chat: the button opens a signed, short-lived link bound to the
-approver and the change set hash. If the rule requires step-up authentication,
-the link opens Quai and re-authenticates instead of approving directly.
+### Approving from chat
+
+A link in a chat message is not a credential ([question 22](../plan/open-questions.md#still-open)).
+Approve and Deny open `/requests/<id>?link=<token>`, where the token, made by
+`internal/chatlink` (which Slack reuses), binds the request, the approver, the
+decision, the change set hash the card showed and the channel, until it
+expires: a day, and never past the decision it was made for, since it is
+refused once the request is decided or its content changes
+([question 61](../plan/open-questions.md#still-open)). Its MAC is HMAC-SHA256,
+over a canonical encoding of those fields and the expiry, with a key used for
+nothing else (`notifications.links.key`), compared in constant time.
+
+- **Opening it changes nothing.** The page asks `POST
+  /api/v1/requests/{id}/chat-link` which decision the link opens for the person
+  signed in, and shows the request with that decision ready: **Confirm
+  approval**, or **Confirm denial** with the comment a denial needs.
+- **Confirming is the review**, `POST /api/v1/requests/{id}/review` with the
+  link, in a browser session with its CSRF token and every check of a review:
+  that the person may review, a step-up when the request needs one (the page
+  asks them to sign in again and comes back to the link), the change set hash.
+  The link's checks come on top, first: its MAC, its expiry, the request, the
+  person signed in being the one it was sent to, the decision, the request
+  still waiting for approval, and its change set the current one.
+- **A refusal says why and is audited** (`request.link_refused`, with its code,
+  and what the MAC vouches for of the link); the page then shows the request
+  as without the link. An API token never opens a link
+  ([question 62](../plan/open-questions.md#still-open)).
 
 ## ITSM
 

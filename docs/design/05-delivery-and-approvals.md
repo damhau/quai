@@ -1,6 +1,6 @@
 # Delivery and approvals
 
-Status: Draft · 2026-10-26
+Status: Draft · 2026-11-09
 
 How a planned change reaches a repository, and how Quai's approval is made
 binding.
@@ -329,9 +329,11 @@ Management):
 Events: request submitted, approval needed, approved, rejected, stale, merged,
 applied, failed, expiring soon; and alerts: a bypass (`alert_bypass`),
 enforcement lost (`alert_enforcement`), break-glass. Channels: email (Phase 4,
-P4-07), Microsoft Teams and Slack (P4-09, P4-10), outgoing webhooks. Approvers
-can approve from Teams or Slack messages when the rule does not require step-up
-authentication. See [integrations](11-integrations.md#notifications).
+P4-07), Microsoft Teams (P4-09) and Slack (P4-10), outgoing webhooks.
+Approvers can start an approval from a Teams or Slack message: its buttons open
+the request in Quai with the decision ready, and they confirm it there, signed
+in, after a step-up when the request needs one ([approving from
+chat](#approving-from-chat)). See [integrations](11-integrations.md#notifications).
 
 Built (`internal/notify`):
 
@@ -379,9 +381,14 @@ Built (`internal/notify`):
   sending and recording it may send a message twice (at least once; [open
   question 57](../plan/open-questions.md#still-open)).
 - **No one to notify.** When a channel is configured, a rule waiting for
-  approvals whose approvers Quai cannot reach (none signed in with a verified
-  email) says so on the request (`noOneToNotify`), and so does a request whose
-  requester has none (`requesterNotNotified`).
+  approvals whose approvers Quai cannot reach says so on the request
+  (`noOneToNotify`), and so does a request whose requester Quai cannot reach
+  (`requesterNotNotified`). An approver is reached when they have an address on
+  a channel that notifies people (a verified email; an Entra ID object ID with
+  the Teams bot) where they did not turn approvals needed off; the requester
+  when they have an address on one, whatever they chose. A Teams channel post
+  reaches no one in particular and does not count ([open question
+  60](../plan/open-questions.md#still-open)).
 - **Preferences** (P4-08). Each person chooses, per channel and kind of
   notification (approval needed, submitted, approved, rejected, stale, merged,
   applied, failed, expiring soon), whether it goes at once (`immediate`), in
@@ -431,3 +438,36 @@ Built (`internal/notify`):
   page; immediate messages to people link to it too. Retries are those of a
   notification; after the last, the digest and its notifications are
   `failed` ([open question 59](../plan/open-questions.md#still-open)).
+- **Chat** (P4-09). Teams sends personal cards to people's Entra ID object ID
+  and posts the events a Teams channel chooses through its webhook, both
+  [described with the integrations](11-integrations.md#notifications). A
+  channel post is one more row (`teams-channel:<name>`), for the requests of
+  the repositories or owning teams the channel names, with identifiers, the
+  state and a link only, as an alert: its readers may not read the request
+  ([open question 64](../plan/open-questions.md#still-open)). With the bot,
+  preferences have a Teams channel, every kind at once unless
+  `notifications.defaults.channels.teams` says otherwise; channel posts are
+  not a preference.
+
+### Approving from chat
+
+An approval card in Teams (Slack: P4-10) has **Approve** and **Deny**. Each
+opens a link made for that person, that decision and the change set the card
+showed; the link opens the request with the decision ready and decides
+nothing ([open question 22](../plan/open-questions.md#still-open)):
+
+- The person confirms in Quai, signed in: the review is the page's, with its
+  CSRF token and every check of a review (they may review, the step-up when
+  the request needs one, the content hash). A request that needs a step-up
+  asks them to sign in again first, then comes back to the link.
+- On top, the link must be one Quai signed, unexpired (a day), for this
+  request, sent to the person signed in, for that decision, while the request
+  waits for approval with the content the card showed. Otherwise it is
+  refused with the reason, in the audit log (`request.link_refused`), and the
+  page is the request as without it ([open questions 61 and
+  62](../plan/open-questions.md#still-open)).
+- Once the request no longer waits for that person (they reviewed it, it was
+  decided, its content changed, their approval is no longer needed), their card
+  is updated to say so, without its buttons: a refresh job on the
+  notifications queue, after each event of the request
+  ([integrations](11-integrations.md#approving-from-chat)).

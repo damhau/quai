@@ -11,6 +11,7 @@ import (
 
 	"github.com/damhau/quai/backend/internal/audit"
 	"github.com/damhau/quai/backend/internal/auth"
+	"github.com/damhau/quai/backend/internal/chatlink"
 	"github.com/damhau/quai/backend/internal/engine/edit"
 	"github.com/damhau/quai/backend/internal/engine/expr"
 	"github.com/damhau/quai/backend/internal/engine/plan"
@@ -27,17 +28,21 @@ import (
 // refuses (a value defined in code, a YAML anchor), located at its field. Errors it does not know
 // are 500s without their message, which may hold internal details. An action that needs a
 // step-up the caller's authentication does not satisfy is a 403 of type auth.StepUpProblemType,
-// for the UI to offer a new sign-in.
+// for the UI to offer a new sign-in. A link of a chat card refused is a 403 of type
+// ChatLinkProblemType, its detail saying why.
 func Problem(err error, prefix string) huma.StatusError {
 	var (
 		ve *schema.ValidationError
 		re *plan.ResourceError
 		xe *expr.Error
 		se *auth.StepUpError
+		lr *chatlink.Refusal
 	)
 	switch {
 	case errors.As(err, &se):
 		return stepUpProblem(se)
+	case errors.As(err, &lr):
+		return &huma.ErrorModel{Type: ChatLinkProblemType, Title: http.StatusText(http.StatusForbidden), Status: http.StatusForbidden, Detail: lr.Error()}
 	case errors.As(err, &re) && (errors.As(re.Err, &ve) || errors.As(re.Err, &xe)):
 		// The fields are those of the resource's document, not of the form.
 		return huma.Error422UnprocessableEntity(err.Error())
@@ -72,6 +77,9 @@ func Problem(err error, prefix string) huma.StatusError {
 	}
 	return huma.NewError(http.StatusInternalServerError, "internal error")
 }
+
+// ChatLinkProblemType is the type of the problem of a link of a chat card refused.
+const ChatLinkProblemType = "https://quai.dev/problems/chat-link-refused"
 
 // stepUpProblem is the problem of an action refused for want of a step-up.
 func stepUpProblem(e *auth.StepUpError) huma.StatusError {

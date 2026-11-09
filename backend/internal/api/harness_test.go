@@ -169,21 +169,38 @@ func startRepo(t *testing.T, dir, metadata, spec string, opts repositories.Optio
 	hooks.UseHandler(svc)
 	var n *notify.Service
 	clk := &testClock{}
-	if e := cfg.Notifications.Email; e != nil {
+	if cfg.Notifications.Email != nil || cfg.Notifications.Teams != nil {
 		network, err := netx.New(cfg.Network.CAFile)
 		if err != nil {
 			t.Fatal(err)
 		}
-		email, err := notify.NewEmail(*e, network, opts.Secrets, public)
-		if err != nil {
-			t.Fatal(err)
+		var channels []notify.Channel
+		if e := cfg.Notifications.Email; e != nil {
+			email, err := notify.NewEmail(*e, network, opts.Secrets, public)
+			if err != nil {
+				t.Fatal(err)
+			}
+			channels = append(channels, email)
+		}
+		if tc := cfg.Notifications.Teams; tc != nil {
+			teams, err := notify.NewTeams(*tc, network, opts.Secrets)
+			if err != nil {
+				t.Fatal(err)
+			}
+			teams.UseClock(clk.now)
+			channels = append(channels, teams)
+		}
+		links := notify.Links(cfg.Notifications.Links, opts.Secrets)
+		if links != nil {
+			links.UseClock(clk.now)
 		}
 		n = notify.New(notify.Options{Store: s, Requests: svc, Repositories: reg, Directory: auth.NewDirectory(cfg.Auth),
-			Channels: []notify.Channel{email}, Alerts: cfg.Notifications.Alerts, PublicURL: public, Log: log, Backoff: notifyBackoff,
-			Settings: notify.NewSettings(cfg.Notifications)})
+			Channels: channels, Alerts: cfg.Notifications.Alerts, PublicURL: public, Log: log, Backoff: notifyBackoff,
+			Settings: notify.NewSettings(cfg.Notifications), Links: links})
 		n.UseClock(clk.now)
 		s.UseEvents(n.EventRecorded)
 		svc.UseReach(n.Reach)
+		svc.UseLinks(links)
 	}
 	worker, err := jobs.NewWorker(s.Pool, jobs.Options{Logger: log, Workers: func(w *river.Workers) {
 		svc.Workers(w)

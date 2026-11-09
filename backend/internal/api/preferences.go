@@ -23,7 +23,7 @@ import (
 // them equal).
 type EventPreferenceView struct {
 	Kind    string   `json:"kind" enum:"approval_needed,submitted,approved,rejected,stale,merged,applied,failed,expiring_soon"`
-	Channel string   `json:"channel" enum:"email"`
+	Channel string   `json:"channel" enum:"email,teams"`
 	Mode    string   `json:"mode" enum:"immediate,digest,off" doc:"At once, in the daily digest, or not at all"`
 	Default string   `json:"default" enum:"immediate,digest,off" doc:"The mode until one is chosen (notifications.defaults)"`
 	Modes   []string `json:"modes" doc:"The modes one may choose: approval_needed cannot be off on every channel"`
@@ -49,7 +49,7 @@ type PreferencesOutput struct {
 // EventPreferenceInput is how the caller wants a kind of notification on a channel.
 type EventPreferenceInput struct {
 	Kind    string `json:"kind" enum:"approval_needed,submitted,approved,rejected,stale,merged,applied,failed,expiring_soon"`
-	Channel string `json:"channel" enum:"email"`
+	Channel string `json:"channel" enum:"email,teams"`
 	Mode    string `json:"mode" enum:"immediate,digest,off"`
 }
 

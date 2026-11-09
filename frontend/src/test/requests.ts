@@ -35,7 +35,8 @@ export function pendingVM(): RequestView {
   }
 }
 
-export const requests: { current: RequestView } = { current: pendingVM() }
+// links are the links of chat cards the reviews carried, in order.
+export const requests: { current: RequestView; links: (string | undefined)[] } = { current: pendingVM(), links: [] }
 
 // alice approves for the platform admins, fiona for FinOps.
 const approverOf: Record<string, number> = { alice: 0, fiona: 1 }
@@ -55,6 +56,23 @@ const stepUpRefusal = {
   detail: "this action needs a recent sign-in: you authenticated more than 5m0s ago; sign in again",
 }
 
+/**
+ * chatLinkRefusal checks a link of a chat card as the server does, for the signed-in user and a
+ * decision ("" when only opening it): a fake link reads "fake.<approver>.<decision>", or
+ * "fake.expired". It returns the server's refusal, or the decision the link opens.
+ */
+function chatLinkRefusal(user: string | null, link: string, decision: string) {
+  const refuse = (reason: string) =>
+    HttpResponse.json({ type: "https://quai.dev/problems/chat-link-refused", title: "Forbidden", status: 403, detail: `the link is refused: ${reason}` }, { status: 403 })
+  const [, approver, linked] = link.split(".")
+  if (link === "fake.expired") return refuse("this link expired at 2026-10-28T10:00:00Z: review the request here")
+  if (!link.startsWith("fake.") || !approver || !linked) return refuse("this link is not one Quai made")
+  if (approver !== user) return refuse("this link was sent to someone else: review the request here as yourself")
+  if (decision !== "" && decision !== linked) return refuse("the decision is not the link's: review the request here")
+  if (requests.current.state !== "pending_approval") return refuse("the request no longer waits for approval")
+  return linked
+}
+
 /** requestHandlers serves requests to user(); steppedUp says whether their sign-in is recent. */
 export function requestHandlers(user: () => string | null, steppedUp: () => boolean) {
   return [
@@ -68,11 +86,21 @@ export function requestHandlers(user: () => string | null, steppedUp: () => bool
     http.get("*/api/v1/requests/:id", ({ params }) =>
       params.id === requests.current.id ? HttpResponse.json(as(user(), requests.current)) : HttpResponse.json({ status: 404, detail: "no such request" }, { status: 404 }),
     ),
+    http.post("*/api/v1/requests/:id/chat-link", async ({ request }) => {
+      const { link } = (await request.json()) as { link: string }
+      const decision = chatLinkRefusal(user(), link, "")
+      if (typeof decision !== "string") return decision
+      return HttpResponse.json({ decision, channel: "teams", expiresAt: "2026-10-28T10:00:00Z" })
+    }),
     http.post("*/api/v1/requests/:id/review", async ({ request }) => {
-      const { decision, comment } = (await request.json()) as { decision: string; comment?: string }
+      const { decision, comment, link } = (await request.json()) as { decision: string; comment?: string; link?: string }
+      // As the server: the link is checked first, then everything a review checks.
+      const refusal = link === undefined ? undefined : chatLinkRefusal(user(), link, decision)
+      if (refusal !== undefined && typeof refusal !== "string") return refusal
       if (requests.current.stepUp && !steppedUp()) return HttpResponse.json(stepUpRefusal, { status: 403 })
       if (decision === "deny" && !comment)
         return HttpResponse.json({ status: 422, detail: "some fields need attention", errors: [{ location: "body.comment", message: "is required to deny: say what to change" }] }, { status: 422 })
+      requests.links.push(link)
       const r = requests.current
       const approve = decision === "approve"
       const rules = (r.rules ?? []).map((x, i) => (approve && i === approverOf[user() ?? ""] ? { ...x, approvals: [user() ?? ""], satisfied: true } : x))

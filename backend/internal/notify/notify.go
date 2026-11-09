@@ -15,7 +15,11 @@
 // waits (state InDigest) until the digest job (Periodic) gathers it into the recipient's digest
 // for the day, which is sent once.
 //
-// A channel (Channel) renders a Message its own way: email now; Microsoft Teams and Slack later.
+// A channel (Channel) renders a Message its own way: email, Microsoft Teams (personal cards
+// through a bot, and posts to Teams channels), Slack later. A personal approval card in chat
+// carries Approve and Deny, links signed with internal/chatlink that open the request with the
+// decision ready; the card is updated once the request no longer waits for that person
+// (RefreshArgs).
 package notify
 
 import (
@@ -33,6 +37,7 @@ import (
 	"github.com/riverqueue/river"
 
 	"github.com/damhau/quai/backend/internal/auth"
+	"github.com/damhau/quai/backend/internal/chatlink"
 	"github.com/damhau/quai/backend/internal/config"
 	"github.com/damhau/quai/backend/internal/engine/policy"
 	"github.com/damhau/quai/backend/internal/jobs"
@@ -84,20 +89,44 @@ func Backoff(attempt int) time.Duration {
 	return min(30*time.Second<<(attempt-1), time.Hour)
 }
 
-// Channel delivers messages to people: email; Microsoft Teams and Slack later.
+// Channel delivers messages to people: email, Microsoft Teams; Slack later.
 type Channel interface {
 	// Name names the channel in the notifications table and the metrics.
 	Name() string
 	// Address returns where a person of the directory is reached on the channel, and false when
-	// they are not (no verified email).
+	// they are not (no verified email, no Entra ID object ID).
 	Address(u db.User) (string, bool)
+	// NoAddress says why a person without an address is not reached, for the notifications table.
+	NoAddress() string
 	// Send delivers a message. Its error must never hold a credential.
-	Send(ctx context.Context, to Recipient, m Message) error
+	Send(ctx context.Context, to Recipient, m Message) (Receipt, error)
+}
+
+// Receipt is where a channel put a message it can update: a chat's conversation and message.
+type Receipt struct {
+	Conversation, Message string
+}
+
+// Updater is a channel that updates the messages it sent: Teams' cards.
+type Updater interface {
+	Update(ctx context.Context, at Receipt, m Message) error
+}
+
+// Poster is a channel that also posts to group channels (Teams' channels): those that get an event
+// of a kind (the first of kinds they take) for a repository, or a request with these owners.
+type Poster interface {
+	Posts(kinds []string, repository string, owners []string) []Post
+}
+
+// people reports whether a channel reaches people: Teams without a bot only posts to channels.
+func people(c Channel) bool {
+	p, ok := c.(interface{ People() bool })
+	return !ok || p.People()
 }
 
 // Recipient is who a message goes to.
 type Recipient struct {
-	ID      string // user:<name>, or email:<address> (notifications.alerts)
+	ID      string // user:<name>, email:<address> (notifications.alerts), or teams-channel:<name>
 	Name    string // the person's name; empty for an address
 	Address string // on the channel
 }
@@ -118,6 +147,8 @@ type Options struct {
 	Log      *slog.Logger
 	// Backoff is how long after a failed attempt a job is tried again; Backoff by default.
 	Backoff func(attempt int) time.Duration
+	// Links signs the Approve and Deny links of approval cards in chat; nil: cards without them.
+	Links *chatlink.Signer
 }
 
 // Service notifies.
@@ -154,14 +185,25 @@ func (s *Service) UseJobs(c *jobs.Client) { s.jobs = c }
 // attempt is tried again.
 func (s *Service) UseClock(now func() time.Time) { s.now = now }
 
-// Reach reports whether a person has an address on a channel: notifications reach them.
-func (s *Service) Reach(u db.User) bool {
-	for _, c := range s.opts.Channels {
-		if _, ok := c.Address(u); ok {
-			return true
+// Reach reports whether notifications reach a person: they have an address on a channel and,
+// for a kind (not ""), that kind is not off there in their preferences (open question 60).
+func (s *Service) Reach(ctx context.Context, u db.User, kind string) (bool, error) {
+	var p Preferences
+	if kind != "" {
+		var err error
+		if p, err = s.preferences(ctx, u.Name); err != nil {
+			return false, err
 		}
 	}
-	return false
+	for _, c := range s.opts.Channels {
+		if !people(c) {
+			continue
+		}
+		if _, ok := c.Address(u); ok && (kind == "" || s.opts.Settings.Mode(p, c.Name(), kind) != config.ModeOff) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // EventArgs fans an event out to its recipients.
@@ -196,16 +238,20 @@ func (s *Service) Workers(w *river.Workers) {
 	river.AddWorker(w, &sendWorker{s: s})
 	river.AddWorker(w, &digestWorker{s: s})
 	river.AddWorker(w, &sendDigestWorker{s: s})
+	river.AddWorker(w, &refreshWorker{s: s})
 }
 
 // EventRecorded is the store's event hook: an event someone must hear of gets its fan-out job,
 // in the transaction that records it.
 func (s *Service) EventRecorded(ctx context.Context, tx pgx.Tx, e db.Event) error {
-	if audienceOf(e).none() {
-		return nil
-	}
 	if s.jobs == nil {
 		return errors.New("notifications: no job client (UseJobs)")
+	}
+	if err := s.refreshCards(ctx, tx, e); err != nil {
+		return err
+	}
+	if audienceOf(e).none() {
+		return nil
 	}
 	return jobs.InsertTx(ctx, s.jobs, tx, EventArgs{EventID: e.ID}, nil)
 }
@@ -289,9 +335,10 @@ const sendTimeout = time.Minute
 
 // recipient is someone an event is notified to, with the message they get.
 type recipient struct {
-	id   string   // user:<name> or email:<address>
+	id   string   // user:<name>, email:<address> or teams-channel:<name>
 	user *db.User // the person, for user: recipients; nil when the directory does not know them
 	kind string
+	only string // the one channel an address or a group channel is on
 }
 
 // fanOut adds a notification per recipient of an event and channel, each with its send job; a
@@ -328,9 +375,15 @@ func (s *Service) fanOut(ctx context.Context, id int64) error {
 			for _, c := range s.opts.Channels {
 				state, why := Pending, ""
 				switch {
+				case r.only != "":
+					if c.Name() != r.only {
+						continue
+					}
+				case !people(c):
+					continue
 				case r.user != nil:
 					if _, ok := c.Address(*r.user); !ok {
-						state, why = Skipped, "Quai knows no address of theirs on this channel (a verified email for email)"
+						state, why = Skipped, c.NoAddress()
 						break
 					}
 					switch s.opts.Settings.Mode(prefs[r.id], c.Name(), r.kind) {
@@ -338,10 +391,6 @@ func (s *Service) fanOut(ctx context.Context, id int64) error {
 						state, why = Skipped, "they turned it off in their preferences"
 					case config.ModeDigest:
 						state = InDigest
-					}
-				case strings.HasPrefix(r.id, "email:"):
-					if c.Name() != "email" {
-						continue
 					}
 				default:
 					state, why = Skipped, "not in the directory: they never signed in"
@@ -399,7 +448,9 @@ func (s *Service) recipients(ctx context.Context, e db.Event) ([]recipient, erro
 		if a.requester == Submitted && (len(r.Rules) == 0 || string(r.Rules) == "null" || string(r.Rules) == "[]") {
 			a.requester = ""
 		}
+		var posts []string // the kinds group channels may post
 		if a.requester != "" {
+			posts = append(posts, a.requester)
 			u, err := s.person(ctx, r.Requester)
 			if err != nil {
 				return nil, err
@@ -418,10 +469,16 @@ func (s *Service) recipients(ctx context.Context, e db.Event) ([]recipient, erro
 				if aw.Rule.Undecided() || only != nil && !slices.ContainsFunc(only, func(names []string) bool { return slices.Equal(names, aw.Rule.Names) }) {
 					continue
 				}
+				if !slices.Contains(posts, a.approvers) {
+					posts = append(posts, a.approvers)
+				}
 				for _, p := range aw.People {
 					add(recipient{id: "user:" + p.Name, user: &p, kind: a.approvers})
 				}
 			}
+		}
+		for _, p := range s.posts(posts, s.opts.Requests.Repository(ctx, r), r.Owners) {
+			add(p)
 		}
 	}
 	if a.admins {
@@ -438,11 +495,31 @@ func (s *Service) recipients(ctx context.Context, e db.Event) ([]recipient, erro
 		}
 		for _, addr := range s.opts.Alerts {
 			if !addresses[strings.ToLower(addr)] {
-				add(recipient{id: "email:" + addr, kind: Alert})
+				add(recipient{id: "email:" + addr, kind: Alert, only: "email"})
 			}
+		}
+		for _, p := range s.posts([]string{Alert}, strings.TrimPrefix(e.Target, "repository:"), nil) {
+			add(p)
 		}
 	}
 	return out, nil
+}
+
+// posts returns the group channels that post an event of these kinds for a repository, or a
+// request with these owners: Teams channels (notifications.teams.channels).
+func (s *Service) posts(kinds []string, repository string, owners []string) []recipient {
+	if len(kinds) == 0 {
+		return nil
+	}
+	var out []recipient
+	for _, c := range s.opts.Channels {
+		if p, ok := c.(Poster); ok {
+			for _, post := range p.Posts(kinds, repository, owners) {
+				out = append(out, recipient{id: ChannelRecipient + post.Channel, kind: post.Kind, only: c.Name()})
+			}
+		}
+	}
+	return out
 }
 
 // decided returns the rules a plan_decided event says apply, by their names; nil for another
@@ -541,8 +618,14 @@ func (s *Service) send(ctx context.Context, id int64, last bool) error {
 	if n.Kind != Alert && strings.HasPrefix(n.Recipient, "user:") {
 		m.Preferences = s.link("/profile")
 	}
+	card := s.card(n, c, m)
+	if card {
+		if m.Approve, m.Deny, err = s.decisionLinks(ctx, to.Name, c.Name(), m.Request); err != nil {
+			return err
+		}
+	}
 	sctx, cancel := context.WithTimeout(ctx, sendTimeout)
-	err = c.Send(sctx, to, m)
+	receipt, err := c.Send(sctx, to, m)
 	cancel()
 	if err != nil {
 		state, result, level := Pending, "retried", slog.LevelWarn
@@ -560,7 +643,12 @@ func (s *Service) send(ctx context.Context, id int64, last bool) error {
 		return fmt.Errorf("notification %d: %w", n.ID, err)
 	}
 	telemetry.Notified(ctx, n.Channel, Sent)
-	return s.opts.Store.NotificationSent(ctx, n.ID)
+	if !card || receipt == (Receipt{}) {
+		return s.opts.Store.NotificationSent(ctx, n.ID)
+	}
+	return s.opts.Store.Tx(ctx, func(tx pgx.Tx, q *db.Queries) error {
+		return s.cardSent(ctx, tx, q, n, m, receipt)
+	})
 }
 
 // clip shortens s to at most n bytes, on a character boundary.

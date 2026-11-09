@@ -43,7 +43,8 @@ export function ApprovalChain({ rules }: { rules: RuleView[] }) {
               {r.noOneToNotify && (
                 <span className="text-muted-foreground flex items-center gap-1 text-xs">
                   <BellOff className="size-3.5 shrink-0" aria-hidden />
-                  No one who may approve is notified: none signed in to Quai with a verified email. Tell them yourself.
+                  No one who may approve is notified: Quai knows no address of theirs on the channels it notifies on, or they turned
+                  approvals off. Tell them yourself.
                 </span>
               )}
             </div>

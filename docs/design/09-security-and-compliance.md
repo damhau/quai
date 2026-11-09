@@ -29,6 +29,7 @@ Status: Draft · 2026-11-09
 | Privilege escalation through day-2 actions | Ownership and role checks in one authorization function; executors limited by their own RBAC. |
 | Session theft, CSRF, XSS | HttpOnly cookies, CSRF tokens, strict Content Security Policy, React escaping, no `dangerouslySetInnerHTML`, no third-party scripts or CDNs. |
 | A stolen or unattended session approves a production change | Step-up: approval rules with `stepUp`, break-glass and (with `auth.stepUp.admin`) repository changes take only a recent, strong enough authentication, from the ID token's `auth_time`, `acr` and `acrs`, checked on the server when the action is made; an API token never steps up; refusals audited ([design 08](08-identity-access-tenancy.md#step-up)). |
+| A link in a chat message approves for someone else, or approves content that changed | A link is not a credential: it opens the request with a decision ready, and the decision is the authenticated, CSRF-protected review with all its checks (who may review, step-up, the change set). The link adds its own: HMAC-SHA256 with a dedicated key, a day's lifetime, bound to the request, the approver, the decision and the change set hash; refused for anyone else, once the request is decided or its content changes, and never with an API token; refusals audited ([approving from chat](11-integrations.md#approving-from-chat)). |
 | Tampering with the audit log | Append-only table, insert-only database role, hash chain, signed checkpoints, export to SIEM. |
 | Supply chain | Small dependency set, `go.sum` and the Go checksum database, `govulncheck`, SBOM, signed images and provenance (see below). |
 
@@ -121,7 +122,7 @@ changes, executor calls, configuration changes.
   can see a gap and verify the chain ([export to a SIEM](#export-to-a-siem)). A webhook comes in
   Phase 7.
 
-What is recorded, by action (P4-01, P4-02, P4-06, P4-08; break-glass, executor calls and
+What is recorded, by action (P4-01, P4-02, P4-06, P4-08, P4-09; break-glass, executor calls and
 configuration changes come with their features):
 
 | Action | Actor | When |
@@ -134,6 +135,7 @@ configuration changes come with their features):
 | `run_token.created` | the person | a run token generated for a repository (its SHA-256; Quai keeps neither, so revoking it is changing the secret it names, outside Quai's view: [open question 33](../plan/open-questions.md#still-open)) |
 | `request.submitted`, `request.cancelled`, `request.retried` | the person, or their token | as named; submitted carries the change set and definitions commit, the reason as a pseudonym |
 | `request.reviewed` | the reviewer | every review: the decision, the comment as a pseudonym, the change set, whether the reviewer's authentication satisfied the step-up (`stepUp`) and its `acr` and `acrs` |
+| `request.link_refused` | the person | a link from a chat card refused, when opened or with a review ([approving from chat](11-integrations.md#approving-from-chat)): why (`code`: `malformed`, `signature`, `expired`, `request`, `approver`, `decision`, `decided`, `changed`, `session`, and the reason), and, when its MAC holds, the link's channel, decision, change set, expiry and whom it was sent to (a pseudonym); never what an unverified link says ([open question 62](../plan/open-questions.md#still-open)) |
 | `request.approved`, `request.rejected` | the reviewer, or Quai | the request's state changes; approved names who approved (pseudonyms); Quai when no rule needs approvals or a plan settles them |
 | `request.stale`, `request.merged`, `request.applied`, `request.failed` | whoever's action made Quai see it: Quai, a repository's runner, or a person | the request's state changes, with what Quai observed (commit, pull request, run, error); never what a person wrote |
 | `request.merged_without_approval` | Quai | a bypass: the pull request merged without Quai's approval |

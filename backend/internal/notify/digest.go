@@ -208,7 +208,7 @@ func (s *Service) sendDigest(ctx context.Context, id int64, last bool) error {
 		Headline: "What happened to your requests, and to those that wait for your approval, since your last digest.",
 		Digest:   items, Link: s.link("/requests"), Preferences: s.link("/profile")}
 	sctx, cancel := context.WithTimeout(ctx, sendTimeout)
-	err = c.Send(sctx, to, m)
+	_, err = c.Send(sctx, to, m)
 	cancel()
 	if err != nil {
 		state, result, level := Pending, "retried", slog.LevelWarn

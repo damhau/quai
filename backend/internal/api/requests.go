@@ -194,7 +194,27 @@ type reviewInput struct {
 	Body struct {
 		Decision string `json:"decision" enum:"approve,deny"`
 		Comment  string `json:"comment,omitempty" maxLength:"2000"`
+		// Link is the link of a chat card the decision confirms: its checks come on top of the
+		// review's.
+		Link string `json:"link,omitempty" maxLength:"1024" doc:"The link of the approval card in chat whose decision this confirms"`
 	}
+}
+
+// ChatLinkBody is a link of an approval card in chat, to check.
+type ChatLinkBody struct {
+	Link string `json:"link" minLength:"1" maxLength:"1024"`
+}
+
+type chatLinkInput struct {
+	ID   string `path:"id" format:"uuid"`
+	Body ChatLinkBody
+}
+
+// ChatLinkView is what a link of an approval card in chat opens: a decision ready to confirm.
+type ChatLinkView struct {
+	Decision  string    `json:"decision" enum:"approve,deny"`
+	Channel   string    `json:"channel" enum:"teams,slack"`
+	ExpiresAt time.Time `json:"expiresAt"`
 }
 
 func registerRequests(a huma.API, svc *requests.Service, s *store.Store, log *slog.Logger) {
@@ -360,11 +380,30 @@ func registerRequests(a huma.API, svc *requests.Service, s *store.Store, log *sl
 		if err != nil {
 			return nil, err
 		}
-		next, err := svc.Review(ctx, me, r.ID, in.Body.Decision, in.Body.Comment)
+		next, err := svc.ReviewLink(ctx, me, r.ID, in.Body.Decision, in.Body.Comment, in.Body.Link)
 		if err != nil {
 			return nil, Problem(err, "body")
 		}
 		return &out[RequestView]{Body: requestView(ctx, svc, s, next, me, true)}, nil
+	})
+	huma.Register(a, huma.Operation{
+		OperationID: "check-chat-link", Method: http.MethodPost, Path: Prefix + "/requests/{id}/chat-link",
+		Summary: "Check the link of an approval card in chat",
+		Description: "Says which decision a link of an approval card in chat (Microsoft Teams) opens the request with, " +
+			"for the person signed in. It changes nothing: the decision is confirmed with the review, which checks the link again. " +
+			"A link is refused (403, type " + ChatLinkProblemType + ") when it was changed, has expired, was sent to someone else, " +
+			"or the request was decided or changed since; the refusal is in the audit log.",
+		Tags: []string{"Requests"},
+	}, func(ctx context.Context, in *chatLinkInput) (*out[ChatLinkView], error) {
+		r, me, err := loadRequest(ctx, svc, in.ID, authz.ReadRequest)
+		if err != nil {
+			return nil, err
+		}
+		l, err := svc.OpenLink(ctx, me, r, in.Body.Link, "")
+		if err != nil {
+			return nil, Problem(err, "body")
+		}
+		return &out[ChatLinkView]{Body: ChatLinkView{Decision: l.Decision, Channel: l.Channel, ExpiresAt: l.Expires}}, nil
 	})
 	for _, op := range []struct {
 		id, path, summary string

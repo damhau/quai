@@ -212,8 +212,9 @@ func TestNotificationDefaults(t *testing.T) {
 		t.Errorf("defaults = %+v", d)
 	}
 	for name, tt := range map[string]struct{ file, want string }{
-		"unknown channel":  {email + "  defaults: { channels: { teams: { submitted: off } } }", `"teams" is not a channel`},
+		"unknown channel":  {email + "  defaults: { channels: { sms: { submitted: off } } }", `"sms" is not a channel`},
 		"not configured":   {"notifications: { defaults: { channels: { email: { submitted: off } } } }", "notifications.defaults.channels.email needs notifications.email"},
+		"no teams":         {email + "  defaults: { channels: { teams: { submitted: off } } }", "notifications.defaults.channels.teams needs notifications.teams"},
 		"alert":            {email + "  defaults: { channels: { email: { alert: off } } }", "alerts always go at once"},
 		"unknown kind":     {email + "  defaults: { channels: { email: { deployed: off } } }", `"deployed" is not a kind of notification`},
 		"unknown mode":     {email + "  defaults: { channels: { email: { submitted: weekly } } }", `notifications.defaults.channels.email.submitted must be immediate, digest or off, not "weekly"`},
@@ -226,6 +227,71 @@ func TestNotificationDefaults(t *testing.T) {
 		"unknown field":    {email + "  defaults: { digest: { minute: 30 } }", "field minute not found"},
 	} {
 		if _, err := Load(write(t, tt.file+"\n"), env(nil)); err == nil || !strings.Contains(err.Error(), tt.want) {
+			t.Errorf("%s: error = %v, want %q", name, err, tt.want)
+		}
+	}
+}
+
+// TestTeams: channel posts through webhooks that are secret references; a bot with Microsoft's
+// public cloud by default, its endpoints https, its secret a reference, and a key for the links
+// of its approval cards.
+func TestTeams(t *testing.T) {
+	const app, tenant = "6a0d3a2e-6a7c-4a43-9b1f-1d1b2c3d4e5f", "72f988bf-86f1-41af-91ab-2d7cd011db47"
+	p := write(t, `server: { publicURL: https://quai.example.com }
+notifications:
+  links: { key: { ref: "k8s:quai/chat-links#key" }, previousKeys: [{ ref: "k8s:quai/chat-links#previous" }] }
+  teams:
+    bot: { appId: `+app+`, tenantId: `+tenant+`, clientSecret: { ref: "k8s:quai/teams#secret" } }
+    channels:
+      - { name: platform, webhook: { ref: "k8s:quai/teams#platform" }, repositories: [gitops], teams: [platform], events: [approval_needed, alert] }
+  defaults: { channels: { teams: { submitted: off } } }
+`)
+	c, err := Load(p, env(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := c.Notifications.Teams.Bot
+	if b.TokenURL != "https://login.microsoftonline.com/"+tenant+"/oauth2/v2.0/token" || b.Scope != DefaultTeamsScope || b.ServiceURL != DefaultTeamsServiceURL ||
+		!slices.Equal(c.Notifications.Channels(), []string{"teams"}) || c.Notifications.Links.PreviousKeys[0].Ref != "k8s:quai/chat-links#previous" {
+		t.Errorf("teams = %+v, %+v", b, c.Notifications)
+	}
+	// Channel posts alone reach no person: Teams is not among the channels people choose for.
+	c, err = Load(write(t, "server: { publicURL: https://quai.example.com }\nnotifications: { teams: { channels: [{ name: ops, webhook: { ref: env:HOOK }, teams: [ops], events: [merged] }] } }\n"), env(nil))
+	if err != nil || len(c.Notifications.Channels()) != 0 {
+		t.Errorf("channels alone = %v, %v", c.Notifications.Channels(), err)
+	}
+	const links = "  links: { key: { ref: env:LINKS } }\n"
+	bot := func(extra string) string {
+		return links + "  teams: { bot: { appId: " + app + ", tenantId: " + tenant + ", clientSecret: { ref: env:BOT }" + extra + " } }"
+	}
+	hook := func(extra string) string {
+		return "  teams: { channels: [{ name: ops, webhook: { ref: env:HOOK }" + extra + " }] }"
+	}
+	for name, tt := range map[string]struct{ file, want string }{
+		"empty":           {"  teams: {}", "notifications.teams needs a bot, channels, or both"},
+		"public URL":      {bot(""), "notifications.teams needs server.publicURL"},
+		"app":             {links + "  teams: { bot: { appId: quai, tenantId: " + tenant + ", clientSecret: { ref: env:BOT } } }", `notifications.teams.bot.appId must be the application (client) ID, a GUID, not "quai"`},
+		"tenant":          {links + "  teams: { bot: { appId: " + app + ", tenantId: contoso.com, clientSecret: { ref: env:BOT } } }", "notifications.teams.bot.tenantId must be the directory (tenant) ID"},
+		"secret":          {links + "  teams: { bot: { appId: " + app + ", tenantId: " + tenant + ", clientSecret: { ref: s3cr3t } } }", "notifications.teams.bot.clientSecret.ref must be a secret reference"},
+		"token http":      {bot(", tokenURL: http://login.example.com/token"), "notifications.teams.bot.tokenURL must be an https URL"},
+		"service http":    {bot(", serviceURL: http://smba.example.com/teams/"), "notifications.teams.bot.serviceURL must be an https URL"},
+		"service creds":   {bot(", serviceURL: \"https://u:p@smba.example.com/\""), "notifications.teams.bot.serviceURL must be an https URL without credentials"},
+		"scope":           {bot(", scope: \"openid profile\""), "notifications.teams.bot.scope must be one https scope"},
+		"no links":        {"  teams: { bot: { appId: " + app + ", tenantId: " + tenant + ", clientSecret: { ref: env:BOT } } }", "notifications.teams.bot needs notifications.links.key"},
+		"links key":       {"  links: { key: { ref: abc } }", "notifications.links.key.ref must be a secret reference"},
+		"previous key":    {"  links: { key: { ref: env:K }, previousKeys: [{ ref: abc }] }", "notifications.links.previousKeys[0].ref must be a secret reference"},
+		"webhook":         {"  teams: { channels: [{ name: ops, webhook: { ref: \"https://prod.example.com/workflows/x\" }, teams: [ops], events: [merged] }] }", "notifications.teams.channels[0].webhook.ref must be a secret reference"},
+		"channel name":    {"  teams: { channels: [{ name: Ops, webhook: { ref: env:HOOK }, teams: [ops], events: [merged] }] }", `notifications.teams.channels[0].name must be lowercase letters, digits and dashes, not "Ops"`},
+		"channel twice":   {"  teams: { channels: [{ name: ops, webhook: { ref: env:A }, teams: [ops], events: [merged] }, { name: ops, webhook: { ref: env:B }, teams: [ops], events: [merged] }] }", "notifications.teams.channels[1].name: ops names another channel already"},
+		"nobody's events": {hook(", events: [merged]"), "notifications.teams.channels[0] needs repositories, teams, or both"},
+		"no events":       {hook(", teams: [ops]"), "notifications.teams.channels[0].events: name at least one"},
+		"unknown event":   {hook(", teams: [ops], events: [deployed]"), `notifications.teams.channels[0].events: "deployed" is not an event`},
+	} {
+		head := "server: { publicURL: https://quai.example.com }\nnotifications:\n"
+		if name == "public URL" {
+			head = "server: { publicURL: \"\" }\nnotifications:\n"
+		}
+		if _, err := Load(write(t, head+tt.file+"\n"), env(nil)); err == nil || !strings.Contains(err.Error(), tt.want) {
 			t.Errorf("%s: error = %v, want %q", name, err, tt.want)
 		}
 	}

@@ -12,7 +12,7 @@ test("a request says whom its notifications do not reach", async () => {
     ],
   }
   renderApp(`/requests/${requests.current.id}`)
-  expect(await screen.findByText(/gets no notifications of this request: Quai knows no verified email of theirs/)).toBeInTheDocument()
+  expect(await screen.findByText(/gets no notifications of this request: Quai knows no address of theirs on the channels it notifies on/)).toBeInTheDocument()
   expect(screen.getAllByText(/No one who may approve is notified/)).toHaveLength(1)
 })
 

@@ -282,6 +282,24 @@ export type ChangeView = {
     path: string;
 };
 
+export type ChatLinkBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    link: string;
+};
+
+export type ChatLinkView = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    channel: 'teams' | 'slack';
+    decision: 'approve' | 'deny';
+    expiresAt: string;
+};
+
 export type CheckView = {
     error?: string;
     name: 'credentials' | 'connector' | 'read' | 'push' | 'pull-request' | 'status' | 'delete-branch' | 'branch-protection';
@@ -593,13 +611,13 @@ export type ErrorModel = {
 };
 
 export type EventPreferenceInput = {
-    channel: 'email';
+    channel: 'email' | 'teams';
     kind: 'approval_needed' | 'submitted' | 'approved' | 'rejected' | 'stale' | 'merged' | 'applied' | 'failed' | 'expiring_soon';
     mode: 'immediate' | 'digest' | 'off';
 };
 
 export type EventPreferenceView = {
-    channel: 'email';
+    channel: 'email' | 'teams';
     /**
      * The mode until one is chosen (notifications.defaults)
      */
@@ -1158,6 +1176,10 @@ export type ReviewInputBody = {
     readonly $schema?: string;
     comment?: string;
     decision: 'approve' | 'deny';
+    /**
+     * The link of the approval card in chat whose decision this confirms
+     */
+    link?: string;
 };
 
 export type ReviewView = {
@@ -1653,6 +1675,16 @@ export type BlueprintViewWritable = {
     version?: string;
 };
 
+export type ChatLinkBodyWritable = {
+    link: string;
+};
+
+export type ChatLinkViewWritable = {
+    channel: 'teams' | 'slack';
+    decision: 'approve' | 'deny';
+    expiresAt: string;
+};
+
 export type CommitTextWritable = {
     sha: string;
     text: string;
@@ -2087,6 +2119,10 @@ export type ResourceViewWritable = {
 export type ReviewInputBodyWritable = {
     comment?: string;
     decision: 'approve' | 'deny';
+    /**
+     * The link of the approval card in chat whose decision this confirms
+     */
+    link?: string;
 };
 
 export type RunInputBodyWritable = {
@@ -3490,6 +3526,33 @@ export type CancelRequestResponses = {
 };
 
 export type CancelRequestResponse = CancelRequestResponses[keyof CancelRequestResponses];
+
+export type CheckChatLinkData = {
+    body: ChatLinkBodyWritable;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/requests/{id}/chat-link';
+};
+
+export type CheckChatLinkErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type CheckChatLinkError = CheckChatLinkErrors[keyof CheckChatLinkErrors];
+
+export type CheckChatLinkResponses = {
+    /**
+     * OK
+     */
+    200: ChatLinkView;
+};
+
+export type CheckChatLinkResponse = CheckChatLinkResponses[keyof CheckChatLinkResponses];
 
 export type RetryRequestData = {
     body?: never;

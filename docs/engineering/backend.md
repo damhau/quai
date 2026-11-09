@@ -34,8 +34,10 @@ quai/
 │   │   ├── audit/                      # hash chain, checkpoints, export and verification
 │   │   │   ├── keeper/                 # the worker's: hourly checkpoints and pruning, daily verification
 │   │   │   └── siem/                       # the worker's export to SIEMs: syslog, OTLP logs, Splunk HEC
-│   │   ├── notify/                     # events → recipients → one job per message; channels: email (Teams, Slack later)
+│   │   ├── notify/                     # events → recipients → one job per message; channels: email, Teams (Slack later)
+│   │   ├── chatlink/                   # signed Approve and Deny links of chat cards (Teams, Slack)
 │   │   ├── mailtest/                   # tests: Mailpit, checksum-verified, started per test
+│   │   ├── teamstest/                  # tests: fakes of Entra ID's token endpoint, the Bot Connector, Workflows webhooks
 │   │   ├── itsm/                       # ServiceNow, JSM
 │   │   ├── gitx/                       # mirror cache, worktrees, git CLI wrapper
 │   │   ├── ingest/                     # webhooks and polling: deliveries verified, re-read as jobs

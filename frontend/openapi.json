@@ -813,6 +813,67 @@
         ],
         "type": "object"
       },
+      "ChatLinkBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/api/v1/schemas/ChatLinkBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "link": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "link"
+        ],
+        "type": "object"
+      },
+      "ChatLinkView": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/api/v1/schemas/ChatLinkView.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "channel": {
+            "enum": [
+              "teams",
+              "slack"
+            ],
+            "type": "string"
+          },
+          "decision": {
+            "enum": [
+              "approve",
+              "deny"
+            ],
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision",
+          "channel",
+          "expiresAt"
+        ],
+        "type": "object"
+      },
       "CheckView": {
         "additionalProperties": false,
         "properties": {
@@ -1597,7 +1658,8 @@
         "properties": {
           "channel": {
             "enum": [
-              "email"
+              "email",
+              "teams"
             ],
             "type": "string"
           },
@@ -1636,7 +1698,8 @@
         "properties": {
           "channel": {
             "enum": [
-              "email"
+              "email",
+              "teams"
             ],
             "type": "string"
           },
@@ -3186,6 +3249,11 @@
               "approve",
               "deny"
             ],
+            "type": "string"
+          },
+          "link": {
+            "description": "The link of the approval card in chat whose decision this confirms",
+            "maxLength": 1024,
             "type": "string"
           }
         },
@@ -6411,6 +6479,59 @@
           }
         },
         "summary": "Cancel a request",
+        "tags": [
+          "Requests"
+        ]
+      }
+    },
+    "/api/v1/requests/{id}/chat-link": {
+      "post": {
+        "description": "Says which decision a link of an approval card in chat (Microsoft Teams) opens the request with, for the person signed in. It changes nothing: the decision is confirmed with the review, which checks the link again. A link is refused (403, type https://quai.dev/problems/chat-link-refused) when it was changed, has expired, was sent to someone else, or the request was decided or changed since; the refusal is in the audit log.",
+        "operationId": "check-chat-link",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatLinkBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatLinkView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Check the link of an approval card in chat",
         "tags": [
           "Requests"
         ]

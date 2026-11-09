@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import { createFileRoute, Link } from "@tanstack/react-router"
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query"
-import { AlertCircle, BellOff, Check, GitPullRequest, KeyRound, RotateCcw, X } from "lucide-react"
+import { AlertCircle, BellOff, Check, GitPullRequest, KeyRound, MessageSquare, RotateCcw, X } from "lucide-react"
 import {
   cancelRequestMutation,
   getMeOptions,
@@ -19,22 +19,28 @@ import { ChangesView } from "@/components/diff/changes-view"
 import { Plans } from "@/components/requests/plans"
 import { StateBadge } from "@/components/requests/state-badge"
 import { StepUpPrompt } from "@/components/step-up-prompt"
-import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { chatChannels, chatLinkOf, useChatLink } from "@/lib/chat-link"
 import { ago } from "@/lib/format"
 import { fieldErrors, hasFieldErrors, isStepUpRequired, problemMessage } from "@/lib/problems"
 import { eventText, inProgress, requestTitle, runURL } from "@/lib/requests"
 
+// link is the link of an approval card in chat (Microsoft Teams) that opened the page.
+type Search = { link?: string }
+
 export const Route = createFileRoute("/requests/$id")({
+  validateSearch: (s: Record<string, unknown>): Search => ({ link: chatLinkOf(s.link) }),
   loader: ({ context, params }) => context.queryClient.ensureQueryData(getRequestOptions({ path: params })),
   component: RequestPage,
 })
 
 function RequestPage() {
   const { id } = Route.useParams()
+  const { link } = Route.useSearch()
   const queryClient = useQueryClient()
   const { data: r } = useSuspenseQuery({
     ...getRequestOptions({ path: { id } }),
@@ -74,7 +80,8 @@ function RequestPage() {
         {r.requesterNotNotified && (
           <p className="text-muted-foreground flex items-center gap-1 text-sm">
             <BellOff className="size-4 shrink-0" aria-hidden />
-            {r.requester} gets no notifications of this request: Quai knows no verified email of theirs.
+            {r.requester} gets no notifications of this request: Quai knows no address of theirs on the channels it notifies on (a
+            verified email; an Entra ID object ID for Microsoft Teams).
           </p>
         )}
       </header>
@@ -130,7 +137,7 @@ function RequestPage() {
                   ))}
                 </ul>
               )}
-              {r.canReview && <ReviewBox request={r} />}
+              {r.canReview ? <ReviewBox request={r} link={link} /> : link && <ChatLinkNotice request={r} link={link} />}
               <Actions request={r} />
             </CardContent>
           </Card>
@@ -180,32 +187,84 @@ function useRequestUpdate() {
  * you have approved, the request waiting for others, you can still deny it. A request whose
  * approval asks for a step-up takes reviews only from people who signed in recently: until then
  * the box asks them to sign in again, and comes back here (the server checks it either way).
+ *
+ * Opened from the Approve or Deny of an approval card in chat (link), it offers that decision to
+ * confirm; the review carries the link, which the server checks again. A link the server refuses
+ * says why, and the box is as without it.
  */
-function ReviewBox({ request }: { request: RequestView }) {
+function ReviewBox({ request, link }: { request: RequestView; link?: string }) {
   const [comment, setComment] = useState("")
   const queryClient = useQueryClient()
+  const navigate = Route.useNavigate()
   const { data: me } = useQuery(getMeOptions())
+  const chat = useChatLink(request.id, link)
   const update = useRequestUpdate()
   const review = useMutation({
     ...reviewRequestMutation(),
-    onSuccess: update,
+    onSuccess: async (next) => {
+      await update(next)
+      // Used: the page no longer offers its decision.
+      if (link) void navigate({ search: {}, replace: true })
+    },
     // Refused for want of a recent sign-in: how recently the person signed in is read again, and
     // the box asks them to sign in again.
     onError: (e) => {
       if (isStepUpRequired(e)) void queryClient.invalidateQueries({ queryKey: getMeQueryKey() })
     },
   })
-  const send = (decision: "approve" | "deny") => review.mutate({ path: { id: request.id }, body: { decision, comment: comment || undefined } })
-  const error = fieldErrors(review.error, "body").comment
   const approved = (request.reviews ?? []).filter((v) => v.reviewer === me?.name).at(-1)?.decision === "approve"
+  const ready = chat.data && !(approved && chat.data.decision === "approve") ? chat.data : undefined
+  const send = (decision: "approve" | "deny") =>
+    review.mutate({ path: { id: request.id }, body: { decision, comment: comment || undefined, link: ready?.decision === decision ? link : undefined } })
+  const error = fieldErrors(review.error, "body").comment
+  const notice = link && <ChatLinkStatus chat={chat} />
   if (request.stepUp && me && !me.stepUp.satisfied)
     return (
       <div className="grid gap-3 border-t pt-4">
+        {notice}
         <StepUpPrompt title="Reviewing this request needs a recent sign-in" reason={me.stepUp.reason} onSignedIn={() => review.reset()} />
+      </div>
+    )
+  if (ready)
+    return (
+      <div className="grid gap-3 border-t pt-4">
+        {notice}
+        <Label htmlFor="review-comment">{ready.decision === "approve" ? "Comment" : "Why you deny it"}</Label>
+        <Textarea
+          id="review-comment"
+          rows={3}
+          maxLength={2000}
+          placeholder={ready.decision === "approve" ? "Optional" : "Required to deny: say what to change"}
+          value={comment}
+          aria-invalid={error ? true : undefined}
+          onChange={(e) => setComment(e.target.value)}
+        />
+        {error && <p className="text-destructive text-xs">{error}</p>}
+        {review.isError && !hasFieldErrors(review.error) && (
+          <Alert variant="destructive">
+            <AlertCircle />
+            <AlertDescription>{problemMessage(review.error)}</AlertDescription>
+          </Alert>
+        )}
+        <div className="flex flex-wrap gap-2">
+          {ready.decision === "approve" ? (
+            <Button type="button" disabled={review.isPending} onClick={() => send("approve")}>
+              <Check /> Confirm approval
+            </Button>
+          ) : (
+            <Button type="button" variant="destructive" disabled={review.isPending} onClick={() => send("deny")}>
+              <X /> Confirm denial
+            </Button>
+          )}
+          <Button type="button" variant="ghost" disabled={review.isPending} onClick={() => void navigate({ search: {}, replace: true })}>
+            Review it otherwise
+          </Button>
+        </div>
       </div>
     )
   return (
     <div className="grid gap-3 border-t pt-4">
+      {notice}
       {request.stepUp && me?.stepUp.until && (
         <p className="text-muted-foreground flex items-center gap-1.5 text-xs">
           <KeyRound className="size-3.5" aria-hidden />
@@ -240,6 +299,48 @@ function ReviewBox({ request }: { request: RequestView }) {
           <X /> Deny
         </Button>
       </div>
+    </div>
+  )
+}
+
+/** ChatLinkStatus says what the link of a chat card opened: a decision to confirm, or why it is refused. */
+function ChatLinkStatus({ chat }: { chat: ReturnType<typeof useChatLink> }) {
+  if (chat.isPending) return null
+  if (chat.isError)
+    return (
+      <Alert role="status">
+        <MessageSquare />
+        <AlertTitle>This link from chat cannot be used</AlertTitle>
+        <AlertDescription>{problemMessage(chat.error)}</AlertDescription>
+      </Alert>
+    )
+  const { decision, channel } = chat.data
+  return (
+    <Alert role="status">
+      <MessageSquare />
+      <AlertTitle>
+        {decision === "approve" ? "Approve" : "Deny"} from your {chatChannels[channel] ?? channel} card
+      </AlertTitle>
+      <AlertDescription>Read the request, then confirm your decision here: nothing is decided until you do.</AlertDescription>
+    </Alert>
+  )
+}
+
+/** ChatLinkNotice says why the link of a chat card does not open a decision to someone who cannot review. */
+function ChatLinkNotice({ request, link }: { request: RequestView; link: string }) {
+  const chat = useChatLink(request.id, link)
+  if (chat.isPending) return null
+  return (
+    <div className="grid gap-3 border-t pt-4">
+      {chat.isError ? (
+        <ChatLinkStatus chat={chat} />
+      ) : (
+        <Alert role="status">
+          <MessageSquare />
+          <AlertTitle>This link from chat cannot be used</AlertTitle>
+          <AlertDescription>You are not among the approvers of this request now.</AlertDescription>
+        </Alert>
+      )}
     </div>
   )
 }

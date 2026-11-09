@@ -133,3 +133,84 @@ test("a request without step-up takes the review as before", async () => {
   expect(await screen.findByText(/You approved this request/)).toBeInTheDocument()
   expect(screen.queryByText(/recent sign-in/)).not.toBeInTheDocument()
 })
+
+test("Approve on a Teams card opens the request with the approval ready: confirming it reviews with the link", async () => {
+  state.user = "alice"
+  const user = userEvent.setup()
+  const { router } = renderApp(`/requests/${id}?link=fake.alice.approve`)
+  expect(await screen.findByText("Approve from your Microsoft Teams card")).toBeInTheDocument()
+  expect(screen.getByText(/nothing is decided until you do/)).toBeInTheDocument()
+  // Opening the link decided nothing.
+  expect(requests.current.reviews).toEqual([])
+  expect(screen.queryByRole("button", { name: "Deny" })).not.toBeInTheDocument()
+  await user.click(screen.getByRole("button", { name: "Confirm approval" }))
+  expect(await screen.findByText(/You approved this request/)).toBeInTheDocument()
+  expect(requests.links).toEqual(["fake.alice.approve"])
+  // Used, the link leaves the page: it no longer offers its decision.
+  await waitFor(() => expect(router.state.location.search).toEqual({}))
+})
+
+test("Deny on a Teams card asks why before it is confirmed", async () => {
+  state.user = "alice"
+  const user = userEvent.setup()
+  renderApp(`/requests/${id}?link=fake.alice.deny`)
+  expect(await screen.findByText("Deny from your Microsoft Teams card")).toBeInTheDocument()
+  await user.click(screen.getByRole("button", { name: "Confirm denial" }))
+  expect(await screen.findByText("is required to deny: say what to change")).toBeInTheDocument()
+  await user.type(screen.getByLabelText("Why you deny it"), "Too large for the launch")
+  await user.click(screen.getByRole("button", { name: "Confirm denial" }))
+  expect(await screen.findByText("Denied", { selector: "[data-slot=badge]" })).toBeInTheDocument()
+  expect(requests.links).toEqual(["fake.alice.deny"])
+})
+
+test("a card's link sent to someone else is refused: the approver reviews as without it", async () => {
+  state.user = "fiona"
+  const user = userEvent.setup()
+  renderApp(`/requests/${id}?link=fake.alice.approve`)
+  expect(await screen.findByText("This link from chat cannot be used")).toBeInTheDocument()
+  expect(screen.getByText(/this link was sent to someone else: review the request here as yourself/)).toBeInTheDocument()
+  expect(screen.queryByRole("button", { name: "Confirm approval" })).not.toBeInTheDocument()
+  await user.click(screen.getByRole("button", { name: "Approve" }))
+  expect(await screen.findByText(/You approved this request/)).toBeInTheDocument()
+  expect(requests.links).toEqual([undefined])
+})
+
+test("someone who cannot review is told why a card's link does not open a decision", async () => {
+  const bob = renderApp(`/requests/${id}?link=fake.alice.approve`)
+  expect(await screen.findByText(/this link was sent to someone else/)).toBeInTheDocument()
+  bob.unmount()
+  renderApp(`/requests/${id}?link=fake.expired`)
+  expect(await screen.findByText(/this link expired/)).toBeInTheDocument()
+  expect(screen.queryByRole("button", { name: /Approve|Confirm/ })).not.toBeInTheDocument()
+})
+
+test("a card's link to a request that needs a step-up comes back with the link after signing in again", async () => {
+  requests.current = { ...pendingVM(), stepUp: true }
+  state.user = "alice"
+  state.stale = true
+  const user = userEvent.setup()
+  renderApp(`/requests/${id}?link=fake.alice.approve`)
+  expect(await screen.findByText("Approve from your Microsoft Teams card")).toBeInTheDocument()
+  expect(screen.getByText("Reviewing this request needs a recent sign-in")).toBeInTheDocument()
+  expect(screen.queryByRole("button", { name: "Confirm approval" })).not.toBeInTheDocument()
+  await user.click(screen.getByRole("button", { name: "Sign in again" }))
+  await user.click(await screen.findByRole("button", { name: "Confirm approval" }))
+  expect(await screen.findByText(/You approved this request/)).toBeInTheDocument()
+  expect(requests.links).toEqual(["fake.alice.approve"])
+})
+
+test("with the identity provider, the step-up keeps the card's link to come back to", async () => {
+  requests.current = { ...pendingVM(), stepUp: true }
+  state.user = "alice"
+  state.auth = "oidc"
+  state.stale = true
+  const assign = vi.spyOn(browser, "assign").mockImplementation(() => {})
+  try {
+    const user = userEvent.setup()
+    renderApp(`/requests/${id}?link=fake.alice.approve`)
+    await user.click(await screen.findByRole("button", { name: "Sign in again" }))
+    await waitFor(() => expect(assign).toHaveBeenCalledWith(`/auth/login?stepUp=1&next=${encodeURIComponent(`/requests/${id}?link=fake.alice.approve`)}`))
+  } finally {
+    assign.mockRestore()
+  }
+})

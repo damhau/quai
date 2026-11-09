@@ -1,6 +1,6 @@
 # Deployment and operations
 
-Status: Draft · 2026-10-26
+Status: Draft · 2026-11-09
 
 ## Topology
 
@@ -40,7 +40,7 @@ single pod with both roles.
   | (file) | `QUAI_CONFIG`, or `quai server --config` | none: environment and defaults only |
   | `env` | `QUAI_ENV` | `development`; `production` refuses development-only features |
   | `server.addr` | `QUAI_SERVER_ADDR` | `:8080` |
-  | `server.publicURL` | `QUAI_SERVER_PUBLIC_URL` | none: where people reach Quai, for the links to requests in pull requests, statuses and notifications; without it, pull requests name the request without a link. Required, `http` or `https`, with `notifications.email`: notifications never take a link from a request's `Host` |
+  | `server.publicURL` | `QUAI_SERVER_PUBLIC_URL` | none: where people reach Quai, for the links to requests in pull requests, statuses and notifications; without it, pull requests name the request without a link. Required, `http` or `https`, with `notifications.email` or `notifications.teams`: notifications never take a link from a request's `Host` |
   | `server.shutdownTimeout` | `QUAI_SERVER_SHUTDOWN_TIMEOUT` | `20s` for requests in flight to finish |
   | `database.url` | `QUAI_DATABASE_URL` | none. The application role the server and the worker connect as. Each process opens two pools of up to `pool_max_conns` connections (a URL parameter; by default the number of CPUs, at least four): one for its work, one for its advisory locks |
   | `database.migrateURL` | `QUAI_DATABASE_MIGRATE_URL` | `database.url`. The schema's owner, for `quai migrate` alone: it applies the migrations, then grants the role of `database.url` what the server and the worker need, the audit log to read and append only ([database roles](#database-roles)). Without it, or with the same role, the audit log is not protected, and `quai migrate`, the server and the audit log page say so |
@@ -74,8 +74,12 @@ single pod with both roles.
   | `notifications.email.from` | | required: the sender, an address with or without a display name (`Quai <quai@example.com>`) |
   | `notifications.email.username`, `.password.ref` | | none: no authentication. PLAIN, or LOGIN when the server offers only that, over TLS only; the password is a secret reference (`k8s:quai/quai-smtp#password`), read at each send |
   | `notifications.alerts` | | none: email addresses that get every alert (a pull request merged without Quai's approval, approvals no longer enforced), besides the repository's admins; alerts only, never a request's content. Needs `notifications.email` |
-  | `notifications.defaults.channels` | | none: every kind at once. What people get until they choose on their profile page: per channel (`email`, which must be configured) and kind (`approval_needed`, `submitted`, `approved`, `rejected`, `stale`, `merged`, `applied`, `failed`, `expiring_soon`), `immediate`, `digest` or `off` ([preferences](#preferences-and-digests)). Not `alert`: alerts always go at once; `approval_needed` is never `off` on every channel |
+  | `notifications.defaults.channels` | | none: every kind at once. What people get until they choose on their profile page: per channel (`email`, or `teams` with its bot, which must be configured) and kind (`approval_needed`, `submitted`, `approved`, `rejected`, `stale`, `merged`, `applied`, `failed`, `expiring_soon`), `immediate`, `digest` or `off` ([preferences](#preferences-and-digests)). Not `alert`: alerts always go at once; `approval_needed` is never `off` on every channel |
   | `notifications.defaults.digest.hour`, `.timeZone` | | `8`, `UTC`: when a digest goes until people choose: an hour (0 to 23) in an IANA time zone (`Europe/Zurich`) |
+  | `notifications.teams.bot.appId`, `.tenantId`, `.clientSecret.ref` | | none: no personal cards in Teams ([Microsoft Teams](#microsoft-teams)). The bot's Entra ID application (client) ID and directory (tenant) ID, GUIDs; a secret reference to its client secret (`k8s:quai/quai-teams#client-secret`), read when a token is fetched. Needs `notifications.links` |
+  | `notifications.teams.bot.tokenURL`, `.scope`, `.serviceURL` | | `https://login.microsoftonline.com/<tenantId>/oauth2/v2.0/token`, `https://api.botframework.com/.default`, `https://smba.trafficmanager.net/teams/`: Microsoft's public cloud. Another cloud's (GCC, DoD) endpoints; https, without credentials or a query |
+  | `notifications.teams.channels` | | none: no channel posts. A list of channels, each a `name` (lowercase letters, digits and `-`), a `webhook.ref` (a secret reference to the URL of the workflow's webhook trigger: the URL is the credential), `repositories` and `teams` (the requests to these repositories, or to resources these teams own, and the alerts of these repositories; at least one), and `events` (`submitted`, `approval_needed`, `approved`, `rejected`, `stale`, `merged`, `applied`, `failed`, `expiring_soon`, `alert`) |
+  | `notifications.links.key.ref`, `.previousKeys` | | none: required with the Teams bot. A secret reference to the key that signs the Approve and Deny links of approval cards: at least 32 bytes, used for nothing else (`openssl rand -base64 32`); the keys before a rotation, kept a day ([rotating the link key](#rotating-the-link-key)) |
   | `log.level` | `QUAI_LOG_LEVEL` | `info` (`debug`, `info`, `warn`, `error`) |
   | `log.format` | `QUAI_LOG_FORMAT` | `json` in production, `text` otherwise |
   | `telemetry.otlpEndpoint` | `QUAI_TELEMETRY_OTLP_ENDPOINT` | none: no traces are exported; traces go to `<url>/v1/traces` |
@@ -589,6 +593,109 @@ change is in the audit log (`preferences.changed`).
    | `4…` (`421`, `451`) | The server deferred it: Quai tries again |
    | `the SMTP password: …` | The reference does not resolve: the secret it names, the worker's access to it |
 
+#### Microsoft Teams
+
+With `notifications.teams`, Quai posts to Teams channels, sends people personal cards, or both
+([Teams as built](../design/11-integrations.md#notifications)). Nothing comes in from Teams: Quai
+has no messaging endpoint, and the cards' buttons open Quai in the browser.
+
+```yaml
+notifications:
+  teams:
+    bot:                                   # personal cards; none: channel posts only
+      appId: 00000000-0000-0000-0000-000000000000
+      tenantId: 11111111-1111-1111-1111-111111111111
+      clientSecret: { ref: "k8s:quai/quai-teams#client-secret" }
+    channels:
+      - name: infra-approvals
+        webhook: { ref: "k8s:quai/quai-teams#infra-approvals" }
+        repositories: [infra-live]
+        teams: [platform]
+        events: [approval_needed, approved, rejected, failed, alert]
+  links:
+    key: { ref: "k8s:quai/quai-links#key" }  # signs the Approve and Deny links
+```
+
+- **Channel posts** carry the event, the request's number, its repository, state and a link,
+  never a title, reason, diff or plan: anyone in the channel reads them, and may not read the
+  request ([open question 64](../plan/open-questions.md#still-open)). To add one, in the channel's
+  **Workflows**, create a workflow from "Post to a channel when a webhook request is received"
+  ("When a Teams webhook request is received", who can trigger it: anyone), copy its URL into the
+  secret the reference names, and name the channel in the configuration. The URL holds the
+  signature that lets anyone post: Quai never logs it nor shows it in an error, and anyone who
+  has it can post to the channel, so a leaked one is replaced by a new workflow.
+- **Personal cards** go to people's Entra ID object ID (`oid`), which Quai keeps from their last
+  sign-in with Entra ID: someone who never signed in, or signs in through another identity
+  provider, gets none, and the notification is `skipped` with the reason. An approval needed
+  carries the request's title, reason, diff summary and plan (as email does) with **Approve** and
+  **Deny**; once the request no longer waits for that person, the card is updated to say why,
+  without its buttons. Each person chooses, on their profile page, what reaches them on Teams.
+- **Approve and Deny decide nothing.** They open the request in Quai with the decision ready;
+  the person confirms it there, signed in, after a step-up when the request needs one. The link
+  works for a day, for that person, that decision and the content the card showed, while the
+  request waits for approval; otherwise Quai says why and records `request.link_refused` in the
+  audit log ([approving from chat](../design/05-delivery-and-approvals.md#approving-from-chat)).
+
+##### Registering the bot
+
+Not verified against a Microsoft 365 tenant: the tests use fakes built from Microsoft's
+documentation ([testing](../engineering/testing.md#tiers), [services with no
+account](../plan/phase-4-backlog.md#test-infrastructure)).
+
+1. **The application.** In Entra ID, **App registrations**, **New registration**: single tenant
+   ("Accounts in this organizational directory only"), no redirect URI. Note its application
+   (client) ID and directory (tenant) ID. Under **Certificates & secrets**, add a client secret
+   and put its value in the secret `clientSecret.ref` names; note when it expires. It needs no
+   API permission: the bot's token is for the Bot Connector, not Graph.
+2. **The bot.** Create an **Azure Bot** resource, type single tenant, with that application
+   (**Use existing app registration**). Under **Channels**, add **Microsoft Teams**. Leave the
+   messaging endpoint empty: Quai answers nothing from Teams.
+3. **The Teams app.** A Teams app package (a `manifest.json` and two icons) whose `bots` names the
+   application's ID with the scope `personal`, uploaded by a Teams admin to the organization's
+   apps (**Teams admin center**, **Manage apps**, **Upload new app**).
+4. **Install it for the approvers.** A bot can message only people who have its app: in the
+   Teams admin center, an **app setup policy** that installs it for the users or groups who
+   approve (or everyone), or each person adds it. Until then Teams refuses their cards (`403`).
+5. **The link key.** `openssl rand -base64 32`, in the secret `notifications.links.key.ref`
+   names. Then `notifications.teams.bot` and restart the server and the worker.
+
+##### Rotating the link key
+
+A link is checked with the key and every key of `previousKeys`. To rotate: generate a new key,
+put it in a new secret, name it `key` and move the old one to `previousKeys`; restart, or wait a
+minute for the secret store's cache. After a day every link the old key signed has expired:
+remove it from `previousKeys`. A key that leaked is removed at once instead: the links it signed
+are refused ("made with a key Quai no longer has"), and their approvers review in Quai. Nothing
+else uses this key, and no other key signs links.
+
+The bot's client secret expires (at most two years in Entra ID): add a new secret to the
+application, update the secret the reference names, and delete the old one in Entra ID once
+the worker has fetched a token with the new one (the next within an hour; restart the worker to
+fetch one at once).
+
+##### When a Teams card does not arrive
+
+The notifications of a request are found as for mail, above; Teams' rows have the channel
+`teams`, and a channel post's recipient is `teams-channel:<name>`. Cards are in `chat_cards`
+(`SELECT recipient, created_at, closed_at FROM chat_cards WHERE request_id = '…'`; `closed_at`
+set: the card was updated, or is being).
+
+| Error, or `last_error` | What to do |
+| --- | --- |
+| `Quai knows no Entra ID object ID (oid) of theirs` | The person signs in to Quai once with Entra ID; another identity provider gives no `oid` |
+| `the Teams bot's client secret: …` | The reference does not resolve: the secret it names, the worker's access to it |
+| `the Teams bot's token: HTTP 400 invalid_client`, `HTTP 401 …` | The client secret expired, or is not the application's: `clientSecret.ref`, `appId`, `tenantId` |
+| `the Teams bot's token: …` (no HTTP status) | Entra ID's token endpoint is unreachable: the proxy, `network.caFile`, `tokenURL` |
+| `start a conversation in Teams: HTTP 403 ForbiddenOperationException: the app is not installed for the person` | Install the app for the person (the setup policy); Quai tries again, so a card still in its retries is delivered |
+| `… HTTP 403 errorCode 209 MessageWritesBlocked: the person blocked the bot` | The person blocked the bot in Teams: they unblock it |
+| `start a conversation in Teams: HTTP 401 …`, `send a card in Teams: HTTP 401 …` | Refused with a new token too (Quai renews it once): the bot's type (single tenant), its app ID, the Teams channel added to the Azure Bot |
+| `… HTTP 429 …` | Teams throttles: Quai waits for `Retry-After` up to 10 seconds, twice, then the job backs off |
+| `post to Teams channel <name>: HTTP 401`, `HTTP 403`, `HTTP 404` | The workflow was deleted or turned off, or its URL changed: a new workflow, its URL in the secret |
+| `post to Teams channel <name>: HTTP 400`, `HTTP 413` | The card was refused: report it, with the request |
+| `the webhook of Teams channel <name>: …`, `… is not an https URL without credentials` | The secret does not resolve, or does not hold an https URL |
+
+Errors name a channel and never its webhook's URL: its query is replaced by `[redacted]`.
+
 ### Runners
 
 Pipelines report their plans and applies with `quai report`, a step after `terraform plan` and
@@ -683,7 +790,8 @@ Egress needed, all configurable through an HTTP proxy (`HTTPS_PROXY`, `NO_PROXY`
 | Secret store | Credentials |
 | SIEMs (`audit.export`) | The audit log's export: syslog over TLS straight to the receiver, never through the proxy; OTLP and Splunk HEC over HTTPS |
 | SMTP server (`notifications.email`) | Notifications by email, over TLS (port 465) or STARTTLS (587), straight to the server, never through the proxy |
-| ITSM, chat | Optional integrations |
+| Microsoft Teams (`notifications.teams`) | HTTPS, through the proxy: the bot's tokens from Entra ID (`login.microsoftonline.com`), its messages through the Bot Connector service (`smba.trafficmanager.net`), channel posts to each workflow's trigger (`*.logic.azure.com`, or the host of its URL). Nothing comes in from Teams |
+| ITSM, Slack | Optional integrations |
 | Executors (Kubernetes API, AWX, vCenter) | Imperative actions |
 
 Ingress: users and CLI (HTTPS), Git platform webhooks (Azure DevOps service hooks; on Server this needs a firewall path from the Server to Quai, otherwise Quai runs in polling mode), runner reports. Webhook

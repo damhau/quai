@@ -23,6 +23,7 @@ import (
 	"time"
 	_ "time/tzdata" // time zones even where the system has no database of them (TimeZone)
 
+	"github.com/google/uuid"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -57,6 +58,11 @@ type Config struct {
 type Notifications struct {
 	// Email sends notifications by email, through an SMTP server; nil: no email.
 	Email *Email `yaml:"email"`
+	// Teams posts to Microsoft Teams channels through Workflows webhooks, and sends people
+	// personal cards through a bot; nil: no Teams.
+	Teams *Teams `yaml:"teams"`
+	// Links signs the links of approval cards in chat; Teams' bot needs it.
+	Links *ChatLinks `yaml:"links"`
 	// Alerts are email addresses that receive every alert (a pull request merged without Quai's
 	// approval, enforcement lost), besides the repository's owners: alerts only, never a request's
 	// content.
@@ -85,8 +91,10 @@ type DigestDefaults struct {
 
 // The vocabulary of notification preferences (docs/design/05-delivery-and-approvals.md#notifications).
 var (
-	// NotificationChannels are the channels Quai knows, configured or not.
-	NotificationChannels = []string{"email"}
+	// NotificationChannels are the channels that reach people, which they choose preferences for,
+	// configured or not. Teams' channel posts are not among them: they reach a channel, not a
+	// person.
+	NotificationChannels = []string{"email", "teams"}
 	// NotificationKinds are the kinds of notification people choose how they receive, in the
 	// order the profile page lists them. Alerts are not among them.
 	NotificationKinds = []string{"approval_needed", "submitted", "approved", "rejected", "stale", "merged", "applied", "failed", "expiring_soon"}
@@ -105,13 +113,80 @@ const (
 // DefaultDigestHour is when the digest goes when notifications.defaults.digest.hour is unset.
 const DefaultDigestHour = 8
 
-// Channels returns the channels configured, in NotificationChannels' order.
+// Channels returns the channels configured that reach people, in NotificationChannels' order:
+// email, and Teams when its bot is configured.
 func (n *Notifications) Channels() []string {
 	var out []string
 	if n.Email != nil {
 		out = append(out, "email")
 	}
+	if n.Teams != nil && n.Teams.Bot != nil {
+		out = append(out, "teams")
+	}
 	return out
+}
+
+// ChannelEvents are the events a Teams channel may be posted: the kinds of notification, and
+// alerts.
+var ChannelEvents = append(slices.Clone(NotificationKinds), "alert")
+
+// Teams sends notifications to Microsoft Teams (docs/design/11-integrations.md#notifications):
+// channel posts through Workflows webhooks, and personal cards through a bot. Every endpoint is
+// https and comes from here, never from what Teams answers.
+type Teams struct {
+	// Bot sends personal cards, approval cards with Approve and Deny, to people with an Entra ID
+	// object ID (oid); nil: no personal cards.
+	Bot *TeamsBot `yaml:"bot"`
+	// Channels are posted the events chosen, with identifiers only, for the repositories and teams
+	// they name.
+	Channels []TeamsChannel `yaml:"channels"`
+}
+
+// TeamsBot is the Azure Bot Quai sends personal cards as: a single-tenant Entra ID application,
+// with a client secret, that the Teams app of the bot is installed for.
+type TeamsBot struct {
+	AppID    string `yaml:"appId"`    // the application (client) ID
+	TenantID string `yaml:"tenantId"` // the directory (tenant) ID
+	// ClientSecret is the application's client secret, a secret reference.
+	ClientSecret SecretRef `yaml:"clientSecret"`
+	// TokenURL is where Quai gets the bot's tokens: Entra ID's v2.0 token endpoint of the tenant
+	// by default.
+	TokenURL string `yaml:"tokenURL"`
+	// Scope is the Bot Connector's: https://api.botframework.com/.default by default.
+	Scope string `yaml:"scope"`
+	// ServiceURL is the Bot Connector's service for proactive messages: Microsoft's public
+	// cloud's https://smba.trafficmanager.net/teams/ by default (another for GCC and DoD).
+	ServiceURL string `yaml:"serviceURL"`
+}
+
+// The bot's defaults: Microsoft's public cloud.
+const (
+	DefaultTeamsScope      = "https://api.botframework.com/.default"
+	DefaultTeamsServiceURL = "https://smba.trafficmanager.net/teams/"
+)
+
+// TeamsChannel is a Teams channel Quai posts to through a Workflows webhook.
+type TeamsChannel struct {
+	Name string `yaml:"name"` // names it in the notifications table: lowercase letters, digits and dashes
+	// Webhook is the URL of the workflow's "When a Teams webhook request is received" trigger,
+	// which anyone may call: a credential, so a secret reference.
+	Webhook SecretRef `yaml:"webhook"`
+	// Repositories and Teams say whose events it gets: requests to these repositories, or to
+	// resources these teams own (team:<name> among their owners), and alerts of these
+	// repositories. At least one.
+	Repositories []string `yaml:"repositories"`
+	Teams        []string `yaml:"teams"`
+	// Events are the events posted: kinds of notification (submitted, approval_needed, approved,
+	// rejected, stale, merged, applied, failed, expiring_soon) and alert.
+	Events []string `yaml:"events"`
+}
+
+// ChatLinks signs the links of approval cards in chat: the key, a secret of at least 32 bytes
+// used for nothing else, and the keys before it, which open the links they signed until those
+// expire (a day): rotate by naming the new key key and the old one in previousKeys for a day.
+type ChatLinks struct {
+	Key          SecretRef   `yaml:"key"`
+	PreviousKeys []SecretRef `yaml:"previousKeys"`
 }
 
 // timeZoneRe is an IANA time zone's name: one to three parts of letters, digits, _, + and -,
@@ -419,6 +494,8 @@ type DevUser struct {
 	Name   string   `yaml:"name"`
 	Email  string   `yaml:"email"` // matches owners the Git platform names by email
 	Groups []string `yaml:"groups"`
+	// ObjectID is the user's Entra ID object ID (oid), which Teams' personal cards are sent to.
+	ObjectID string `yaml:"objectId"`
 }
 
 // Log configures logging.
@@ -554,6 +631,18 @@ func (c *Config) defaults() {
 			if e.Transport == EmailTLS {
 				e.Port = 465
 			}
+		}
+	}
+	if t := c.Notifications.Teams; t != nil && t.Bot != nil {
+		b := t.Bot
+		if b.TokenURL == "" && b.TenantID != "" {
+			b.TokenURL = "https://login.microsoftonline.com/" + url.PathEscape(b.TenantID) + "/oauth2/v2.0/token"
+		}
+		if b.Scope == "" {
+			b.Scope = DefaultTeamsScope
+		}
+		if b.ServiceURL == "" {
+			b.ServiceURL = DefaultTeamsServiceURL
 		}
 	}
 	if c.Git.Committer.Name == "" {
@@ -775,8 +864,96 @@ func (n *Notifications) validate(publicURL string) error {
 	if len(n.Alerts) > 0 && n.Email == nil {
 		errs = append(errs, errors.New("notifications.alerts are email addresses: they need notifications.email"))
 	}
+	if n.Teams != nil {
+		errs = append(errs, n.Teams.validate(publicURL, n.Links != nil))
+	}
+	if l := n.Links; l != nil {
+		if !signingRefRe.MatchString(l.Key.Ref) {
+			errs = append(errs, errors.New("notifications.links.key.ref must be a secret reference such as k8s:namespace/name#key or env:NAME"))
+		}
+		for i, k := range l.PreviousKeys {
+			if !signingRefRe.MatchString(k.Ref) {
+				errs = append(errs, fmt.Errorf("notifications.links.previousKeys[%d].ref must be a secret reference such as k8s:namespace/name#key or env:NAME", i))
+			}
+		}
+	}
 	errs = append(errs, n.Defaults.validate(n.Channels()))
 	return errors.Join(errs...)
+}
+
+func (t *Teams) validate(publicURL string, links bool) error {
+	var errs []error
+	if t.Bot == nil && len(t.Channels) == 0 {
+		errs = append(errs, errors.New("notifications.teams needs a bot, channels, or both"))
+	}
+	// Cards link to Quai: without the address people reach it at, there is nothing to link.
+	if u, err := url.Parse(publicURL); err != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") {
+		errs = append(errs, errors.New("notifications.teams needs server.publicURL, an http or https URL: the cards link to Quai"))
+	}
+	if b := t.Bot; b != nil {
+		if _, err := uuid.Parse(b.AppID); err != nil {
+			errs = append(errs, fmt.Errorf("notifications.teams.bot.appId must be the application (client) ID, a GUID, not %q", b.AppID))
+		}
+		if _, err := uuid.Parse(b.TenantID); err != nil {
+			errs = append(errs, fmt.Errorf("notifications.teams.bot.tenantId must be the directory (tenant) ID, a GUID, not %q", b.TenantID))
+		}
+		if !signingRefRe.MatchString(b.ClientSecret.Ref) {
+			errs = append(errs, errors.New("notifications.teams.bot.clientSecret.ref must be a secret reference such as k8s:namespace/name#key or env:NAME"))
+		}
+		errs = append(errs, httpsURL("notifications.teams.bot.tokenURL", b.TokenURL), httpsURL("notifications.teams.bot.serviceURL", b.ServiceURL))
+		if u, err := url.Parse(b.Scope); err != nil || u.Scheme != "https" || u.Host == "" || strings.ContainsAny(b.Scope, " \t\r\n") {
+			errs = append(errs, fmt.Errorf("notifications.teams.bot.scope must be one https scope, such as %s, not %q", DefaultTeamsScope, b.Scope))
+		}
+		if !links {
+			// Approval cards carry signed links (open question 61).
+			errs = append(errs, errors.New("notifications.teams.bot needs notifications.links.key: approval cards carry signed links"))
+		}
+	}
+	names := map[string]bool{}
+	for i, c := range t.Channels {
+		key := fmt.Sprintf("notifications.teams.channels[%d]", i)
+		if !exportNameRe.MatchString(c.Name) {
+			errs = append(errs, fmt.Errorf("%s.name must be lowercase letters, digits and dashes, not %q", key, c.Name))
+		} else if names[c.Name] {
+			errs = append(errs, fmt.Errorf("%s.name: %s names another channel already", key, c.Name))
+		}
+		names[c.Name] = true
+		if !signingRefRe.MatchString(c.Webhook.Ref) {
+			errs = append(errs, fmt.Errorf("%s.webhook.ref must be a secret reference such as k8s:namespace/name#key or env:NAME: the URL is a credential", key))
+		}
+		if len(c.Repositories) == 0 && len(c.Teams) == 0 {
+			errs = append(errs, fmt.Errorf("%s needs repositories, teams, or both: they say whose events it gets", key))
+		}
+		for j, r := range c.Repositories {
+			if r == "" {
+				errs = append(errs, fmt.Errorf("%s.repositories[%d] is empty", key, j))
+			}
+		}
+		for j, team := range c.Teams {
+			if team == "" {
+				errs = append(errs, fmt.Errorf("%s.teams[%d] is empty", key, j))
+			}
+		}
+		if len(c.Events) == 0 {
+			errs = append(errs, fmt.Errorf("%s.events: name at least one (%s)", key, strings.Join(ChannelEvents, ", ")))
+		}
+		for _, e := range c.Events {
+			if !slices.Contains(ChannelEvents, e) {
+				errs = append(errs, fmt.Errorf("%s.events: %q is not an event (%s)", key, e, strings.Join(ChannelEvents, ", ")))
+			}
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// httpsURL checks an endpoint of a service Quai calls with credentials: https, without
+// credentials, a query or a fragment.
+func httpsURL(key, s string) error {
+	u, err := url.Parse(s)
+	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		return fmt.Errorf("%s must be an https URL without credentials or a query, not %q", key, s)
+	}
+	return nil
 }
 
 func (d *NotificationDefaults) validate(configured []string) error {
