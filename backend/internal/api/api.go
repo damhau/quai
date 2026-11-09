@@ -124,6 +124,11 @@ func build(opts Options, all bool) (*chi.Mux, huma.API) {
 	if all || opts.Store != nil {
 		registerIdentity(a, opts.Store)
 		registerAudit(a, opts.Store, opts.Logger)
+		dir := &auth.Directory{} // documenting the API: no mapping
+		if opts.Auth != nil {
+			dir = opts.Auth.Directory()
+		}
+		registerAccess(a, opts.Store, dir, opts.Logger)
 	}
 	if all || opts.Repositories != nil {
 		registerCatalog(a, opts.Repositories, opts.Store)

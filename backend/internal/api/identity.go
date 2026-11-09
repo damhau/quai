@@ -48,6 +48,7 @@ type MeOutput struct {
 		Name      string     `json:"name"`
 		Email     string     `json:"email,omitempty"`
 		Groups    []string   `json:"groups"`
+		Teams     []string   `json:"teams" doc:"The teams of the groups (auth.teams), which team ownership matches"`
 		Roles     []RoleView `json:"roles"`
 		Scopes    []string   `json:"scopes,omitempty" doc:"The API token's scopes, when the call uses one"`
 		CSRFToken string     `json:"csrfToken,omitempty" doc:"Send it as X-CSRF-Token on requests that change something"`
@@ -107,14 +108,11 @@ func registerIdentity(a huma.API, s *store.Store) {
 		out := &MeOutput{}
 		out.Body.Name, out.Body.Email, out.Body.CSRFToken = id.Principal.Name, id.Email, id.CSRFToken
 		out.Body.Groups = append([]string{}, id.Principal.Groups...)
+		out.Body.Teams = append([]string{}, id.Principal.Teams...)
 		out.Body.Scopes = id.Principal.Scopes
 		out.Body.Roles = []RoleView{}
 		for _, g := range id.Principal.Grants {
-			scope := g.Scope.Kind
-			if g.Scope.Name != "" {
-				scope += ":" + g.Scope.Name
-			}
-			out.Body.Roles = append(out.Body.Roles, RoleView{Role: string(g.Role), Scope: scope})
+			out.Body.Roles = append(out.Body.Roles, RoleView{Role: string(g.Role), Scope: auth.ScopeName(g.Scope)})
 		}
 		return out, nil
 	})

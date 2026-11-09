@@ -175,8 +175,16 @@ const (
 type Review struct {
 	Reviewer string
 	Email    string   // the reviewer's email when they reviewed, which email: entries match
-	Groups   []string // the reviewer's groups when they reviewed
+	Groups   []string // the reviewer's groups when they reviewed, which group: entries match
+	Teams    []string // the reviewer's teams when they reviewed, which team: entries match
 	Decision string
+}
+
+// Person is someone who may review: their name, email (empty when unknown), IdP groups and Quai
+// teams.
+type Person struct {
+	Name, Email   string
+	Groups, Teams []string
 }
 
 // Context holds what the caller resolved for the request.
@@ -208,20 +216,20 @@ type Outcome struct {
 	Rules []Status
 }
 
-// CanReview reports whether a person may approve or deny for a rule: name, their email (empty when
-// unknown) and groups.
-func CanReview(r Rule, name, email string, groups []string, ctx Context) bool {
-	if name == "" || name == ctx.Requester {
+// CanReview reports whether a person may approve or deny for a rule. Owner entries match them by
+// name (user:), group (group:), team (team:) or email (email:).
+func CanReview(r Rule, who Person, ctx Context) bool {
+	if who.Name == "" || who.Name == ctx.Requester {
 		return false
 	}
 	member := func(entries []string) bool {
 		for _, e := range entries {
 			if kind, v, ok := strings.Cut(e, ":"); ok {
-				if (kind == "team" || kind == "group") && slices.Contains(groups, v) || kind == "user" && v == name ||
-					kind == "email" && email != "" && strings.EqualFold(v, email) {
+				if kind == "group" && slices.Contains(who.Groups, v) || kind == "team" && slices.Contains(who.Teams, v) ||
+					kind == "user" && v == who.Name || kind == "email" && who.Email != "" && strings.EqualFold(v, who.Email) {
 					return true
 				}
-			} else if e == name {
+			} else if e == who.Name {
 				return true
 			}
 		}
@@ -230,11 +238,11 @@ func CanReview(r Rule, name, email string, groups []string, ctx Context) bool {
 	for _, a := range r.Approvers {
 		kind, v, _ := strings.Cut(a, ":")
 		switch {
-		case kind == "group" && slices.Contains(groups, v),
-			kind == "user" && v == name,
+		case kind == "group" && slices.Contains(who.Groups, v),
+			kind == "user" && v == who.Name,
 			a == "owners" && member(ctx.Owners),
 			a == "codeowners" && member(ctx.Codeowners),
-			a == "manager" && ctx.Manager != "" && ctx.Manager == name:
+			a == "manager" && ctx.Manager != "" && ctx.Manager == who.Name:
 			return true
 		}
 	}
@@ -255,7 +263,9 @@ func Evaluate(rules []Rule, reviews []Review, ctx Context) Outcome {
 		}
 		latest[rv.Reviewer] = rv
 	}
-	eligible := func(r Rule, rv Review) bool { return CanReview(r, rv.Reviewer, rv.Email, rv.Groups, ctx) }
+	eligible := func(r Rule, rv Review) bool {
+		return CanReview(r, Person{Name: rv.Reviewer, Email: rv.Email, Groups: rv.Groups, Teams: rv.Teams}, ctx)
+	}
 
 	statuses := make([]Status, len(rules))
 	for i, r := range rules {

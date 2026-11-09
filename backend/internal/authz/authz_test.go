@@ -13,10 +13,18 @@ var (
 	// codeowned is owned through CODEOWNERS (ownership.codeowners).
 	codeowned = Object{Repository: "infra-live", Owners: []string{"user:erin", "group:dba", "email:ivy@acme.ch"}}
 	request   = Object{Repository: "infra-live", Requester: "bob"}
+	// teamOwned is owned through team: entries (ownership.codeowners mapped to a team).
+	teamOwned = Object{Repository: "infra-live", Owners: []string{"team:platform"}}
 )
 
+// who is a person whose teams are their groups, as without auth.teams.
 func who(name string, groups []string, grants ...Grant) Principal {
-	return Principal{Name: name, Groups: groups, Grants: grants}
+	return Principal{Name: name, Groups: groups, Teams: groups, Grants: grants}
+}
+
+// mapped is a person whose groups auth.teams maps to other teams.
+func mapped(name string, groups, teams []string, grants ...Grant) Principal {
+	return Principal{Name: name, Groups: groups, Teams: teams, Grants: grants}
 }
 
 func at(role Role, kind, name string) Grant {
@@ -74,6 +82,12 @@ func TestAuthorize(t *testing.T) {
 		{"operator, no email", who("ivy", nil, at(Operator, ScopeGlobal, "")), OperateResource, codeowned, false, "only the owner"},
 		{"a codeowner sees their resource", who("erin", nil), ReadInventory, codeowned, true, ""},
 
+		// Teams come from auth.teams: a group maps to its team, not to the team of its name.
+		{"operator, in the team through auth.teams", mapped("sam", []string{"sg-quai-shop"}, []string{"shop"}, at(Operator, ScopeTeam, "shop")), OperateResource, resource, true, ""},
+		{"a group named after a team it is not mapped to", mapped("sam", []string{"shop"}, []string{"retail"}, at(Operator, ScopeGlobal, "")), OperateResource, resource, false, "only the owner"},
+		{"operator, a team: owner through auth.teams", mapped("pat", []string{"sg-platform"}, []string{"platform"}, at(Operator, ScopeGlobal, "")), OperateResource, teamOwned, true, ""},
+		{"a group: entry is not a team: entry", mapped("pat", []string{"platform"}, []string{"ops"}, at(Operator, ScopeGlobal, "")), OperateResource, teamOwned, false, "only the owner"},
+
 		// Catalog author, repository admin, platform admin.
 		{"catalog author previews", who("cat", nil, at(CatalogAuthor, ScopeRepository, "infra-live")), PreviewDefinitions, repo, true, ""},
 		{"repository admin previews", who("ray", nil, at(RepositoryAdmin, ScopeRepository, "infra-live")), PreviewDefinitions, repo, true, ""},
@@ -94,6 +108,10 @@ func TestAuthorize(t *testing.T) {
 		{"auditor sees hidden catalog items", who("aud", []string{"ops"}, at(Auditor, ScopeGlobal, "")), ReadCatalog, item, true, ""},
 		{"auditor cannot request", who("aud", []string{"developers"}, at(Auditor, ScopeGlobal, "")), CreateRequest, item, false, "requester role"},
 		{"viewer cannot read the audit log", who("vic", nil, at(Viewer, ScopeGlobal, "")), ReadAudit, Object{}, false, "auditor"},
+		{"auditor reads the access report", who("aud", nil, at(Auditor, ScopeGlobal, "")), ReadAccessReport, Object{}, true, ""},
+		{"platform admin reads the access report", who("ada", nil, at(PlatformAdmin, ScopeGlobal, "")), ReadAccessReport, Object{}, true, ""},
+		{"repository admin cannot read the access report", who("ray", nil, at(RepositoryAdmin, ScopeGlobal, "")), ReadAccessReport, Object{}, false, "auditor"},
+		{"a team's auditor cannot read the access report", who("aud", nil, at(Auditor, ScopeTeam, "shop")), ReadAccessReport, Object{}, false, "auditor"},
 
 		// Break-glass.
 		{"break-glass on someone else's request", who("bg", nil, at(BreakGlass, ScopeGlobal, "")), UseBreakGlass, request, true, ""},
@@ -108,6 +126,7 @@ func TestAuthorize(t *testing.T) {
 		{"a scope does not add a role", Principal{Name: "dan", Groups: []string{"developers"}, Scopes: []string{"requests:write"}}, CreateRequest, item, false, "requester role"},
 		{"an admin's token is still scoped", Principal{Name: "ada", Grants: []Grant{at(PlatformAdmin, ScopeGlobal, "")}, Scopes: []string{"catalog:read"}}, ManageSettings, Object{}, false, "scopes"},
 		{"tokens cannot make tokens", Principal{Name: "dan", Scopes: []string{"requests:write"}}, ManageOwnTokens, Object{}, false, "scopes"},
+		{"an auditor's token cannot read the access report", Principal{Name: "aud", Grants: []Grant{at(Auditor, ScopeGlobal, "")}, Scopes: []string{"requests:read"}}, ReadAccessReport, Object{}, false, "scopes"},
 		{"a session manages its tokens", who("dan", nil), ManageOwnTokens, Object{}, true, ""},
 	}
 	for _, tt := range tests {

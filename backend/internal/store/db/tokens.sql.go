@@ -116,6 +116,43 @@ func (q *Queries) ListAPITokens(ctx context.Context, owner string) ([]ApiToken, 
 	return items, nil
 }
 
+const listLiveAPITokens = `-- name: ListLiveAPITokens :many
+SELECT id, org_id, owner, groups, name, hash, scopes, expires_at, created_at, last_used_at, revoked_at FROM api_tokens WHERE revoked_at IS NULL AND expires_at > now() ORDER BY owner, created_at, id
+`
+
+// Every token neither revoked nor expired, for the access report.
+func (q *Queries) ListLiveAPITokens(ctx context.Context) ([]ApiToken, error) {
+	rows, err := q.db.Query(ctx, listLiveAPITokens)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ApiToken{}
+	for rows.Next() {
+		var i ApiToken
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.Owner,
+			&i.Groups,
+			&i.Name,
+			&i.Hash,
+			&i.Scopes,
+			&i.ExpiresAt,
+			&i.CreatedAt,
+			&i.LastUsedAt,
+			&i.RevokedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const revokeAPIToken = `-- name: RevokeAPIToken :execrows
 UPDATE api_tokens SET revoked_at = now() WHERE id = $1 AND owner = $2 AND revoked_at IS NULL
 `

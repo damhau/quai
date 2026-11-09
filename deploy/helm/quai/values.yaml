@@ -22,6 +22,10 @@ config:
       redirectURL: https://quai.example.com/auth/callback
     roles:
       - { group: platform-admins, role: platform-admin, scope: global }
+    # Teams own resources; without an entry, a group is the team of its own name
+    # (docs/operations/deployment-and-operations.md#people-and-teams).
+    # teams:
+    #   - { group: sg-quai-*, team: "*" }
   # The audit log (docs/operations/deployment-and-operations.md#the-checkpoint-key): the worker
   # signs a checkpoint every hour with an Ed25519 key from a Secret, and prunes what the retention
   # lets go. Without a key, it warns: nothing is pruned, and a rewritten chain goes unnoticed.

@@ -176,6 +176,7 @@ type Review struct {
 	CreatedAt        pgtype.Timestamptz
 	ReviewerEmail    string
 	ReviewerAuthTime pgtype.Timestamptz
+	Teams            []string
 }
 
 type Run struct {
@@ -201,6 +202,20 @@ type Session struct {
 	Token  string
 	Data   []byte
 	Expiry pgtype.Timestamptz
+}
+
+type User struct {
+	OrgID         string
+	Name          string
+	Email         string
+	Groups        []string
+	Subject       string
+	ObjectID      string
+	LastLogin     pgtype.Timestamptz
+	AuthTime      pgtype.Timestamptz
+	DeactivatedAt pgtype.Timestamptz
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
 }
 
 type WebhookDelivery struct {

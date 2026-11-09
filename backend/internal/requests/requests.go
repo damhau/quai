@@ -648,7 +648,8 @@ func CanReview(r db.Request, p authzPrincipal) bool {
 	var rules []policy.Rule
 	_ = json.Unmarshal(r.Rules, &rules)
 	ctx := contextOf(r)
-	return slices.ContainsFunc(rules, func(rule policy.Rule) bool { return policy.CanReview(rule, p.Name, p.Email, p.Groups, ctx) })
+	who := policy.Person{Name: p.Name, Email: p.Email, Groups: p.Groups, Teams: p.Teams}
+	return slices.ContainsFunc(rules, func(rule policy.Rule) bool { return policy.CanReview(rule, who, ctx) })
 }
 
 type authzPrincipal = authz.Principal
@@ -691,7 +692,7 @@ func (s *Service) Review(ctx context.Context, who auth.Identity, id uuid.UUID, d
 	err = s.store.Tx(ctx, func(tx pgx.Tx, q *db.Queries) error {
 		if _, err := q.CreateReview(ctx, db.CreateReviewParams{
 			ID: uuid.New(), RequestID: r.ID, Reviewer: who.Principal.Name, Groups: nonNil(who.Principal.Groups),
-			Decision: decision, Comment: comment, ChangeSetHash: sets[0].Hash,
+			Teams: nonNil(who.Principal.Teams), Decision: decision, Comment: comment, ChangeSetHash: sets[0].Hash,
 			ReviewerEmail:    pgtype.Text{String: who.Principal.Email, Valid: true},
 			ReviewerAuthTime: pgtype.Timestamptz{Time: who.AuthTime, Valid: !who.AuthTime.IsZero()},
 		}); err != nil {
@@ -1187,7 +1188,11 @@ func bound(all []db.Review, hash string) []db.Review {
 func toReviews(rs []db.Review) []policy.Review {
 	out := make([]policy.Review, len(rs))
 	for i, r := range rs {
-		out[i] = policy.Review{Reviewer: r.Reviewer, Email: r.ReviewerEmail, Groups: r.Groups, Decision: r.Decision}
+		out[i] = policy.Review{Reviewer: r.Reviewer, Email: r.ReviewerEmail, Groups: r.Groups, Teams: r.Teams, Decision: r.Decision}
+		if r.Teams == nil {
+			// A review from before auth.teams (migration 00019): each group was the team of its name.
+			out[i].Teams = r.Groups
+		}
 	}
 	return out
 }

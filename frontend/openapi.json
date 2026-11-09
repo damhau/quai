@@ -1,6 +1,210 @@
 {
   "components": {
     "schemas": {
+      "AccessReportView": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/api/v1/schemas/AccessReportView.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "generatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "users": {
+            "items": {
+              "$ref": "#/components/schemas/AccessUserView"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "generatedAt",
+          "users"
+        ],
+        "type": "object"
+      },
+      "AccessRoleView": {
+        "additionalProperties": false,
+        "properties": {
+          "groups": {
+            "description": "The person's groups that auth.roles gives the role to",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "role": {
+            "type": "string"
+          },
+          "scope": {
+            "description": "global, or team:, repository: or catalog-item: and its name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "scope",
+          "groups"
+        ],
+        "type": "object"
+      },
+      "AccessTokenView": {
+        "additionalProperties": false,
+        "properties": {
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "groups": {
+            "description": "The groups its owner had when creating it, which it acts with",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "lastUsedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "roles": {
+            "description": "The roles those groups give now; the scopes narrow what the token may do with them",
+            "items": {
+              "$ref": "#/components/schemas/AccessRoleView"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "scopes",
+          "groups",
+          "roles",
+          "expiresAt"
+        ],
+        "type": "object"
+      },
+      "AccessUserView": {
+        "additionalProperties": false,
+        "properties": {
+          "authTime": {
+            "description": "When the person last authenticated with the identity provider",
+            "format": "date-time",
+            "type": "string"
+          },
+          "deactivatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "email": {
+            "description": "Only an email the identity provider vouches for",
+            "type": "string"
+          },
+          "groups": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "lastLogin": {
+            "description": "Absent when no sign-in is recorded: the person's tokens predate the directory",
+            "format": "date-time",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "objectId": {
+            "description": "Entra ID's object ID (oid)",
+            "type": "string"
+          },
+          "roles": {
+            "items": {
+              "$ref": "#/components/schemas/AccessRoleView"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "state": {
+            "enum": [
+              "active",
+              "deactivated"
+            ],
+            "type": "string"
+          },
+          "subject": {
+            "description": "The identity provider's subject (the ID token's sub)",
+            "type": "string"
+          },
+          "teams": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "tokens": {
+            "description": "Their API tokens that still work",
+            "items": {
+              "$ref": "#/components/schemas/AccessTokenView"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "groups",
+          "teams",
+          "roles",
+          "tokens",
+          "state"
+        ],
+        "type": "object"
+      },
       "AccessView": {
         "additionalProperties": false,
         "properties": {
@@ -1642,11 +1846,22 @@
               "array",
               "null"
             ]
+          },
+          "teams": {
+            "description": "The teams of the groups (auth.teams), which team ownership matches",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
           }
         },
         "required": [
           "name",
           "groups",
+          "teams",
           "roles"
         ],
         "type": "object"
@@ -3734,6 +3949,69 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/access-report": {
+      "get": {
+        "operationId": "get-access-report",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessReportView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Read the access report: every user with their groups, teams and roles (auditors and platform admins)",
+        "tags": [
+          "Access"
+        ]
+      }
+    },
+    "/api/v1/access-report/export": {
+      "get": {
+        "description": "One row per person or API token (via), role, scope and the group that gives it; one without a role has one row with the role columns empty. Cells a spreadsheet would read as a formula start with an apostrophe.",
+        "operationId": "export-access-report",
+        "responses": {
+          "200": {
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "The report, in CSV"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Download the access report as CSV (auditors and platform admins)",
+        "tags": [
+          "Access"
+        ]
+      }
+    },
     "/api/v1/audit": {
       "get": {
         "operationId": "list-audit-events",

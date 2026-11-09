@@ -1,6 +1,6 @@
 # Security and compliance
 
-Status: Draft · 2026-11-08
+Status: Draft · 2026-11-09
 
 ## What must be protected
 
@@ -126,7 +126,7 @@ come with their features):
 | Action | Actor | When |
 | --- | --- | --- |
 | `auth.login`, `auth.logout` | the person | a sign-in (with the method and the grants it gave), a sign-out |
-| `auth.grants_changed` | the person | a sign-in whose grants differ from the person's previous sign-in (`before`, `after`) |
+| `auth.grants_changed` | the person | a sign-in whose grants differ from the person's previous sign-in (`before`, `after`): a role change, from the IdP's groups or from `auth.roles` |
 | `token.created`, `token.revoked` | the person | an API token made or revoked (its ID, name, scopes, expiry; never the token) |
 | `run_token.created` | the person | a run token generated for a repository (its SHA-256; Quai keeps neither, so revoking it is changing the secret it names, outside Quai's view: [open question 33](../plan/open-questions.md#still-open)) |
 | `request.submitted`, `request.cancelled`, `request.retried` | the person, or their token | as named; submitted carries the change set and definitions commit, the reason as a pseudonym |
@@ -221,7 +221,7 @@ sample, and what Quai attaches to ITSM change requests.
 
 ## Data protection
 
-- Personal data is limited to identity attributes from the IdP, reasons and comments people write, and IP addresses in the audit log.
+- Personal data is limited to identity attributes from the IdP, reasons and comments people write, and IP addresses in the audit log. The identity attributes are kept in the directory (`users`: name, verified email, groups, the IdP's `sub` and `oid`, last login), which nothing erases yet ([open question 44](../plan/open-questions.md#still-open); the operations guide gives the statement).
 - Self-hosted by default: data stays in the customer's environment. No telemetry leaves the installation unless an admin enables it.
 - Retention: requests and audit events are kept for a configurable period, **default 1 year** (`audit.retention` for audit events; [retention](#audit-log)). Customers with regulatory duties set longer periods (financial institutions often need 10 years); the export to their SIEM or archive is the long-term record. Signed checkpoints are kept for the whole retention period so a pruned chain can still be verified from the last kept checkpoint. Personal data in old records can be pseudonymized without breaking the hash chain by hashing it into the event at write time and storing the clear values in a separate, deletable table: pseudonymizing a person deletes their clear values and leaves the hashes ([open question 39](../plan/open-questions.md#still-open)).
 
@@ -233,7 +233,7 @@ Candidate mappings, to be confirmed with each customer's compliance team.
 | --- | --- |
 | Change management (ISO/IEC 27001:2022 A.8.32, SOC 2 CC8.1, FINMA operational resilience requirements, DORA ICT change management) | Every change is requested, reasoned, reviewed against the actual diff and plan, approved by the right people, and traceable to a commit and an apply |
 | Segregation of duties (ISO 27001 A.5.3) | No self-approval, distinct approvers, optional definition-author separation, break-glass with mandatory review |
-| Access control and reviews (A.5.15–A.5.18) | IdP-based authentication, role scopes, SCIM deprovisioning, exportable access reports for periodic reviews |
+| Access control and reviews (A.5.15–A.5.18) | IdP-based authentication, role scopes, role changes in the audit log, SCIM deprovisioning, the access report (every person, their groups, teams, roles by scope and the group that gives each, their live API tokens; a page and a CSV) for periodic reviews ([directory](08-identity-access-tenancy.md#directory)) |
 | Logging and monitoring (A.8.15, A.8.16) | Hash-chained audit log, SIEM export, alerts on bypass and break-glass |
 | Outsourcing and data location (FINMA outsourcing rules, Swiss nFADP, GDPR) | Self-hosted, no outbound telemetry, data residency under customer control |
 

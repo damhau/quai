@@ -4,6 +4,76 @@ export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});
 };
 
+export type AccessReportView = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    generatedAt: string;
+    users: Array<AccessUserView> | null;
+};
+
+export type AccessRoleView = {
+    /**
+     * The person's groups that auth.roles gives the role to
+     */
+    groups: Array<string> | null;
+    role: string;
+    /**
+     * global, or team:, repository: or catalog-item: and its name
+     */
+    scope: string;
+};
+
+export type AccessTokenView = {
+    expiresAt: string;
+    /**
+     * The groups its owner had when creating it, which it acts with
+     */
+    groups: Array<string> | null;
+    id: string;
+    lastUsedAt?: string;
+    name: string;
+    /**
+     * The roles those groups give now; the scopes narrow what the token may do with them
+     */
+    roles: Array<AccessRoleView> | null;
+    scopes: Array<string> | null;
+};
+
+export type AccessUserView = {
+    /**
+     * When the person last authenticated with the identity provider
+     */
+    authTime?: string;
+    deactivatedAt?: string;
+    /**
+     * Only an email the identity provider vouches for
+     */
+    email?: string;
+    groups: Array<string> | null;
+    /**
+     * Absent when no sign-in is recorded: the person's tokens predate the directory
+     */
+    lastLogin?: string;
+    name: string;
+    /**
+     * Entra ID's object ID (oid)
+     */
+    objectId?: string;
+    roles: Array<AccessRoleView> | null;
+    state: 'active' | 'deactivated';
+    /**
+     * The identity provider's subject (the ID token's sub)
+     */
+    subject?: string;
+    teams: Array<string> | null;
+    /**
+     * Their API tokens that still work
+     */
+    tokens: Array<AccessTokenView> | null;
+};
+
 export type AccessView = {
     /**
      * A URL to the JSON Schema for this object.
@@ -599,6 +669,10 @@ export type MeOutputBody = {
      * The API token's scopes, when the call uses one
      */
     scopes?: Array<string> | null;
+    /**
+     * The teams of the groups (auth.teams), which team ownership matches
+     */
+    teams: Array<string> | null;
 };
 
 export type MetaOutputBody = {
@@ -1329,6 +1403,11 @@ export type Webhooks = {
     secret?: SecretRef;
 };
 
+export type AccessReportViewWritable = {
+    generatedAt: string;
+    users: Array<AccessUserView> | null;
+};
+
 export type AccessViewWritable = {
     checks: Array<CheckView> | null;
     ok: boolean;
@@ -1565,6 +1644,10 @@ export type MeOutputBodyWritable = {
      * The API token's scopes, when the call uses one
      */
     scopes?: Array<string> | null;
+    /**
+     * The teams of the groups (auth.teams), which team ownership matches
+     */
+    teams: Array<string> | null;
 };
 
 export type MetaOutputBodyWritable = {
@@ -1956,6 +2039,56 @@ export type WebhookViewWritable = {
     manual?: string;
     url: string;
 };
+
+export type GetAccessReportData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/access-report';
+};
+
+export type GetAccessReportErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type GetAccessReportError = GetAccessReportErrors[keyof GetAccessReportErrors];
+
+export type GetAccessReportResponses = {
+    /**
+     * OK
+     */
+    200: AccessReportView;
+};
+
+export type GetAccessReportResponse = GetAccessReportResponses[keyof GetAccessReportResponses];
+
+export type ExportAccessReportData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/access-report/export';
+};
+
+export type ExportAccessReportErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ExportAccessReportError = ExportAccessReportErrors[keyof ExportAccessReportErrors];
+
+export type ExportAccessReportResponses = {
+    /**
+     * The report, in CSV
+     */
+    200: string;
+};
+
+export type ExportAccessReportResponse = ExportAccessReportResponses[keyof ExportAccessReportResponses];
 
 export type ListAuditEventsData = {
     body?: never;

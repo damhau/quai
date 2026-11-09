@@ -1,5 +1,6 @@
 import { http, HttpResponse } from "msw"
 import { setupServer } from "msw/node"
+import { accessHandlers, resetAccess } from "./access"
 import { auditHandlers, resetAudit } from "./audit"
 import { catalogHandlers } from "./catalog"
 import { gitHandlers, published } from "./git"
@@ -25,6 +26,7 @@ export function resetRequests() {
   published.blueprints = []
   resetRepositories()
   resetAudit()
+  resetAccess()
 }
 
 export const server = setupServer(
@@ -34,6 +36,7 @@ export const server = setupServer(
       ? HttpResponse.json({
           name: state.user,
           groups: users[state.user],
+          teams: users[state.user], // no auth.teams: each group is the team of its name
           roles: roles[state.user] ?? [{ role: "requester", scope: "global" }],
           csrfToken: `csrf-${state.user}`,
         })
@@ -45,6 +48,7 @@ export const server = setupServer(
   ...gitHandlers,
   ...repositoryHandlers,
   ...auditHandlers,
+  ...accessHandlers(() => (state.user ? (roles[state.user] ?? []) : null)),
   http.get("*/auth/dev/users", () => HttpResponse.json(Object.entries(users).map(([Name, Groups]) => ({ Name, Groups })))),
   http.post("*/auth/dev/login", async ({ request }) => {
     // As the server's middleware: with a session, a state-changing request needs its CSRF token.

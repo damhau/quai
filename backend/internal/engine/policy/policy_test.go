@@ -167,35 +167,51 @@ func TestApproverKinds(t *testing.T) {
 		External:   map[string]string{"servicenow": "approved", "jira": "rejected"},
 	}
 	r := func(approvers ...string) Rule { return Rule{Approvers: approvers, Min: 1, Distinct: true} }
+	// teams is a person whose teams are their groups, as without auth.teams.
+	teams := func(name, email string, groups ...string) Person {
+		return Person{Name: name, Email: email, Groups: groups, Teams: groups}
+	}
 	tests := []struct {
-		rule   Rule
-		name   string
-		email  string
-		groups []string
-		want   bool
+		rule Rule
+		who  Person
+		want bool
 	}{
-		{r("user:zoe"), "zoe", "", nil, true},
-		{r("user:zoe"), "zed", "", nil, false},
-		{r("owners"), "carol", "", nil, true},
-		{r("owners"), "sam", "", []string{"shop"}, true},
-		{r("owners"), "sam", "", []string{"other"}, false},
-		{r("codeowners"), "dave", "", nil, true},
-		{r("codeowners"), "x", "", []string{"dba"}, true},
-		{r("codeowners"), "erin", "", nil, true},
-		{r("codeowners"), "ivy", "Ivy@ACME.ch", nil, true}, // an email matches without case
-		{r("codeowners"), "ivy", "ivy@acme.com", nil, false},
-		{r("codeowners"), "ivy", "", nil, false}, // no email, no match
-		{r("codeowners"), "zed", "", []string{"shop"}, false},
-		{r("owners"), "ivy", "ivy@acme.ch", nil, false}, // the codeowners are not the owners
-		{r("manager"), "mia", "", nil, true},
-		{r("manager"), "bob", "", nil, false},
-		{r("owners"), "bob", "", []string{"shop"}, false}, // the requester never reviews
-		{r("group:a"), "", "", []string{"a"}, false},
+		{r("user:zoe"), teams("zoe", ""), true},
+		{r("user:zoe"), teams("zed", ""), false},
+		{r("owners"), teams("carol", ""), true},
+		{r("owners"), teams("sam", "", "shop"), true},
+		{r("owners"), teams("sam", "", "other"), false},
+		// team: entries match teams, which auth.teams maps from groups; group: entries match groups.
+		{r("owners"), Person{Name: "sam", Groups: []string{"sg-quai-shop"}, Teams: []string{"shop"}}, true},
+		{r("owners"), Person{Name: "sam", Groups: []string{"shop"}, Teams: []string{"retail"}}, false},
+		{r("codeowners"), Person{Name: "x", Teams: []string{"dba"}}, false},
+		{r("codeowners"), teams("dave", ""), true},
+		{r("codeowners"), teams("x", "", "dba"), true},
+		{r("codeowners"), teams("erin", ""), true},
+		{r("codeowners"), teams("ivy", "Ivy@ACME.ch"), true}, // an email matches without case
+		{r("codeowners"), teams("ivy", "ivy@acme.com"), false},
+		{r("codeowners"), teams("ivy", ""), false}, // no email, no match
+		{r("codeowners"), teams("zed", "", "shop"), false},
+		{r("owners"), teams("ivy", "ivy@acme.ch"), false}, // the codeowners are not the owners
+		{r("manager"), teams("mia", ""), true},
+		{r("manager"), teams("bob", ""), false},
+		{r("owners"), teams("bob", "", "shop"), false}, // the requester never reviews
+		{r("group:a"), teams("", "", "a"), false},
+		{r("group:a"), Person{Name: "x", Teams: []string{"a"}}, false},
 	}
 	for _, tt := range tests {
-		if got := CanReview(tt.rule, tt.name, tt.email, tt.groups, ctx); got != tt.want {
-			t.Errorf("CanReview(%v, %s, %s, %v) = %v", tt.rule.Approvers, tt.name, tt.email, tt.groups, got)
+		if got := CanReview(tt.rule, tt.who, ctx); got != tt.want {
+			t.Errorf("CanReview(%v, %+v) = %v", tt.rule.Approvers, tt.who, got)
 		}
+	}
+	// A team member's review counts with the teams they had when they reviewed.
+	sam := []Review{{Reviewer: "sam", Groups: []string{"sg-quai-shop"}, Teams: []string{"shop"}, Decision: Approve}}
+	if got := Evaluate([]Rule{r("owners")}, sam, ctx).State; got != Approved {
+		t.Errorf("owner by team: %s", got)
+	}
+	sam[0].Teams = []string{"sg-quai-shop"}
+	if got := Evaluate([]Rule{r("owners")}, sam, ctx).State; got != Pending {
+		t.Errorf("owner by a group of another team: %s", got)
 	}
 	// An email entry's review counts with the email the reviewer had when they reviewed.
 	rv := []Review{{Reviewer: "ivy", Email: "ivy@acme.ch", Decision: Approve}}

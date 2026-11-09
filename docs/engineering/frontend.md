@@ -42,7 +42,7 @@ frontend/
 │   │   ├── requests/
 │   │   ├── approvals.tsx
 │   │   ├── designer/
-│   │   └── admin/                 # repositories, executors, roles, audit
+│   │   └── admin/                 # repositories, executors, roles, audit, access report
 │   ├── api/                       # generated client and query hooks (never edited by hand)
 │   ├── components/
 │   │   ├── ui/                    # shadcn components (owned source)
@@ -154,7 +154,7 @@ regenerates the cases after a cel-go upgrade, and the frontend CI checks they ar
 | Inventory table | Server-side filtering, sorting and pagination (TanStack Table); saved views. |
 | Designer | React Flow canvas whose palette lists types from connected repositories; saves as a pull request to the catalog repository (for now, a direct commit: design 04). |
 | Command palette | `⌘K` for catalog items, resources and requests. |
-| Admin | Repository registration wizard with live access checks and health pages; executors; roles; audit log viewer. |
+| Admin | Repository registration wizard with live access checks and health pages; executors; roles; audit log viewer; the access report (`/admin/access`: every person's groups, teams, roles and API tokens, filtered in the page, and its CSV download), for auditors and platform admins. |
 
 ## Quality gates
 

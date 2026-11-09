@@ -217,12 +217,13 @@ const (
 	AuthDev  = "dev"
 )
 
-// Auth configures who can sign in and the roles their groups give them.
+// Auth configures who can sign in, the roles their groups give them and the teams they are in.
 type Auth struct {
 	// Mode is oidc, or dev for the development user switcher, which production refuses.
 	Mode    string        `yaml:"mode"`
 	OIDC    OIDC          `yaml:"oidc"`
 	Roles   []RoleMapping `yaml:"roles"`
+	Teams   []TeamMapping `yaml:"teams"`
 	Session Session       `yaml:"session"`
 	Dev     Dev           `yaml:"dev"`
 }
@@ -244,6 +245,16 @@ type RoleMapping struct {
 	Group string `yaml:"group"`
 	Role  string `yaml:"role"`
 	Scope string `yaml:"scope"`
+}
+
+// TeamMapping maps IdP groups to a Quai team (docs/design/08-identity-access-tenancy.md#directory):
+// Group is a group's name, or a pattern with one *, which matches one or more characters; a * in
+// Team stands for what it matched ({group: sg-quai-*, team: "*"}: sg-quai-shop is team shop). The
+// first entry that matches a group decides its team; a group no entry matches is the team of its
+// own name.
+type TeamMapping struct {
+	Group string `yaml:"group"`
+	Team  string `yaml:"team"`
 }
 
 // Session configures browser sessions.
@@ -626,6 +637,17 @@ func (a *Auth) validate(env string) error {
 		}
 		if kind, name, ok := strings.Cut(m.Scope, ":"); m.Scope != "" && m.Scope != "global" && (!ok || name == "" || !slices.Contains([]string{"team", "repository", "catalog-item"}, kind)) {
 			errs = append(errs, fmt.Errorf("auth.roles[%d].scope must be global, team:<name>, repository:<name> or catalog-item:<name>, not %q", i, m.Scope))
+		}
+	}
+	for i, m := range a.Teams {
+		stars := strings.Count(m.Group, "*")
+		switch {
+		case m.Group == "" || m.Team == "":
+			errs = append(errs, fmt.Errorf("auth.teams[%d] needs a group and a team", i))
+		case stars > 1:
+			errs = append(errs, fmt.Errorf("auth.teams[%d].group %q may hold one * at most", i, m.Group))
+		case strings.Count(m.Team, "*") > stars:
+			errs = append(errs, fmt.Errorf("auth.teams[%d].team %q may hold a * only once, and only when its group has one", i, m.Team))
 		}
 	}
 	if a.Session.Lifetime < 0 || a.Session.IdleTimeout < 0 {

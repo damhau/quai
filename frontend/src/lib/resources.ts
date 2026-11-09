@@ -20,19 +20,24 @@ export const resourceStates: Record<string, { label: string; tone: "neutral" | "
   drifted: { label: "Drifted", tone: "bad" },
 }
 
-type Me = { name: string; email?: string; groups: string[] | null }
+type Me = { name: string; email?: string; groups: string[] | null; teams: string[] | null }
 
-/** ownedBy says whether me owns r: through its owner field, or as one of its code owners (docs/design/02). */
+/**
+ * ownedBy says whether me owns r: as its owner, in its owning team (team:<name>, the teams auth.teams
+ * maps me's groups to), or as one of its code owners (docs/design/02).
+ */
 export function ownedBy(r: { owner?: string; owners?: string[] | null }, me: Me | undefined) {
   if (!me) return false
-  return r.owner === me.name || (r.owners ?? []).some((entry) => {
+  const names = (entry: string) => {
     const [kind, v = ""] = entry.split(/:(.*)/s)
     if (!v) return false
     if (kind === "user") return v === me.name
-    if (kind === "group" || kind === "team") return (me.groups ?? []).includes(v)
+    if (kind === "group") return (me.groups ?? []).includes(v)
+    if (kind === "team") return (me.teams ?? []).includes(v)
     if (kind === "email") return !!me.email && v.toLowerCase() === me.email.toLowerCase()
     return false
-  })
+  }
+  return r.owner === me.name || (!!r.owner?.startsWith("team:") && names(r.owner)) || (r.owners ?? []).some(names)
 }
 
 /** ownerText is who owns r, as a list shows it. */

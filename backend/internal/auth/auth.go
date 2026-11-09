@@ -73,6 +73,15 @@ type sessionUser struct {
 	AuthTime time.Time `json:"authTime"`
 }
 
+// login is a sign-in: the session's user, how they signed in, and the identity provider's
+// identifiers for them (none for a development user).
+type login struct {
+	sessionUser
+	Method   string
+	Subject  string // the ID token's sub
+	ObjectID string // Entra ID's oid
+}
+
 // WebhooksPath is where Git platforms deliver webhooks: no sessions or tokens there, the
 // repository's connector verifies each delivery.
 const WebhooksPath = "/webhooks/"
@@ -101,6 +110,7 @@ const (
 // Authenticator signs people in and identifies requests.
 type Authenticator struct {
 	cfg      config.Auth
+	dir      *Directory
 	sessions *scs.SessionManager
 	store    *store.Store
 	client   *http.Client // reaches the identity provider; nil: the default
@@ -123,11 +133,14 @@ func New(cfg *config.Config, s *store.Store, client *http.Client, log *slog.Logg
 	sm.Cookie.SameSite = http.SameSiteLaxMode
 	sm.Cookie.Secure = cfg.Env == config.Production
 	sm.Cookie.Path = "/"
-	return &Authenticator{cfg: cfg.Auth, sessions: sm, store: s, client: client, log: log}
+	return &Authenticator{cfg: cfg.Auth, dir: NewDirectory(cfg.Auth), sessions: sm, store: s, client: client, log: log}
 }
 
 // Mode returns how people sign in: oidc or dev.
 func (a *Authenticator) Mode() string { return a.cfg.Mode }
+
+// Directory returns what people's groups make them: their teams and grants.
+func (a *Authenticator) Directory() *Directory { return a.dir }
 
 // Middleware loads the session and identifies the request: an API token in the Authorization
 // header, or else the session's user. It refuses a state-changing request made with a session
@@ -189,20 +202,12 @@ func (a *Authenticator) sessionIdentity(ctx context.Context) (Identity, bool) {
 	}, true
 }
 
-// principal gives a person the grants their groups have.
+// principal gives a person the teams and grants their groups have.
 func (a *Authenticator) principal(name string, groups, scopes []string) authz.Principal {
-	p := authz.Principal{Name: name, Groups: groups, Scopes: scopes}
-	for _, m := range a.cfg.Roles {
-		if !slices.Contains(groups, m.Group) {
-			continue
-		}
-		scope := authz.Global
-		if kind, n, ok := strings.Cut(m.Scope, ":"); ok {
-			scope = authz.Scope{Kind: kind, Name: n}
-		}
-		g := authz.Grant{Role: authz.Role(m.Role), Scope: scope}
-		if !slices.Contains(p.Grants, g) {
-			p.Grants = append(p.Grants, g)
+	p := authz.Principal{Name: name, Groups: groups, Teams: a.dir.Teams(groups), Scopes: scopes}
+	for _, g := range a.dir.Grants(groups) {
+		if !slices.Contains(p.Grants, g.Grant) {
+			p.Grants = append(p.Grants, g.Grant)
 		}
 	}
 	return p
@@ -343,11 +348,11 @@ func (a *Authenticator) callback(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, http.StatusForbidden, err.Error())
 		return
 	}
-	if err := a.recordLogin(ctx, u, config.AuthOIDC); err != nil {
-		a.fail(w, r, err)
+	if err := a.recordLogin(ctx, u); err != nil {
+		a.refuseOrFail(w, r, err)
 		return
 	}
-	if err := a.signIn(ctx, u); err != nil {
+	if err := a.signIn(ctx, u.sessionUser); err != nil {
 		a.fail(w, r, err)
 		return
 	}
@@ -369,16 +374,17 @@ func verifiedEmail(claims map[string]any) string {
 	return ""
 }
 
-func (a *Authenticator) userFromClaims(idt *oidc.IDToken) (sessionUser, error) {
+func (a *Authenticator) userFromClaims(idt *oidc.IDToken) (login, error) {
 	var claims map[string]any
 	if err := idt.Claims(&claims); err != nil {
-		return sessionUser{}, err
+		return login{}, err
 	}
 	if names, ok := claims["_claim_names"].(map[string]any); ok && names[a.cfg.OIDC.GroupsClaim] != nil {
-		return sessionUser{}, errors.New("your account is in more groups than the ID token can list; " +
+		return login{}, errors.New("your account is in more groups than the ID token can list; " +
 			"ask an administrator to emit only the groups assigned to Quai, or to use app roles")
 	}
-	u := sessionUser{AuthTime: time.Now(), Email: verifiedEmail(claims)}
+	u := login{sessionUser: sessionUser{AuthTime: time.Now(), Email: verifiedEmail(claims)}, Method: config.AuthOIDC, Subject: idt.Subject}
+	u.ObjectID, _ = claims["oid"].(string)
 	names := slices.DeleteFunc(slices.Compact([]string{a.cfg.OIDC.NameClaim, "preferred_username"}), func(c string) bool { return c == "" })
 	for _, c := range names {
 		if s, _ := claims[c].(string); s != "" {
@@ -393,7 +399,7 @@ func (a *Authenticator) userFromClaims(idt *oidc.IDToken) (sessionUser, error) {
 			if e, _ := claims["email"].(string); e != "" {
 				why = "and its email claim is not verified (neither email_verified nor xms_edov is true)"
 			}
-			return sessionUser{}, fmt.Errorf("the identity provider sent no %s claim to name you by, %s; "+
+			return login{}, fmt.Errorf("the identity provider sent no %s claim to name you by, %s; "+
 				"ask an administrator to have it send one of these claims", strings.Join(names, " or "), why)
 		}
 		u.Name = u.Email
@@ -435,12 +441,12 @@ func (a *Authenticator) devLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	du := a.cfg.Dev.Users[i]
-	u := sessionUser{Name: du.Name, Email: du.Email, Groups: du.Groups, AuthTime: time.Now().Truncate(time.Second)}
-	if err := a.recordLogin(r.Context(), u, config.AuthDev); err != nil {
-		a.fail(w, r, err)
+	u := login{sessionUser: sessionUser{Name: du.Name, Email: du.Email, Groups: du.Groups, AuthTime: time.Now().Truncate(time.Second)}, Method: config.AuthDev}
+	if err := a.recordLogin(r.Context(), u); err != nil {
+		a.refuseOrFail(w, r, err)
 		return
 	}
-	if err := a.signIn(r.Context(), u); err != nil {
+	if err := a.signIn(r.Context(), u.sessionUser); err != nil {
 		a.fail(w, r, err)
 		return
 	}
@@ -450,6 +456,18 @@ func (a *Authenticator) devLogin(w http.ResponseWriter, r *http.Request) {
 func (a *Authenticator) fail(w http.ResponseWriter, r *http.Request, err error) {
 	a.log.ErrorContext(r.Context(), "authentication", slog.Any("error", err))
 	writeProblem(w, http.StatusInternalServerError, "")
+}
+
+// refuseOrFail answers a login recordLogin did not record: 403 with the reason when it refused
+// the person, 500 otherwise.
+func (a *Authenticator) refuseOrFail(w http.ResponseWriter, r *http.Request, err error) {
+	var no refusal
+	if !errors.As(err, &no) {
+		a.fail(w, r, err)
+		return
+	}
+	a.log.WarnContext(r.Context(), "login refused", slog.Any("error", err))
+	writeProblem(w, http.StatusForbidden, no.msg)
 }
 
 // TokenPrefix starts every API token, so that leaked tokens are easy to find.

@@ -13,9 +13,9 @@ import (
 )
 
 const createReview = `-- name: CreateReview :one
-INSERT INTO reviews (id, request_id, reviewer, groups, decision, comment, change_set_hash, reviewer_email, reviewer_auth_time)
-VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8::text, ''), $9)
-RETURNING id, request_id, reviewer, groups, decision, comment, change_set_hash, created_at, reviewer_email, reviewer_auth_time
+INSERT INTO reviews (id, request_id, reviewer, groups, decision, comment, change_set_hash, reviewer_email, reviewer_auth_time, teams)
+VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8::text, ''), $9, $10::text[])
+RETURNING id, request_id, reviewer, groups, decision, comment, change_set_hash, created_at, reviewer_email, reviewer_auth_time, teams
 `
 
 type CreateReviewParams struct {
@@ -28,6 +28,7 @@ type CreateReviewParams struct {
 	ChangeSetHash    string
 	ReviewerEmail    pgtype.Text
 	ReviewerAuthTime pgtype.Timestamptz
+	Teams            []string
 }
 
 func (q *Queries) CreateReview(ctx context.Context, arg CreateReviewParams) (Review, error) {
@@ -41,6 +42,7 @@ func (q *Queries) CreateReview(ctx context.Context, arg CreateReviewParams) (Rev
 		arg.ChangeSetHash,
 		arg.ReviewerEmail,
 		arg.ReviewerAuthTime,
+		arg.Teams,
 	)
 	var i Review
 	err := row.Scan(
@@ -54,12 +56,13 @@ func (q *Queries) CreateReview(ctx context.Context, arg CreateReviewParams) (Rev
 		&i.CreatedAt,
 		&i.ReviewerEmail,
 		&i.ReviewerAuthTime,
+		&i.Teams,
 	)
 	return i, err
 }
 
 const listReviews = `-- name: ListReviews :many
-SELECT id, request_id, reviewer, groups, decision, comment, change_set_hash, created_at, reviewer_email, reviewer_auth_time FROM reviews WHERE request_id = $1 ORDER BY created_at, id
+SELECT id, request_id, reviewer, groups, decision, comment, change_set_hash, created_at, reviewer_email, reviewer_auth_time, teams FROM reviews WHERE request_id = $1 ORDER BY created_at, id
 `
 
 func (q *Queries) ListReviews(ctx context.Context, requestID uuid.UUID) ([]Review, error) {
@@ -82,6 +85,7 @@ func (q *Queries) ListReviews(ctx context.Context, requestID uuid.UUID) ([]Revie
 			&i.CreatedAt,
 			&i.ReviewerEmail,
 			&i.ReviewerAuthTime,
+			&i.Teams,
 		); err != nil {
 			return nil, err
 		}

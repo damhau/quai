@@ -17,6 +17,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -30,6 +31,7 @@ import (
 	"github.com/damhau/quai/backend/internal/config"
 	"github.com/damhau/quai/backend/internal/netx"
 	"github.com/damhau/quai/backend/internal/pgtest"
+	"github.com/damhau/quai/backend/internal/store"
 )
 
 func TestMain(m *testing.M) { os.Exit(pgtest.Main(m)) }
@@ -123,6 +125,14 @@ func newIDP(t *testing.T) *idp {
 // quai starts the API with OIDC login against p, or the dev switcher when p is nil.
 func quai(t *testing.T, p *idp) (*httptest.Server, *http.Client) {
 	t.Helper()
+	srv, c, _ := quaiWith(t, p, nil)
+	return srv, c
+}
+
+// quaiWith is quai with a change to its configuration, when change is not nil; it returns the
+// store too.
+func quaiWith(t *testing.T, p *idp, change func(*config.Config)) (*httptest.Server, *http.Client, *store.Store) {
+	t.Helper()
 	cfg := &config.Config{Env: config.Development}
 	srv := httptest.NewUnstartedServer(nil)
 	if p != nil {
@@ -135,6 +145,9 @@ func quai(t *testing.T, p *idp) (*httptest.Server, *http.Client) {
 	}
 	cfg.Auth.Roles = []config.RoleMapping{{Group: "developers", Role: "requester"}, {Group: "shop", Role: "operator", Scope: "team:shop"}, {Group: "platform-admins", Role: "platform-admin"}}
 	cfg.Auth.Session = config.Session{Lifetime: time.Hour, IdleTimeout: time.Hour}
+	if change != nil {
+		change(cfg)
+	}
 	s := pgtest.Store(t)
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	var client *http.Client
@@ -154,13 +167,14 @@ func quai(t *testing.T, p *idp) (*httptest.Server, *http.Client) {
 	srv.Start()
 	t.Cleanup(srv.Close)
 	jar, _ := cookiejar.New(nil)
-	return srv, &http.Client{Jar: jar, Transport: browser}
+	return srv, &http.Client{Jar: jar, Transport: browser}, s
 }
 
 type me struct {
 	Name      string
 	Email     string
 	Groups    []string
+	Teams     []string
 	Roles     []struct{ Role, Scope string }
 	Scopes    []string
 	CSRFToken string
@@ -469,7 +483,7 @@ func TestDevSwitcher(t *testing.T) {
 		t.Fatalf("dev login = %d", resp.StatusCode)
 	}
 	m, status := getMe(t, c, srv.URL)
-	if status != http.StatusOK || m.Name != "alice" || m.Roles[0].Role != "platform-admin" {
+	if status != http.StatusOK || m.Name != "alice" || m.Roles[0].Role != "platform-admin" || !slices.Equal(m.Teams, []string{"platform-admins"}) {
 		t.Errorf("me = %d %+v", status, m)
 	}
 	// The OIDC endpoints do not exist in dev mode.

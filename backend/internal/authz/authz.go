@@ -58,7 +58,10 @@ type Grant struct {
 type Principal struct {
 	Name   string
 	Email  string   // from the IdP, when it gives a verified one; empty for an API token
-	Groups []string // IdP groups; a team is the group of the same name
+	Groups []string // IdP groups
+	// Teams are the Quai teams of the groups (auth.teams; a group no entry maps is the team of its
+	// own name): ownership by team:<name> and team: owner entries match them.
+	Teams  []string
 	Grants []Grant
 	// Scopes narrow what an API token may do (TokenScopes); nil for a browser session.
 	Scopes []string
@@ -89,6 +92,7 @@ const (
 	ManageRepository   Action = "repositories.manage"
 	ManageSettings     Action = "settings.manage"
 	ReadAudit          Action = "audit.read"
+	ReadAccessReport   Action = "access.read"
 	UseBreakGlass      Action = "requests.break-glass"
 	ManageOwnTokens    Action = "tokens.manage"
 	PublishBlueprint   Action = "blueprints.publish"
@@ -196,6 +200,10 @@ func Authorize(_ context.Context, p Principal, a Action, o Object) (Decision, er
 		if !p.has(Auditor, o) {
 			return deny("reading the audit log needs the auditor role"), nil
 		}
+	case ReadAccessReport:
+		if !p.has(Auditor, o) {
+			return deny("reading the access report needs the auditor role"), nil
+		}
 	case ManageOwnTokens:
 		// Anyone signed in manages their own tokens; tokens cannot make tokens (scopes above).
 	case UseBreakGlass:
@@ -233,18 +241,21 @@ func (p Principal) has(role Role, o Object) bool {
 
 // owns reports whether p owns o, directly or through their team.
 func (p Principal) owns(o Object) bool {
-	return o.Owner != "" && o.Owner == p.Name || o.Team != "" && slices.Contains(p.Groups, o.Team) ||
+	return o.Owner != "" && o.Owner == p.Name || o.Team != "" && slices.Contains(p.Teams, o.Team) ||
 		slices.ContainsFunc(o.Owners, p.is)
 }
 
-// is reports whether an owner entry names p: user:<name>, group:<name> or email:<address>.
+// is reports whether an owner entry names p: user:<name>, group:<name>, team:<name> or
+// email:<address>.
 func (p Principal) is(entry string) bool {
 	kind, v, _ := strings.Cut(entry, ":")
 	switch kind {
 	case "user":
 		return v != "" && v == p.Name
-	case "group", "team":
+	case "group":
 		return v != "" && slices.Contains(p.Groups, v)
+	case "team":
+		return v != "" && slices.Contains(p.Teams, v)
 	case "email":
 		return v != "" && p.Email != "" && strings.EqualFold(v, p.Email)
 	}

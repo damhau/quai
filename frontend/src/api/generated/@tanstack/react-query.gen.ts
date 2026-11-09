@@ -3,8 +3,8 @@
 import { type InfiniteData, infiniteQueryOptions, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { cancelRequest, checkDrift, checkRepositoryEnforcement, createRepository, createToken, deleteRepository, exportAuditLog, generateRunToken, getBlueprint, getInstance, getMe, getMeta, getRepository, getRequest, getResource, getType, installRepositoryWebhook, listAuditEvents, listCatalog, listEvents, listInstances, listInventory, listRepositories, listRepositoryConnections, listRequests, listRuns, listTokens, type Options, planBlueprint, planInstanceAction, planType, previewBlueprint, previewDefinitions, previewType, publishBlueprint, reportFluxEvent, reportRun, repositoryCommit, repositoryHealth, repositoryLog, requestBlueprint, requestInstanceAction, requestType, retryRequest, reviewRequest, revokeToken, syncRepository, testRepositoryAccess, updateRepository } from '../sdk.gen';
-import type { CancelRequestData, CancelRequestError, CancelRequestResponse, CheckDriftData, CheckDriftError, CheckDriftResponse, CheckRepositoryEnforcementData, CheckRepositoryEnforcementError, CheckRepositoryEnforcementResponse, CreateRepositoryData, CreateRepositoryError, CreateRepositoryResponse, CreateTokenData, CreateTokenError, CreateTokenResponse, DeleteRepositoryData, DeleteRepositoryError, DeleteRepositoryResponse, ExportAuditLogData, ExportAuditLogError, ExportAuditLogResponse, GenerateRunTokenData, GenerateRunTokenError, GenerateRunTokenResponse, GetBlueprintData, GetBlueprintError, GetBlueprintResponse, GetInstanceData, GetInstanceError, GetInstanceResponse, GetMeData, GetMeError, GetMeResponse, GetMetaData, GetMetaError, GetMetaResponse, GetRepositoryData, GetRepositoryError, GetRepositoryResponse, GetRequestData, GetRequestError, GetRequestResponse, GetResourceData, GetResourceError, GetResourceResponse, GetTypeData, GetTypeError, GetTypeResponse, InstallRepositoryWebhookData, InstallRepositoryWebhookError, InstallRepositoryWebhookResponse, ListAuditEventsData, ListAuditEventsError, ListAuditEventsResponse, ListCatalogData, ListCatalogError, ListCatalogResponse, ListEventsData, ListEventsError, ListEventsResponse, ListInstancesData, ListInstancesError, ListInstancesResponse, ListInventoryData, ListInventoryError, ListInventoryResponse, ListRepositoriesData, ListRepositoriesError, ListRepositoriesResponse, ListRepositoryConnectionsData, ListRepositoryConnectionsError, ListRepositoryConnectionsResponse, ListRequestsData, ListRequestsError, ListRequestsResponse, ListRunsData, ListRunsError, ListRunsResponse, ListTokensData, ListTokensError, ListTokensResponse, PlanBlueprintData, PlanBlueprintError, PlanBlueprintResponse, PlanInstanceActionData, PlanInstanceActionError, PlanInstanceActionResponse, PlanTypeData, PlanTypeError, PlanTypeResponse, PreviewBlueprintData, PreviewBlueprintError, PreviewBlueprintResponse, PreviewDefinitionsData, PreviewDefinitionsError, PreviewDefinitionsResponse, PreviewTypeData, PreviewTypeError, PreviewTypeResponse, PublishBlueprintData, PublishBlueprintError, PublishBlueprintResponse, ReportFluxEventData, ReportFluxEventError, ReportFluxEventResponse, ReportRunData, ReportRunError, ReportRunResponse, RepositoryCommitData, RepositoryCommitError, RepositoryCommitResponse, RepositoryHealthData, RepositoryHealthError, RepositoryHealthResponse, RepositoryLogData, RepositoryLogError, RepositoryLogResponse, RequestBlueprintData, RequestBlueprintError, RequestBlueprintResponse, RequestInstanceActionData, RequestInstanceActionError, RequestInstanceActionResponse, RequestTypeData, RequestTypeError, RequestTypeResponse, RetryRequestData, RetryRequestError, RetryRequestResponse, ReviewRequestData, ReviewRequestError, ReviewRequestResponse, RevokeTokenData, RevokeTokenError, RevokeTokenResponse, SyncRepositoryData, SyncRepositoryError, SyncRepositoryResponse, TestRepositoryAccessData, TestRepositoryAccessError, TestRepositoryAccessResponse, UpdateRepositoryData, UpdateRepositoryError, UpdateRepositoryResponse } from '../types.gen';
+import { cancelRequest, checkDrift, checkRepositoryEnforcement, createRepository, createToken, deleteRepository, exportAccessReport, exportAuditLog, generateRunToken, getAccessReport, getBlueprint, getInstance, getMe, getMeta, getRepository, getRequest, getResource, getType, installRepositoryWebhook, listAuditEvents, listCatalog, listEvents, listInstances, listInventory, listRepositories, listRepositoryConnections, listRequests, listRuns, listTokens, type Options, planBlueprint, planInstanceAction, planType, previewBlueprint, previewDefinitions, previewType, publishBlueprint, reportFluxEvent, reportRun, repositoryCommit, repositoryHealth, repositoryLog, requestBlueprint, requestInstanceAction, requestType, retryRequest, reviewRequest, revokeToken, syncRepository, testRepositoryAccess, updateRepository } from '../sdk.gen';
+import type { CancelRequestData, CancelRequestError, CancelRequestResponse, CheckDriftData, CheckDriftError, CheckDriftResponse, CheckRepositoryEnforcementData, CheckRepositoryEnforcementError, CheckRepositoryEnforcementResponse, CreateRepositoryData, CreateRepositoryError, CreateRepositoryResponse, CreateTokenData, CreateTokenError, CreateTokenResponse, DeleteRepositoryData, DeleteRepositoryError, DeleteRepositoryResponse, ExportAccessReportData, ExportAccessReportError, ExportAccessReportResponse, ExportAuditLogData, ExportAuditLogError, ExportAuditLogResponse, GenerateRunTokenData, GenerateRunTokenError, GenerateRunTokenResponse, GetAccessReportData, GetAccessReportError, GetAccessReportResponse, GetBlueprintData, GetBlueprintError, GetBlueprintResponse, GetInstanceData, GetInstanceError, GetInstanceResponse, GetMeData, GetMeError, GetMeResponse, GetMetaData, GetMetaError, GetMetaResponse, GetRepositoryData, GetRepositoryError, GetRepositoryResponse, GetRequestData, GetRequestError, GetRequestResponse, GetResourceData, GetResourceError, GetResourceResponse, GetTypeData, GetTypeError, GetTypeResponse, InstallRepositoryWebhookData, InstallRepositoryWebhookError, InstallRepositoryWebhookResponse, ListAuditEventsData, ListAuditEventsError, ListAuditEventsResponse, ListCatalogData, ListCatalogError, ListCatalogResponse, ListEventsData, ListEventsError, ListEventsResponse, ListInstancesData, ListInstancesError, ListInstancesResponse, ListInventoryData, ListInventoryError, ListInventoryResponse, ListRepositoriesData, ListRepositoriesError, ListRepositoriesResponse, ListRepositoryConnectionsData, ListRepositoryConnectionsError, ListRepositoryConnectionsResponse, ListRequestsData, ListRequestsError, ListRequestsResponse, ListRunsData, ListRunsError, ListRunsResponse, ListTokensData, ListTokensError, ListTokensResponse, PlanBlueprintData, PlanBlueprintError, PlanBlueprintResponse, PlanInstanceActionData, PlanInstanceActionError, PlanInstanceActionResponse, PlanTypeData, PlanTypeError, PlanTypeResponse, PreviewBlueprintData, PreviewBlueprintError, PreviewBlueprintResponse, PreviewDefinitionsData, PreviewDefinitionsError, PreviewDefinitionsResponse, PreviewTypeData, PreviewTypeError, PreviewTypeResponse, PublishBlueprintData, PublishBlueprintError, PublishBlueprintResponse, ReportFluxEventData, ReportFluxEventError, ReportFluxEventResponse, ReportRunData, ReportRunError, ReportRunResponse, RepositoryCommitData, RepositoryCommitError, RepositoryCommitResponse, RepositoryHealthData, RepositoryHealthError, RepositoryHealthResponse, RepositoryLogData, RepositoryLogError, RepositoryLogResponse, RequestBlueprintData, RequestBlueprintError, RequestBlueprintResponse, RequestInstanceActionData, RequestInstanceActionError, RequestInstanceActionResponse, RequestTypeData, RequestTypeError, RequestTypeResponse, RetryRequestData, RetryRequestError, RetryRequestResponse, ReviewRequestData, ReviewRequestError, ReviewRequestResponse, RevokeTokenData, RevokeTokenError, RevokeTokenResponse, SyncRepositoryData, SyncRepositoryError, SyncRepositoryResponse, TestRepositoryAccessData, TestRepositoryAccessError, TestRepositoryAccessResponse, UpdateRepositoryData, UpdateRepositoryError, UpdateRepositoryResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -38,6 +38,44 @@ const createQueryKey = <TOptions extends Options>(id: string, options?: TOptions
     }
     return [params];
 };
+
+export const getAccessReportQueryKey = (options?: Options<GetAccessReportData>) => createQueryKey('getAccessReport', options);
+
+/**
+ * Read the access report: every user with their groups, teams and roles (auditors and platform admins)
+ */
+export const getAccessReportOptions = (options?: Options<GetAccessReportData>) => queryOptions<GetAccessReportResponse, GetAccessReportError, GetAccessReportResponse, ReturnType<typeof getAccessReportQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getAccessReport({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getAccessReportQueryKey(options)
+});
+
+export const exportAccessReportQueryKey = (options?: Options<ExportAccessReportData>) => createQueryKey('exportAccessReport', options);
+
+/**
+ * Download the access report as CSV (auditors and platform admins)
+ *
+ * One row per person or API token (via), role, scope and the group that gives it; one without a role has one row with the role columns empty. Cells a spreadsheet would read as a formula start with an apostrophe.
+ */
+export const exportAccessReportOptions = (options?: Options<ExportAccessReportData>) => queryOptions<ExportAccessReportResponse, ExportAccessReportError, ExportAccessReportResponse, ReturnType<typeof exportAccessReportQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await exportAccessReport({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: exportAccessReportQueryKey(options)
+});
 
 export const listAuditEventsQueryKey = (options?: Options<ListAuditEventsData>) => createQueryKey('listAuditEvents', options);
 

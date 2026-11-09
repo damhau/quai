@@ -21,7 +21,7 @@ quai/
 │   │   │   ├── policy/                 # approval rule evaluation
 │   │   │   └── tfplan/                 # terraform-json → resource changes via address patterns
 │   │   ├── api/                        # Huma registration, middleware, problem details
-│   │   ├── auth/                       # OIDC, sessions, tokens, step-up
+│   │   ├── auth/                       # OIDC, sessions, tokens, step-up, the directory (teams, users)
 │   │   ├── authz/                      # Authorize(): roles, scopes, entitlements
 │   │   ├── repositories/               # connections, health, registration checks
 │   │   ├── catalog/                    # definitions cache per (repo, commit), catalog index

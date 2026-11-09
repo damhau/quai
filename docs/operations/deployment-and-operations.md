@@ -48,6 +48,7 @@ single pod with both roles.
   | `auth.oidc.issuer`, `.clientID`, `.clientSecret`, `.redirectURL` | `QUAI_AUTH_OIDC_ISSUER`, `_CLIENT_ID`, `_CLIENT_SECRET`, `_REDIRECT_URL` | required for `oidc`; https in production |
   | `auth.oidc.scopes`, `.nameClaim`, `.groupsClaim` | | `openid profile email`, `preferred_username`, `groups` |
   | `auth.roles` | | `- { group: sg-quai-admins, role: platform-admin, scope: global }`; scope can be `team:`, `repository:` or `catalog-item:` and a name |
+  | `auth.teams` | | none: each group is the team of its own name. `- { group: sg-quai-*, team: "*" }` maps groups to teams, the first entry that matches deciding ([people and teams](#people-and-teams)) |
   | `auth.session.lifetime`, `.idleTimeout` | | `8h`, `30m` |
   | `git.cacheDir`, `git.committer` | `QUAI_GIT_CACHE_DIR` | the user cache directory; `Quai <quai@localhost>` |
   | `git.signingKey.ref` | `QUAI_GIT_SIGNING_KEY_REF` | none: Quai's commits are unsigned. A reference to an SSH private key (`k8s:quai/signing-key#ssh-privatekey`) Quai signs its commits with; see [verifying them](../design/05-delivery-and-approvals.md#merge) |
@@ -348,6 +349,63 @@ in the database: the export resumes where the destination's cursor is, once it c
 `the audit log changed after it was exported`, an error, means the event after the last one a
 destination took does not link to it: the database was restored from an older backup, or the log
 rewritten. Follow [when the chain does not verify](#when-the-chain-does-not-verify).
+
+### People and teams
+
+People come from the identity provider: their name from `auth.oidc.nameClaim`, their groups from
+`auth.oidc.groupsClaim`. `auth.roles` gives groups roles at a scope, and `auth.teams` puts groups in
+teams, which own resources (`ownership: { team: shop }`) and match `team:` owner entries:
+
+```yaml
+auth:
+  teams:
+    - { group: sg-quai-shop-ops, team: shop } # the first entry that matches a group decides
+    - { group: sg-quai-*, team: "*" }         # sg-quai-blog is in the team blog
+```
+
+A group is a name or a pattern with one `*`, which matches one or more characters (with their
+case); a `*` in the team stands for what it matched. A group no entry matches is the team of its
+own name, as before `auth.teams`. Teams and roles are worked out from the groups on every
+request, so a change applies at once, to sessions and API tokens alike; a token acts with the groups
+its owner had when creating it.
+
+Each sign-in keeps the person in the directory, the `users` table: their name, their email when the
+identity provider vouches for it, their groups, the ID token's `sub` and Entra ID's `oid`, and when
+they last signed in. The **access report** (Admin, for auditors and platform admins, and
+`GET /api/v1/access-report`) lists each of them, and each owner of an API token that still works,
+with their groups, teams, roles by scope and the group that gives each, and their tokens; **Download
+CSV** is the same report for a periodic access review, one row per person or token, role, scope and
+group. Spreadsheets would run a cell starting with `=`, `+`, `-`, `@`, a tab or a carriage return as
+a formula, so those cells start with an apostrophe. People appear once they sign in after the
+upgrade to the version with the directory.
+
+- **A name that belongs to another account.** A sign-in whose name the directory holds for another
+  `sub` is refused: it would act as that person, on their requests, reviews and resources
+  ([open question 45](../plan/open-questions.md#still-open)). Check that the name claim gives
+  unique, stable names (`preferred_username`, the UPN on Entra ID; never a display name). When the
+  account really changed (recreated, or another identity provider), release the name; the next
+  sign-in takes it:
+
+  ```sql
+  UPDATE users SET subject = '', object_id = '' WHERE name = 'alice';
+  ```
+
+- **Deactivating someone**, until SCIM does it (P4-15): their next sign-ins are refused, and the
+  report shows them as deactivated. Their session ends with its lifetime, and their API tokens work
+  until revoked:
+
+  ```sql
+  UPDATE users SET deactivated_at = now() WHERE name = 'alice';
+  UPDATE api_tokens SET revoked_at = now() WHERE owner = 'alice' AND revoked_at IS NULL;
+  ```
+
+- **Erasing someone** ([open question 44](../plan/open-questions.md#still-open)): delete their row,
+  which their next sign-in would create again, and pseudonymize them in the audit log
+  ([above](#retention-and-pruning)):
+
+  ```sql
+  DELETE FROM users WHERE name = 'alice';
+  ```
 
 ### Runners
 

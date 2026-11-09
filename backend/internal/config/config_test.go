@@ -205,12 +205,16 @@ func TestAuth(t *testing.T) {
   roles:
     - { group: sg-quai-admins, role: platform-admin }
     - { group: sg-shop, role: operator, scope: "team:shop" }
+  teams:
+    - { group: sg-quai-*, team: "*" }
+    - { group: Platform Engineers, team: platform }
 `)
 	c, err := Load(p, env(map[string]string{"QUAI_AUTH_OIDC_CLIENT_SECRET": "s3cret"}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.Auth.OIDC.ClientSecret != "s3cret" || c.Auth.OIDC.GroupsClaim != "roles" || len(c.Auth.Roles) != 2 || len(c.Auth.Dev.Users) != 0 {
+	if c.Auth.OIDC.ClientSecret != "s3cret" || c.Auth.OIDC.GroupsClaim != "roles" || len(c.Auth.Roles) != 2 || len(c.Auth.Dev.Users) != 0 ||
+		len(c.Auth.Teams) != 2 || c.Auth.Teams[0] != (TeamMapping{Group: "sg-quai-*", Team: "*"}) {
 		t.Errorf("oidc auth = %+v", c.Auth)
 	}
 	for name, tt := range map[string]struct {
@@ -225,6 +229,10 @@ func TestAuth(t *testing.T) {
 		"bad role":                  {file: "auth: { roles: [{ group: g, role: god }] }\n", want: `auth.roles[0].role must be one of`},
 		"no group":                  {file: "auth: { roles: [{ role: viewer }] }\n", want: "auth.roles[0].group is required"},
 		"bad scope":                 {file: "auth: { roles: [{ group: g, role: viewer, scope: planet }] }\n", want: "auth.roles[0].scope must be global"},
+		"team without a group":      {file: "auth: { teams: [{ team: shop }] }\n", want: "auth.teams[0] needs a group and a team"},
+		"group without a team":      {file: "auth: { teams: [{ group: sg-shop }] }\n", want: "auth.teams[0] needs a group and a team"},
+		"two stars":                 {file: "auth: { teams: [{ group: \"sg-*-*\", team: \"*\" }] }\n", want: "may hold one * at most"},
+		"a star the group lacks":    {file: "auth: { teams: [{ group: sg-shop, team: \"*\" }] }\n", want: "only when its group has one"},
 		"nameless dev user":         {file: "auth: { dev: { users: [{ groups: [a] }] } }\n", want: "every user needs a name"},
 		"negative session":          {file: "auth: { session: { idleTimeout: -1m } }\n", want: "must not be negative"},
 	} {

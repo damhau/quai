@@ -1,6 +1,6 @@
 # Identity, access and tenancy
 
-Status: Draft · 2026-10-26
+Status: Draft · 2026-11-09
 
 ## Authentication
 
@@ -45,7 +45,32 @@ too old or too weak, the UI redirects through the IdP with `max_age` (and
 
 ## Directory
 
-- Users and their groups are read from ID token claims at each login. Group claims are mapped to Quai teams by a configurable mapping (`groups: [sg-quai-*]` → teams).
+- Users and their groups are read from ID token claims at each login, and kept in the directory
+  (the `users` table, P4-04): the name, the email when the IdP vouches for it (below), the groups,
+  the ID token's `sub` and Entra ID's `oid`, the time of the login and of the authentication, and
+  whether the person is deactivated. A person is their name, everywhere in Quai: a login whose name
+  the directory holds for another `sub` is refused, since it would act as that person
+  ([open question 45](../plan/open-questions.md#still-open)); a deactivated person cannot sign in.
+  Nothing erases a person yet ([open question 44](../plan/open-questions.md#still-open)).
+- **Teams.** `auth.teams` maps groups to Quai teams
+  ([open question 20](../plan/open-questions.md#still-open)): a list of `{group, team}`, where the
+  group is a name or a pattern with one `*` (one or more characters, with their case) and a `*` in
+  the team stands for what it matched (`{group: sg-quai-*, team: "*"}`: `sg-quai-shop` is the team
+  `shop`). The first entry that matches a group decides its team; a group no entry matches is the
+  team of its own name. A person's teams are worked out from their groups on every request, as
+  their roles are, and decide ownership by a team (`ownership: { team: shop }`), `team:` owner
+  entries (for `owners` approvers and operating) and the inventory's "owned by me". `group:`
+  entries match groups, never teams. A review keeps the reviewer's teams, as it keeps their groups;
+  a review from before P4-04 counts its groups as its teams.
+- **Access report.** Auditors and platform admins read every person in the directory, and every
+  owner of an API token that still works, with their groups, teams, roles by scope and the groups
+  that give each, their tokens (a token acts with the groups its owner had when creating it, so it
+  can hold a role its owner lost: [open question 46](../plan/open-questions.md#still-open)), their
+  last login and their state: a page under Admin and a CSV download
+  (`GET /api/v1/access-report`, `/export`) for periodic access reviews. Teams and roles are those
+  the current configuration gives the groups of the person's last login. CSV cells starting with
+  `=`, `+`, `-`, `@`, a tab or a carriage return get a leading apostrophe, so that a spreadsheet does
+  not run a name or a group from the IdP as a formula, and every cell is quoted.
 - SCIM 2.0 provisioning (optional) keeps users and groups current between logins and deactivates leavers immediately, which matters for pending approvals.
 - The `manager` attribute (for `approvers: [manager]`) comes from a claim or from SCIM.
 - Owners named by a Git platform (a `CODEOWNERS` entry such as `@alice` or `@org/team`; an Azure
@@ -87,7 +112,8 @@ too old or too weak, the UI redirects through the IdP with `max_age` (and
 ## Tenancy
 
 - **Organization:** one per installation in v1. The data model carries an `org_id` everywhere so multi-organization installs (managed service providers) need no migration later.
-- **Teams:** own resources, instances and catalog items; map to IdP groups.
+- **Teams:** own resources, instances and catalog items; map to IdP groups through `auth.teams`
+  ([directory](#directory)).
 - **Ownership:** a resource's owner is a user or a team (see [resource types](02-resource-types-and-generators.md#ownership)). Team ownership is preferred: it survives people leaving.
 
 ## Authorization
@@ -140,7 +166,10 @@ far). Decisions the roles do not spell out:
 - Anyone can read and cancel their own requests; reviewing needs access to the
   request, and the request's approval rules decide whose review counts.
 - Operating a resource needs the operator role and ownership: the owner, a member
-  of the owning team (the IdP group of the team's name), or a platform admin.
+  of the owning team (a group `auth.teams` maps to it, or the group of its name when no entry
+  matches that group), or a platform admin.
+- The access report needs the auditor role (or platform admin), at the global scope; an API token
+  cannot read it.
 - Entitlements are group patterns (`group:data-*`) or names (`user:zoe`); an empty
   list does not restrict.
 
@@ -148,4 +177,5 @@ far). Decisions the roles do not spell out:
 
 - Sessions expire after 8 hours of activity and 30 minutes idle (configurable), and are revoked on logout and on SCIM deactivation.
 - Deactivated users' pending requests are cancelled; their pending approvals are dropped and approvers re-notified.
-- Every login, token creation and role change is an audit event.
+- Every login, token creation and role change is an audit event: `auth.login`, `token.created`,
+  and `auth.grants_changed` when a login's grants differ from the person's previous login.

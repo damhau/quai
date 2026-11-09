@@ -61,3 +61,23 @@ test("the inventory counts a resource as mine when I am one of its code owners",
   expect(screen.getByRole("link", { name: "prod/web01" })).toBeInTheDocument()
   expect(screen.queryByRole("link", { name: "dev/build-agent-01" })).not.toBeInTheDocument()
 })
+
+test("the inventory counts a team's resource as mine when auth.teams puts me in the team", async () => {
+  server.use(
+    http.get("*/api/v1/me", () =>
+      HttpResponse.json({ name: "bob", groups: ["sg-quai-developers"], teams: ["developers"], roles: [{ role: "requester", scope: "global" }], csrfToken: "csrf-bob" }),
+    ),
+    http.get("*/api/v1/inventory", () =>
+      HttpResponse.json([
+        { ...web01, owner: "team:developers" }, // bob's team, through his group sg-quai-developers
+        { ...buildAgent, owner: "team:sg-quai-developers" }, // a team named like bob's group, which he is not in
+      ]),
+    ),
+  )
+  const user = userEvent.setup()
+  renderApp("/inventory")
+  expect(await screen.findByRole("link", { name: "dev/build-agent-01" })).toBeInTheDocument()
+  await user.click(screen.getByRole("switch", { name: "Owned by me" }))
+  expect(screen.getByRole("link", { name: "prod/web01" })).toBeInTheDocument()
+  expect(screen.queryByRole("link", { name: "dev/build-agent-01" })).not.toBeInTheDocument()
+})
