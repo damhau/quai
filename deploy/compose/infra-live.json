@@ -1,0 +1,15 @@
+{
+  "apiVersion": "quai.dev/v1beta1",
+  "kind": "Repository",
+  "metadata": { "name": "infra-live", "title": "Infrastructure (Terraform)" },
+  "spec": {
+    "connector": "gitea",
+    "url": "http://gitea:3000/quai/infra-live.git",
+    "credentials": { "ref": "env:QUAI_GITEA_TOKEN" },
+    "defaultBranch": "main",
+    "delivery": { "mode": "pull-request", "merge": "auto", "mergeMethod": "squash" },
+    "webhooks": { "secret": { "ref": "env:QUAI_WEBHOOK_SECRET" } },
+    "runner": { "reportToken": { "ref": "env:QUAI_RUN_TOKEN_SHA256" } },
+    "sync": { "pollInterval": "1m" }
+  }
+}

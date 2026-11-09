@@ -1,31 +1,8 @@
-import { expect, request, test } from "@playwright/test"
-import { delivered, preview, signIn, unique } from "./helpers"
+import { expect, test } from "@playwright/test"
+import { delivered, linkIn, mailFor, mailText, mailTo, newPage, preview, requestNamespace, signIn, unique } from "./helpers"
 
-type Message = { ID: string; Subject: string; To: { Address: string }[] }
-
-/** mailTo returns the messages to an address whose subject holds text, from the local mail server
- * (Mailpit, docker-compose.yml), which catches what Quai sends. */
-async function mailTo(address: string, text: string): Promise<Message[]> {
-  const api = await request.newContext({ baseURL: process.env.E2E_MAILPIT_URL ?? "http://localhost:8025" })
-  try {
-    const res = await api.get("/api/v1/messages?limit=1000")
-    expect(res.ok(), `Mailpit: ${res.status()}`).toBe(true)
-    const { messages } = (await res.json()) as { messages: Message[] }
-    return messages.filter((m) => m.Subject.includes(text) && m.To.some((t) => t.Address === address))
-  } finally {
-    await api.dispose()
-  }
-}
-
-/** text returns the text part of a message. */
-async function text(id: string): Promise<string> {
-  const api = await request.newContext({ baseURL: process.env.E2E_MAILPIT_URL ?? "http://localhost:8025" })
-  try {
-    return ((await (await api.get(`/api/v1/message/${id}`)).json()) as { Text: string }).Text
-  } finally {
-    await api.dispose()
-  }
-}
+// Notifications by email (docs/design/05-delivery-and-approvals.md#notifications), as the local
+// mail server (Mailpit) catches them.
 
 test("the requester hears by email that their request was approved, merged and applied", async ({ page }) => {
   const name = `vm${unique()}`
@@ -43,5 +20,32 @@ test("the requester hears by email that their request was approved, merged and a
     .poll(async () => (await mailTo("bob@example.com", target)).map((m) => m.Subject.replace(/#\d+ /, "")).sort(), { timeout: 60_000 })
     .toEqual([`[Quai] Applied: ${target}`, `[Quai] Approved: ${target}`, `[Quai] Merged: ${target}`])
   const [first] = await mailTo("bob@example.com", target)
-  expect(await text(first?.ID ?? "")).toContain(`/requests/${id}`)
+  expect(await mailText(first?.ID ?? "")).toContain(`/requests/${id}`)
+})
+
+test("an approver hears by email that a request needs them, follows its link and approves", async ({ page, browser }) => {
+  const { id, number, title } = await requestNamespace(page, `ns${unique()}`)
+
+  const mail = await mailFor("alice@example.com", `Approval needed: #${number} `)
+  expect(mail.Subject).toBe(`[Quai] Approval needed: #${number} ${title}`)
+  expect(mail.text).toContain(`bob asks for your approval of request #${number}.`)
+  expect(mail.text).toContain("Waiting for: type/platform (group:platform-admins)")
+  const link = linkIn(mail.text)
+  expect(link).toBe(`/requests/${id}`)
+
+  // From her mailbox, signed in to nothing yet: the link asks her to sign in, then opens the request.
+  const alice = await newPage(browser)
+  try {
+    await alice.goto(link)
+    await expect(alice).toHaveURL(/\/login\?next=/)
+    await alice.getByRole("button", { name: /^alice/ }).click()
+    await expect(alice).toHaveURL(new RegExp(`/requests/${id}$`))
+    await expect(alice.getByRole("heading", { name: new RegExp(title) })).toBeVisible()
+    await alice.getByRole("button", { name: "Approve" }).click()
+    await expect(alice.getByText(/^Approved by .*\balice\b/)).toBeVisible()
+    await delivered(alice)
+  } finally {
+    await alice.context().close()
+  }
+  await mailFor("bob@example.com", `Approved: #${number} `)
 })

@@ -1,5 +1,5 @@
-# The configuration of the local stack (docker-compose.yml). The repositories are in
-# repositories.yaml.
+# The configuration of the local stack (docker-compose.yml). Its repository, infra-live, is
+# connected through the API by the connect step (connect-quai.sh), as an admin does.
 env: development
 database:
   # The application role; the migrate service connects as the schema's owner, quai
@@ -9,22 +9,24 @@ auth:
   mode: dev # the user switcher
   dev:
     # The demo users, with emails for the notifications (Mailpit catches them all); carol has
-    # none, to show what a request says of whom its notifications do not reach.
+    # none, to show what a request says of whom its notifications do not reach. fiona is on call,
+    # and may break glass; erin audits.
     users:
       - { name: alice, email: alice@example.com, groups: [platform-admins] }
       - { name: bob, email: bob@example.com, groups: [developers, shop] }
-      - { name: fiona, email: fiona@example.com, groups: [finops, developers] }
+      - { name: fiona, email: fiona@example.com, groups: [finops, developers, oncall] }
       - { name: carol, groups: [shop, developers] }
+      - { name: erin, email: erin@example.com, groups: [auditors] }
   roles:
     - { group: platform-admins, role: platform-admin }
     - { group: developers, role: viewer }
     - { group: developers, role: requester }
     - { group: developers, role: operator }
     - { group: finops, role: viewer }
+    - { group: oncall, role: break-glass }
+    - { group: auditors, role: auditor }
 git:
   cacheDir: /var/cache/quai
-repositories:
-  path: /etc/quai/repositories.yaml
 network:
   caFile: /run/quai/mailpit.crt # the local mail server's self-signed certificate (the seed step)
 notifications:

@@ -1,5 +1,5 @@
-# A local Quai: the server and a worker, PostgreSQL, Gitea holding the example repository, and
-# Mailpit catching the mail Quai sends.
+# A local Quai: the server and a worker, PostgreSQL, Gitea holding the example repository, which
+# the connect step connects to Quai through its API, and Mailpit catching the mail Quai sends.
 #
 #   docker compose up --build
 #
@@ -21,7 +21,6 @@ x-quai: &quai
   tmpfs: [/tmp]
   volumes:
     - ./deploy/compose/quai.yaml:/etc/quai/quai.yaml:ro
-    - ./deploy/compose/repositories.yaml:/etc/quai/repositories.yaml:ro
     - ./deploy/compose/run-quai.sh:/etc/quai/run-quai.sh:ro
     - seed:/run/quai:ro
 
@@ -85,7 +84,6 @@ services:
     ports: ["${QUAI_PORT:-8080}:8080"]
     volumes:
       - ./deploy/compose/quai.yaml:/etc/quai/quai.yaml:ro
-      - ./deploy/compose/repositories.yaml:/etc/quai/repositories.yaml:ro
       - ./deploy/compose/run-quai.sh:/etc/quai/run-quai.sh:ro
       - seed:/run/quai:ro
       - server-cache:/var/cache/quai
@@ -95,12 +93,23 @@ services:
       interval: 2s
       retries: 30
 
+  # Connects quai/infra-live to Quai through its API, as an admin does (connect-quai.sh,
+  # infra-live.json), once: managed in Quai, the connection is changed with the API, a repository
+  # freeze included. The server and the worker pick it up within seconds.
+  connect:
+    image: gitea/gitea:1.27.3@sha256:87a67ee09d3ae0d1df5fda5dcda3e2a1f9236a45b0a59025d6e00e46adc43bef
+    entrypoint: ["/bin/sh", "/connect-quai.sh"]
+    depends_on: { server: { condition: service_healthy } }
+    volumes:
+      - ./deploy/compose/connect-quai.sh:/connect-quai.sh:ro
+      - ./deploy/compose/infra-live.json:/etc/quai/infra-live.json:ro
+    restart: "no"
+
   worker:
     <<: *quai
     command: ["worker"]
     volumes:
       - ./deploy/compose/quai.yaml:/etc/quai/quai.yaml:ro
-      - ./deploy/compose/repositories.yaml:/etc/quai/repositories.yaml:ro
       - ./deploy/compose/run-quai.sh:/etc/quai/run-quai.sh:ro
       - seed:/run/quai:ro
       - worker-cache:/var/cache/quai
@@ -136,7 +145,9 @@ services:
     ports: ["${FAKERUNNER_PORT:-8090}:8090"]
     read_only: true
     volumes: [seed:/run/quai:ro]
-    depends_on: { seed: { condition: service_completed_successfully } }
+    depends_on: # it reports to infra-live, once connected
+      seed: { condition: service_completed_successfully }
+      connect: { condition: service_completed_successfully }
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8090/healthz"]
       interval: 2s
@@ -159,6 +170,7 @@ services:
     command: ["sh", "-c", "mkdir -p /e2e && cp -R /src/. /e2e && cd /e2e && npm ci --no-audit --no-fund && npx playwright test"]
     depends_on:
       server: { condition: service_healthy }
+      connect: { condition: service_completed_successfully }
       worker: { condition: service_started }
       fake-runner: { condition: service_healthy }
       mailpit: { condition: service_healthy }
