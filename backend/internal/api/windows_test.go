@@ -225,7 +225,11 @@ func TestChangeWindowAutoComplete(t *testing.T) {
 	if err := h.requests.SweepWindows(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	bob.awaitDelivery(r.ID, "merging", func(v RequestView) bool { return v.State == "merging" && len(c.asked()) == 1 })
+	// The request merges and the platform is asked once. It may be back to approved before this
+	// looks: another delivery (awaitDelivery's ingest poll sees quai/approval succeed) takes the
+	// merge lock as soon as the ask returns, finds the windows closed and holds it at once. That it
+	// was merging is checked below, in the hold's audit event.
+	bob.awaitDelivery(r.ID, "asked to merge", func(RequestView) bool { return len(c.asked()) == 1 })
 	h.sweepWindows(saturday.Add(7 * 24 * time.Hour))
 	r = held(bob, r.ID)
 	awaitApproval(t, h, remote, sha, gitea.StatusPending, "Approved; waits for the change window, opens Mon 08:00 Europe/Zurich")
