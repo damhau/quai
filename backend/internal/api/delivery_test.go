@@ -36,13 +36,43 @@ func pushExample(t *testing.T, url string, auth func(context.Context) (gitx.Cred
 }
 
 // pushEdited is pushExample with edit changing files first, by path, and extra files added.
+//
+// A repository GitHub has just created may answer 404 to a clone, or refuse the app's push
+// ("Permission to <org>/<name>.git denied to <app>[bot]"), for a while after the API shows it, as
+// on 2026-11-09 (TestGitHubCodeowners; liveMirror and liveRepo.push in connectors/github do the
+// same): on GitHub, those two answers are retried for a minute, each attempt in a mirror of its own.
 func pushEdited(t *testing.T, url string, auth func(context.Context) (gitx.Credentials, error), proxy func(*url.URL) (*url.URL, error), edit func(path string, b []byte) []byte, extra map[string]string) {
 	t.Helper()
-	ctx := context.Background()
-	m, err := gitx.OpenMirror(ctx, url, filepath.Join(t.TempDir(), "seed.git"), gitx.Options{Committer: gitx.Signature{Name: "Seed", Email: "seed@example.com"}, Auth: auth, Proxy: proxy})
-	if err != nil {
-		t.Fatal(err)
+	changes := exampleChanges(edit, extra)
+	deadline := time.Now().Add(time.Minute)
+	for {
+		err := seedRepository(url, filepath.Join(t.TempDir(), "seed.git"), auth, proxy, changes)
+		if err == nil {
+			return
+		}
+		msg := err.Error()
+		refusedWhileNew := strings.Contains(msg, "The requested URL returned error: 404") ||
+			strings.Contains(msg, "Permission to ") && strings.Contains(msg, ".git denied to ")
+		if !strings.HasPrefix(url, "https://github.com/") || !refusedWhileNew || time.Now().After(deadline) {
+			t.Fatal(err)
+		}
+		time.Sleep(2 * time.Second)
 	}
+}
+
+// seedRepository clones url into dir and pushes changes to main, as Alice.
+func seedRepository(url, dir string, auth func(context.Context) (gitx.Credentials, error), proxy func(*url.URL) (*url.URL, error), changes []plan.Change) error {
+	ctx := context.Background()
+	m, err := gitx.OpenMirror(ctx, url, dir, gitx.Options{Committer: gitx.Signature{Name: "Seed", Email: "seed@example.com"}, Auth: auth, Proxy: proxy})
+	if err != nil {
+		return err
+	}
+	_, err = m.CommitAndPush(ctx, gitx.Commit{Branch: "main", Message: "The existing infrastructure\n", Author: gitx.Signature{Name: "Alice", Email: "alice@example.com"}, Changes: changes})
+	return err
+}
+
+// exampleChanges are the example GitOps repository's files, edited by edit, with extra added.
+func exampleChanges(edit func(path string, b []byte) []byte, extra map[string]string) []plan.Change {
 	src := os.DirFS("../../../examples/gitops-repo")
 	var changes []plan.Change
 	_ = fs.WalkDir(src, ".", func(p string, d fs.DirEntry, err error) error {
@@ -59,9 +89,7 @@ func pushEdited(t *testing.T, url string, auth func(context.Context) (gitx.Crede
 	for p, content := range extra {
 		changes = append(changes, plan.Change{Op: plan.OpCreate, Path: p, After: []byte(content)})
 	}
-	if _, err := m.CommitAndPush(ctx, gitx.Commit{Branch: "main", Message: "The existing infrastructure\n", Author: gitx.Signature{Name: "Alice", Email: "alice@example.com"}, Changes: changes}); err != nil {
-		t.Fatal(err)
-	}
+	return changes
 }
 
 // giteaHarness serves Quai with the example repository on Gitea, delivered by pull requests,
