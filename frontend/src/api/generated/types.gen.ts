@@ -298,6 +298,10 @@ export type ChatLinkView = {
     channel: 'teams' | 'slack';
     decision: 'approve' | 'deny';
     expiresAt: string;
+    /**
+     * The decision is on this person's behalf, with the approvals they delegated to you: confirm it with the review's onBehalfOf
+     */
+    onBehalfOf?: string;
 };
 
 export type CheckView = {
@@ -445,6 +449,70 @@ export type DefinitionsHealth = {
     commit?: string;
     problems: Array<ProblemView> | null;
     types: number;
+};
+
+export type DelegateBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * The colleague, by their name in Quai: someone who has signed in and is not deactivated
+     */
+    delegate: string;
+    /**
+     * When it ends, at most 90 days after the start
+     */
+    endsAt: string;
+    /**
+     * When it starts, now at the earliest: an instant, with its offset
+     */
+    startsAt: string;
+};
+
+export type DelegationView = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * It passes the delegator's approvals on now
+     */
+    active: boolean;
+    createdAt: string;
+    /**
+     * Who may review on the delegator's behalf during the period
+     */
+    delegate: string;
+    /**
+     * Who handed their approvals on
+     */
+    delegator: string;
+    /**
+     * When it ends, exclusive
+     */
+    endsAt: string;
+    id: string;
+    /**
+     * When it starts, inclusive
+     */
+    startsAt: string;
+};
+
+export type DelegationsOutputBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    delegations: Array<DelegationView> | null;
+    /**
+     * How long a delegation lasts at most, in days
+     */
+    maxDays: number;
+    /**
+     * Making a delegation needs a recent sign-in (auth.stepUp is configured)
+     */
+    stepUp: boolean;
 };
 
 export type Delivery = {
@@ -1039,7 +1107,14 @@ export type RequestView = {
     blueprint?: string;
     canCancel: boolean;
     canRetry: boolean;
+    /**
+     * You may review it now, in your own right or on someone's behalf
+     */
     canReview: boolean;
+    /**
+     * You may review it in your own right
+     */
+    canReviewOwn?: boolean;
     /**
      * Why you cannot review this request pending approval although a rule names you: you requested it, or you changed its definitions in the separation of duties' period before it
      */
@@ -1076,6 +1151,10 @@ export type RequestView = {
      * Notifications do not reach the requester: Quai knows no verified email of theirs
      */
     requesterNotNotified?: boolean;
+    /**
+     * The people whose approvals you hold now, through a delegation, and may review it for
+     */
+    reviewFor?: Array<ReviewForView> | null;
     reviews?: Array<ReviewView> | null;
     rules: Array<RuleView> | null;
     /**
@@ -1206,6 +1285,15 @@ export type ResourceView = {
     unmatchedOwners?: Array<string> | null;
 };
 
+export type ReviewForView = {
+    delegation: string;
+    delegator: string;
+    /**
+     * When the delegation ends
+     */
+    until: string;
+};
+
 export type ReviewInputBody = {
     /**
      * A URL to the JSON Schema for this object.
@@ -1217,6 +1305,10 @@ export type ReviewInputBody = {
      * The link of the approval card in chat whose decision this confirms
      */
     link?: string;
+    /**
+     * Review on this person's behalf, with the approvals they delegated to you (reviewFor); absent: in your own right
+     */
+    onBehalfOf?: string;
 };
 
 export type ReviewView = {
@@ -1228,6 +1320,14 @@ export type ReviewView = {
     authTime?: string;
     comment?: string;
     decision: string;
+    /**
+     * The delegation the review used
+     */
+    delegation?: string;
+    /**
+     * The person on whose behalf the reviewer reviewed, with the approvals they delegated: the review counts for them and the reviewer, once
+     */
+    onBehalfOf?: string;
     reviewer: string;
     /**
      * The reviewer's authentication satisfied the step-up when they reviewed
@@ -1257,6 +1357,12 @@ export type RuleView = {
      * The plan says the rule does not apply
      */
     notApplicable?: boolean;
+    /**
+     * For each approver of approvals who approved on someone's behalf, through a delegation: that person
+     */
+    onBehalfOf?: {
+        [key: string]: string;
+    };
     /**
      * The rule counts different people among the approvers of the request's other rules (separation of duties' requireTwo); its approvers count only when no other rule takes approvals from people
      */
@@ -1766,6 +1872,10 @@ export type ChatLinkViewWritable = {
     channel: 'teams' | 'slack';
     decision: 'approve' | 'deny';
     expiresAt: string;
+    /**
+     * The decision is on this person's behalf, with the approvals they delegated to you: confirm it with the review's onBehalfOf
+     */
+    onBehalfOf?: string;
 };
 
 export type CommitTextWritable = {
@@ -1805,6 +1915,58 @@ export type CreatedTokenOutputBodyWritable = {
      * Shown once: Quai keeps only its hash
      */
     token: string;
+};
+
+export type DelegateBodyWritable = {
+    /**
+     * The colleague, by their name in Quai: someone who has signed in and is not deactivated
+     */
+    delegate: string;
+    /**
+     * When it ends, at most 90 days after the start
+     */
+    endsAt: string;
+    /**
+     * When it starts, now at the earliest: an instant, with its offset
+     */
+    startsAt: string;
+};
+
+export type DelegationViewWritable = {
+    /**
+     * It passes the delegator's approvals on now
+     */
+    active: boolean;
+    createdAt: string;
+    /**
+     * Who may review on the delegator's behalf during the period
+     */
+    delegate: string;
+    /**
+     * Who handed their approvals on
+     */
+    delegator: string;
+    /**
+     * When it ends, exclusive
+     */
+    endsAt: string;
+    id: string;
+    /**
+     * When it starts, inclusive
+     */
+    startsAt: string;
+};
+
+export type DelegationsOutputBodyWritable = {
+    delegations: Array<DelegationViewWritable> | null;
+    /**
+     * How long a delegation lasts at most, in days
+     */
+    maxDays: number;
+    /**
+     * Making a delegation needs a recent sign-in (auth.stepUp is configured)
+     */
+    stepUp: boolean;
 };
 
 export type DocumentWritable = {
@@ -2056,7 +2218,14 @@ export type RequestViewWritable = {
     blueprint?: string;
     canCancel: boolean;
     canRetry: boolean;
+    /**
+     * You may review it now, in your own right or on someone's behalf
+     */
     canReview: boolean;
+    /**
+     * You may review it in your own right
+     */
+    canReviewOwn?: boolean;
     /**
      * Why you cannot review this request pending approval although a rule names you: you requested it, or you changed its definitions in the separation of duties' period before it
      */
@@ -2093,6 +2262,10 @@ export type RequestViewWritable = {
      * Notifications do not reach the requester: Quai knows no verified email of theirs
      */
     requesterNotNotified?: boolean;
+    /**
+     * The people whose approvals you hold now, through a delegation, and may review it for
+     */
+    reviewFor?: Array<ReviewForView> | null;
     reviews?: Array<ReviewView> | null;
     rules: Array<RuleView> | null;
     /**
@@ -2226,6 +2399,10 @@ export type ReviewInputBodyWritable = {
      * The link of the approval card in chat whose decision this confirms
      */
     link?: string;
+    /**
+     * Review on this person's behalf, with the approvals they delegated to you (reviewFor); absent: in your own right
+     */
+    onBehalfOf?: string;
 };
 
 export type RunInputBodyWritable = {
@@ -2550,6 +2727,58 @@ export type ListCatalogResponses = {
 
 export type ListCatalogResponse = ListCatalogResponses[keyof ListCatalogResponses];
 
+export type ListDelegationsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/delegations';
+};
+
+export type ListDelegationsErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ListDelegationsError = ListDelegationsErrors[keyof ListDelegationsErrors];
+
+export type ListDelegationsResponses = {
+    /**
+     * OK
+     */
+    200: DelegationsOutputBody;
+};
+
+export type ListDelegationsResponse = ListDelegationsResponses[keyof ListDelegationsResponses];
+
+export type RevokeDelegationData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/delegations/{id}';
+};
+
+export type RevokeDelegationErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type RevokeDelegationError = RevokeDelegationErrors[keyof RevokeDelegationErrors];
+
+export type RevokeDelegationResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type RevokeDelegationResponse = RevokeDelegationResponses[keyof RevokeDelegationResponses];
+
 export type ListEventsData = {
     body?: never;
     path?: never;
@@ -2683,6 +2912,56 @@ export type GetMeResponses = {
 };
 
 export type GetMeResponse = GetMeResponses[keyof GetMeResponses];
+
+export type ListMyDelegationsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/me/delegations';
+};
+
+export type ListMyDelegationsErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ListMyDelegationsError = ListMyDelegationsErrors[keyof ListMyDelegationsErrors];
+
+export type ListMyDelegationsResponses = {
+    /**
+     * OK
+     */
+    200: DelegationsOutputBody;
+};
+
+export type ListMyDelegationsResponse = ListMyDelegationsResponses[keyof ListMyDelegationsResponses];
+
+export type CreateDelegationData = {
+    body: DelegateBodyWritable;
+    path?: never;
+    query?: never;
+    url: '/api/v1/me/delegations';
+};
+
+export type CreateDelegationErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type CreateDelegationError = CreateDelegationErrors[keyof CreateDelegationErrors];
+
+export type CreateDelegationResponses = {
+    /**
+     * Created
+     */
+    201: DelegationView;
+};
+
+export type CreateDelegationResponse = CreateDelegationResponses[keyof CreateDelegationResponses];
 
 export type GetPreferencesData = {
     body?: never;

@@ -14,10 +14,14 @@ import (
 
 const createReview = `-- name: CreateReview :one
 INSERT INTO reviews (id, request_id, reviewer, groups, decision, comment, change_set_hash, reviewer_email, reviewer_auth_time, teams,
-                     reviewer_acr, reviewer_acrs, step_up)
+                     reviewer_acr, reviewer_acrs, step_up,
+                     on_behalf_of, delegation_id, on_behalf_email, on_behalf_groups, on_behalf_teams)
 VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8::text, ''), $9, $10::text[],
-        $11, COALESCE($12::text[], '{}'), $13)
-RETURNING id, request_id, reviewer, groups, decision, comment, change_set_hash, created_at, reviewer_email, reviewer_auth_time, teams, reviewer_acr, reviewer_acrs, step_up
+        $11, COALESCE($12::text[], '{}'), $13,
+        COALESCE($14::text, ''), $15,
+        COALESCE($16::text, ''), COALESCE($17::text[], '{}'),
+        COALESCE($18::text[], '{}'))
+RETURNING id, request_id, reviewer, groups, decision, comment, change_set_hash, created_at, reviewer_email, reviewer_auth_time, teams, reviewer_acr, reviewer_acrs, step_up, on_behalf_of, delegation_id, on_behalf_email, on_behalf_groups, on_behalf_teams
 `
 
 type CreateReviewParams struct {
@@ -34,6 +38,11 @@ type CreateReviewParams struct {
 	ReviewerAcr      string
 	ReviewerAcrs     []string
 	StepUp           bool
+	OnBehalfOf       pgtype.Text
+	DelegationID     pgtype.UUID
+	OnBehalfEmail    pgtype.Text
+	OnBehalfGroups   []string
+	OnBehalfTeams    []string
 }
 
 func (q *Queries) CreateReview(ctx context.Context, arg CreateReviewParams) (Review, error) {
@@ -51,6 +60,11 @@ func (q *Queries) CreateReview(ctx context.Context, arg CreateReviewParams) (Rev
 		arg.ReviewerAcr,
 		arg.ReviewerAcrs,
 		arg.StepUp,
+		arg.OnBehalfOf,
+		arg.DelegationID,
+		arg.OnBehalfEmail,
+		arg.OnBehalfGroups,
+		arg.OnBehalfTeams,
 	)
 	var i Review
 	err := row.Scan(
@@ -68,12 +82,17 @@ func (q *Queries) CreateReview(ctx context.Context, arg CreateReviewParams) (Rev
 		&i.ReviewerAcr,
 		&i.ReviewerAcrs,
 		&i.StepUp,
+		&i.OnBehalfOf,
+		&i.DelegationID,
+		&i.OnBehalfEmail,
+		&i.OnBehalfGroups,
+		&i.OnBehalfTeams,
 	)
 	return i, err
 }
 
 const listReviews = `-- name: ListReviews :many
-SELECT id, request_id, reviewer, groups, decision, comment, change_set_hash, created_at, reviewer_email, reviewer_auth_time, teams, reviewer_acr, reviewer_acrs, step_up FROM reviews WHERE request_id = $1 ORDER BY created_at, id
+SELECT id, request_id, reviewer, groups, decision, comment, change_set_hash, created_at, reviewer_email, reviewer_auth_time, teams, reviewer_acr, reviewer_acrs, step_up, on_behalf_of, delegation_id, on_behalf_email, on_behalf_groups, on_behalf_teams FROM reviews WHERE request_id = $1 ORDER BY created_at, id
 `
 
 func (q *Queries) ListReviews(ctx context.Context, requestID uuid.UUID) ([]Review, error) {
@@ -100,6 +119,11 @@ func (q *Queries) ListReviews(ctx context.Context, requestID uuid.UUID) ([]Revie
 			&i.ReviewerAcr,
 			&i.ReviewerAcrs,
 			&i.StepUp,
+			&i.OnBehalfOf,
+			&i.DelegationID,
+			&i.OnBehalfEmail,
+			&i.OnBehalfGroups,
+			&i.OnBehalfTeams,
 		); err != nil {
 			return nil, err
 		}

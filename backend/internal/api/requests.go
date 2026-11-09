@@ -41,7 +41,10 @@ type RuleView struct {
 	Min       int      `json:"min"`
 	External  string   `json:"external,omitempty"`
 	Approvals []string `json:"approvals"`
-	Satisfied bool     `json:"satisfied"`
+	// OnBehalfOf names, for an approver of Approvals who approved on someone's behalf through a
+	// delegation, that person.
+	OnBehalfOf map[string]string `json:"onBehalfOf,omitempty" doc:"For each approver of approvals who approved on someone's behalf, through a delegation: that person"`
+	Satisfied  bool              `json:"satisfied"`
 	// A rule that reads the plan (docs/design/05#rules-on-the-plan).
 	When           string `json:"when,omitempty" doc:"The condition of a rule that reads the plan"`
 	WaitingForPlan bool   `json:"waitingForPlan,omitempty" doc:"The rule waits for a plan to say whether it applies"`
@@ -167,6 +170,17 @@ type ReviewView struct {
 	AuthTime *time.Time `json:"authTime,omitempty"`
 	ACR      string     `json:"acr,omitempty" doc:"The class of the reviewer's authentication, the ID token's acr"`
 	StepUp   bool       `json:"stepUp,omitempty" doc:"The reviewer's authentication satisfied the step-up when they reviewed"`
+	// OnBehalfOf and Delegation: a review made with the approvals someone delegated.
+	OnBehalfOf string `json:"onBehalfOf,omitempty" doc:"The person on whose behalf the reviewer reviewed, with the approvals they delegated: the review counts for them and the reviewer, once"`
+	Delegation string `json:"delegation,omitempty" doc:"The delegation the review used"`
+}
+
+// ReviewForView is someone the caller may review a request for now, with the approvals they
+// delegated to the caller (docs/design/05-delivery-and-approvals.md#delegation).
+type ReviewForView struct {
+	Delegator  string    `json:"delegator"`
+	Delegation string    `json:"delegation"`
+	Until      time.Time `json:"until" doc:"When the delegation ends"`
 }
 
 // EventView is something that happened to a request.
@@ -195,7 +209,10 @@ type RequestView struct {
 	Inputs     map[string]any `json:"inputs"`
 	CreatedAt  time.Time      `json:"createdAt"`
 	UpdatedAt  time.Time      `json:"updatedAt"`
-	CanReview  bool           `json:"canReview"`
+	CanReview  bool           `json:"canReview" doc:"You may review it now, in your own right or on someone's behalf"`
+	// CanReviewOwn and ReviewFor say in which capacities.
+	CanReviewOwn bool            `json:"canReviewOwn,omitempty" doc:"You may review it in your own right"`
+	ReviewFor    []ReviewForView `json:"reviewFor,omitempty" doc:"The people whose approvals you hold now, through a delegation, and may review it for"`
 	// CannotReview says why the viewer cannot review a request pending approval that a rule
 	// names them for.
 	CannotReview string          `json:"cannotReview,omitempty" doc:"Why you cannot review this request pending approval although a rule names you: you requested it, or you changed its definitions in the separation of duties' period before it"`
@@ -260,6 +277,8 @@ type reviewInput struct {
 		// Link is the link of a chat card the decision confirms: its checks come on top of the
 		// review's.
 		Link string `json:"link,omitempty" maxLength:"1024" doc:"The link of the approval card in chat whose decision this confirms"`
+		// OnBehalfOf reviews with the approvals someone delegated to the caller.
+		OnBehalfOf string `json:"onBehalfOf,omitempty" maxLength:"256" doc:"Review on this person's behalf, with the approvals they delegated to you (reviewFor); absent: in your own right"`
 	}
 }
 
@@ -275,9 +294,10 @@ type chatLinkInput struct {
 
 // ChatLinkView is what a link of an approval card in chat opens: a decision ready to confirm.
 type ChatLinkView struct {
-	Decision  string    `json:"decision" enum:"approve,deny"`
-	Channel   string    `json:"channel" enum:"teams,slack"`
-	ExpiresAt time.Time `json:"expiresAt"`
+	Decision   string    `json:"decision" enum:"approve,deny"`
+	Channel    string    `json:"channel" enum:"teams,slack"`
+	ExpiresAt  time.Time `json:"expiresAt"`
+	OnBehalfOf string    `json:"onBehalfOf,omitempty" doc:"The decision is on this person's behalf, with the approvals they delegated to you: confirm it with the review's onBehalfOf"`
 }
 
 func registerRequests(a huma.API, svc *requests.Service, s *store.Store, log *slog.Logger) {
@@ -411,12 +431,19 @@ func registerRequests(a huma.API, svc *requests.Service, s *store.Store, log *sl
 		if err != nil {
 			return nil, err
 		}
+		// The approvals the caller holds through delegations: the requests they may review on
+		// someone's behalf are theirs to see and wait for them too.
+		delegators, err := svc.Delegators(ctx, me.Principal)
+		if err != nil {
+			return nil, err
+		}
 		views := []RequestView{}
 		for _, r := range rs {
-			if in.View == "inbox" && (!requests.CanReview(r, me.Principal) || svc.Reviewed(ctx, r, me.Principal.Name)) {
+			reviewer := svc.CapacityOf(ctx, r, me.Principal, delegators).Any()
+			if in.View == "inbox" && (!reviewer || svc.Reviewed(ctx, r, me.Principal.Name)) {
 				continue
 			}
-			if _, err := authorize(ctx, authz.ReadRequest, requestObject(ctx, svc, r)); err != nil && !requests.CanReview(r, me.Principal) {
+			if _, err := authorize(ctx, authz.ReadRequest, requestObject(ctx, svc, r)); err != nil && !reviewer {
 				continue
 			}
 			views = append(views, requestView(ctx, svc, s, r, me, false))
@@ -443,7 +470,8 @@ func registerRequests(a huma.API, svc *requests.Service, s *store.Store, log *sl
 		if err != nil {
 			return nil, err
 		}
-		next, err := svc.ReviewLink(ctx, me, r.ID, in.Body.Decision, in.Body.Comment, in.Body.Link)
+		next, err := svc.ReviewLink(ctx, me, r.ID, requests.ReviewInput{Decision: in.Body.Decision, Comment: in.Body.Comment, Link: in.Body.Link,
+			OnBehalfOf: in.Body.OnBehalfOf})
 		if err != nil {
 			return nil, Problem(err, "body")
 		}
@@ -462,11 +490,11 @@ func registerRequests(a huma.API, svc *requests.Service, s *store.Store, log *sl
 		if err != nil {
 			return nil, err
 		}
-		l, err := svc.OpenLink(ctx, me, r, in.Body.Link, "")
+		l, err := svc.OpenLink(ctx, me, r, in.Body.Link, "", "")
 		if err != nil {
 			return nil, Problem(err, "body")
 		}
-		return &out[ChatLinkView]{Body: ChatLinkView{Decision: l.Decision, Channel: l.Channel, ExpiresAt: l.Expires}}, nil
+		return &out[ChatLinkView]{Body: ChatLinkView{Decision: l.Decision, Channel: l.Channel, ExpiresAt: l.Expires, OnBehalfOf: l.OnBehalfOf}}, nil
 	})
 	for _, op := range []struct {
 		id, path, summary string
@@ -495,7 +523,8 @@ func registerRequests(a huma.API, svc *requests.Service, s *store.Store, log *sl
 }
 
 // loadRequest returns a request if the caller may do action on it. Approvers may read what they
-// review even without a role that shows them the request.
+// review even without a role that shows them the request, as may a delegate what they may review
+// on the delegator's behalf.
 func loadRequest(ctx context.Context, svc *requests.Service, id string, action authz.Action) (db.Request, auth.Identity, error) {
 	rid, err := uuid.Parse(id)
 	if err != nil {
@@ -506,7 +535,7 @@ func loadRequest(ctx context.Context, svc *requests.Service, id string, action a
 		return r, auth.Identity{}, Problem(err, "path")
 	}
 	me, err := authorize(ctx, action, requestObject(ctx, svc, r))
-	if caller, _ := auth.FromContext(ctx); err != nil && action == authz.ReadRequest && requests.CanReview(r, caller.Principal) {
+	if caller, _ := auth.FromContext(ctx); err != nil && action == authz.ReadRequest && svc.MayReview(ctx, r, caller.Principal) {
 		return r, caller, nil
 	}
 	return r, me, err
@@ -533,7 +562,7 @@ func ruleViews(rules []policy.Rule, statuses []policy.Status) []RuleView {
 			v.When, v.PlanError = r.Plan.When, r.Plan.Error
 		}
 		if i < len(statuses) {
-			v.Approvals, v.Satisfied = statuses[i].Approvals, statuses[i].Satisfied
+			v.Approvals, v.OnBehalfOf, v.Satisfied = statuses[i].Approvals, statuses[i].OnBehalfOf, statuses[i].Satisfied
 			if v.Approvals == nil {
 				v.Approvals = []string{}
 			}
@@ -560,8 +589,16 @@ func planView(p *requests.Plan) PlanView {
 func requestView(ctx context.Context, svc *requests.Service, s *store.Store, r db.Request, me auth.Identity, detail bool) RequestView {
 	v := RequestView{ID: r.ID.String(), Number: r.Number, Kind: r.Kind, Action: r.Action, Target: r.Target, Repository: svc.Repository(ctx, r),
 		Type: r.TypeName, Blueprint: r.Blueprint, Requester: r.Requester, Reason: r.Reason, State: r.State, Stack: r.Stack,
-		CreatedAt: r.CreatedAt.Time, UpdatedAt: r.UpdatedAt.Time, CanReview: requests.CanReview(r, me.Principal), StepUp: r.StepUp}
-	if !v.CanReview {
+		CreatedAt: r.CreatedAt.Time, UpdatedAt: r.UpdatedAt.Time, CanReviewOwn: requests.CanReview(r, me.Principal), StepUp: r.StepUp}
+	if r.State == requests.PendingApproval {
+		if delegators, err := svc.Delegators(ctx, me.Principal); err == nil {
+			for _, d := range svc.CapacityOf(ctx, r, me.Principal, delegators).For {
+				v.ReviewFor = append(v.ReviewFor, ReviewForView{Delegator: d.User.Name, Delegation: d.Delegation.ID.String(), Until: d.Delegation.EndsAt.Time})
+			}
+		}
+	}
+	v.CanReview = v.CanReviewOwn || len(v.ReviewFor) > 0
+	if !v.CanReviewOwn {
 		v.CannotReview = requests.WhyNotReviewer(r, me.Principal)
 	}
 	v.CanCancel = requests.Cancellable(r.State) && allowed(ctx, authz.CancelRequest, requestObject(ctx, svc, r))
@@ -599,7 +636,11 @@ func requestView(ctx context.Context, svc *requests.Service, s *store.Store, r d
 		}
 	}
 	for _, rv := range reviews {
-		rview := ReviewView{Reviewer: rv.Reviewer, Decision: rv.Decision, Comment: rv.Comment, At: rv.CreatedAt.Time, ACR: rv.ReviewerAcr, StepUp: rv.StepUp}
+		rview := ReviewView{Reviewer: rv.Reviewer, Decision: rv.Decision, Comment: rv.Comment, At: rv.CreatedAt.Time, ACR: rv.ReviewerAcr, StepUp: rv.StepUp,
+			OnBehalfOf: rv.OnBehalfOf}
+		if rv.DelegationID.Valid {
+			rview.Delegation = uuid.UUID(rv.DelegationID.Bytes).String()
+		}
 		if rv.ReviewerAuthTime.Valid {
 			rview.AuthTime = &rv.ReviewerAuthTime.Time
 		}

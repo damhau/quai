@@ -39,9 +39,10 @@ How it works in the server:
 
 Some actions require a recent, and strong enough, authentication (P4-06): reviewing a request
 whose approval asks for it ([design 05](05-delivery-and-approvals.md#step-up-authentication)),
-break-glass whenever `auth.stepUp` is configured (P4-17), and, with `auth.stepUp.admin`,
-connecting, changing and disconnecting repositories, installing their webhooks and generating
-their run tokens.
+break-glass whenever `auth.stepUp` is configured (P4-17), delegating one's approvals whenever
+`auth.stepUp` is configured ([delegation](05-delivery-and-approvals.md#delegation)), and, with
+`auth.stepUp.admin`, connecting, changing and disconnecting repositories, installing their webhooks
+and generating their run tokens.
 
 - **What counts** is what the identity provider said in the ID token of the person's last sign-in,
   kept in the session: its `auth_time`, no older than `auth.stepUp.maxAge` (five minutes by
@@ -249,6 +250,10 @@ far). Decisions the roles do not spell out:
   name), or a platform admin.
 - The access report needs the auditor role (or platform admin), at the global scope; an API token
   cannot read it.
+- Anyone signed in delegates their own approvals and revokes their own delegations, in a browser
+  session: no scope allows it to an API token. Revoking someone else's needs the platform admin
+  role; no one makes a delegation for someone else
+  ([delegation](05-delivery-and-approvals.md#delegation)).
 - Entitlements are group patterns (`group:data-*`) or names (`user:zoe`); an empty
   list does not restrict ([entitlements](#entitlements)).
 

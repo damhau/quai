@@ -32,7 +32,8 @@ func (s *Service) card(n db.Notification, c Channel, m Message) bool {
 }
 
 // decisionLinks returns the links that open a request with a decision ready, for an approver and
-// the change set they are shown: empty without a signer or a change set.
+// the change set they are shown, on the delegator's behalf for a delegate: empty without a signer
+// or a change set.
 func (s *Service) decisionLinks(ctx context.Context, approver, channel string, rc *RequestContent) (approve, deny string, err error) {
 	if s.opts.Links == nil || rc.ChangeSet == "" {
 		return "", "", nil
@@ -42,7 +43,8 @@ func (s *Service) decisionLinks(ctx context.Context, approver, channel string, r
 		decision string
 		out      *string
 	}{{chatlink.Approve, &approve}, {chatlink.Deny, &deny}} {
-		tok, err := s.opts.Links.Make(ctx, chatlink.Link{Request: rc.ID, Approver: approver, Decision: d.decision, ChangeSet: rc.ChangeSet, Channel: channel})
+		tok, err := s.opts.Links.Make(ctx, chatlink.Link{Request: rc.ID, Approver: approver, Decision: d.decision, ChangeSet: rc.ChangeSet, Channel: channel,
+			OnBehalfOf: rc.OnBehalfOf})
 		if err != nil {
 			return "", "", err
 		}
@@ -191,10 +193,14 @@ func cardStatus(r db.Request, card db.ChatCard, hash string, reviews []db.Review
 	state := strings.ReplaceAll(r.State, "_", " ")
 	for _, v := range reviews {
 		if v.Reviewer == name && v.ChangeSetHash == card.ChangeSet {
-			status := "You denied it."
+			status := "You denied it"
 			if v.Decision == "approve" {
-				status = "You approved it."
+				status = "You approved it"
 			}
+			if v.OnBehalfOf != "" {
+				status += " on " + v.OnBehalfOf + "'s behalf"
+			}
+			status += "."
 			if r.State != requests.PendingApproval {
 				status += " It is " + state + " now."
 			}
@@ -207,9 +213,7 @@ func cardStatus(r db.Request, card db.ChatCard, hash string, reviews []db.Review
 	case card.ChangeSet != hash:
 		return "It changed since this card was sent: review its new content in Quai."
 	}
-	if !slices.ContainsFunc(awaiting, func(a requests.Awaiting) bool {
-		return slices.ContainsFunc(a.People, func(u db.User) bool { return u.Name == name })
-	}) {
+	if _, waits := requests.WaitsFor(awaiting, name); !waits {
 		return "It no longer waits for your approval."
 	}
 	return ""

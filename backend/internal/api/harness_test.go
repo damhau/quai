@@ -51,7 +51,8 @@ type harness struct {
 	log    *bytes.Buffer
 	jobs   *jobs.Client
 	notify *notify.Service // with notifications.email configured
-	// clock is the notifications' clock: the time it is set to, the real time until it is.
+	// clock is the notifications' and the delegations' clock: the time it is set to, the real
+	// time until it is.
 	clock *testClock
 }
 
@@ -181,6 +182,7 @@ func startRepo(t *testing.T, dir, metadata, spec string, opts repositories.Optio
 	hooks.UseHandler(svc)
 	var n *notify.Service
 	clk := &testClock{}
+	svc.UseClock(clk.now)
 	if cfg.Notifications.Email != nil || cfg.Notifications.Teams != nil || cfg.Notifications.Slack != nil {
 		network, err := netx.New(cfg.Network.CAFile)
 		if err != nil {

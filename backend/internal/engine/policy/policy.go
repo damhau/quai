@@ -6,7 +6,8 @@
 // a definition author the separation of duties excludes, one person counts for one rule only
 // unless a rule sets `distinct: false`, and one denial from an eligible reviewer rejects the
 // request. An overall rule (the repository's destroys: requireTwo) counts different people
-// across the request's rules.
+// across the request's rules. A delegate reviews with the delegator's rights (Delegated), and a
+// review on someone's behalf is both people's: one human makes one approval (Standing).
 //
 // Who belongs to a group, owns a resource or manages the requester is resolved by the caller and
 // passed in; the package only decides.
@@ -204,6 +205,21 @@ type Review struct {
 	Groups   []string // the reviewer's groups when they reviewed, which group: entries match
 	Teams    []string // the reviewer's teams when they reviewed, which team: entries match
 	Decision string
+	// OnBehalfOf is the person whose approvals the reviewer held through a delegation and reviewed
+	// for, as the directory described them when the review was made; nil for a review in one's own
+	// right. The review then counts with their rights, never the reviewer's own, under the
+	// reviewer's own checks (Delegated), and it is both people's review: one human, one approval
+	// (docs/design/05-delivery-and-approvals.md#delegation).
+	OnBehalfOf *Person
+}
+
+// people are the names a review is the review of: its reviewer's, and the delegator's for a
+// review on someone's behalf.
+func (rv Review) people() []string {
+	if rv.OnBehalfOf != nil {
+		return []string{rv.Reviewer, rv.OnBehalfOf.Name}
+	}
+	return []string{rv.Reviewer}
 }
 
 // Person is someone who may review: their name, email (empty when unknown), IdP groups and Quai
@@ -244,8 +260,11 @@ const (
 // Status is how far one rule is.
 type Status struct {
 	Rule      Rule
-	Approvals []string // the approvers counted for the rule, sorted
-	Satisfied bool     // a rule the plan says does not apply is satisfied
+	Approvals []string // the approvers counted for the rule, sorted: the people who reviewed
+	// OnBehalfOf maps an approver of Approvals who approved for someone else, through a delegation,
+	// to that person.
+	OnBehalfOf map[string]string `json:",omitempty"`
+	Satisfied  bool              // a rule the plan says does not apply is satisfied
 }
 
 // Outcome is the decision on a request.
@@ -309,22 +328,64 @@ func Eligible(rules []Rule, i int, who Person, ctx Context) bool {
 	return !others && CanReview(rules[i], who, ctx)
 }
 
-// Evaluate decides a request from its reviews. With no rules, a request is approved.
-func Evaluate(rules []Rule, reviews []Review, ctx Context) Outcome {
-	// The latest decision of each reviewer counts; the requester's never does.
-	latest := map[string]Review{}
-	var order []string
-	for _, rv := range reviews {
-		if rv.Reviewer == "" || rv.Reviewer == ctx.Requester {
+// Delegated reports whether a delegate may approve or deny for the i-th of a request's rules on a
+// delegator's behalf: the delegator is Eligible, and the delegate passes the checks no delegation
+// lifts, being neither the requester, nor one of the request's definition authors, nor the
+// delegator. The delegate's own rights play no part: a delegation passes on the delegator's rights,
+// never what the delegator holds on someone else's behalf.
+func Delegated(rules []Rule, i int, delegate, delegator Person, ctx Context) bool {
+	if delegate.Name == "" || delegator.Name == "" || delegate.Name == delegator.Name ||
+		delegate.Name == ctx.Requester || ctx.definitionAuthor(delegate) {
+		return false
+	}
+	return Eligible(rules, i, delegator, ctx)
+}
+
+// Standing returns the positions of the reviews that count, in order of their reviewers' first
+// reviews: a review stands while it is the latest review of every person it is the review of, its
+// reviewer's and, on someone's behalf, the delegator's. So one human makes one approval: a
+// delegate's review for someone replaces the delegate's own review and the delegator's, and either
+// one's later review replaces it. The requester's reviews, in their own right or on their behalf,
+// never count.
+func Standing(reviews []Review, requester string) []int {
+	last := map[string]int{}
+	first := map[string]int{}
+	var kept []int
+	for i, rv := range reviews {
+		if rv.Reviewer == "" || rv.OnBehalfOf != nil && rv.OnBehalfOf.Name == "" || slices.Contains(rv.people(), requester) {
 			continue
 		}
-		if _, seen := latest[rv.Reviewer]; !seen {
-			order = append(order, rv.Reviewer)
+		kept = append(kept, i)
+		if _, ok := first[rv.Reviewer]; !ok {
+			first[rv.Reviewer] = i
 		}
-		latest[rv.Reviewer] = rv
+		for _, p := range rv.people() {
+			last[p] = i
+		}
+	}
+	var out []int
+	for _, i := range kept {
+		if !slices.ContainsFunc(reviews[i].people(), func(p string) bool { return last[p] != i }) {
+			out = append(out, i)
+		}
+	}
+	slices.SortStableFunc(out, func(a, b int) int { return first[reviews[a].Reviewer] - first[reviews[b].Reviewer] })
+	return out
+}
+
+// Evaluate decides a request from its reviews. With no rules, a request is approved.
+func Evaluate(rules []Rule, reviews []Review, ctx Context) Outcome {
+	// The latest decision of each person counts (Standing); the requester's never does.
+	var standing []Review
+	for _, i := range Standing(reviews, ctx.Requester) {
+		standing = append(standing, reviews[i])
 	}
 	eligible := func(i int, rv Review) bool {
-		return Eligible(rules, i, Person{Name: rv.Reviewer, Email: rv.Email, Groups: rv.Groups, Teams: rv.Teams}, ctx)
+		who := Person{Name: rv.Reviewer, Email: rv.Email, Groups: rv.Groups, Teams: rv.Teams}
+		if rv.OnBehalfOf != nil {
+			return Delegated(rules, i, who, *rv.OnBehalfOf, ctx)
+		}
+		return Eligible(rules, i, who, ctx)
 	}
 
 	statuses := make([]Status, len(rules))
@@ -339,8 +400,8 @@ func Evaluate(rules []Rule, reviews []Review, ctx Context) Outcome {
 		if r.External != "" && ctx.External[r.External] == "rejected" {
 			denied = true
 		}
-		for _, name := range order {
-			if rv := latest[name]; rv.Decision == Deny && eligible(i, rv) {
+		for _, rv := range standing {
+			if rv.Decision == Deny && eligible(i, rv) {
 				denied = true
 			}
 		}
@@ -362,9 +423,18 @@ func Evaluate(rules []Rule, reviews []Review, ctx Context) Outcome {
 		}
 	}
 	var approvers []Review
-	for _, name := range order {
-		if rv := latest[name]; rv.Decision == Approve {
+	for _, rv := range standing {
+		if rv.Decision == Approve {
 			approvers = append(approvers, rv)
+		}
+	}
+	counts := func(st *Status, rv Review) {
+		st.Approvals = append(st.Approvals, rv.Reviewer)
+		if rv.OnBehalfOf != nil {
+			if st.OnBehalfOf == nil {
+				st.OnBehalfOf = map[string]string{}
+			}
+			st.OnBehalfOf[rv.Reviewer] = rv.OnBehalfOf.Name
 		}
 	}
 	slotOf := make([]int, len(approvers)) // approver → slot, or -1
@@ -394,8 +464,7 @@ func Evaluate(rules []Rule, reviews []Review, ctx Context) Outcome {
 	}
 	for s, a := range holder {
 		if a >= 0 {
-			st := &statuses[slots[s]]
-			st.Approvals = append(st.Approvals, approvers[a].Reviewer)
+			counts(&statuses[slots[s]], approvers[a])
 		}
 	}
 
@@ -408,10 +477,10 @@ func Evaluate(rules []Rule, reviews []Review, ctx Context) Outcome {
 		case r.External != "":
 			st.Satisfied = ctx.External[r.External] == "approved"
 		case !r.Distinct || r.Overall:
-			// Each person once: approvers holds one review per reviewer.
+			// Each person once: approvers holds one review per person (Standing).
 			for _, a := range approvers {
 				if eligible(i, a) {
-					st.Approvals = append(st.Approvals, a.Reviewer)
+					counts(st, a)
 				}
 			}
 			st.Satisfied = len(st.Approvals) >= r.Min

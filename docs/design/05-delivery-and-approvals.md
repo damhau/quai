@@ -317,9 +317,69 @@ As built (P4-12):
 - The request page says why someone a rule names cannot review it: they requested it, or which
   of their commits changed its definitions in the period.
 
-### Delegation, reminders, escalation
+### Delegation
 
-- Approvers can delegate to a named colleague for a date range (out of office). The delegate's approval is recorded as "by X on behalf of Y".
+Approvers can delegate to a named colleague for a date range (out of office). The delegate's
+approval is recorded as "by X on behalf of Y". As built (P4-13, [open questions 24 and 75 to
+77](../plan/open-questions.md#still-open)):
+
+- **Who makes one.** Only the delegator, for themselves, on their profile page or with
+  `POST /api/v1/me/delegations`, signed in: the delegator is the session's person, never a name in
+  the path or the body, and an API token is refused. When `auth.stepUp` is configured, making one
+  needs a step-up: handing on one's approvals is as sensitive as approving. The delegate is
+  someone else who has signed in to Quai and is not deactivated. Audited as
+  `delegation.created`.
+- **The period.** From a start, inclusive, to an end, exclusive, instants kept in UTC: at most 90
+  days, starting now at the earliest (a start less than a minute in the past, a clock behind, is
+  now) and at most a year ahead. The profile page reads and shows times in the browser's time
+  zone; an empty start is now.
+- **One delegate at a time, no chains.** A delegator has one delegate at any instant: a delegation
+  overlapping one not revoked is refused until that one is revoked. Nobody delegates to someone who
+  has delegated their own approvals for part of the period, so delegations form no cycle. A
+  delegate holds the delegator's own rights only, never what the delegator holds through a
+  delegation: when A delegates to B and B to C, C may review what B could in their own right,
+  never what A could.
+- **Revoking.** The delegator revokes it at any time, on the profile page or with
+  `DELETE /api/v1/delegations/{id}`, without a step-up. A platform admin may revoke anyone's
+  (`GET /api/v1/delegations` lists those neither revoked nor ended), and never makes one for
+  someone else. Audited as `delegation.revoked`, with who revoked it (`delegator` or `admin`).
+- **What a delegate may do.** During the period, approve or deny on the delegator's behalf what
+  the delegator could approve or deny at that moment, judged when the review is made with the
+  delegator as the directory describes them then (their groups, teams and email, kept with the
+  review): the delegator not deactivated, named by the rule, not the requester, not a definition
+  author the request's separation of duties excludes. The checks no delegation lifts are the
+  delegate's own as well: the delegate did not request it and is not such a definition author. So
+  a delegate never approves their own request, nor the delegator's. The delegation is read again,
+  locked, in the review's transaction, so one revoked or ended a moment before takes no review; a
+  review made before stands, as any review does.
+- **One human, one approval.** A review on someone's behalf is both people's, the delegate's and
+  the delegator's, and each person's latest review counts: the delegate's review for the delegator
+  replaces the delegate's own earlier review and the delegator's, and a later review by either
+  replaces it. For `distinct` and `destroys: requireTwo`, a delegate and the delegator they review
+  for are one person: one human never makes two approvals through a delegation. A delegate cannot
+  review for a delegator who reviewed the current content themselves: their decision stands. When
+  someone may review both in their own right and for a delegator, the request page asks which
+  ("Review as").
+- **Step-up and chat links.** A step-up applies to the delegate, the human acting. A card sent to a
+  delegate is theirs: its links are bound to the delegate and to the delegator they would review
+  for, and give only a review on that delegator's behalf ([approving from
+  chat](#approving-from-chat)).
+- **Where it shows.** Both people and the delegation used, wherever the review appears: the
+  request page (its reviews, the approval chain's "Approved by fiona (on behalf of alice)", the
+  timeline, a rejection included), the audit log (`request.reviewed` and `request.approved`
+  carry `onBehalfOf` and the delegation's ID), and the commit's
+  `Approved-by: fiona (on behalf of alice)` trailers, each value one line without control
+  characters or line separators, so that no name adds a trailer. The evidence bundle does not
+  exist yet (P4-18); it will name both as well.
+- **Notifications.** During the period, a delegator's "approval needed" goes to their delegate
+  instead, saying on whose behalf, when the delegate may review the request for them; otherwise,
+  or once the delegate has reviewed it, it stays with the delegator. It goes no further, whatever
+  the delegate delegated in turn. The delegate reads the request's content as an approver does,
+  since they may review it. The delegator keeps everything else, their requests' notifications and
+  alerts included ([notifications](#notifications)).
+
+### Reminders, escalation
+
 - Reminders go to eligible approvers after a configurable delay; after a second delay, escalation goes to a fallback group.
 - Requests expire after `expiry`; the PR is closed with a comment.
 
@@ -410,7 +470,9 @@ Built (`internal/notify`):
   repository's admins (`metadata.owners`, matched as an `owners` rule is) and
   to `notifications.alerts`, plain addresses that get alerts only. A
   deactivated person gets nothing ([open question
-  56](../plan/open-questions.md#still-open)).
+  56](../plan/open-questions.md#still-open)). An approver who delegated their
+  approvals is replaced by their delegate while the delegation is active and
+  the delegate may review the request for them ([delegation](#delegation)).
 - **Content.** A request's content (title, reason, diff summary, plan) goes
   only to people who may read the request: its requester, and an approver
   while the request waits for them (`requests.CanReview`, checked again when
@@ -527,7 +589,9 @@ nothing ([open question 22](../plan/open-questions.md#still-open)):
   waits for approval with the content the card showed. Otherwise it is
   refused with the reason, in the audit log (`request.link_refused`), and the
   page is the request as without it ([open questions 61 and
-  62](../plan/open-questions.md#still-open)).
+  62](../plan/open-questions.md#still-open)). A link sent to a delegate also
+  names the delegator, and decides only on that delegator's behalf (`behalf`
+  otherwise; [delegation](#delegation)).
 - Once the request no longer waits for that person (they reviewed it, it was
   decided, its content changed, their approval is no longer needed), their card
   is updated to say so, without its buttons: a refresh job on the

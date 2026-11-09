@@ -3,9 +3,14 @@ package chatlink
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"maps"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -146,6 +151,100 @@ func TestLinkCheck(t *testing.T) {
 		if r := l.Check(use); r == nil || r.Code != want {
 			t.Errorf("%s: %v", want, r)
 		}
+	}
+}
+
+// TestLinkOnBehalf: a link for a delegate's decision on a delegator's behalf binds the delegator
+// too: removing, adding or changing them breaks the MAC, and a decision on behalf of anyone else,
+// or in the delegate's own right, is refused. A link without one keeps the MAC links had before.
+func TestLinkOnBehalf(t *testing.T) {
+	ctx := context.Background()
+	s := signer(key1)
+	l := link()
+	l.Approver, l.OnBehalfOf = "fiona", "alice"
+	tok, err := s.Make(ctx, l)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Open(ctx, tok)
+	if err != nil || got.Approver != "fiona" || got.OnBehalfOf != "alice" {
+		t.Fatalf("Open = %+v, %v", got, err)
+	}
+	payload, sum, _ := strings.Cut(strings.TrimPrefix(tok, "v1."), ".")
+	raw, _ := base64.RawURLEncoding.DecodeString(payload)
+	var p map[string]any
+	if err := json.Unmarshal(raw, &p); err != nil || p["o"] != "alice" {
+		t.Fatalf("payload %s: %v", raw, err)
+	}
+	for name, change := range map[string]func(map[string]any){
+		"removed": func(q map[string]any) { delete(q, "o") },
+		"changed": func(q map[string]any) { q["o"] = "carol" },
+	} {
+		q := maps.Clone(p)
+		change(q)
+		b, _ := json.Marshal(q)
+		if _, err := s.Open(ctx, "v1."+base64.RawURLEncoding.EncodeToString(b)+"."+sum); code(t, err) != Signature {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	// Someone added to a link made for the approver's own decision.
+	own, err := s.Make(ctx, link())
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, sum, _ = strings.Cut(strings.TrimPrefix(own, "v1."), ".")
+	raw, _ = base64.RawURLEncoding.DecodeString(payload)
+	p = map[string]any{}
+	_ = json.Unmarshal(raw, &p)
+	p["o"] = "carol"
+	b, _ := json.Marshal(p)
+	if _, err := s.Open(ctx, "v1."+base64.RawURLEncoding.EncodeToString(b)+"."+sum); code(t, err) != Signature {
+		t.Errorf("added: %v", err)
+	}
+	// The MAC of a link for one's own decision is the one links had before delegation.
+	want := hmac.New(sha256.New, key1)
+	for _, f := range []string{domain, got.Request.String(), "alice", Approve, testHash, "teams", strconv.FormatInt(got.Expires.Unix(), 10)} {
+		var n [4]byte
+		binary.BigEndian.PutUint32(n[:], uint32(len(f))) // #nosec G115 -- short test fields
+		want.Write(n[:])
+		want.Write([]byte(f))
+	}
+	ownLink := link()
+	ownLink.Expires = got.Expires
+	if !hmac.Equal(mac(key1, ownLink), want.Sum(nil)) {
+		t.Error("a link without a delegator has another MAC than before")
+	}
+
+	use := Use{Request: l.Request, Approver: "fiona", Decision: Approve, OnBehalfOf: "alice", Pending: true, ChangeSet: testHash}
+	if r := got.Check(use); r != nil {
+		t.Errorf("Check = %v", r)
+	}
+	opening := use
+	opening.Decision, opening.OnBehalfOf = "", ""
+	if r := got.Check(opening); r != nil {
+		t.Errorf("opening: %v", r)
+	}
+	for _, who := range []string{"", "carol"} {
+		u := use
+		u.OnBehalfOf = who
+		if r := got.Check(u); r == nil || r.Code != Behalf {
+			t.Errorf("on behalf of %q: %v", who, r)
+		}
+	}
+	// The delegator cannot use the delegate's link, nor anyone a link for their own decision on
+	// someone's behalf.
+	u := use
+	u.Approver = "alice"
+	if r := got.Check(u); r == nil || r.Code != Approver {
+		t.Errorf("the delegator: %v", r)
+	}
+	if r := link().Check(Use{Request: l.Request, Approver: "alice", Decision: Approve, OnBehalfOf: "dora", Pending: true, ChangeSet: testHash}); r == nil || r.Code != Behalf {
+		t.Errorf("an own link on behalf: %v", r)
+	}
+	self := l
+	self.OnBehalfOf = "fiona"
+	if _, err := s.Make(ctx, self); err == nil {
+		t.Error("a link on one's own behalf")
 	}
 }
 

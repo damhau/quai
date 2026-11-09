@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { CancelRequestData, CancelRequestErrors, CancelRequestResponses, CheckChatLinkData, CheckChatLinkErrors, CheckChatLinkResponses, CheckDriftData, CheckDriftErrors, CheckDriftResponses, CheckRepositoryEnforcementData, CheckRepositoryEnforcementErrors, CheckRepositoryEnforcementResponses, CreateRepositoryData, CreateRepositoryErrors, CreateRepositoryResponses, CreateTokenData, CreateTokenErrors, CreateTokenResponses, DeleteRepositoryData, DeleteRepositoryErrors, DeleteRepositoryResponses, ExportAccessReportData, ExportAccessReportErrors, ExportAccessReportResponses, ExportAuditLogData, ExportAuditLogErrors, ExportAuditLogResponses, GenerateRunTokenData, GenerateRunTokenErrors, GenerateRunTokenResponses, GetAccessReportData, GetAccessReportErrors, GetAccessReportResponses, GetBlueprintData, GetBlueprintErrors, GetBlueprintResponses, GetInstanceData, GetInstanceErrors, GetInstanceResponses, GetMeData, GetMeErrors, GetMeResponses, GetMetaData, GetMetaErrors, GetMetaResponses, GetPreferencesData, GetPreferencesErrors, GetPreferencesResponses, GetRepositoryData, GetRepositoryErrors, GetRepositoryResponses, GetRequestData, GetRequestErrors, GetRequestResponses, GetResourceData, GetResourceErrors, GetResourceResponses, GetTypeData, GetTypeErrors, GetTypeResponses, InstallRepositoryWebhookData, InstallRepositoryWebhookErrors, InstallRepositoryWebhookResponses, ListAuditEventsData, ListAuditEventsErrors, ListAuditEventsResponses, ListCatalogData, ListCatalogErrors, ListCatalogResponses, ListEventsData, ListEventsErrors, ListEventsResponses, ListInstancesData, ListInstancesErrors, ListInstancesResponses, ListInventoryData, ListInventoryErrors, ListInventoryResponses, ListRepositoriesData, ListRepositoriesErrors, ListRepositoriesResponses, ListRepositoryConnectionsData, ListRepositoryConnectionsErrors, ListRepositoryConnectionsResponses, ListRequestsData, ListRequestsErrors, ListRequestsResponses, ListRunsData, ListRunsErrors, ListRunsResponses, ListTokensData, ListTokensErrors, ListTokensResponses, PlanBlueprintData, PlanBlueprintErrors, PlanBlueprintResponses, PlanInstanceActionData, PlanInstanceActionErrors, PlanInstanceActionResponses, PlanTypeData, PlanTypeErrors, PlanTypeResponses, PreviewBlueprintData, PreviewBlueprintErrors, PreviewBlueprintResponses, PreviewDefinitionsData, PreviewDefinitionsErrors, PreviewDefinitionsResponses, PreviewTypeData, PreviewTypeErrors, PreviewTypeResponses, PublishBlueprintData, PublishBlueprintErrors, PublishBlueprintResponses, ReportFluxEventData, ReportFluxEventErrors, ReportFluxEventResponses, ReportRunData, ReportRunErrors, ReportRunResponses, RepositoryCommitData, RepositoryCommitErrors, RepositoryCommitResponses, RepositoryHealthData, RepositoryHealthErrors, RepositoryHealthResponses, RepositoryLogData, RepositoryLogErrors, RepositoryLogResponses, RequestBlueprintData, RequestBlueprintErrors, RequestBlueprintResponses, RequestInstanceActionData, RequestInstanceActionErrors, RequestInstanceActionResponses, RequestTypeData, RequestTypeErrors, RequestTypeResponses, RetryRequestData, RetryRequestErrors, RetryRequestResponses, ReviewRequestData, ReviewRequestErrors, ReviewRequestResponses, RevokeTokenData, RevokeTokenErrors, RevokeTokenResponses, SyncRepositoryData, SyncRepositoryErrors, SyncRepositoryResponses, TestRepositoryAccessData, TestRepositoryAccessErrors, TestRepositoryAccessResponses, UpdatePreferencesData, UpdatePreferencesErrors, UpdatePreferencesResponses, UpdateRepositoryData, UpdateRepositoryErrors, UpdateRepositoryResponses } from './types.gen';
+import type { CancelRequestData, CancelRequestErrors, CancelRequestResponses, CheckChatLinkData, CheckChatLinkErrors, CheckChatLinkResponses, CheckDriftData, CheckDriftErrors, CheckDriftResponses, CheckRepositoryEnforcementData, CheckRepositoryEnforcementErrors, CheckRepositoryEnforcementResponses, CreateDelegationData, CreateDelegationErrors, CreateDelegationResponses, CreateRepositoryData, CreateRepositoryErrors, CreateRepositoryResponses, CreateTokenData, CreateTokenErrors, CreateTokenResponses, DeleteRepositoryData, DeleteRepositoryErrors, DeleteRepositoryResponses, ExportAccessReportData, ExportAccessReportErrors, ExportAccessReportResponses, ExportAuditLogData, ExportAuditLogErrors, ExportAuditLogResponses, GenerateRunTokenData, GenerateRunTokenErrors, GenerateRunTokenResponses, GetAccessReportData, GetAccessReportErrors, GetAccessReportResponses, GetBlueprintData, GetBlueprintErrors, GetBlueprintResponses, GetInstanceData, GetInstanceErrors, GetInstanceResponses, GetMeData, GetMeErrors, GetMeResponses, GetMetaData, GetMetaErrors, GetMetaResponses, GetPreferencesData, GetPreferencesErrors, GetPreferencesResponses, GetRepositoryData, GetRepositoryErrors, GetRepositoryResponses, GetRequestData, GetRequestErrors, GetRequestResponses, GetResourceData, GetResourceErrors, GetResourceResponses, GetTypeData, GetTypeErrors, GetTypeResponses, InstallRepositoryWebhookData, InstallRepositoryWebhookErrors, InstallRepositoryWebhookResponses, ListAuditEventsData, ListAuditEventsErrors, ListAuditEventsResponses, ListCatalogData, ListCatalogErrors, ListCatalogResponses, ListDelegationsData, ListDelegationsErrors, ListDelegationsResponses, ListEventsData, ListEventsErrors, ListEventsResponses, ListInstancesData, ListInstancesErrors, ListInstancesResponses, ListInventoryData, ListInventoryErrors, ListInventoryResponses, ListMyDelegationsData, ListMyDelegationsErrors, ListMyDelegationsResponses, ListRepositoriesData, ListRepositoriesErrors, ListRepositoriesResponses, ListRepositoryConnectionsData, ListRepositoryConnectionsErrors, ListRepositoryConnectionsResponses, ListRequestsData, ListRequestsErrors, ListRequestsResponses, ListRunsData, ListRunsErrors, ListRunsResponses, ListTokensData, ListTokensErrors, ListTokensResponses, PlanBlueprintData, PlanBlueprintErrors, PlanBlueprintResponses, PlanInstanceActionData, PlanInstanceActionErrors, PlanInstanceActionResponses, PlanTypeData, PlanTypeErrors, PlanTypeResponses, PreviewBlueprintData, PreviewBlueprintErrors, PreviewBlueprintResponses, PreviewDefinitionsData, PreviewDefinitionsErrors, PreviewDefinitionsResponses, PreviewTypeData, PreviewTypeErrors, PreviewTypeResponses, PublishBlueprintData, PublishBlueprintErrors, PublishBlueprintResponses, ReportFluxEventData, ReportFluxEventErrors, ReportFluxEventResponses, ReportRunData, ReportRunErrors, ReportRunResponses, RepositoryCommitData, RepositoryCommitErrors, RepositoryCommitResponses, RepositoryHealthData, RepositoryHealthErrors, RepositoryHealthResponses, RepositoryLogData, RepositoryLogErrors, RepositoryLogResponses, RequestBlueprintData, RequestBlueprintErrors, RequestBlueprintResponses, RequestInstanceActionData, RequestInstanceActionErrors, RequestInstanceActionResponses, RequestTypeData, RequestTypeErrors, RequestTypeResponses, RetryRequestData, RetryRequestErrors, RetryRequestResponses, ReviewRequestData, ReviewRequestErrors, ReviewRequestResponses, RevokeDelegationData, RevokeDelegationErrors, RevokeDelegationResponses, RevokeTokenData, RevokeTokenErrors, RevokeTokenResponses, SyncRepositoryData, SyncRepositoryErrors, SyncRepositoryResponses, TestRepositoryAccessData, TestRepositoryAccessErrors, TestRepositoryAccessResponses, UpdatePreferencesData, UpdatePreferencesErrors, UpdatePreferencesResponses, UpdateRepositoryData, UpdateRepositoryErrors, UpdateRepositoryResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -48,6 +48,20 @@ export const exportAuditLog = <ThrowOnError extends boolean = false>(options?: O
 export const listCatalog = <ThrowOnError extends boolean = false>(options?: Options<ListCatalogData, ThrowOnError>): RequestResult<ListCatalogResponses, ListCatalogErrors, ThrowOnError> => (options?.client ?? client).get<ListCatalogResponses, ListCatalogErrors, ThrowOnError>({ url: '/api/v1/catalog', ...options });
 
 /**
+ * List everyone's delegations of approvals
+ *
+ * Those neither revoked nor ended, for platform admins.
+ */
+export const listDelegations = <ThrowOnError extends boolean = false>(options?: Options<ListDelegationsData, ThrowOnError>): RequestResult<ListDelegationsResponses, ListDelegationsErrors, ThrowOnError> => (options?.client ?? client).get<ListDelegationsResponses, ListDelegationsErrors, ThrowOnError>({ url: '/api/v1/delegations', ...options });
+
+/**
+ * Revoke a delegation of approvals
+ *
+ * Yours, or anyone's for a platform admin. Reviews already made on its strength stay.
+ */
+export const revokeDelegation = <ThrowOnError extends boolean = false>(options: Options<RevokeDelegationData, ThrowOnError>): RequestResult<RevokeDelegationResponses, RevokeDelegationErrors, ThrowOnError> => (options.client ?? client).delete<RevokeDelegationResponses, RevokeDelegationErrors, ThrowOnError>({ url: '/api/v1/delegations/{id}', ...options });
+
+/**
  * List what happened lately
  */
 export const listEvents = <ThrowOnError extends boolean = false>(options?: Options<ListEventsData, ThrowOnError>): RequestResult<ListEventsResponses, ListEventsErrors, ThrowOnError> => (options?.client ?? client).get<ListEventsResponses, ListEventsErrors, ThrowOnError>({ url: '/api/v1/events', ...options });
@@ -71,6 +85,27 @@ export const listInventory = <ThrowOnError extends boolean = false>(options?: Op
  * Describe the signed-in user
  */
 export const getMe = <ThrowOnError extends boolean = false>(options?: Options<GetMeData, ThrowOnError>): RequestResult<GetMeResponses, GetMeErrors, ThrowOnError> => (options?.client ?? client).get<GetMeResponses, GetMeErrors, ThrowOnError>({ url: '/api/v1/me', ...options });
+
+/**
+ * List the delegations of approvals you gave or received
+ *
+ * Those neither revoked nor ended. An API token cannot read them.
+ */
+export const listMyDelegations = <ThrowOnError extends boolean = false>(options?: Options<ListMyDelegationsData, ThrowOnError>): RequestResult<ListMyDelegationsResponses, ListMyDelegationsErrors, ThrowOnError> => (options?.client ?? client).get<ListMyDelegationsResponses, ListMyDelegationsErrors, ThrowOnError>({ url: '/api/v1/me/delegations', ...options });
+
+/**
+ * Delegate your approvals to a colleague for a period
+ *
+ * During the period the delegate may approve or deny, on your behalf, what you could approve or deny. One delegate at a time; at most 90 days; never to someone who has delegated their own approvals for part of the period. It needs a recent sign-in when step-up is configured, and cannot be made with an API token.
+ */
+export const createDelegation = <ThrowOnError extends boolean = false>(options: Options<CreateDelegationData, ThrowOnError>): RequestResult<CreateDelegationResponses, CreateDelegationErrors, ThrowOnError> => (options.client ?? client).post<CreateDelegationResponses, CreateDelegationErrors, ThrowOnError>({
+    url: '/api/v1/me/delegations',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
 
 /**
  * Get your notification preferences

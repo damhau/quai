@@ -29,6 +29,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/damhau/quai/backend/internal/engine/locate"
 	"github.com/damhau/quai/backend/internal/engine/plan"
@@ -227,6 +228,24 @@ type Trailer struct {
 	Value string
 }
 
+// String is the trailer's line, without its end: a value is one line, without control characters
+// or Unicode's line and paragraph separators, so that no name or reason can add a trailer, nor
+// end the block of trailers (docs/design/05-delivery-and-approvals.md#delegation).
+func (t Trailer) String() string {
+	return t.Key + ": " + TrailerValue(t.Value)
+}
+
+// TrailerValue makes a value safe for a trailer's line: its first line, without control
+// characters (CR, tab, NEL and the others) or U+2028 and U+2029, spaces trimmed.
+func TrailerValue(v string) string {
+	return strings.TrimSpace(strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) || r == '\u2028' || r == '\u2029' {
+			return -1
+		}
+		return r
+	}, firstLine(v)))
+}
+
 // Message formats a commit message: subject, body and trailers, as docs/design/05 shows.
 func Message(subject, body string, trailers ...Trailer) string {
 	var b strings.Builder
@@ -238,7 +257,7 @@ func Message(subject, body string, trailers ...Trailer) string {
 	if len(trailers) > 0 {
 		b.WriteString("\n")
 		for _, t := range trailers {
-			b.WriteString(t.Key + ": " + firstLine(t.Value) + "\n")
+			b.WriteString(t.String() + "\n")
 		}
 	}
 	return b.String()

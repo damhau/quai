@@ -156,6 +156,12 @@ func TestAuthorize(t *testing.T) {
 		{"a session manages its tokens", who("dan", nil), ManageOwnTokens, Object{}, true, ""},
 		{"tokens cannot manage preferences", Principal{Name: "dan", Scopes: []string{"requests:write", "requests:read", "catalog:read", "inventory:read"}}, ManageOwnPreferences, Object{}, false, "scopes"},
 		{"a session manages its preferences", who("dan", nil), ManageOwnPreferences, Object{}, true, ""},
+		{"tokens cannot delegate", Principal{Name: "dan", Scopes: []string{"requests:write", "requests:read", "catalog:read", "inventory:read"}}, ManageOwnDelegations, Object{}, false, "scopes"},
+		{"a session delegates its approvals", who("dan", nil), ManageOwnDelegations, Object{}, true, ""},
+		{"an admin's token cannot revoke delegations", Principal{Name: "ada", Grants: []Grant{at(PlatformAdmin, ScopeGlobal, "")}, Scopes: []string{"requests:write", "requests:read"}}, ManageDelegations, Object{}, false, "scopes"},
+		{"an admin revokes delegations", who("ada", nil, at(PlatformAdmin, ScopeGlobal, "")), ManageDelegations, Object{}, true, ""},
+		{"a repository admin does not", who("rae", nil, at(RepositoryAdmin, ScopeGlobal, "")), ManageDelegations, Object{}, false, "platform admin"},
+		{"nobody else does", who("dan", nil, at(Requester, ScopeGlobal, "")), ManageDelegations, Object{}, false, "platform admin"},
 	}
 	for _, tt := range tests {
 		d, err := Authorize(context.Background(), tt.p, tt.action, tt.obj)

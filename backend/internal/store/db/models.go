@@ -105,6 +105,18 @@ type DefinitionSet struct {
 	CreatedAt  pgtype.Timestamptz
 }
 
+type Delegation struct {
+	ID        uuid.UUID
+	OrgID     string
+	Delegator string
+	Delegate  string
+	StartsAt  pgtype.Timestamptz
+	EndsAt    pgtype.Timestamptz
+	CreatedAt pgtype.Timestamptz
+	RevokedAt pgtype.Timestamptz
+	RevokedBy string
+}
+
 type Delivery struct {
 	RequestID   uuid.UUID
 	OrgID       string
@@ -235,6 +247,11 @@ type Review struct {
 	ReviewerAcr      string
 	ReviewerAcrs     []string
 	StepUp           bool
+	OnBehalfOf       string
+	DelegationID     pgtype.UUID
+	OnBehalfEmail    string
+	OnBehalfGroups   []string
+	OnBehalfTeams    []string
 }
 
 type Run struct {

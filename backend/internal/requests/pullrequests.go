@@ -485,7 +485,7 @@ func (s *Service) commentApprovals(ctx context.Context, prs connectors.PullReque
 		var b strings.Builder
 		fmt.Fprintf(&b, "Approved in Quai (request #%d).\n\n", r.Number)
 		for _, t := range approved {
-			b.WriteString(t.Key + ": " + t.Value + "\n")
+			b.WriteString(t.String() + "\n") // one line each (gitx.TrailerValue)
 		}
 		if l := s.link(r); l != "" {
 			b.WriteString("\n" + l + "\n")

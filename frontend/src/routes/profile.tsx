@@ -1,23 +1,37 @@
 import { useState } from "react"
 import { createFileRoute } from "@tanstack/react-router"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Loader2, Save } from "lucide-react"
+import { Loader2, Save, UserCheck } from "lucide-react"
 import { toast } from "sonner"
-import { getMeOptions, getPreferencesOptions, getPreferencesQueryKey, updatePreferencesMutation } from "@/api/generated/@tanstack/react-query.gen"
-import type { PreferencesOutputBody } from "@/api/generated/types.gen"
+import {
+  createDelegationMutation,
+  getMeOptions,
+  getPreferencesOptions,
+  getPreferencesQueryKey,
+  listMyDelegationsOptions,
+  listMyDelegationsQueryKey,
+  revokeDelegationMutation,
+  updatePreferencesMutation,
+} from "@/api/generated/@tanstack/react-query.gen"
+import type { DelegationView, PreferencesOutputBody } from "@/api/generated/types.gen"
+import { StepUpPrompt, StepUpRefusal } from "@/components/step-up-prompt"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { instantOf, localInput, when } from "@/lib/delegations"
 import { bodyOf, browserTimeZone, channels, choiceKey, choicesOf, hours, kinds, modes, timeZones, type Choices, type Mode } from "@/lib/preferences"
-import { isProblem, problemMessage } from "@/lib/problems"
+import { fieldErrors, hasFieldErrors, isProblem, isStepUpRequired, problemMessage } from "@/lib/problems"
 
 export const Route = createFileRoute("/profile")({ component: Profile })
 
-// The signed-in person's page: their notification preferences. Delegation (P4-13) goes here too.
+// The signed-in person's page: their notification preferences, and the delegations of approvals
+// they gave or received.
 function Profile() {
   const { data: me } = useQuery(getMeOptions())
   return (
@@ -34,6 +48,7 @@ function Profile() {
         )}
       </header>
       <Notifications email={me?.email} />
+      {me && <Delegation me={me.name} />}
     </section>
   )
 }
@@ -220,6 +235,206 @@ function PreferencesForm({ view }: { view: PreferencesOutputBody }) {
         </Button>
         <Button type="button" variant="outline" onClick={reset}>
           Back to the defaults
+        </Button>
+      </div>
+    </form>
+  )
+}
+
+/** delegationTitle is what the profile says when delegating needs a recent sign-in. */
+const delegationTitle = "Delegating your approvals needs a recent sign-in"
+
+/**
+ * Delegation hands the person's approvals to a colleague for a period, out of office
+ * (docs/design/05-delivery-and-approvals.md#delegation), and lists the delegations they gave,
+ * which they revoke, and received. Times are the browser's; the server takes instants. Nothing
+ * here names the delegator: the server takes them from the session.
+ */
+function Delegation({ me }: { me: string }) {
+  const list = useQuery(listMyDelegationsOptions())
+  const all = list.data?.delegations ?? []
+  const given = all.filter((d) => d.delegator === me)
+  const received = all.filter((d) => d.delegate === me)
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>
+          <h2 id="delegation-title">Delegation</h2>
+        </CardTitle>
+        <CardDescription>
+          While you are away, a colleague may approve or deny on your behalf what you could approve or deny yourself. Your
+          approvals needed go to them; alerts still reach you. Their reviews name you both and count once. You can revoke a
+          delegation at any time.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-6">
+        {list.isPending && <Skeleton className="h-24" />}
+        {list.error && (
+          <Alert variant="destructive">
+            <AlertDescription>{problemMessage(list.error)}</AlertDescription>
+          </Alert>
+        )}
+        {list.data && (
+          <>
+            <DelegationList title="Your delegations" empty="You have not delegated your approvals." list={given} revocable />
+            {received.length > 0 && <DelegationList title="Delegated to you" empty="" list={received} />}
+            <DelegationForm maxDays={list.data.maxDays} stepUp={list.data.stepUp} />
+          </>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function DelegationList({ title, empty, list, revocable }: { title: string; empty: string; list: DelegationView[]; revocable?: boolean }) {
+  const queryClient = useQueryClient()
+  const revoke = useMutation({
+    ...revokeDelegationMutation(),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: listMyDelegationsQueryKey() })
+      toast.success("The delegation is revoked")
+    },
+  })
+  return (
+    <div className="grid gap-2">
+      <h3 className="font-medium">{title}</h3>
+      {list.length === 0 ? (
+        <p className="text-muted-foreground text-sm">{empty}</p>
+      ) : (
+        <ul className="grid gap-2" aria-label={title}>
+          {list.map((d) => (
+            <li key={d.id} className="flex flex-wrap items-center gap-2 text-sm">
+              <UserCheck className="text-muted-foreground size-4" aria-hidden />
+              <span>
+                {revocable ? (
+                  <>
+                    To <span className="font-medium">{d.delegate}</span>
+                  </>
+                ) : (
+                  <>
+                    From <span className="font-medium">{d.delegator}</span>: you may review on their behalf what they could review
+                  </>
+                )}
+                , {when(d.startsAt)} until {when(d.endsAt)}
+              </span>
+              <Badge variant={d.active ? "default" : "outline"}>{d.active ? "Active" : "Scheduled"}</Badge>
+              {revocable && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  aria-label={`Revoke the delegation to ${d.delegate}`}
+                  disabled={revoke.isPending}
+                  onClick={() => revoke.mutate({ path: { id: d.id } })}
+                >
+                  Revoke
+                </Button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {revoke.error && (
+        <Alert variant="destructive">
+          <AlertDescription>{problemMessage(revoke.error)}</AlertDescription>
+        </Alert>
+      )}
+    </div>
+  )
+}
+
+function DelegationForm({ maxDays, stepUp }: { maxDays: number; stepUp: boolean }) {
+  const [delegate, setDelegate] = useState("")
+  const [from, setFrom] = useState("") // empty: now
+  const [until, setUntil] = useState(() => localInput(new Date(Date.now() + 7 * 24 * 3600 * 1000)))
+  const zone = browserTimeZone()
+  const queryClient = useQueryClient()
+  const { data: me } = useQuery(getMeOptions())
+  const create = useMutation({
+    ...createDelegationMutation(),
+    onSuccess: async (d) => {
+      await queryClient.invalidateQueries({ queryKey: listMyDelegationsQueryKey() })
+      setDelegate("")
+      setFrom("")
+      toast.success(`Your approvals are delegated to ${d.delegate}`)
+    },
+  })
+  const errors = fieldErrors(create.error, "body")
+  const needsSignIn = stepUp && me && !me.stepUp.satisfied
+  return (
+    <form
+      aria-labelledby="delegate-title"
+      className="grid gap-3 border-t pt-4"
+      onSubmit={(e) => {
+        e.preventDefault()
+        create.mutate({ body: { delegate: delegate.trim(), startsAt: instantOf(from) ?? new Date().toISOString(), endsAt: instantOf(until) ?? "" } })
+      }}
+    >
+      <h3 id="delegate-title" className="font-medium">
+        Delegate your approvals
+      </h3>
+      <p className="text-muted-foreground text-sm">
+        To someone who has signed in to Quai, for {maxDays} days at most; one delegate at a time. Times are in your time zone
+        {zone ? ` (${zone})` : ""}.
+      </p>
+      <div className="flex flex-wrap items-start gap-4">
+        <div className="grid gap-1.5">
+          <Label htmlFor="delegate-name">Colleague</Label>
+          <Input
+            id="delegate-name"
+            required
+            maxLength={256}
+            placeholder="Their name in Quai"
+            value={delegate}
+            aria-invalid={errors.delegate ? true : undefined}
+            onChange={(e) => setDelegate(e.target.value)}
+          />
+          {errors.delegate && <p className="text-destructive text-xs">{errors.delegate}</p>}
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor="delegate-from">From</Label>
+          <Input
+            id="delegate-from"
+            type="datetime-local"
+            value={from}
+            aria-describedby="delegate-from-hint"
+            aria-invalid={errors.startsAt ? true : undefined}
+            onChange={(e) => setFrom(e.target.value)}
+          />
+          <p id="delegate-from-hint" className="text-muted-foreground text-xs">
+            Empty: now
+          </p>
+          {errors.startsAt && <p className="text-destructive text-xs">{errors.startsAt}</p>}
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor="delegate-until">Until</Label>
+          <Input
+            id="delegate-until"
+            type="datetime-local"
+            required
+            value={until}
+            aria-invalid={errors.endsAt ? true : undefined}
+            onChange={(e) => setUntil(e.target.value)}
+          />
+          {errors.endsAt && <p className="text-destructive text-xs">{errors.endsAt}</p>}
+        </div>
+      </div>
+      {create.error && isStepUpRequired(create.error) ? (
+        <StepUpRefusal error={create.error} reset={() => create.reset()} title={delegationTitle} />
+      ) : (
+        create.error &&
+        !hasFieldErrors(create.error) && (
+          <Alert variant="destructive">
+            <AlertTitle>Not delegated</AlertTitle>
+            <AlertDescription>{problemMessage(create.error)}</AlertDescription>
+          </Alert>
+        )
+      )}
+      {needsSignIn && !create.error && <StepUpPrompt title={delegationTitle} reason={me.stepUp.reason} />}
+      <div>
+        <Button type="submit" disabled={create.isPending || !!needsSignIn}>
+          {create.isPending ? <Loader2 className="animate-spin" /> : <UserCheck />}
+          Delegate
         </Button>
       </div>
     </form>

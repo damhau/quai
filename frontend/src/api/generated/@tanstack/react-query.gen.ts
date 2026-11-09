@@ -3,8 +3,8 @@
 import { type InfiniteData, infiniteQueryOptions, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { cancelRequest, checkChatLink, checkDrift, checkRepositoryEnforcement, createRepository, createToken, deleteRepository, exportAccessReport, exportAuditLog, generateRunToken, getAccessReport, getBlueprint, getInstance, getMe, getMeta, getPreferences, getRepository, getRequest, getResource, getType, installRepositoryWebhook, listAuditEvents, listCatalog, listEvents, listInstances, listInventory, listRepositories, listRepositoryConnections, listRequests, listRuns, listTokens, type Options, planBlueprint, planInstanceAction, planType, previewBlueprint, previewDefinitions, previewType, publishBlueprint, reportFluxEvent, reportRun, repositoryCommit, repositoryHealth, repositoryLog, requestBlueprint, requestInstanceAction, requestType, retryRequest, reviewRequest, revokeToken, syncRepository, testRepositoryAccess, updatePreferences, updateRepository } from '../sdk.gen';
-import type { CancelRequestData, CancelRequestError, CancelRequestResponse, CheckChatLinkData, CheckChatLinkError, CheckChatLinkResponse, CheckDriftData, CheckDriftError, CheckDriftResponse, CheckRepositoryEnforcementData, CheckRepositoryEnforcementError, CheckRepositoryEnforcementResponse, CreateRepositoryData, CreateRepositoryError, CreateRepositoryResponse, CreateTokenData, CreateTokenError, CreateTokenResponse, DeleteRepositoryData, DeleteRepositoryError, DeleteRepositoryResponse, ExportAccessReportData, ExportAccessReportError, ExportAccessReportResponse, ExportAuditLogData, ExportAuditLogError, ExportAuditLogResponse, GenerateRunTokenData, GenerateRunTokenError, GenerateRunTokenResponse, GetAccessReportData, GetAccessReportError, GetAccessReportResponse, GetBlueprintData, GetBlueprintError, GetBlueprintResponse, GetInstanceData, GetInstanceError, GetInstanceResponse, GetMeData, GetMeError, GetMeResponse, GetMetaData, GetMetaError, GetMetaResponse, GetPreferencesData, GetPreferencesError, GetPreferencesResponse, GetRepositoryData, GetRepositoryError, GetRepositoryResponse, GetRequestData, GetRequestError, GetRequestResponse, GetResourceData, GetResourceError, GetResourceResponse, GetTypeData, GetTypeError, GetTypeResponse, InstallRepositoryWebhookData, InstallRepositoryWebhookError, InstallRepositoryWebhookResponse, ListAuditEventsData, ListAuditEventsError, ListAuditEventsResponse, ListCatalogData, ListCatalogError, ListCatalogResponse, ListEventsData, ListEventsError, ListEventsResponse, ListInstancesData, ListInstancesError, ListInstancesResponse, ListInventoryData, ListInventoryError, ListInventoryResponse, ListRepositoriesData, ListRepositoriesError, ListRepositoriesResponse, ListRepositoryConnectionsData, ListRepositoryConnectionsError, ListRepositoryConnectionsResponse, ListRequestsData, ListRequestsError, ListRequestsResponse, ListRunsData, ListRunsError, ListRunsResponse, ListTokensData, ListTokensError, ListTokensResponse, PlanBlueprintData, PlanBlueprintError, PlanBlueprintResponse, PlanInstanceActionData, PlanInstanceActionError, PlanInstanceActionResponse, PlanTypeData, PlanTypeError, PlanTypeResponse, PreviewBlueprintData, PreviewBlueprintError, PreviewBlueprintResponse, PreviewDefinitionsData, PreviewDefinitionsError, PreviewDefinitionsResponse, PreviewTypeData, PreviewTypeError, PreviewTypeResponse, PublishBlueprintData, PublishBlueprintError, PublishBlueprintResponse, ReportFluxEventData, ReportFluxEventError, ReportFluxEventResponse, ReportRunData, ReportRunError, ReportRunResponse, RepositoryCommitData, RepositoryCommitError, RepositoryCommitResponse, RepositoryHealthData, RepositoryHealthError, RepositoryHealthResponse, RepositoryLogData, RepositoryLogError, RepositoryLogResponse, RequestBlueprintData, RequestBlueprintError, RequestBlueprintResponse, RequestInstanceActionData, RequestInstanceActionError, RequestInstanceActionResponse, RequestTypeData, RequestTypeError, RequestTypeResponse, RetryRequestData, RetryRequestError, RetryRequestResponse, ReviewRequestData, ReviewRequestError, ReviewRequestResponse, RevokeTokenData, RevokeTokenError, RevokeTokenResponse, SyncRepositoryData, SyncRepositoryError, SyncRepositoryResponse, TestRepositoryAccessData, TestRepositoryAccessError, TestRepositoryAccessResponse, UpdatePreferencesData, UpdatePreferencesError, UpdatePreferencesResponse, UpdateRepositoryData, UpdateRepositoryError, UpdateRepositoryResponse } from '../types.gen';
+import { cancelRequest, checkChatLink, checkDrift, checkRepositoryEnforcement, createDelegation, createRepository, createToken, deleteRepository, exportAccessReport, exportAuditLog, generateRunToken, getAccessReport, getBlueprint, getInstance, getMe, getMeta, getPreferences, getRepository, getRequest, getResource, getType, installRepositoryWebhook, listAuditEvents, listCatalog, listDelegations, listEvents, listInstances, listInventory, listMyDelegations, listRepositories, listRepositoryConnections, listRequests, listRuns, listTokens, type Options, planBlueprint, planInstanceAction, planType, previewBlueprint, previewDefinitions, previewType, publishBlueprint, reportFluxEvent, reportRun, repositoryCommit, repositoryHealth, repositoryLog, requestBlueprint, requestInstanceAction, requestType, retryRequest, reviewRequest, revokeDelegation, revokeToken, syncRepository, testRepositoryAccess, updatePreferences, updateRepository } from '../sdk.gen';
+import type { CancelRequestData, CancelRequestError, CancelRequestResponse, CheckChatLinkData, CheckChatLinkError, CheckChatLinkResponse, CheckDriftData, CheckDriftError, CheckDriftResponse, CheckRepositoryEnforcementData, CheckRepositoryEnforcementError, CheckRepositoryEnforcementResponse, CreateDelegationData, CreateDelegationError, CreateDelegationResponse, CreateRepositoryData, CreateRepositoryError, CreateRepositoryResponse, CreateTokenData, CreateTokenError, CreateTokenResponse, DeleteRepositoryData, DeleteRepositoryError, DeleteRepositoryResponse, ExportAccessReportData, ExportAccessReportError, ExportAccessReportResponse, ExportAuditLogData, ExportAuditLogError, ExportAuditLogResponse, GenerateRunTokenData, GenerateRunTokenError, GenerateRunTokenResponse, GetAccessReportData, GetAccessReportError, GetAccessReportResponse, GetBlueprintData, GetBlueprintError, GetBlueprintResponse, GetInstanceData, GetInstanceError, GetInstanceResponse, GetMeData, GetMeError, GetMeResponse, GetMetaData, GetMetaError, GetMetaResponse, GetPreferencesData, GetPreferencesError, GetPreferencesResponse, GetRepositoryData, GetRepositoryError, GetRepositoryResponse, GetRequestData, GetRequestError, GetRequestResponse, GetResourceData, GetResourceError, GetResourceResponse, GetTypeData, GetTypeError, GetTypeResponse, InstallRepositoryWebhookData, InstallRepositoryWebhookError, InstallRepositoryWebhookResponse, ListAuditEventsData, ListAuditEventsError, ListAuditEventsResponse, ListCatalogData, ListCatalogError, ListCatalogResponse, ListDelegationsData, ListDelegationsError, ListDelegationsResponse, ListEventsData, ListEventsError, ListEventsResponse, ListInstancesData, ListInstancesError, ListInstancesResponse, ListInventoryData, ListInventoryError, ListInventoryResponse, ListMyDelegationsData, ListMyDelegationsError, ListMyDelegationsResponse, ListRepositoriesData, ListRepositoriesError, ListRepositoriesResponse, ListRepositoryConnectionsData, ListRepositoryConnectionsError, ListRepositoryConnectionsResponse, ListRequestsData, ListRequestsError, ListRequestsResponse, ListRunsData, ListRunsError, ListRunsResponse, ListTokensData, ListTokensError, ListTokensResponse, PlanBlueprintData, PlanBlueprintError, PlanBlueprintResponse, PlanInstanceActionData, PlanInstanceActionError, PlanInstanceActionResponse, PlanTypeData, PlanTypeError, PlanTypeResponse, PreviewBlueprintData, PreviewBlueprintError, PreviewBlueprintResponse, PreviewDefinitionsData, PreviewDefinitionsError, PreviewDefinitionsResponse, PreviewTypeData, PreviewTypeError, PreviewTypeResponse, PublishBlueprintData, PublishBlueprintError, PublishBlueprintResponse, ReportFluxEventData, ReportFluxEventError, ReportFluxEventResponse, ReportRunData, ReportRunError, ReportRunResponse, RepositoryCommitData, RepositoryCommitError, RepositoryCommitResponse, RepositoryHealthData, RepositoryHealthError, RepositoryHealthResponse, RepositoryLogData, RepositoryLogError, RepositoryLogResponse, RequestBlueprintData, RequestBlueprintError, RequestBlueprintResponse, RequestInstanceActionData, RequestInstanceActionError, RequestInstanceActionResponse, RequestTypeData, RequestTypeError, RequestTypeResponse, RetryRequestData, RetryRequestError, RetryRequestResponse, ReviewRequestData, ReviewRequestError, ReviewRequestResponse, RevokeDelegationData, RevokeDelegationError, RevokeDelegationResponse, RevokeTokenData, RevokeTokenError, RevokeTokenResponse, SyncRepositoryData, SyncRepositoryError, SyncRepositoryResponse, TestRepositoryAccessData, TestRepositoryAccessError, TestRepositoryAccessResponse, UpdatePreferencesData, UpdatePreferencesError, UpdatePreferencesResponse, UpdateRepositoryData, UpdateRepositoryError, UpdateRepositoryResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -192,6 +192,45 @@ export const listCatalogOptions = (options?: Options<ListCatalogData>) => queryO
     queryKey: listCatalogQueryKey(options)
 });
 
+export const listDelegationsQueryKey = (options?: Options<ListDelegationsData>) => createQueryKey('listDelegations', options);
+
+/**
+ * List everyone's delegations of approvals
+ *
+ * Those neither revoked nor ended, for platform admins.
+ */
+export const listDelegationsOptions = (options?: Options<ListDelegationsData>) => queryOptions<ListDelegationsResponse, ListDelegationsError, ListDelegationsResponse, ReturnType<typeof listDelegationsQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await listDelegations({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: listDelegationsQueryKey(options)
+});
+
+/**
+ * Revoke a delegation of approvals
+ *
+ * Yours, or anyone's for a platform admin. Reviews already made on its strength stay.
+ */
+export const revokeDelegationMutation = (options?: Partial<Options<RevokeDelegationData>>): UseMutationOptions<RevokeDelegationResponse, RevokeDelegationError, Options<RevokeDelegationData>> => {
+    const mutationOptions: UseMutationOptions<RevokeDelegationResponse, RevokeDelegationError, Options<RevokeDelegationData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await revokeDelegation({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
 export const listEventsQueryKey = (options?: Options<ListEventsData>) => createQueryKey('listEvents', options);
 
 /**
@@ -281,6 +320,45 @@ export const getMeOptions = (options?: Options<GetMeData>) => queryOptions<GetMe
     },
     queryKey: getMeQueryKey(options)
 });
+
+export const listMyDelegationsQueryKey = (options?: Options<ListMyDelegationsData>) => createQueryKey('listMyDelegations', options);
+
+/**
+ * List the delegations of approvals you gave or received
+ *
+ * Those neither revoked nor ended. An API token cannot read them.
+ */
+export const listMyDelegationsOptions = (options?: Options<ListMyDelegationsData>) => queryOptions<ListMyDelegationsResponse, ListMyDelegationsError, ListMyDelegationsResponse, ReturnType<typeof listMyDelegationsQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await listMyDelegations({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: listMyDelegationsQueryKey(options)
+});
+
+/**
+ * Delegate your approvals to a colleague for a period
+ *
+ * During the period the delegate may approve or deny, on your behalf, what you could approve or deny. One delegate at a time; at most 90 days; never to someone who has delegated their own approvals for part of the period. It needs a recent sign-in when step-up is configured, and cannot be made with an API token.
+ */
+export const createDelegationMutation = (options?: Partial<Options<CreateDelegationData>>): UseMutationOptions<CreateDelegationResponse, CreateDelegationError, Options<CreateDelegationData>> => {
+    const mutationOptions: UseMutationOptions<CreateDelegationResponse, CreateDelegationError, Options<CreateDelegationData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await createDelegation({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
 
 export const getPreferencesQueryKey = (options?: Options<GetPreferencesData>) => createQueryKey('getPreferences', options);
 

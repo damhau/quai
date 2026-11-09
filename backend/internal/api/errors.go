@@ -65,7 +65,7 @@ func Problem(err error, prefix string) huma.StatusError {
 	case errors.Is(err, repositories.ErrOwnersUnavailable):
 		// Who may approve, or who owns the resource, is unknown until the platform answers.
 		return huma.Error503ServiceUnavailable(err.Error())
-	case errors.Is(err, requests.ErrNotApprover):
+	case errors.Is(err, requests.ErrNotApprover), errors.Is(err, requests.ErrNotAllowed):
 		return huma.Error403Forbidden(err.Error())
 	case errors.Is(err, plan.ErrExists), errors.Is(err, plan.ErrPin):
 		return huma.Error409Conflict(err.Error())

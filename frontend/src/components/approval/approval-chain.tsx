@@ -1,6 +1,7 @@
 import { BellOff, CircleCheck, CircleMinus, Clock, FileClock } from "lucide-react"
 import type { RuleView } from "@/api/generated/types.gen"
 import { Badge } from "@/components/ui/badge"
+import { approverLabel } from "@/lib/delegations"
 import { amongOthers } from "@/lib/requests"
 
 /** ApprovalChain shows each approval rule of a request with its progress. */
@@ -44,7 +45,9 @@ export function ApprovalChain({ rules }: { rules: RuleView[] }) {
                   {r.external && <Badge variant="outline">{r.external}</Badge>}
                 </span>
               )}
-              {approvals.length > 0 && <span className="text-muted-foreground text-xs">Approved by {approvals.join(", ")}</span>}
+              {approvals.length > 0 && (
+                <span className="text-muted-foreground text-xs">Approved by {approvals.map((a) => approverLabel(a, r.onBehalfOf)).join(", ")}</span>
+              )}
               {r.noOneToNotify && (
                 <span className="text-muted-foreground flex items-center gap-1 text-xs">
                   <BellOff className="size-3.5 shrink-0" aria-hidden />

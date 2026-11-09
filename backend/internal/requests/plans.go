@@ -91,8 +91,9 @@ func (s *Service) PlanReported(ctx context.Context, id uuid.UUID) error {
 			if err := s.event(ctx, tx, r, "approved", "", nil); err != nil {
 				return err
 			}
-			if err := recordRequest(ctx, tx, r, "approved", map[string]any{"changeSet": sets[0].Hash, "reason": "the plan makes no rule that needs more approvals apply",
-				"approvals": approvalsOf(counted(r, all, sets[0].Hash))}); err != nil {
+			details := approvedDetails(sets[0].Hash, r, counted(r, all, sets[0].Hash))
+			details["reason"] = "the plan makes no rule that needs more approvals apply"
+			if err := recordRequest(ctx, tx, r, "approved", details); err != nil {
 				return err
 			}
 			return jobs.InsertTx(ctx, s.jobs, tx, DeliverArgs{RequestID: r.ID}, nil)

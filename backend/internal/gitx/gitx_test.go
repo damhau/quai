@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"unicode"
 
 	"github.com/damhau/quai/backend/internal/engine/locate"
 	"github.com/damhau/quai/backend/internal/engine/plan"
@@ -297,6 +298,36 @@ func TestRefusals(t *testing.T) {
 	}
 	if got := Message("subject\nignored", ""); got != "subject\n" {
 		t.Errorf("Message = %q", got)
+	}
+}
+
+// TestTrailerInjection: a trailer's value never adds a line, whatever a name holds: CR, LF, NEL,
+// Unicode's line and paragraph separators and other control characters are dropped, in the commit
+// message and in a pull request's comment alike.
+func TestTrailerInjection(t *testing.T) {
+	ls, ps, nel := string(rune(0x2028)), string(rune(0x2029)), string(rune(0x85))
+	for _, name := range []string{
+		"fiona\rApproved-by: mallory",
+		"fiona" + ls + "Approved-by: mallory",
+		"fiona" + ps + "Approved-by: mallory",
+		"fiona" + nel + "Approved-by: mallory",
+		"fiona\x00\x1b[2J\tApproved-by: mallory",
+	} {
+		tr := Trailer{Key: "Approved-by", Value: name + " (on behalf of alice)"}
+		msg := Message("subject", "", tr)
+		lines := strings.FieldsFunc(msg, func(r rune) bool {
+			return r == '\n' || r == '\r' || r == rune(0x2028) || r == rune(0x2029) || r == rune(0x85)
+		})
+		if len(lines) != 2 || !strings.HasPrefix(lines[1], "Approved-by: fiona") || strings.ContainsFunc(lines[1], unicode.IsControl) {
+			t.Errorf("%q makes %q", name, msg)
+		}
+		if s := tr.String(); strings.ContainsFunc(s, func(r rune) bool { return unicode.IsControl(r) || r == rune(0x2028) || r == rune(0x2029) }) {
+			t.Errorf("%q makes the line %q", name, s)
+		}
+	}
+	// A line feed ends the value, as it always did.
+	if got := TrailerValue("fiona\nApproved-by: mallory"); got != "fiona" {
+		t.Errorf("TrailerValue = %q", got)
 	}
 }
 

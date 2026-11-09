@@ -865,6 +865,10 @@
           "expiresAt": {
             "format": "date-time",
             "type": "string"
+          },
+          "onBehalfOf": {
+            "description": "The decision is on this person's behalf, with the approvals they delegated to you: confirm it with the review's onBehalfOf",
+            "type": "string"
           }
         },
         "required": [
@@ -1288,6 +1292,133 @@
           "types",
           "blueprints",
           "problems"
+        ],
+        "type": "object"
+      },
+      "DelegateBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/api/v1/schemas/DelegateBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "delegate": {
+            "description": "The colleague, by their name in Quai: someone who has signed in and is not deactivated",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "endsAt": {
+            "description": "When it ends, at most 90 days after the start",
+            "format": "date-time",
+            "type": "string"
+          },
+          "startsAt": {
+            "description": "When it starts, now at the earliest: an instant, with its offset",
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "delegate",
+          "startsAt",
+          "endsAt"
+        ],
+        "type": "object"
+      },
+      "DelegationView": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/api/v1/schemas/DelegationView.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "active": {
+            "description": "It passes the delegator's approvals on now",
+            "type": "boolean"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "delegate": {
+            "description": "Who may review on the delegator's behalf during the period",
+            "type": "string"
+          },
+          "delegator": {
+            "description": "Who handed their approvals on",
+            "type": "string"
+          },
+          "endsAt": {
+            "description": "When it ends, exclusive",
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "startsAt": {
+            "description": "When it starts, inclusive",
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "delegator",
+          "delegate",
+          "startsAt",
+          "endsAt",
+          "createdAt",
+          "active"
+        ],
+        "type": "object"
+      },
+      "DelegationsOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/api/v1/schemas/DelegationsOutputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "delegations": {
+            "items": {
+              "$ref": "#/components/schemas/DelegationView"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "maxDays": {
+            "description": "How long a delegation lasts at most, in days",
+            "format": "int64",
+            "type": "integer"
+          },
+          "stepUp": {
+            "description": "Making a delegation needs a recent sign-in (auth.stepUp is configured)",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "delegations",
+          "maxDays",
+          "stepUp"
         ],
         "type": "object"
       },
@@ -2863,6 +2994,11 @@
             "type": "boolean"
           },
           "canReview": {
+            "description": "You may review it now, in your own right or on someone's behalf",
+            "type": "boolean"
+          },
+          "canReviewOwn": {
+            "description": "You may review it in your own right",
             "type": "boolean"
           },
           "cannotReview": {
@@ -2939,6 +3075,16 @@
           "requesterNotNotified": {
             "description": "Notifications do not reach the requester: Quai knows no verified email of theirs",
             "type": "boolean"
+          },
+          "reviewFor": {
+            "description": "The people whose approvals you hold now, through a delegation, and may review it for",
+            "items": {
+              "$ref": "#/components/schemas/ReviewForView"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
           },
           "reviews": {
             "items": {
@@ -3289,6 +3435,28 @@
         ],
         "type": "object"
       },
+      "ReviewForView": {
+        "additionalProperties": false,
+        "properties": {
+          "delegation": {
+            "type": "string"
+          },
+          "delegator": {
+            "type": "string"
+          },
+          "until": {
+            "description": "When the delegation ends",
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "delegator",
+          "delegation",
+          "until"
+        ],
+        "type": "object"
+      },
       "ReviewInputBody": {
         "additionalProperties": false,
         "properties": {
@@ -3316,6 +3484,11 @@
             "description": "The link of the approval card in chat whose decision this confirms",
             "maxLength": 1024,
             "type": "string"
+          },
+          "onBehalfOf": {
+            "description": "Review on this person's behalf, with the approvals they delegated to you (reviewFor); absent: in your own right",
+            "maxLength": 256,
+            "type": "string"
           }
         },
         "required": [
@@ -3342,6 +3515,14 @@
             "type": "string"
           },
           "decision": {
+            "type": "string"
+          },
+          "delegation": {
+            "description": "The delegation the review used",
+            "type": "string"
+          },
+          "onBehalfOf": {
+            "description": "The person on whose behalf the reviewer reviewed, with the approvals they delegated: the review counts for them and the reviewer, once",
             "type": "string"
           },
           "reviewer": {
@@ -3420,6 +3601,13 @@
           "notApplicable": {
             "description": "The plan says the rule does not apply",
             "type": "boolean"
+          },
+          "onBehalfOf": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "For each approver of approvals who approved on someone's behalf, through a delegation: that person",
+            "type": "object"
           },
           "overall": {
             "description": "The rule counts different people among the approvers of the request's other rules (separation of duties' requireTwo); its approvers count only when no other rule takes approvals from people",
@@ -4785,6 +4973,74 @@
         ]
       }
     },
+    "/api/v1/delegations": {
+      "get": {
+        "description": "Those neither revoked nor ended, for platform admins.",
+        "operationId": "list-delegations",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DelegationsOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List everyone's delegations of approvals",
+        "tags": [
+          "Identity"
+        ]
+      }
+    },
+    "/api/v1/delegations/{id}": {
+      "delete": {
+        "description": "Yours, or anyone's for a platform admin. Reviews already made on its strength stay.",
+        "operationId": "revoke-delegation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Revoke a delegation of approvals",
+        "tags": [
+          "Identity"
+        ]
+      }
+    },
     "/api/v1/events": {
       "get": {
         "operationId": "list-events",
@@ -5011,6 +5267,78 @@
           }
         },
         "summary": "Describe the signed-in user",
+        "tags": [
+          "Identity"
+        ]
+      }
+    },
+    "/api/v1/me/delegations": {
+      "get": {
+        "description": "Those neither revoked nor ended. An API token cannot read them.",
+        "operationId": "list-my-delegations",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DelegationsOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List the delegations of approvals you gave or received",
+        "tags": [
+          "Identity"
+        ]
+      },
+      "post": {
+        "description": "During the period the delegate may approve or deny, on your behalf, what you could approve or deny. One delegate at a time; at most 90 days; never to someone who has delegated their own approvals for part of the period. It needs a recent sign-in when step-up is configured, and cannot be made with an API token.",
+        "operationId": "create-delegation",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DelegateBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DelegationView"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Delegate your approvals to a colleague for a period",
         "tags": [
           "Identity"
         ]

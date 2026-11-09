@@ -3,6 +3,7 @@ package requests
 import (
 	"context"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/damhau/quai/backend/internal/audit"
@@ -61,13 +62,28 @@ func transitionDetails(from, kind string, data map[string]any) map[string]any {
 	return d
 }
 
-// approvalsOf are the people whose approvals count, as personal data.
-func approvalsOf(reviews []db.Review) []audit.Personal {
-	out := []audit.Personal{}
-	for _, v := range reviews {
-		if v.Decision == policy.Approve {
-			out = append(out, audit.Personal(v.Reviewer))
+// approvedDetails are the audit details of a request approved with the reviews of its change set
+// (hash): the people whose approvals count (policy.Standing), as personal data, and those given on
+// someone's behalf, with the delegator and the delegation.
+func approvedDetails(hash string, r db.Request, reviews []db.Review) map[string]any {
+	approvals := []audit.Personal{}
+	var delegated []map[string]any
+	for _, v := range standing(r, reviews) {
+		if v.Decision != policy.Approve {
+			continue
+		}
+		approvals = append(approvals, audit.Personal(v.Reviewer))
+		if v.OnBehalfOf != "" {
+			d := map[string]any{"approver": audit.Personal(v.Reviewer), "onBehalfOf": audit.Personal(v.OnBehalfOf)}
+			if v.DelegationID.Valid {
+				d["delegation"] = uuid.UUID(v.DelegationID.Bytes).String()
+			}
+			delegated = append(delegated, d)
 		}
 	}
-	return out
+	details := map[string]any{"changeSet": hash, "approvals": approvals}
+	if delegated != nil {
+		details["onBehalfOf"] = delegated
+	}
+	return details
 }

@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"slices"
 	"strings"
 
 	"github.com/google/uuid"
@@ -53,6 +52,9 @@ type RequestContent struct {
 	Waiting    []string // the rules it waits for approvals of, by name, with their approvers
 	Changes    []FileChange
 	Plans      []PlanContent
+	// OnBehalfOf is the delegator whose approval an approval needed asks of its recipient, their
+	// delegate; empty when the recipient gives their own.
+	OnBehalfOf string
 }
 
 // FileChange is a file a request changes, and how many lines.
@@ -150,11 +152,18 @@ func (s *Service) compose(ctx context.Context, n db.Notification, c Channel) (Re
 		if r.State != requests.PendingApproval {
 			return to, Message{}, "the request no longer waits for approval", nil
 		}
-		if !slices.ContainsFunc(awaiting, func(a requests.Awaiting) bool {
-			return slices.ContainsFunc(a.People, func(u db.User) bool { return "user:"+u.Name == n.Recipient })
-		}) {
+		onBehalfOf, waits := requests.WaitsFor(awaiting, strings.TrimPrefix(n.Recipient, "user:"))
+		if !waits {
 			return to, Message{}, "the request no longer waits for their approval", nil
 		}
+		m, err := s.requestMessage(ctx, n.Kind, e, r, awaiting)
+		if onBehalfOf != "" {
+			// A delegate reads what the delegator's approval lets them review (Awaiting), and
+			// knows whose approval it is.
+			m.Request.OnBehalfOf = onBehalfOf
+			m.Headline += " You hold " + onBehalfOf + "'s approvals through a delegation: you review it on their behalf."
+		}
+		return to, m, "", err
 	}
 	m, err := s.requestMessage(ctx, n.Kind, e, r, awaiting)
 	return to, m, "", err
@@ -230,6 +239,9 @@ func (s *Service) requestMessage(ctx context.Context, kind string, e db.Event, r
 		m.Headline = "Your request " + num + " was rejected"
 		if e.Actor != "" {
 			m.Headline += " by " + e.Actor
+			if o := str("onBehalfOf"); o != "" {
+				m.Headline += " on behalf of " + o
+			}
 		}
 		m.Headline += "."
 	case Stale:

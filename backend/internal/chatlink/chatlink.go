@@ -5,12 +5,16 @@
 // A link is not a credential (open question 22). Opening it changes nothing: the request page
 // shows the decision ready, and the decision is made by the review API, in a browser session as
 // the approver, with every check of a review (CanReview, step-up, the change set) and the link's
-// on top: its MAC and expiry (Open), then the request, the approver signed in, the decision, the
-// request still waiting and its change set unchanged (Check).
+// on top: its MAC and expiry (Open), then the request, the approver signed in, the decision, on
+// whose behalf, the request still waiting and its change set unchanged (Check). A link sent to a
+// delegate for a delegator's approval stays the delegate's: it names both, and the review it
+// confirms is the delegate's, on the delegator's behalf
+// (docs/design/05-delivery-and-approvals.md#delegation).
 //
 // A link is "v1.", its fields in JSON, base64url, ".", and their MAC, base64url. The MAC is
 // HMAC-SHA256 over a canonical encoding of every field (a domain tag, then each field with its
-// length) under notifications.links.key, a secret of its own: never the session's or the CSRF
+// length; on whose behalf only when the link names someone, so that links made before delegation
+// still open) under notifications.links.key, a secret of its own: never the session's or the CSRF
 // key. Keys rotate by naming the new one key and the old one among previousKeys for a Lifetime;
 // a link made with a key Quai no longer has is refused (open question 61).
 package chatlink
@@ -68,6 +72,9 @@ type Link struct {
 	ChangeSet string // the hash of the change set the card showed
 	Channel   string // teams, slack
 	Expires   time.Time
+	// OnBehalfOf is the delegator whose approval the approver gives through a delegation; empty
+	// for a review in the approver's own right.
+	OnBehalfOf string
 }
 
 // Refusal is a link refused, and why: Code for the audit log, Reason for the person.
@@ -85,6 +92,7 @@ const (
 	Request   = "request"  // for another request
 	Approver  = "approver" // for another person
 	Decision  = "decision" // a decision other than the link's
+	Behalf    = "behalf"   // on someone's behalf other than the link's
 	Decided   = "decided"  // the request no longer waits for approval
 	Changed   = "changed"  // the request's change set changed since the card was sent
 	Session   = "session"  // not from a browser session (an API token)
@@ -117,6 +125,7 @@ type payload struct {
 	ChangeSet string `json:"h"`
 	Channel   string `json:"c"`
 	Expires   int64  `json:"e"`
+	Behalf    string `json:"o,omitempty"`
 }
 
 // Make returns the token of a link expiring a Lifetime from now.
@@ -130,7 +139,7 @@ func (s *Signer) Make(ctx context.Context, l Link) (string, error) {
 		return "", err
 	}
 	p, err := json.Marshal(payload{Request: l.Request.String(), Approver: l.Approver, Decision: l.Decision, ChangeSet: l.ChangeSet,
-		Channel: l.Channel, Expires: l.Expires.Unix()})
+		Channel: l.Channel, Expires: l.Expires.Unix(), Behalf: l.OnBehalfOf})
 	if err != nil {
 		return "", err
 	}
@@ -166,19 +175,20 @@ func (s *Signer) Open(ctx context.Context, token string) (Link, error) {
 	return l, nil
 }
 
-// Use is what a link is used for: the request, the person signed in, the decision they make, and
-// the request as it is now.
+// Use is what a link is used for: the request, the person signed in, the decision they make and on
+// whose behalf, and the request as it is now.
 type Use struct {
-	Request   uuid.UUID
-	Approver  string
-	Decision  string // empty when only opening the link
-	Pending   bool   // the request waits for approval
-	ChangeSet string // its current change set's hash
+	Request    uuid.UUID
+	Approver   string
+	Decision   string // empty when only opening the link
+	OnBehalfOf string // whose approval the decision gives ("": the approver's own), when deciding
+	Pending    bool   // the request waits for approval
+	ChangeSet  string // its current change set's hash
 }
 
 // Check returns why a link opened with Open cannot be used so, or nil: it is for another
-// request, another person or another decision, the request no longer waits for approval, or its
-// change set is no longer the one the card showed.
+// request, another person, another decision or a decision on someone else's behalf, the request no
+// longer waits for approval, or its change set is no longer the one the card showed.
 func (l Link) Check(u Use) *Refusal {
 	switch {
 	case l.Request != u.Request:
@@ -187,6 +197,8 @@ func (l Link) Check(u Use) *Refusal {
 		return refused(Approver, "this link was sent to someone else: review the request here as yourself")
 	case u.Decision != "" && u.Decision != l.Decision:
 		return refused(Decision, "the decision is not the link's: review the request here")
+	case u.Decision != "" && u.OnBehalfOf != l.OnBehalfOf:
+		return refused(Behalf, "the link is for a decision on someone else's behalf: review the request here")
 	case !u.Pending:
 		return refused(Decided, "the request no longer waits for approval")
 	case l.ChangeSet != u.ChangeSet:
@@ -217,10 +229,15 @@ func (s *Signer) resolve(ctx context.Context) ([]byte, [][]byte, error) {
 }
 
 // mac is the MAC of a link: HMAC-SHA256 over the domain and each field, each with its length,
-// the expiry in decimal Unix seconds.
+// the expiry in decimal Unix seconds, then on whose behalf when the link names someone: a link
+// without has the MAC it had before delegation, and the field count tells them apart.
 func mac(key []byte, l Link) []byte {
 	h := hmac.New(sha256.New, key)
-	for _, f := range []string{domain, l.Request.String(), l.Approver, l.Decision, l.ChangeSet, l.Channel, strconv.FormatInt(l.Expires.Unix(), 10)} {
+	fields := []string{domain, l.Request.String(), l.Approver, l.Decision, l.ChangeSet, l.Channel, strconv.FormatInt(l.Expires.Unix(), 10)}
+	if l.OnBehalfOf != "" {
+		fields = append(fields, l.OnBehalfOf)
+	}
+	for _, f := range fields {
 		var n [4]byte
 		binary.BigEndian.PutUint32(n[:], uint32(len(f))) // #nosec G115 -- fields are bounded by MaxLength
 		h.Write(n[:])
@@ -258,7 +275,8 @@ func parse(token string) (Link, []byte, bool) {
 	if err != nil || id.String() != p.Request {
 		return Link{}, nil, false
 	}
-	l := Link{Request: id, Approver: p.Approver, Decision: p.Decision, ChangeSet: p.ChangeSet, Channel: p.Channel, Expires: time.Unix(p.Expires, 0)}
+	l := Link{Request: id, Approver: p.Approver, Decision: p.Decision, ChangeSet: p.ChangeSet, Channel: p.Channel, Expires: time.Unix(p.Expires, 0),
+		OnBehalfOf: p.Behalf}
 	if valid(l) != nil {
 		return Link{}, nil, false
 	}
@@ -272,6 +290,8 @@ func valid(l Link) error {
 		return errors.New("chat link: no request")
 	case l.Approver == "" || len(l.Approver) > 256:
 		return errors.New("chat link: no approver")
+	case len(l.OnBehalfOf) > 256 || l.OnBehalfOf == l.Approver:
+		return errors.New("chat link: not on someone else's behalf")
 	case l.Decision != Approve && l.Decision != Deny:
 		return fmt.Errorf("chat link: %q is not a decision", l.Decision)
 	case !hash(l.ChangeSet):

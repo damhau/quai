@@ -1,4 +1,5 @@
 import type { EventView, RequestView, RuleView } from "@/api/generated/types.gen"
+import { onBehalf } from "@/lib/delegations"
 import { shortSha, webURL } from "@/lib/format"
 
 // How requests read in the UI. States and event kinds are those of backend/internal/requests.
@@ -84,11 +85,11 @@ export function eventText(e: EventView): string {
     case "approved":
       return str(d, "reason") ? `approved: ${str(d, "reason")}` : "all approvals are in"
     case "approve":
-      return "approved"
+      return `approved${onBehalf(str(d, "onBehalfOf"))}`
     case "deny":
-      return `denied${str(d, "comment") ? `: ${str(d, "comment")}` : ""}`
+      return `denied${onBehalf(str(d, "onBehalfOf"))}${str(d, "comment") ? `: ${str(d, "comment")}` : ""}`
     case "rejected":
-      return "denied the request"
+      return `denied the request${onBehalf(str(d, "onBehalfOf"))}`
     case "stale":
       if (str(d, "separation")) return `${str(d, "separation")}; plan the request again`
       if (str(d, "definitions")) return `${str(d, "definitions")} since the plan; plan the request again`

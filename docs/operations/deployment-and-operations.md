@@ -523,7 +523,8 @@ Development users have no manager: the user switcher reads no identity provider.
 Some actions take only a recent, and strong enough, authentication with the identity provider
 ([design 08](../design/08-identity-access-tenancy.md#step-up)): reviewing a request whose approval
 asks for it (`approval.stepUp` in a type or blueprint, such as `"params.env == 'prod'"`), breaking
-glass whenever `auth.stepUp` is set, and changing repository connections with `auth.stepUp.admin`.
+glass and delegating one's approvals ([delegation](#delegation)) whenever `auth.stepUp` is set, and
+changing repository connections with `auth.stepUp.admin`.
 Quai checks it on the server when the action is made, with what the ID token of the person's last
 sign-in said: its `auth_time` no older than `maxAge` (and no more than a minute in the future), its
 `acr` one of `acrValues`, its `acrs` holding `authContext`. Whatever is missing fails: an identity
@@ -607,6 +608,45 @@ Troubleshooting:
 - **Every request needs two approvers**: no plan reports for the request (no runner, direct
   delivery, or the pipeline does not report the pull request's plan), or its latest plan failed;
   the rule on the request says which.
+
+### Delegation
+
+An approver who will be away hands their approvals to a colleague for a period, on their profile
+page, under **Delegation** ([design 05](../design/05-delivery-and-approvals.md#delegation)):
+the colleague's name, **From** (empty: now) and **Until**, in the browser's time zone. Nothing to
+configure:
+
+- **The colleague** must have signed in to Quai once and not be deactivated. A period lasts 90
+  days at most, starts now at the earliest and within a year. One delegate at a time: to change
+  it, revoke the delegation first. No one delegates to someone who has delegated their own
+  approvals for part of the period.
+- **With `auth.stepUp`**, delegating needs a recent sign-in, as approving does; the page offers
+  **Sign in again**. Revoking needs none. API tokens can neither delegate nor review on someone's
+  behalf.
+- **During the period**, the delegate reviews on the delegator's behalf what the delegator could
+  review then, never their own requests or the delegator's. The request page says so; someone who
+  may also review in their own right chooses under **Review as**. The review names both people
+  everywhere: the request page, the audit log and the commit's
+  `Approved-by: fiona (on behalf of alice)`. It counts once: for the delegator, not for the
+  delegate as well, so one person never gives two of the approvals a rule needs. The delegator's "approval needed"
+  messages, in every channel, go to the delegate; alerts and their own requests' messages still
+  reach the delegator.
+- **Revoking.** The delegator revokes it on their profile page at any time. A platform admin
+  revokes someone's (someone who left in a hurry) with the API: `GET /api/v1/delegations` lists
+  those neither revoked nor ended, `DELETE /api/v1/delegations/<id>` revokes one, from a browser
+  session (an API token cannot). Reviews made before stand. Both are in the audit log
+  (`delegation.created`, `delegation.revoked` with who revoked it).
+
+Troubleshooting:
+
+- **"is no one who has signed in to Quai"**: the colleague signs in once, then the delegation can
+  be made.
+- **The delegate cannot review a request**: the delegator could not review it themselves now (no
+  rule names them, they requested it, or they changed its definitions), the delegate requested it
+  or changed its definitions, the delegator has reviewed it already (their decision stands), or
+  the delegation has not started, ended or was revoked.
+- **The delegator still gets "approval needed"**: the delegate cannot review that request for
+  them, or has reviewed it already.
 
 ### Notifications
 

@@ -25,8 +25,10 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Textarea } from "@/components/ui/textarea"
 import { chatChannels, chatLinkOf, useChatLink } from "@/lib/chat-link"
+import { capacitiesOf, onBehalf, when } from "@/lib/delegations"
 import { ago } from "@/lib/format"
 import { fieldErrors, hasFieldErrors, isStepUpRequired, problemMessage } from "@/lib/problems"
 import { eventText, inProgress, requestTitle, runURL } from "@/lib/requests"
@@ -130,10 +132,17 @@ function RequestPage() {
                     <li key={`${v.reviewer}-${v.at}`} className="flex items-start gap-2 text-sm">
                       {v.decision === "approve" ? <Check className="mt-0.5 size-4 text-emerald-600" aria-hidden /> : <X className="text-destructive mt-0.5 size-4" aria-hidden />}
                       <div>
-                        <span className="font-medium">{v.reviewer}</span> {v.decision === "approve" ? "approved" : "denied"}{" "}
+                        <span className="font-medium">{v.reviewer}</span> {v.decision === "approve" ? "approved" : "denied"}
+                        {v.onBehalfOf && (
+                          <>
+                            {" "}
+                            on behalf of <span className="font-medium">{v.onBehalfOf}</span>
+                          </>
+                        )}{" "}
                         <span className="text-muted-foreground text-xs">
                           {ago(v.at)}
                           {v.stepUp && " · signed in recently"}
+                          {v.onBehalfOf && " · through a delegation"}
                         </span>
                         {v.comment && <p className="whitespace-pre-wrap">{v.comment}</p>}
                       </div>
@@ -201,6 +210,10 @@ function useRequestUpdate() {
  * Opened from the Approve or Deny of an approval card in chat (link), it offers that decision to
  * confirm; the review carries the link, which the server checks again. A link the server refuses
  * says why, and the box is as without it.
+ *
+ * Someone who holds a colleague's approvals through a delegation chooses whether they review in
+ * their own right or on that colleague's behalf (reviewFor); a link from chat decides that itself.
+ * One person makes one approval: a review in one capacity replaces their review in the other.
  */
 function ReviewBox({ request, link }: { request: RequestView; link?: string }) {
   const [comment, setComment] = useState("")
@@ -222,10 +235,21 @@ function ReviewBox({ request, link }: { request: RequestView; link?: string }) {
       if (isStepUpRequired(e)) void queryClient.invalidateQueries({ queryKey: getMeQueryKey() })
     },
   })
-  const approved = (request.reviews ?? []).filter((v) => v.reviewer === me?.name).at(-1)?.decision === "approve"
-  const ready = chat.data && !(approved && chat.data.decision === "approve") ? chat.data : undefined
+  const capacities = capacitiesOf(request)
+  const [chosen, setChosen] = useState(capacities[0]?.value ?? "")
+  // The person's latest review stands, in whichever capacity they made it.
+  const latest = (request.reviews ?? []).filter((v) => v.reviewer === me?.name).at(-1)
+  const approvedAs = (onBehalfOf: string) => latest?.decision === "approve" && (latest.onBehalfOf ?? "") === onBehalfOf
+  const ready = chat.data && !(approvedAs(chat.data.onBehalfOf ?? "") && chat.data.decision === "approve") ? chat.data : undefined
+  // What the person chose, while the request still offers it.
+  const as = ready ? (ready.onBehalfOf ?? "") : capacities.some((c) => c.value === chosen) ? chosen : (capacities[0]?.value ?? "")
+  const approved = approvedAs(as)
+  const capacity = capacities.find((c) => c.value === as)
   const send = (decision: "approve" | "deny") =>
-    review.mutate({ path: { id: request.id }, body: { decision, comment: comment || undefined, link: ready?.decision === decision ? link : undefined } })
+    review.mutate({
+      path: { id: request.id },
+      body: { decision, comment: comment || undefined, link: ready?.decision === decision ? link : undefined, onBehalfOf: as || undefined },
+    })
   const error = fieldErrors(review.error, "body").comment
   const notice = link && <ChatLinkStatus chat={chat} />
   if (request.stepUp && me && !me.stepUp.satisfied)
@@ -281,7 +305,41 @@ function ReviewBox({ request, link }: { request: RequestView; link?: string }) {
           This request needs a recent sign-in: yours counts until {new Date(me.stepUp.until).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.
         </p>
       )}
-      {approved && <p className="text-sm">You approved this request; it waits for the other approvals. You can still deny it.</p>}
+      {capacities.length > 1 ? (
+        <div className="grid gap-1.5">
+          <Label htmlFor="review-as">Review as</Label>
+          <NativeSelect id="review-as" value={as} onChange={(e) => setChosen(e.target.value)}>
+            {capacities.map((c) => (
+              <NativeSelectOption key={c.value} value={c.value}>
+                {c.label}
+              </NativeSelectOption>
+            ))}
+          </NativeSelect>
+        </div>
+      ) : (
+        capacity?.delegation && (
+          <p className="text-sm">
+            You review it on behalf of <span className="font-medium">{capacity.value}</span>, who delegated their approvals to you.
+          </p>
+        )
+      )}
+      {capacity?.delegation && (
+        <p className="text-muted-foreground text-xs">
+          {capacity.value}'s delegation runs until {when(capacity.delegation.until)}. Your review names you both, and counts once: for{" "}
+          {capacity.value}, not for you as well.
+        </p>
+      )}
+      {approved && (
+        <p className="text-sm">
+          You approved this request{onBehalf(as)}; it waits for the other approvals. You can still deny it.
+        </p>
+      )}
+      {!approved && latest && capacities.length > 1 && (
+        <p className="text-muted-foreground text-xs">
+          You {latest.decision === "approve" ? "approved" : "denied"} it{onBehalf(latest.onBehalfOf)}: a review here replaces that one. One person
+          makes one approval.
+        </p>
+      )}
       <Label htmlFor="review-comment">{approved ? "Change your decision" : "Your review"}</Label>
       <Textarea
         id="review-comment"
@@ -324,12 +382,12 @@ function ChatLinkStatus({ chat }: { chat: ReturnType<typeof useChatLink> }) {
         <AlertDescription>{problemMessage(chat.error)}</AlertDescription>
       </Alert>
     )
-  const { decision, channel } = chat.data
+  const { decision, channel, onBehalfOf } = chat.data
   return (
     <Alert role="status">
       <MessageSquare />
       <AlertTitle>
-        {decision === "approve" ? "Approve" : "Deny"} from your {chatChannels[channel] ?? channel} card
+        {decision === "approve" ? "Approve" : "Deny"} from your {chatChannels[channel] ?? channel} card{onBehalfOf ? `, on ${onBehalfOf}'s behalf` : ""}
       </AlertTitle>
       <AlertDescription>Read the request, then confirm your decision here: nothing is decided until you do.</AlertDescription>
     </Alert>

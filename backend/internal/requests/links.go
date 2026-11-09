@@ -18,12 +18,13 @@ import (
 func (s *Service) UseLinks(l *chatlink.Signer) { s.links = l }
 
 // OpenLink checks a link of an approval card in chat for the person signed in, on a request as it
-// is now, for a decision ("" when only opening it): a browser session, not an API token; a link
-// Quai made, not expired; for this request, this person and this decision; the request still
-// waiting for approval, with the change set the card showed. It changes nothing; a refusal is a
+// is now, for a decision ("" when only opening it) on someone's behalf (onBehalfOf, "" for the
+// person's own): a browser session, not an API token; a link Quai made, not expired; for this
+// request, this person, this decision and on this behalf; the request still waiting for approval,
+// with the change set the card showed. It changes nothing; a refusal is a
 // *chatlink.Refusal, in the audit log as request.link_refused. A link does not make anyone an
 // approver: a review with it has every check of a review on top (ReviewLink).
-func (s *Service) OpenLink(ctx context.Context, who auth.Identity, r db.Request, token, decision string) (chatlink.Link, error) {
+func (s *Service) OpenLink(ctx context.Context, who auth.Identity, r db.Request, token, decision, onBehalfOf string) (chatlink.Link, error) {
 	ctx = acting(ctx, who)
 	if who.TokenID != "" {
 		return chatlink.Link{}, s.linkRefused(ctx, who, r, nil, &chatlink.Refusal{Code: chatlink.Session,
@@ -49,8 +50,8 @@ func (s *Service) OpenLink(ctx context.Context, who auth.Identity, r db.Request,
 	if len(sets) > 0 {
 		hash = sets[0].Hash
 	}
-	if ref := l.Check(chatlink.Use{Request: r.ID, Approver: who.Principal.Name, Decision: decision, Pending: r.State == PendingApproval,
-		ChangeSet: hash}); ref != nil {
+	if ref := l.Check(chatlink.Use{Request: r.ID, Approver: who.Principal.Name, Decision: decision, OnBehalfOf: onBehalfOf,
+		Pending: r.State == PendingApproval, ChangeSet: hash}); ref != nil {
 		return chatlink.Link{}, s.linkRefused(ctx, who, r, &l, ref)
 	}
 	return l, nil
@@ -66,6 +67,9 @@ func (s *Service) linkRefused(ctx context.Context, who auth.Identity, r db.Reque
 		details["decision"] = l.Decision
 		details["changeSet"] = l.ChangeSet
 		details["sentTo"] = audit.Personal(l.Approver)
+		if l.OnBehalfOf != "" {
+			details["onBehalfOf"] = audit.Personal(l.OnBehalfOf)
+		}
 		details["expires"] = l.Expires.UTC().Format(time.RFC3339)
 	}
 	if err := s.store.Tx(ctx, func(tx pgx.Tx, _ *db.Queries) error {

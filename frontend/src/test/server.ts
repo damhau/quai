@@ -3,6 +3,7 @@ import { setupServer } from "msw/node"
 import { accessHandlers, resetAccess } from "./access"
 import { auditHandlers, resetAudit } from "./audit"
 import { catalogHandlers } from "./catalog"
+import { delegationHandlers, resetDelegations } from "./delegations"
 import { gitHandlers, published } from "./git"
 import { inventoryHandlers } from "./inventory"
 import { repositoryHandlers, resetRepositories } from "./repositories"
@@ -41,6 +42,7 @@ export function resetRequests() {
   resetAudit()
   resetAccess()
   resetPreferences()
+  resetDelegations()
 }
 
 export const server = setupServer(
@@ -69,6 +71,10 @@ export const server = setupServer(
   ...auditHandlers,
   ...accessHandlers(() => (state.user ? (roles[state.user] ?? []) : null)),
   ...preferencesHandlers(() => state.user),
+  ...delegationHandlers(
+    () => state.user,
+    () => !state.stale,
+  ),
   http.get("*/auth/dev/users", () => HttpResponse.json(Object.entries(users).map(([Name, Groups]) => ({ Name, Groups })))),
   http.post("*/auth/dev/login", async ({ request }) => {
     // As the server's middleware: with a session, a state-changing request needs its CSRF token.

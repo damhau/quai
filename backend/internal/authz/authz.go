@@ -98,6 +98,10 @@ const (
 	PublishBlueprint   Action = "blueprints.publish"
 	// ManageOwnPreferences reads and changes one's notification preferences.
 	ManageOwnPreferences Action = "preferences.manage"
+	// ManageOwnDelegations makes, lists and revokes one's delegations of approvals.
+	ManageOwnDelegations Action = "delegations.manage"
+	// ManageDelegations lists and revokes anyone's delegations, never makes one for someone else.
+	ManageDelegations Action = "delegations.admin"
 )
 
 // Object is what the action is on. Fields that do not apply are empty.
@@ -236,6 +240,11 @@ func Authorize(_ context.Context, p Principal, a Action, o Object) (Decision, er
 	case ManageOwnPreferences:
 		// Anyone signed in manages their own notification preferences, in a browser session: no
 		// scope allows it to a token (open question 58).
+	case ManageOwnDelegations:
+		// Anyone signed in hands their own approvals to a colleague, in a browser session: no scope
+		// allows it to a token, which would otherwise pass its owner's approvals on (open question 75).
+	case ManageDelegations:
+		return deny("revoking someone else's delegation needs the platform admin role"), nil
 	case UseBreakGlass:
 		if !p.has(BreakGlass, o) {
 			return deny("break-glass needs the break-glass role"), nil

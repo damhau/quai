@@ -78,11 +78,12 @@ type Service struct {
 	stepUp    *auth.StepUp
 	reach     func(ctx context.Context, u db.User, kind string) (bool, error) // whether notifications reach a person; nil without a channel
 	links     *chatlink.Signer                                                // opens the links of chat cards; nil: none are
+	now       func() time.Time                                                // delegations are judged by it (UseClock)
 }
 
 // New returns the request service. jobsClient inserts the delivery jobs.
 func New(s *store.Store, reg *repositories.Registry, jobsClient *jobs.Client, log *slog.Logger) *Service {
-	return &Service{store: s, reg: reg, jobs: jobsClient, log: log, dir: &auth.Directory{}, stepUp: auth.NewStepUp(config.Auth{}, s)}
+	return &Service{store: s, reg: reg, jobs: jobsClient, log: log, dir: &auth.Directory{}, stepUp: auth.NewStepUp(config.Auth{}, s), now: time.Now}
 }
 
 // UseStepUp gives the step-up settings of the configuration (auth.stepUp); without them, step-up
@@ -769,21 +770,31 @@ type authzPrincipal = authz.Principal
 // Review records an approval or a denial and moves the request on when the rules decide. A
 // request whose regions changed in Git since it was planned becomes stale instead.
 func (s *Service) Review(ctx context.Context, who auth.Identity, id uuid.UUID, decision, comment string) (db.Request, error) {
-	return s.ReviewLink(ctx, who, id, decision, comment, "")
+	return s.ReviewLink(ctx, who, id, ReviewInput{Decision: decision, Comment: comment})
 }
 
-// ReviewLink is Review confirming the decision of a link from a chat card (link; "" for none):
-// the link's checks (OpenLink) come first, on top of every check of a review, and the change set
-// reviewed must be the one the link is bound to.
-func (s *Service) ReviewLink(ctx context.Context, who auth.Identity, id uuid.UUID, decision, comment, link string) (db.Request, error) {
+// ReviewInput is a review: a decision, the comment that goes with it, the link of the chat card it
+// confirms ("" for none), and on whose behalf it is made ("" in one's own right).
+type ReviewInput struct {
+	Decision, Comment, Link, OnBehalfOf string
+}
+
+// ReviewLink is Review confirming the decision of a link from a chat card (in.Link; "" for none),
+// on a delegator's behalf when in.OnBehalfOf names one: the link's checks (OpenLink) come first,
+// on top of every check of a review, and the change set reviewed must be the one the link is
+// bound to. A review on someone's behalf needs a delegation from them active now, and their rights
+// to reach the request now, under the reviewer's own checks (Capacity); its step-up is the
+// reviewer's, the human acting.
+func (s *Service) ReviewLink(ctx context.Context, who auth.Identity, id uuid.UUID, in ReviewInput) (db.Request, error) {
 	ctx = acting(ctx, who)
+	decision, comment := in.Decision, in.Comment
 	r, err := s.get(ctx, id)
 	if err != nil {
 		return r, err
 	}
 	var opened *chatlink.Link
-	if link != "" {
-		l, err := s.OpenLink(ctx, who, r, link, decision)
+	if in.Link != "" {
+		l, err := s.OpenLink(ctx, who, r, in.Link, decision, in.OnBehalfOf)
 		if err != nil {
 			return r, err
 		}
@@ -792,8 +803,17 @@ func (s *Service) ReviewLink(ctx context.Context, who auth.Identity, id uuid.UUI
 	if r.State != PendingApproval {
 		return r, fmt.Errorf("%w: the request is %s", ErrConflict, r.State)
 	}
-	if !CanReview(r, who.Principal) {
-		return r, ErrNotApprover
+	var behalf *Delegator
+	if in.OnBehalfOf == "" {
+		if !CanReview(r, who.Principal) {
+			return r, ErrNotApprover
+		}
+	} else {
+		d, err := s.reviewingFor(ctx, r, who, in.OnBehalfOf)
+		if err != nil {
+			return r, err
+		}
+		behalf = &d
 	}
 	if decision != policy.Approve && decision != policy.Deny {
 		return r, &schema.ValidationError{Fields: map[string]string{"decision": "must be approve or deny"}}
@@ -834,19 +854,38 @@ func (s *Service) ReviewLink(ctx context.Context, who auth.Identity, id uuid.UUI
 	}
 	var next db.Request
 	err = s.store.Tx(ctx, func(tx pgx.Tx, q *db.Queries) error {
-		if _, err := q.CreateReview(ctx, db.CreateReviewParams{
+		params := db.CreateReviewParams{
 			ID: uuid.New(), RequestID: r.ID, Reviewer: who.Principal.Name, Groups: nonNil(who.Principal.Groups),
 			Teams: nonNil(who.Principal.Teams), Decision: decision, Comment: comment, ChangeSetHash: sets[0].Hash,
 			ReviewerEmail:    pgtype.Text{String: who.Principal.Email, Valid: true},
 			ReviewerAuthTime: pgtype.Timestamptz{Time: who.AuthTime, Valid: !who.AuthTime.IsZero()},
 			ReviewerAcr:      who.ACR, ReviewerAcrs: nonNil(who.ACRS), StepUp: steppedUp,
-		}); err != nil {
-			return err
 		}
-		if err := s.event(ctx, tx, r, decision, who.Principal.Name, map[string]any{"comment": comment}); err != nil {
-			return err
-		}
+		data := map[string]any{"comment": comment}
 		details := map[string]any{"decision": decision, "comment": audit.Personal(comment), "changeSet": sets[0].Hash, "stepUp": steppedUp}
+		if behalf != nil {
+			// The delegation holds until the review is recorded: a revocation waits for it.
+			d, err := q.ShareDelegation(ctx, behalf.Delegation.ID)
+			if err != nil {
+				return err
+			}
+			if !delegationOf(d).Active(s.now()) {
+				return fmt.Errorf("%w on %s's behalf: the delegation was revoked or ended", ErrNotApprover, behalf.User.Name)
+			}
+			u := behalf.User
+			params.OnBehalfOf = pgtype.Text{String: u.Name, Valid: true}
+			params.DelegationID = pgtype.UUID{Bytes: d.ID, Valid: true}
+			params.OnBehalfEmail = pgtype.Text{String: u.Email, Valid: true}
+			params.OnBehalfGroups, params.OnBehalfTeams = nonNil(u.Groups), nonNil(s.dir.Teams(u.Groups))
+			data["onBehalfOf"], data["delegation"] = u.Name, d.ID.String()
+			details["onBehalfOf"], details["delegation"] = audit.Personal(u.Name), d.ID.String()
+		}
+		if _, err := q.CreateReview(ctx, params); err != nil {
+			return err
+		}
+		if err := s.event(ctx, tx, r, decision, who.Principal.Name, data); err != nil {
+			return err
+		}
 		if who.ACR != "" {
 			details["acr"] = who.ACR
 		}
@@ -872,7 +911,7 @@ func (s *Service) ReviewLink(ctx context.Context, who auth.Identity, id uuid.UUI
 			if err := s.event(ctx, tx, r, "approved", "", nil); err != nil {
 				return err
 			}
-			if err := recordRequest(ctx, tx, r, "approved", map[string]any{"changeSet": sets[0].Hash, "approvals": approvalsOf(reviews)}); err != nil {
+			if err := recordRequest(ctx, tx, r, "approved", approvedDetails(sets[0].Hash, r, reviews)); err != nil {
 				return err
 			}
 			return jobs.InsertTx(ctx, s.jobs, tx, DeliverArgs{RequestID: r.ID}, nil)
@@ -880,7 +919,11 @@ func (s *Service) ReviewLink(ctx context.Context, who auth.Identity, id uuid.UUI
 			if next, err = q.TransitionRequest(ctx, db.TransitionRequestParams{ID: r.ID, FromState: PendingApproval, ToState: Rejected}); err != nil {
 				return err
 			}
-			if err := s.event(ctx, tx, r, "rejected", who.Principal.Name, nil); err != nil {
+			var rejected map[string]any
+			if behalf != nil {
+				rejected = map[string]any{"onBehalfOf": behalf.User.Name}
+			}
+			if err := s.event(ctx, tx, r, "rejected", who.Principal.Name, rejected); err != nil {
 				return err
 			}
 			if err := recordRequest(ctx, tx, r, "rejected", map[string]any{"changeSet": sets[0].Hash}); err != nil {
@@ -1287,12 +1330,24 @@ func (s *Service) approvals(ctx context.Context, r db.Request) ([]gitx.Trailer, 
 		return nil, err
 	}
 	var out []gitx.Trailer
-	for _, v := range reviews {
+	for _, v := range standing(r, reviews) {
 		if v.Decision == policy.Approve {
-			out = append(out, gitx.Trailer{Key: "Approved-by", Value: v.Reviewer})
+			// A review on someone's behalf names both: "fiona (on behalf of alice)". gitx drops
+			// what could end the line (gitx.TrailerValue).
+			out = append(out, gitx.Trailer{Key: "Approved-by", Value: onBehalfLabel(v)})
 		}
 	}
 	return out, nil
+}
+
+// standing keeps the reviews that count among a request's (policy.Standing): each person's latest,
+// a review on someone's behalf being both people's.
+func standing(r db.Request, reviews []db.Review) []db.Review {
+	var out []db.Review
+	for _, i := range policy.Standing(toReviews(reviews, nil), r.Requester) {
+		out = append(out, reviews[i])
+	}
+	return out
 }
 
 func author(r db.Request) gitx.Signature {
@@ -1362,11 +1417,16 @@ func needsStepUp(a definitions.Approval, vars expr.Vars) bool {
 	return ok || err != nil
 }
 
+// toReviews are reviews as the policy sees them; dir may be nil when only who reviewed matters.
 func toReviews(rs []db.Review, dir *auth.Directory) []policy.Review {
 	out := make([]policy.Review, len(rs))
 	for i, r := range rs {
 		out[i] = policy.Review{Reviewer: r.Reviewer, Email: r.ReviewerEmail, Groups: r.Groups, Teams: r.Teams, Decision: r.Decision}
-		if r.Teams == nil {
+		if r.OnBehalfOf != "" {
+			// The delegator as the directory described them when the review was made.
+			out[i].OnBehalfOf = &policy.Person{Name: r.OnBehalfOf, Email: r.OnBehalfEmail, Groups: r.OnBehalfGroups, Teams: r.OnBehalfTeams}
+		}
+		if r.Teams == nil && dir != nil {
 			// A review from before auth.teams (migration 00019) kept only its groups: their teams
 			// are what auth.teams makes of them now, each group's name without it. Set later, the
 			// mapping must not leave an unmapped group the team it was.
