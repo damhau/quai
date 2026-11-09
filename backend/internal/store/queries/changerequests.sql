@@ -58,10 +58,43 @@ UPDATE change_requests SET failures = failures + 1, failure = sqlc.arg(failure),
 WHERE id = sqlc.arg(id);
 
 -- name: DueChangeRequests :many
--- The current change requests Quai waits on that are due, to open or to read, the most overdue
--- first: those of requests pending approval, or approved and not merging yet, without break-glass.
+-- The current change requests that are due, the most overdue first: to open or to read, those of
+-- requests pending approval, or approved and not merging yet, without break-glass; to close, those
+-- whose content was applied or whose apply failed, until Quai is done.
 SELECT c.* FROM change_requests c JOIN requests r ON r.id = c.request_id
-WHERE c.superseded_at IS NULL AND r.state IN ('pending_approval', 'approved') AND r.break_glass_at IS NULL
+WHERE c.superseded_at IS NULL
+  AND (r.state IN ('pending_approval', 'approved') AND r.break_glass_at IS NULL OR c.close_requested_at IS NOT NULL AND c.closed_at IS NULL)
   AND (c.next_poll_at IS NULL OR c.next_poll_at <= sqlc.arg(now))
 ORDER BY c.next_poll_at NULLS FIRST, c.id
 LIMIT sqlc.arg(max_rows);
+
+-- name: SetChangeRequestClosing :execrows
+-- The change request is to be closed, once: its content was applied (successful) or its apply
+-- failed (unsuccessful). It is due at once, its earlier failures and problem forgotten.
+UPDATE change_requests SET close_outcome = sqlc.arg(close_outcome), close_requested_at = sqlc.arg(at), evidence_token = sqlc.arg(evidence_token),
+    next_poll_at = NULL, failures = 0, failure = '', failing_since = NULL, problem = ''
+WHERE id = sqlc.arg(id) AND superseded_at IS NULL AND close_requested_at IS NULL;
+
+-- name: SetChangeRequestClosed :exec
+-- Quai is done closing the change request: how (close_result), what ServiceNow reported last, and
+-- what someone must do (problem).
+UPDATE change_requests SET closed_at = sqlc.arg(at), close_result = sqlc.arg(close_result), problem = sqlc.arg(problem),
+    state = sqlc.arg(state), state_label = sqlc.arg(state_label), approval = sqlc.arg(approval), polled_at = sqlc.arg(at), next_poll_at = NULL,
+    failures = 0, failure = '', failing_since = NULL
+WHERE id = sqlc.arg(id) AND closed_at IS NULL;
+
+-- name: AddChangeRequestAttachment :exec
+-- A file of the evidence is about to be attached: its size and hash, as sent; those of a file
+-- attached already stay.
+INSERT INTO change_request_attachments (change_request_id, name, bytes, sha256)
+VALUES (sqlc.arg(change_request_id), sqlc.arg(name), sqlc.arg(bytes), sqlc.arg(sha256))
+ON CONFLICT (change_request_id, name) DO UPDATE SET bytes = EXCLUDED.bytes, sha256 = EXCLUDED.sha256
+WHERE change_request_attachments.sys_id IS NULL;
+
+-- name: SetChangeRequestAttached :exec
+-- A file of the evidence is attached: the sys_id ServiceNow answered, or a lookup by its name found.
+UPDATE change_request_attachments SET sys_id = sqlc.arg(sys_id), attached_at = sqlc.arg(at)
+WHERE change_request_id = sqlc.arg(change_request_id) AND name = sqlc.arg(name) AND sys_id IS NULL;
+
+-- name: ListChangeRequestAttachments :many
+SELECT * FROM change_request_attachments WHERE change_request_id = $1 ORDER BY name;

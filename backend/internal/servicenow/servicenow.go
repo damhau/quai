@@ -1,8 +1,9 @@
 // Package servicenow is Quai's client of a ServiceNow instance's change management
 // (docs/design/05-delivery-and-approvals.md#itsm): it creates change requests, normal or standard
 // from a template, with the Change Management API, finds the one it created for a correlation ID
-// with the Table API, reads a change request's state and approval by its sys_id, and writes
-// fields and work notes.
+// with the Table API, reads a change request's state and approval by its sys_id, writes fields and
+// work notes, attaches files with the Attachment API and closes it; and it finds an incident by its
+// number and links it to a change request, with the Table API.
 //
 // Every call goes to the configured instance only, through netx (its CAs, its proxy), with TLS
 // verified, a timeout, an answer of at most maxAnswer bytes, and no redirect followed; nothing an
@@ -136,6 +137,8 @@ type Record struct {
 	// StateLabel is the state's display value.
 	StateLabel    string
 	CorrelationID string
+	// CloseCode is close_code's value: successful, successful_issues or unsuccessful once closed.
+	CloseCode string
 	// Ignored are the fields ServiceNow said it did not set (__meta.ignoredFields).
 	Ignored []string
 }
@@ -300,6 +303,250 @@ func (c *Client) WorkNote(ctx context.Context, sysID, text string) error {
 	return c.Update(ctx, sysID, map[string]string{"work_notes": Text(text, MaxText)})
 }
 
+// The close codes of a change request (the "Update change request states" page).
+const (
+	CloseSuccessful   = "successful"
+	CloseUnsuccessful = "unsuccessful"
+)
+
+// Close closes a change request in Review, with its close code and close notes (made neutral and
+// cut to MaxText), which ServiceNow requires to close one.
+func (c *Client) Close(ctx context.Context, sysID, code, notes string) (Record, error) {
+	if !SysIDRe.MatchString(sysID) {
+		return Record{}, fmt.Errorf("%q is not a sys_id", sysID)
+	}
+	if code != CloseSuccessful && code != CloseUnsuccessful {
+		return Record{}, fmt.Errorf("close code %q is not one Quai sets", code)
+	}
+	return c.change(ctx, http.MethodPatch, "/api/sn_chg_rest/change/"+sysID, nil,
+		map[string]string{"state": "closed", "close_code": code, "close_notes": Text(notes, MaxText)})
+}
+
+// MaxAttachment bounds a file Quai attaches, in bytes.
+const MaxAttachment = 10 << 20
+
+// ErrTooLarge is a file over MaxAttachment: it is not sent.
+var ErrTooLarge = fmt.Errorf("the file is over %d MiB", MaxAttachment>>20)
+
+// fileNameRe is the name of a file Quai attaches: its own, made of identifiers, never a person's
+// text.
+var fileNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,99}$`)
+
+// Attachment is a file attached to a change request, as the Attachment API reports it.
+type Attachment struct {
+	SysID, FileName string
+	// Size is size_bytes; -1 when the answer does not say.
+	Size int64
+}
+
+// Attach attaches a file to a change request with the Attachment API (POST /api/now/attachment/file,
+// the file as the body, of its content type). The answer must name an attachment with a sys_id,
+// on that change request, with that file name.
+func (c *Client) Attach(ctx context.Context, changeSysID, name, contentType string, data []byte) (Attachment, error) {
+	if !SysIDRe.MatchString(changeSysID) {
+		return Attachment{}, fmt.Errorf("%q is not a sys_id", changeSysID)
+	}
+	if !fileNameRe.MatchString(name) {
+		return Attachment{}, fmt.Errorf("%q is not a file name Quai attaches", name)
+	}
+	if len(data) > MaxAttachment {
+		return Attachment{}, ErrTooLarge
+	}
+	q := url.Values{"table_name": {"change_request"}, "table_sys_id": {changeSysID}, "file_name": {name}}
+	var out struct {
+		Result map[string]json.RawMessage `json:"result"`
+	}
+	if err := c.do(ctx, http.MethodPost, "/api/now/attachment/file", q, contentType, data, &out); err != nil {
+		return Attachment{}, err
+	}
+	a, ok := attachmentOf(out.Result, changeSysID, name)
+	if !ok {
+		return Attachment{}, fmt.Errorf("POST /api/now/attachment/file: %w", &StatusError{Status: http.StatusCreated,
+			Message: "the answer does not name the attachment of " + name + " on the change request"})
+	}
+	return a, nil
+}
+
+// FindAttachment returns the change request's attachment with the file name, nil when it has none:
+// the one an upload made although its answer was lost. Only an exact match counts.
+func (c *Client) FindAttachment(ctx context.Context, changeSysID, name string) (*Attachment, error) {
+	if !SysIDRe.MatchString(changeSysID) {
+		return nil, fmt.Errorf("%q is not a sys_id", changeSysID)
+	}
+	if !fileNameRe.MatchString(name) {
+		return nil, fmt.Errorf("%q is not a file name Quai attaches", name)
+	}
+	q := url.Values{"sysparm_query": {"table_name=change_request^table_sys_id=" + changeSysID + "^file_name=" + name}, "sysparm_limit": {"10"}}
+	var out struct {
+		Result []map[string]json.RawMessage `json:"result"`
+	}
+	if err := c.call(ctx, http.MethodGet, "/api/now/attachment", q, nil, &out); err != nil {
+		return nil, err
+	}
+	for _, raw := range out.Result {
+		if a, ok := attachmentOf(raw, changeSysID, name); ok {
+			return &a, nil
+		}
+	}
+	return nil, nil
+}
+
+// attachmentOf reads an attachment's metadata, and whether it is the file name's on the change
+// request.
+func attachmentOf(raw map[string]json.RawMessage, changeSysID, name string) (Attachment, bool) {
+	sysID, _ := fieldOf(raw, "sys_id")
+	table, _ := fieldOf(raw, "table_name")
+	record, _ := fieldOf(raw, "table_sys_id")
+	file, _ := fieldOf(raw, "file_name")
+	if !SysIDRe.MatchString(sysID) || table != "change_request" || record != changeSysID || file != name {
+		return Attachment{}, false
+	}
+	a := Attachment{SysID: sysID, FileName: file, Size: -1}
+	if s, _ := fieldOf(raw, "size_bytes"); s != "" {
+		if n, err := strconv.ParseInt(s, 10, 64); err == nil && n >= 0 {
+			a.Size = n
+		}
+	}
+	return a, true
+}
+
+// ValidNumber reports whether s is a record's number as ServiceNow makes them, a prefix and digits
+// (INC0012345, CHG0030001): the only incident reference Quai queries.
+func ValidNumber(s string) bool { return numberRe.MatchString(s) }
+
+// Incident is an incident as the Table API reports it.
+type Incident struct {
+	SysID, Number string
+	// Active is its active flag: "true" while it is open, "false" once it is closed or canceled.
+	Active string
+	// State is its state's value (1 New, 2 In Progress, 3 On Hold, 6 Resolved, 7 Closed, 8 Canceled).
+	State string
+	// Change is the change request its rfc field names (the change request's "Incidents Fixed By
+	// Change") when it is a sys_id; HasChange whether it names one at all.
+	Change    string
+	HasChange bool
+}
+
+var (
+	// ErrNoIncident is an incident number ServiceNow answers it has no incident of.
+	ErrNoIncident = errors.New("ServiceNow has no incident with this number")
+	// ErrIncidentAmbiguous is two incidents with one number.
+	ErrIncidentAmbiguous = errors.New("ServiceNow holds more than one incident with this number")
+	// ErrUnclear is an answer that says neither yes nor no: a result missing, or of other incidents
+	// than the one asked for.
+	ErrUnclear = errors.New("ServiceNow's answer does not say whether the incident exists")
+)
+
+const incidentFields = "sys_id,number,active,state,rfc"
+
+// FindIncident returns the incident with the number, which must be ValidNumber: queried exactly
+// (number=<number>), then only an exact match counts. ErrNoIncident when ServiceNow answers none,
+// ErrIncidentAmbiguous for two, ErrUnclear for an answer that is neither.
+func (c *Client) FindIncident(ctx context.Context, number string) (Incident, error) {
+	if !numberRe.MatchString(number) {
+		return Incident{}, fmt.Errorf("%q is not an incident number Quai queries", number)
+	}
+	q := url.Values{"sysparm_query": {"number=" + number}, "sysparm_limit": {"10"}, "sysparm_fields": {incidentFields},
+		"sysparm_exclude_reference_link": {"true"}}
+	var out struct {
+		Result *[]map[string]json.RawMessage `json:"result"`
+	}
+	if err := c.call(ctx, http.MethodGet, "/api/now/table/incident", q, nil, &out); err != nil {
+		return Incident{}, err
+	}
+	if out.Result == nil {
+		return Incident{}, ErrUnclear
+	}
+	if len(*out.Result) == 0 {
+		return Incident{}, ErrNoIncident
+	}
+	var found []Incident
+	for _, raw := range *out.Result {
+		inc, ok := incidentOf(raw)
+		if !ok {
+			return Incident{}, ErrUnclear
+		}
+		if inc.Number == number {
+			found = append(found, inc)
+		}
+	}
+	switch len(found) {
+	case 0:
+		return Incident{}, ErrUnclear
+	case 1:
+		return found[0], nil
+	}
+	return Incident{}, ErrIncidentAmbiguous
+}
+
+// GetIncident reads an incident by its sys_id.
+func (c *Client) GetIncident(ctx context.Context, sysID string) (Incident, error) {
+	if !SysIDRe.MatchString(sysID) {
+		return Incident{}, fmt.Errorf("%q is not a sys_id", sysID)
+	}
+	q := url.Values{"sysparm_fields": {incidentFields}, "sysparm_exclude_reference_link": {"true"}}
+	return c.incident(ctx, http.MethodGet, sysID, q, nil)
+}
+
+// LinkIncident sets an incident's rfc field to a change request: the change request lists it in
+// its "Incidents Fixed By Change". The answer must say so.
+func (c *Client) LinkIncident(ctx context.Context, sysID, changeSysID string) (Incident, error) {
+	if !SysIDRe.MatchString(sysID) || !SysIDRe.MatchString(changeSysID) {
+		return Incident{}, fmt.Errorf("%q or %q is not a sys_id", sysID, changeSysID)
+	}
+	q := url.Values{"sysparm_fields": {incidentFields}, "sysparm_exclude_reference_link": {"true"}}
+	inc, err := c.incident(ctx, http.MethodPatch, sysID, q, map[string]string{"rfc": changeSysID})
+	if err == nil && inc.Change != changeSysID {
+		return Incident{}, fmt.Errorf("PATCH /api/now/table/incident: %w", &StatusError{Status: http.StatusOK,
+			Message: "the answer does not name the change request in the incident's rfc"})
+	}
+	return inc, err
+}
+
+func (c *Client) incident(ctx context.Context, method, sysID string, q url.Values, body any) (Incident, error) {
+	var out struct {
+		Result map[string]json.RawMessage `json:"result"`
+	}
+	if err := c.call(ctx, method, "/api/now/table/incident/"+sysID, q, body, &out); err != nil {
+		return Incident{}, err
+	}
+	inc, ok := incidentOf(out.Result)
+	if !ok || inc.SysID != sysID {
+		return Incident{}, fmt.Errorf("ServiceNow answered another incident than %s", sysID)
+	}
+	return inc, nil
+}
+
+// incidentOf reads an incident of an answer, and whether it has a valid sys_id and number; its
+// rfc only when it is a sys_id.
+func incidentOf(raw map[string]json.RawMessage) (Incident, bool) {
+	var inc Incident
+	inc.SysID, _ = fieldOf(raw, "sys_id")
+	inc.Number, _ = fieldOf(raw, "number")
+	if !SysIDRe.MatchString(inc.SysID) || !numberRe.MatchString(inc.Number) {
+		return Incident{}, false
+	}
+	inc.Active, _ = fieldOf(raw, "active")
+	inc.State, _ = fieldOf(raw, "state")
+	inc.Active, inc.State = Text(inc.Active, 10), Text(number(inc.State), 10)
+	if rfc, _ := fieldOf(raw, "rfc"); rfc != "" {
+		inc.HasChange = true
+		if SysIDRe.MatchString(rfc) {
+			inc.Change = rfc
+		}
+	}
+	return inc, true
+}
+
+// IncidentLink is the address of an incident's form in the instance, from the configured root and a
+// sys_id Quai checked: never a link an answer gave.
+func (c *Client) IncidentLink(sysID string) string {
+	if !SysIDRe.MatchString(sysID) {
+		return ""
+	}
+	return c.cfg.InstanceURL + "/incident.do?sys_id=" + sysID
+}
+
 // change calls the Change Management API and reads the change request it answers.
 func (c *Client) change(ctx context.Context, method, path string, q url.Values, body any) (Record, error) {
 	var out struct {
@@ -321,24 +568,29 @@ func Parse(b []byte) (Record, error) {
 	return record(raw)
 }
 
+// fieldOf is a field of an answer's record: a {value, display_value} pair (the Change Management
+// API), a {link, value} reference (the Table API without sysparm_exclude_reference_link), or a
+// plain value; its value and display value. A link is never read.
+func fieldOf(raw map[string]json.RawMessage, name string) (string, string) {
+	v, ok := raw[name]
+	if !ok {
+		return "", ""
+	}
+	var pair struct {
+		Value   json.RawMessage `json:"value"`
+		Display json.RawMessage `json:"display_value"`
+	}
+	if json.Unmarshal(v, &pair) == nil && pair.Value != nil {
+		return scalar(pair.Value), scalar(pair.Display)
+	}
+	return scalar(v), ""
+}
+
 func record(raw map[string]json.RawMessage) (Record, error) {
 	if raw == nil {
 		return Record{}, errors.New("ServiceNow answered no change request")
 	}
-	field := func(name string) (string, string) {
-		v, ok := raw[name]
-		if !ok {
-			return "", ""
-		}
-		var pair struct {
-			Value   json.RawMessage `json:"value"`
-			Display json.RawMessage `json:"display_value"`
-		}
-		if json.Unmarshal(v, &pair) == nil && pair.Value != nil {
-			return scalar(pair.Value), scalar(pair.Display)
-		}
-		return scalar(v), ""
-	}
+	field := func(name string) (string, string) { return fieldOf(raw, name) }
 	var r Record
 	r.SysID, _ = field("sys_id")
 	if !SysIDRe.MatchString(r.SysID) {
@@ -356,6 +608,7 @@ func record(raw map[string]json.RawMessage) (Record, error) {
 	}
 	r.Approval, _ = field("approval")
 	r.CorrelationID, _ = field("correlation_id")
+	r.CloseCode, _ = field("close_code")
 	if m, ok := raw["__meta"]; ok {
 		var meta struct {
 			Ignored []string `json:"ignoredFields"`
@@ -363,11 +616,12 @@ func record(raw map[string]json.RawMessage) (Record, error) {
 		_ = json.Unmarshal(m, &meta)
 		r.Ignored = meta.Ignored
 	}
-	r.Type, r.Approval = Text(r.Type, 40), Text(r.Approval, 40)
+	r.Type, r.Approval, r.CloseCode = Text(r.Type, 40), Text(r.Approval, 40), Text(r.CloseCode, 40)
 	return r, nil
 }
 
-// scalar is a JSON string's text or a number's digits; "" for anything else.
+// scalar is a JSON string's text, a number's digits or a boolean's true or false; "" for anything
+// else.
 func scalar(v json.RawMessage) string {
 	var s string
 	if json.Unmarshal(v, &s) == nil {
@@ -376,6 +630,10 @@ func scalar(v json.RawMessage) string {
 	var n json.Number
 	if json.Unmarshal(v, &n) == nil {
 		return n.String()
+	}
+	var b bool
+	if json.Unmarshal(v, &b) == nil {
+		return strconv.FormatBool(b)
 	}
 	return ""
 }
@@ -394,13 +652,18 @@ func number(s string) string {
 // new token when it is refused (401), and again after a wait when throttled (429, 503), within
 // maxWait.
 func (c *Client) call(ctx context.Context, method, path string, q url.Values, body, out any) error {
-	var b []byte
-	if body != nil {
-		var err error
-		if b, err = json.Marshal(body); err != nil {
-			return err
-		}
+	if body == nil {
+		return c.do(ctx, method, path, q, "", nil, out)
 	}
+	b, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+	return c.do(ctx, method, path, q, "application/json", b, out)
+}
+
+// do is call with a body of contentType as it is: none when contentType is "".
+func (c *Client) do(ctx context.Context, method, path string, q url.Values, contentType string, b []byte, out any) error {
 	u := c.cfg.InstanceURL + path
 	if len(q) > 0 {
 		u += "?" + q.Encode()
@@ -412,8 +675,8 @@ func (c *Client) call(ctx context.Context, method, path string, q url.Values, bo
 			return fmt.Errorf("%s %s: %w", method, path, err)
 		}
 		req.Header.Set("Accept", "application/json")
-		if body != nil {
-			req.Header.Set("Content-Type", "application/json")
+		if contentType != "" {
+			req.Header.Set("Content-Type", contentType)
 		}
 		token, err := c.authorize(ctx, req)
 		if err != nil {

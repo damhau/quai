@@ -296,7 +296,7 @@ export type BreakGlassBody = {
      */
     head?: string;
     /**
-     * The incident's reference, such as INC0012345
+     * The incident's reference, such as INC0012345; with itsm.servicenow configured, a ServiceNow incident's number, checked against its incidents
      */
     incident: string;
     /**
@@ -373,6 +373,22 @@ export type BreakGlassView = {
      */
     incident: string;
     /**
+     * What ServiceNow says of the incident: verified; unverified, ServiceNow could not say yet (Quai asks again); refuted, the problem says why
+     */
+    incidentCheck?: 'verified' | 'unverified' | 'refuted';
+    /**
+     * The incident's link to the change request: linked; kept, it names another change request; none, the request has no change request; refused by ServiceNow
+     */
+    incidentLink?: 'linked' | 'kept' | 'none' | 'refused';
+    /**
+     * What someone must look at: an incident ServiceNow refutes, or a link it refused
+     */
+    incidentProblem?: string;
+    /**
+     * The incident's form in ServiceNow, once verified
+     */
+    incidentUrl?: string;
+    /**
      * How many people sign off the review to close it
      */
     needed: number;
@@ -412,11 +428,36 @@ export type CatalogItem = {
     version?: string;
 };
 
+export type ChangeRequestFileView = {
+    bytes: number;
+    name: string;
+    /**
+     * The SHA-256 of the file Quai sent, in hexadecimal
+     */
+    sha256: string;
+};
+
 export type ChangeRequestView = {
     /**
      * Its approval in ServiceNow, as Quai last read it
      */
     approval?: string;
+    /**
+     * The files of the evidence Quai attached to it
+     */
+    attachments?: Array<ChangeRequestFileView> | null;
+    /**
+     * How Quai closes it: successful once its content is applied, unsuccessful when its apply failed
+     */
+    closeOutcome?: 'successful' | 'unsuccessful';
+    /**
+     * How: closed by Quai; closed or canceled in ServiceNow already; left to its change manager, never approved (or not Quai's); refused by ServiceNow, the problem says what
+     */
+    closeResult?: 'closed' | 'already' | 'left' | 'refused';
+    /**
+     * When Quai was done closing it; absent while it attaches the evidence and closes it
+     */
+    closedAt?: string;
     /**
      * Since when Quai fails to reach ServiceNow about it
      */
@@ -2187,7 +2228,7 @@ export type BreakGlassBodyWritable = {
      */
     head?: string;
     /**
-     * The incident's reference, such as INC0012345
+     * The incident's reference, such as INC0012345; with itsm.servicenow configured, a ServiceNow incident's number, checked against its incidents
      */
     incident: string;
     /**

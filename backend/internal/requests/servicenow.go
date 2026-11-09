@@ -294,9 +294,9 @@ func (w *serviceNowSweepWorker) Work(ctx context.Context, _ *river.Job[ServiceNo
 	return w.s.SweepServiceNow(ctx)
 }
 
-// SweepServiceNow opens and reads the change requests due, at most snBatch, snParallel at once,
-// the most overdue first. When ServiceNow is unreachable, the sweep stops: the others wait for the
-// next.
+// SweepServiceNow opens, reads and closes the change requests due, at most snBatch, snParallel at
+// once, the most overdue first, then checks and links the break-glass incidents due. When
+// ServiceNow is unreachable, the sweep stops: the others wait for the next.
 func (s *Service) SweepServiceNow(ctx context.Context) error {
 	if s.sn == nil {
 		return nil
@@ -333,6 +333,9 @@ func (s *Service) SweepServiceNow(ctx context.Context) error {
 		})
 	}
 	wg.Wait()
+	if !stop.Load() {
+		errs = append(errs, s.sweepIncidents(ctx))
+	}
 	return errors.Join(errs...)
 }
 
@@ -375,7 +378,7 @@ func (s *Service) syncLocked(ctx context.Context, id uuid.UUID) error {
 }
 
 // sync takes a change request's next steps: opened in ServiceNow, prepared (its long fields, taken
-// for approval), then read. Each step is recorded once done, so that a crash or a failure takes it
+// for approval), then read, or closed once its content is applied (close). Each step is recorded once done, so that a crash or a failure takes it
 // again, and only it.
 func (s *Service) sync(ctx context.Context, id uuid.UUID) error {
 	if s.sn == nil {
@@ -404,6 +407,8 @@ func (s *Service) sync(ctx context.Context, id uuid.UUID) error {
 			err = s.create(ctx, r, cr)
 		case !cr.PreparedAt.Valid:
 			err = s.prepare(ctx, r, cr)
+		case closing(cr):
+			return s.close(ctx, r, cr)
 		case !waitsOnChange(r):
 			return nil
 		default:
@@ -784,10 +789,18 @@ func (s *Service) noteText(ctx context.Context, r db.Request, cr db.ChangeReques
 		if err != nil {
 			return "", err
 		}
-		// Identifiers only (open question 97): never the reason.
+		// Identifiers only (open question 97): never the reason. The incident's link is made of the
+		// configured instance and the sys_id Quai checked, never of an answer's link.
+		incident := bg.Incident
+		switch {
+		case bg.IncidentSysID != "":
+			incident += " (" + s.sn.IncidentLink(bg.IncidentSysID) + ")"
+		case bg.IncidentCheck == incidentUnverified:
+			incident += " (not verified in ServiceNow yet)"
+		}
 		return fmt.Sprintf("Quai: glass was broken for request #%d at %s UTC by %s, for incident %s: it merges without its approvals "+
 			"and outside its change windows, and Quai no longer waits on this change request.%s",
-			r.Number, bg.At.Time.UTC().Format(time.DateTime), bg.Breaker, bg.Incident, link), nil
+			r.Number, bg.At.Time.UTC().Format(time.DateTime), bg.Breaker, incident, link), nil
 	}
 	return "", fmt.Errorf("unknown work note %q", a.Note)
 }
@@ -998,7 +1011,8 @@ func (s *Service) notePlanReported(ctx context.Context, r db.Request, run db.Run
 }
 
 // noteBroken records break-glass on the request's change request, in tx: a work note with its
-// time, who broke glass and the incident. Open question 97; P4-20 links the incident to it.
+// time, who broke glass and the incident (open question 97). The incident is linked to it by its own
+// job (BreakGlassIncidentArgs).
 func (s *Service) noteBroken(ctx context.Context, tx pgx.Tx, q *db.Queries, r db.Request) error {
 	if s.snCfg == nil || s.jobs == nil {
 		return nil
@@ -1020,6 +1034,8 @@ type ChangeRequest struct {
 	URL string
 	// Superseded is how many change requests of earlier content the request had.
 	Superseded int
+	// Attachments are the files of the evidence Quai attached, or is attaching, to it.
+	Attachments []db.ChangeRequestAttachment
 }
 
 // ChangeRequestOf returns a request's current change request; ok false when it has none. Without
@@ -1033,6 +1049,11 @@ func (s *Service) ChangeRequestOf(ctx context.Context, r db.Request) (ChangeRequ
 	c := ChangeRequest{ChangeRequest: list[0], Superseded: len(list) - 1}
 	if s.sn != nil && list[0].SysID.Valid {
 		c.URL = s.sn.Link(list[0].SysID.String)
+	}
+	if list[0].CloseRequestedAt.Valid {
+		if c.Attachments, err = s.store.ListChangeRequestAttachments(ctx, list[0].ID); err != nil {
+			return ChangeRequest{}, false, err
+		}
 	}
 	return c, true, nil
 }

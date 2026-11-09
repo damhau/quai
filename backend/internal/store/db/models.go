@@ -65,21 +65,30 @@ type AuditRetention struct {
 }
 
 type BreakGlass struct {
-	RequestID     uuid.UUID
-	OrgID         string
-	Breaker       string
-	BreakerEmail  string
-	AuthTime      pgtype.Timestamptz
-	Acr           string
-	StepUp        bool
-	Reason        string
-	Incident      string
-	ChangeSetHash string
-	Head          string
-	FromState     string
-	At            pgtype.Timestamptz
-	RemindedAt    pgtype.Timestamptz
-	ClosedAt      pgtype.Timestamptz
+	RequestID         uuid.UUID
+	OrgID             string
+	Breaker           string
+	BreakerEmail      string
+	AuthTime          pgtype.Timestamptz
+	Acr               string
+	StepUp            bool
+	Reason            string
+	Incident          string
+	ChangeSetHash     string
+	Head              string
+	FromState         string
+	At                pgtype.Timestamptz
+	RemindedAt        pgtype.Timestamptz
+	ClosedAt          pgtype.Timestamptz
+	IncidentCheck     string
+	IncidentSysID     string
+	IncidentCheckedAt pgtype.Timestamptz
+	IncidentLink      string
+	IncidentLinkedAt  pgtype.Timestamptz
+	IncidentProblem   string
+	IncidentFailure   string
+	IncidentFailures  int32
+	IncidentNextAt    pgtype.Timestamptz
 }
 
 type BreakGlassSignOff struct {
@@ -103,30 +112,44 @@ type Change struct {
 }
 
 type ChangeRequest struct {
-	ID            uuid.UUID
-	RequestID     uuid.UUID
-	OrgID         string
-	Generation    int32
-	CorrelationID string
-	ChangeSetHash string
-	Kind          string
-	Template      string
-	SysID         pgtype.Text
-	Number        string
-	State         string
-	StateLabel    string
-	Approval      string
-	Outcome       string
-	CreatedAt     pgtype.Timestamptz
-	OpenedAt      pgtype.Timestamptz
-	PreparedAt    pgtype.Timestamptz
-	PolledAt      pgtype.Timestamptz
-	NextPollAt    pgtype.Timestamptz
-	Failures      int32
-	Failure       string
-	FailingSince  pgtype.Timestamptz
-	Problem       string
-	SupersededAt  pgtype.Timestamptz
+	ID               uuid.UUID
+	RequestID        uuid.UUID
+	OrgID            string
+	Generation       int32
+	CorrelationID    string
+	ChangeSetHash    string
+	Kind             string
+	Template         string
+	SysID            pgtype.Text
+	Number           string
+	State            string
+	StateLabel       string
+	Approval         string
+	Outcome          string
+	CreatedAt        pgtype.Timestamptz
+	OpenedAt         pgtype.Timestamptz
+	PreparedAt       pgtype.Timestamptz
+	PolledAt         pgtype.Timestamptz
+	NextPollAt       pgtype.Timestamptz
+	Failures         int32
+	Failure          string
+	FailingSince     pgtype.Timestamptz
+	Problem          string
+	SupersededAt     pgtype.Timestamptz
+	CloseOutcome     string
+	CloseRequestedAt pgtype.Timestamptz
+	EvidenceToken    string
+	ClosedAt         pgtype.Timestamptz
+	CloseResult      string
+}
+
+type ChangeRequestAttachment struct {
+	ChangeRequestID uuid.UUID
+	Name            string
+	Bytes           int32
+	Sha256          string
+	SysID           pgtype.Text
+	AttachedAt      pgtype.Timestamptz
 }
 
 type ChangeSet struct {

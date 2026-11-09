@@ -20,11 +20,16 @@ import (
 
 // BreakGlassView is the break-glass of a request and its post-incident review.
 type BreakGlassView struct {
-	By       string    `json:"by" doc:"Who broke glass"`
-	Reason   string    `json:"reason"`
-	Incident string    `json:"incident" doc:"The incident's reference"`
-	At       time.Time `json:"at"`
-	From     string    `json:"from" doc:"The request's state then: pending_approval, or approved and held by its change windows"`
+	By       string `json:"by" doc:"Who broke glass"`
+	Reason   string `json:"reason"`
+	Incident string `json:"incident" doc:"The incident's reference"`
+	// The incident in ServiceNow, when itsm.servicenow is configured.
+	IncidentCheck   string    `json:"incidentCheck,omitempty" enum:"verified,unverified,refuted" doc:"What ServiceNow says of the incident: verified; unverified, ServiceNow could not say yet (Quai asks again); refuted, the problem says why"`
+	IncidentURL     string    `json:"incidentUrl,omitempty" doc:"The incident's form in ServiceNow, once verified"`
+	IncidentLink    string    `json:"incidentLink,omitempty" enum:"linked,kept,none,refused" doc:"The incident's link to the change request: linked; kept, it names another change request; none, the request has no change request; refused by ServiceNow"`
+	IncidentProblem string    `json:"incidentProblem,omitempty" doc:"What someone must look at: an incident ServiceNow refutes, or a link it refused"`
+	At              time.Time `json:"at"`
+	From            string    `json:"from" doc:"The request's state then: pending_approval, or approved and held by its change windows"`
 	// ChangeSet and Head are the content glass was broken for.
 	ChangeSet string                  `json:"changeSet" doc:"The change set's hash glass was broken for"`
 	Head      string                  `json:"head,omitempty" doc:"The pull request's head commit glass was broken for"`
@@ -62,7 +67,7 @@ type BreakGlassItemView struct {
 // BreakGlassBody is a break-glass: why, the incident, and the content the page showed.
 type BreakGlassBody struct {
 	Reason    string `json:"reason" maxLength:"500" doc:"Why the change cannot wait for its approvals; kept in Quai and the audit log, never sent to the platform"`
-	Incident  string `json:"incident" maxLength:"64" doc:"The incident's reference, such as INC0012345"`
+	Incident  string `json:"incident" maxLength:"64" doc:"The incident's reference, such as INC0012345; with itsm.servicenow configured, a ServiceNow incident's number, checked against its incidents"`
 	ChangeSet string `json:"changeSet" minLength:"1" maxLength:"128" doc:"The change set's hash the page showed (changeSet): refused if the request changed since"`
 	Head      string `json:"head,omitempty" maxLength:"128" doc:"With a pull request, its head commit the page showed (delivery.head)"`
 }
@@ -165,7 +170,8 @@ func registerBreakGlass(a huma.API, svc *requests.Service, s *store.Store) {
 // breakGlassView is a request's break-glass and its review, as the caller sees them.
 func breakGlassView(ctx context.Context, svc *requests.Service, r db.Request, bg db.BreakGlass, signs []db.BreakGlassSignOff, me auth.Identity) BreakGlassView {
 	v := BreakGlassView{By: bg.Breaker, Reason: bg.Reason, Incident: bg.Incident, At: bg.At.Time, From: bg.FromState, ChangeSet: bg.ChangeSetHash,
-		Head: bg.Head, StepUp: bg.StepUp, Open: !bg.ClosedAt.Valid, Needed: requests.SignOffsNeeded, SignOffs: []BreakGlassSignOffView{}}
+		Head: bg.Head, StepUp: bg.StepUp, Open: !bg.ClosedAt.Valid, Needed: requests.SignOffsNeeded, SignOffs: []BreakGlassSignOffView{},
+		IncidentCheck: bg.IncidentCheck, IncidentURL: svc.IncidentURL(bg), IncidentLink: bg.IncidentLink, IncidentProblem: bg.IncidentProblem}
 	if bg.ClosedAt.Valid {
 		v.ClosedAt = &bg.ClosedAt.Time
 	}

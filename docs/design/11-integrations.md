@@ -82,10 +82,24 @@ nothing else (`notifications.links.key`), compared in constant time.
   in Quai. Built from ServiceNow's documentation (the Change Management API, the Table API, the
   change state model and the client credentials grant, read on 2026-11-09) and tested on a fake
   of it (`internal/servicenowtest`): not verified against a real instance yet.
+  Built in P4-20: on apply, or a failed apply, Quai attaches the evidence bundle without its
+  proof and its PDF to the change request with the Attachment API (`/api/now/attachment/file`,
+  looked up by name in `/api/now/attachment` after a lost answer), then moves it Implement, Review
+  and Closed with `close_code` and `close_notes` through the Change Management API; one never
+  approved gets the evidence and a work note instead ([delivery and
+  approvals](05-delivery-and-approvals.md#itsm), [open questions 115 to
+  118](../plan/open-questions.md#still-open)). Built from the Attachment API's documentation and
+  on the fake: not verified against a real instance.
 - **Jira Service Management:** same model through its REST API (later).
 - Incident links: the break-glass flow requires an incident reference and can validate it against ServiceNow.
   Since P4-19, a break-glass adds a work note to the request's change request (the time, who
-  broke glass, the incident); validating the incident and linking it is P4-20.
+  broke glass, the incident). Built in P4-20: with `itsm.servicenow`, the incident must be a
+  ServiceNow incident's number, queried exactly in the Table API (`/api/now/table/incident`,
+  `number=<it>`) before the break-glass: unknown, ambiguous or closed refuses it, unreachable lets
+  it through unverified and a job asks again. A verified incident is linked to the change request
+  by its `rfc` field ("Incidents Fixed By Change"), unless it names another already; the work note
+  names it with its link, made from the configured root and the checked sys_id ([open questions
+  119 to 122](../plan/open-questions.md#still-open)). Not verified against a real instance.
 
 ## Developer portals
 

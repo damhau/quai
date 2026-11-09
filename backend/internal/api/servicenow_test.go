@@ -2,6 +2,8 @@ package api
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"net/http"
 	"os"
@@ -71,6 +73,13 @@ func withServiceNow(t *testing.T, sn *servicenowtest.Server, more func(*config.S
 // configured with the fake instance (changed by more), then by configure.
 func snHarness(t *testing.T, sn *servicenowtest.Server, more func(*config.ServiceNow), configure ...func(*config.Config)) *harness {
 	t.Helper()
+	return snHarnessWith(t, sn, "", more, configure...)
+}
+
+// snHarnessWith is snHarness with spec added to the repository's (a runner, whose report token is
+// runToken).
+func snHarnessWith(t *testing.T, sn *servicenowtest.Server, spec string, more func(*config.ServiceNow), configure ...func(*config.Config)) *harness {
+	t.Helper()
 	dir := t.TempDir()
 	bare, work := localRemote(t, dir)
 	configure = append(slices.Clone(configure), withServiceNow(t, sn, more))
@@ -78,7 +87,11 @@ func snHarness(t *testing.T, sn *servicenowtest.Server, more func(*config.Servic
   url: `+bare+`
   enforcement:
     floorRules: [{ name: production-floor, when: "params.env == 'prod'", approvers: [group:platform-admins] }]
-  sync: { minInterval: 1ns }`, repositories.Options{Secrets: secrets.New(map[string]secrets.Backend{"env": secrets.Env{Lookup: func(n string) (string, bool) {
+  sync: { minInterval: 1ns }`+spec, repositories.Options{Secrets: secrets.New(map[string]secrets.Backend{"env": secrets.Env{Lookup: func(n string) (string, bool) {
+		if n == "INFRA_LIVE_RUN_TOKEN" {
+			sum := sha256.Sum256([]byte(runToken))
+			return hex.EncodeToString(sum[:]), true
+		}
 		return sn.ClientSecret, n == "SN_SECRET"
 	}}})}, configure...)
 	h.bare, h.work = bare, work
@@ -485,7 +498,8 @@ func TestServiceNowStandardChange(t *testing.T) {
 	bob.await(r.ID, "applied")
 	h.awaitJobs(t)
 	c := changeFor(t, sn, r, 1)
-	if c.Type != "standard" || c.Template != tpl || c.State != servicenowtest.Scheduled || c.Approval != "approved" {
+	// Scheduled and approved, it merged; applied, Quai closed it.
+	if c.Type != "standard" || c.Template != tpl || c.State != servicenowtest.Closed || c.Approval != "approved" || c.Fields["close_code"] != "successful" {
 		t.Errorf("the standard change = %+v", c)
 	}
 	for k, want := range map[string]string{
@@ -606,7 +620,8 @@ func TestServiceNowFailsClosed(t *testing.T) {
 
 // TestServiceNowBreakGlass: break-glass lifts the rule that waits on ServiceNow: the request
 // merges, a work note records the break-glass, who and for which incident (never the reason), and
-// Quai reads the change request no more.
+// Quai reads the change request no more. Applied, the change request, never approved, gets the
+// evidence and a work note, and is left to its change manager.
 func TestServiceNowBreakGlass(t *testing.T) {
 	t.Parallel()
 	sn := servicenowtest.Start(t)
@@ -614,19 +629,24 @@ func TestServiceNowBreakGlass(t *testing.T) {
 	t0 := time.Now().UTC().Truncate(time.Second)
 	h.clock.set(t0)
 	bob, dave := h.as("bob"), h.as("dave")
+	sn.AddIncident("INC0003001", servicenowtest.IncidentInProgress)
 	r := bob.submit(newVM("dev", "sn-glass", 2))
 	h.awaitJobs(t)
 	c := changeFor(t, sn, r, 1)
 	r = dave.read(r.ID)
-	if status, raw, _ := dave.breakGlass(r, "DNS outage in the shop", "INC-3001"); status != http.StatusOK {
+	if status, raw, _ := dave.breakGlass(r, "DNS outage in the shop", "INC0003001"); status != http.StatusOK {
 		t.Fatalf("break-glass = %d %s", status, raw)
 	}
 	bob.await(r.ID, "applied")
 	h.awaitJobs(t)
 	c, _ = sn.Change(c.SysID)
-	if len(c.WorkNotes) != 1 || !strings.Contains(c.WorkNotes[0], "glass was broken for request #") || !strings.Contains(c.WorkNotes[0], "by dave, for incident INC-3001") ||
-		strings.Contains(c.WorkNotes[0], "DNS outage") {
+	if len(c.WorkNotes) != 2 || !strings.Contains(c.WorkNotes[0], "glass was broken for request #") || !strings.Contains(c.WorkNotes[0], "by dave, for incident INC0003001") ||
+		strings.Contains(c.WorkNotes[0], "DNS outage") || !strings.Contains(c.WorkNotes[1], "was merged by break-glass without this change request's approval") ||
+		strings.Contains(c.WorkNotes[1], "DNS outage") {
 		t.Errorf("the work notes = %q", c.WorkNotes)
+	}
+	if v := bob.read(r.ID).ChangeRequest; c.State != servicenowtest.Assess || v.CloseResult != "left" || len(v.Attachments) != 2 || len(sn.Attachments(c.SysID)) != 2 {
+		t.Errorf("left to its change manager: ServiceNow's %+v, Quai's %+v", c, v)
 	}
 	n := reads(sn, c.SysID)
 	sn.Reject(c.SysID)

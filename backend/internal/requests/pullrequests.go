@@ -19,6 +19,7 @@ import (
 	"github.com/damhau/quai/backend/internal/gitx"
 	"github.com/damhau/quai/backend/internal/jobs"
 	"github.com/damhau/quai/backend/internal/repositories"
+	"github.com/damhau/quai/backend/internal/servicenow"
 	"github.com/damhau/quai/backend/internal/store/db"
 )
 
@@ -45,6 +46,8 @@ func (s *Service) Workers(w *river.Workers) {
 	river.AddWorker(w, &changeRequestWorker{s: s})
 	river.AddWorker(w, &noteWorker{s: s})
 	river.AddWorker(w, &serviceNowSweepWorker{s: s})
+	river.AddWorker(w, &closeWorker{s: s})
+	river.AddWorker(w, &incidentWorker{s: s})
 }
 
 var slugRe = regexp.MustCompile(`[^a-z0-9]+`)
@@ -611,6 +614,9 @@ func (s *Service) merged(ctx context.Context, r db.Request, d db.Delivery, pr co
 		}
 		if to == Applied {
 			if err := recordRequest(ctx, tx, r, "applied", map[string]any{"from": from, "event": kind, "commit": pr.MergeCommit}); err != nil {
+				return err
+			}
+			if err := s.closeChangeRequest(ctx, tx, q, r, servicenow.CloseSuccessful); err != nil {
 				return err
 			}
 		}

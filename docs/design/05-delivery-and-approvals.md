@@ -601,7 +601,11 @@ Built in P4-17 (`internal/requests/breakglass.go`; [open questions 27 and 94 to
   `/`, `#`, `-`: `INC0012345`, `SEC-42`, `PagerDuty#P1A2B3C`). Both refuse control characters, the
   line and paragraph separators (U+2028, U+2029) and bidirectional marks and overrides (422, by
   field). The reason stays in Quai and the audit log: it is not sent to the platform nor in the
-  alerts, and the request page shows it as text.
+  alerts, and the request page shows it as text. With `itsm.servicenow` configured, the incident
+  must be a ServiceNow incident's number (`^[A-Z]{2,10}[0-9]{1,16}$`, such as `INC0012345`) that
+  ServiceNow knows and has not closed or canceled: it is checked against ServiceNow before the
+  break-glass, and linked to the change request after it ([ITSM](#itsm), [open questions 119 to
+  122](../plan/open-questions.md#still-open)).
 - **Alerts at once.** `alert_break_glass` goes to the alert audience (the repository's admins and
   `notifications.alerts`) and the request's owners (its resources' owner entries, matched as an
   `owners` rule is, deactivated people skipped), on every channel they have: email, and the Teams
@@ -716,7 +720,8 @@ verified against a real instance** yet.
   rejection. An approval ServiceNow withdraws before the merge starts takes the request back to
   *pending approval* (`request.approval_withdrawn`). Once merging, Quai reads it no more.
 - **Polling.** Quai reads the change requests it waits on: pending approval, or approved and not
-  merging yet, without break-glass. Every `itsm.servicenow.pollInterval` (5 minutes by default),
+  merging yet, without break-glass (and, since P4-20, those it is closing, and break-glass
+  incidents to check again or link). Every `itsm.servicenow.pollInterval` (5 minutes by default),
   and when the request's page opens (from a job, at most every 30 seconds). The sweep runs every
   minute, takes at most 50 change requests due, the most overdue first, 4 at once, and stops when
   ServiceNow is unreachable; one change request is synced at a time (an advisory lock), whoever
@@ -740,20 +745,87 @@ verified against a real instance** yet.
   after a 401, or basic authentication of a service account; the secret, password and token are
   secret references read when needed, never logged or in an error.
 - **Break-glass** lifts the `external: servicenow` rule as it lifts the others: Quai stops reading
-  the change request and adds a work note with the time, who broke glass and the incident, never
-  the reason ([open questions 97 and 112](../plan/open-questions.md#still-open)). P4-20 checks the
-  incident against ServiceNow's incidents and links it to the change request
-  (`noteBroken`, the seam).
+  the change request and adds a work note with the time, who broke glass and the incident (with
+  its link once ServiceNow confirmed it, or "not verified in ServiceNow yet"), never the reason
+  ([open questions 97 and 112](../plan/open-questions.md#still-open)).
 - **Requests that end without merging** (rejected in Quai, cancelled, expired, stale) leave their
   change request as it is: ServiceNow's readers see the work notes and the request's link
-  ([open question 114](../plan/open-questions.md#still-open)). P4-20 moves a change request to
-  implemented and closes it on apply, or closes it unsuccessful when the apply fails.
+  ([open question 114](../plan/open-questions.md#still-open)). So does a delivery that fails
+  before anything merged.
+
+Built in P4-20, closing the change request on apply (`internal/requests/servicenow_close.go`) and
+the break-glass incident (`internal/requests/servicenow_incidents.go`), from the same
+documentation and on the same fake, which gained ServiceNow's Attachment API and incidents: **not
+verified against a real instance** either.
+
+- **When it is closed.** When the content the change request is for is applied (the runner's
+  apply, or the merge when no runner reports), its closing is recorded, in the same transaction, on
+  the request's current change request, if it is for the change set that landed: close code
+  `successful`. When the apply fails (`apply_failed`), the same with `unsuccessful`. A failed
+  delivery, a cancelled or rejected request closes nothing ([open question
+  115](../plan/open-questions.md#still-open)). A superseded change request is never attached to
+  nor closed: it was for other content ([open question 117](../plan/open-questions.md#still-open)).
+- **The evidence attached.** First, the request's evidence bundle
+  ([evidence bundle](09-security-and-compliance.md#evidence-bundle)) without its proof, as an API
+  token downloads it, made at closing time, and its PDF summary, through the Attachment API
+  (`POST /api/now/attachment/file`, table `change_request`, the change request's stored sys_id).
+  Their names are Quai's own, never from a person's text: `quai-evidence-<number>-<token>.json`
+  and `.pdf`, the token 64 random bits drawn once per change request, so that no one attaches a
+  file beforehand that Quai would take for its own; content types `application/json` and
+  `application/pdf`; at most 10 MiB each, a larger one not sent and a problem. Each file's size
+  and SHA-256 are recorded before its upload and its sys_id once ServiceNow answers: a retry whose
+  answer was lost looks the file up by its name on the change request (`GET /api/now/attachment`)
+  and uploads it only when it is not there, so nothing is attached twice ([open question
+  116](../plan/open-questions.md#still-open)).
+- **Then closed.** Quai reads the change request, then moves it as the state model allows, from
+  Scheduled to Implement, Implement to Review, and Review to Closed with `close_code` and
+  `close_notes` (the request, whether it was applied or its apply failed and when, the files
+  attached and how to verify the JSON bundle, the request's link), each step taken from the state
+  ServiceNow reports, so that a retry moves nothing twice. A change request closed or canceled in
+  ServiceNow already is left as it is (`already`); one never approved (broken by break-glass,
+  merged outside Quai) or in another state than Scheduled, Implement or Review gets the evidence and
+  a work note saying how the content landed, and is left to its change manager (`left`); one whose
+  correlation ID is no longer Quai's gets nothing and is a problem ([open question
+  118](../plan/open-questions.md#still-open)).
+- **Refused, unreachable.** An upload, lookup, move or note ServiceNow refuses is a problem on the
+  request page ("Someone must act in ServiceNow") and a warning in the log, and is not tried again
+  (`refused`). Unreachable, the closing is tried again by the sweep with the backoff from the poll
+  interval, shown on the request page, as for reading. Quai is done with the change request once
+  closed, already closed, left or refused: it reads it no more.
+- **The incident checked.** With `itsm.servicenow`, a break-glass's incident must be a ServiceNow
+  incident's number: capital letters then digits (`^[A-Z]{2,10}[0-9]{1,16}$`), refused before any
+  call otherwise, so no `^`, `=`, `@`, space or operator word ever reaches an encoded query. It is
+  queried exactly (`GET /api/now/table/incident`, `sysparm_query=number=<it>`), and the answer
+  filtered for that exact number afterwards. Before the break-glass's transaction, never under the
+  request's lock, with a 10-second bound: none, two (ambiguous), or one closed or canceled (state
+  7 or 8, or not active) refuses the break-glass with a field error on `incident`; New, In
+  Progress, On Hold and Resolved count as existing ([open question
+  120](../plan/open-questions.md#still-open)). When ServiceNow cannot say (unreachable, refused, an
+  answer neither yes nor no), the break-glass goes ahead, because an emergency must not wait on
+  ServiceNow, and the incident is recorded as not verified (`incidentCheck`, in the event, the
+  audit details and the request page). A job, then the sweep with a backoff from a minute, asks
+  again; when ServiceNow then says no, it is a problem on the break-glass review and an audit
+  event by `servicenow` (`request.break_glass_incident`), and nothing is undone; an unclear answer
+  is a problem, asked no more ([open questions 121 and 122](../plan/open-questions.md#still-open)).
+- **The incident linked.** Once verified, a job links it to the request's change request for the
+  content broken for, once that is opened, by setting the incident's `rfc` field ("Incidents Fixed
+  By Change" on the change request) to the change request's stored sys_id (`PATCH
+  /api/now/table/incident/{sys_id}`). An incident whose `rfc` names another change request already
+  is kept as it is (`kept`); a refused link is a problem on the review ([open question
+  119](../plan/open-questions.md#still-open)). The incident's link on the page and in the work note
+  is made from the configured root and the sys_id ServiceNow answered, checked as 32 hex digits,
+  never a URL from an answer. Without `itsm.servicenow` nothing of this happens: the incident is a
+  ticket's identifier, checked nowhere.
 - **The request page** shows the change request in the approval card: its number, linked to its
   form, normal or standard, its state and approval as last read and when, what it means for the
-  request, why ServiceNow cannot be reached, a problem, and how many change requests of earlier
-  content no longer count. The timeline records `change_request_opened` and
-  `change_request_superseded`; the audit log `request.change_request_opened`,
-  `request.change_request_superseded` and `request.approval_withdrawn`.
+  request, its closing and the files attached (name, size, SHA-256), why ServiceNow cannot be
+  reached, a problem, and how many change requests of earlier content no longer count. The
+  break-glass card shows whether ServiceNow confirmed the incident, linked to its form, whether it
+  is linked, and what ServiceNow did not confirm. The timeline records `change_request_opened`,
+  `change_request_superseded`, `change_request_closed`, `break_glass_incident` and
+  `incident_linked`; the audit log `request.change_request_opened`,
+  `request.change_request_superseded`, `request.approval_withdrawn`,
+  `request.change_request_closed`, `request.break_glass_incident` and `request.incident_linked`.
 
 ## Notifications
 

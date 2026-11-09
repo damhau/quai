@@ -1,7 +1,7 @@
 import { screen, within } from "@testing-library/react"
 import type { RuleView } from "@/api/generated/types.gen"
 import { actionLabel, actorLabel, alarming } from "@/lib/audit"
-import { outcomeText, supersededText } from "@/lib/change-request"
+import { closeText, closedEventText, outcomeText, supersededText } from "@/lib/change-request"
 import { eventText } from "@/lib/requests"
 import { renderApp } from "@/test/render"
 import { pendingVM, requests } from "@/test/requests"
@@ -74,4 +74,83 @@ test("ServiceNow's decisions read as such in the timeline and the audit log", ()
   expect(alarming("request.change_request_superseded")).toBe(false)
   expect(actorLabel({ type: "system", id: "servicenow" }, {})).toBe("ServiceNow")
   expect(actorLabel({ type: "system", id: "quai" }, {})).toBe("Quai")
+})
+
+test("once applied, the change request is closed with the evidence; the page lists the files, and what ServiceNow refused", async () => {
+  const files = [
+    { name: "quai-evidence-3-0123456789abcdef.json", bytes: 8726, sha256: "e84d072355740808f106e0c8e8b1a4b65820b7f3672fd8aacfc5ca2149ef9c10" },
+    { name: "quai-evidence-3-0123456789abcdef.pdf", bytes: 4591, sha256: "0e77ee3b9ab6668d81698fded51869ee44a566fb97f9414a3a796948ed1a521d" },
+  ]
+  requests.current = {
+    ...pendingVM(),
+    state: "applied",
+    changeRequest: {
+      number: "CHG0030001",
+      kind: "normal",
+      state: "Closed",
+      approval: "approved",
+      outcome: "approved",
+      url,
+      closeOutcome: "successful",
+      closeResult: "closed",
+      closedAt: at,
+      attachments: files,
+    },
+    events: [
+      ...(pendingVM().events ?? []),
+      { kind: "change_request_closed", actor: "", data: { changeRequest: "CHG0030001", outcome: "successful", result: "closed", files: files.map((f) => f.name) }, at },
+    ],
+  }
+  const closed = renderApp(`/requests/${id}`)
+  let panel = within(await screen.findByTestId("change-request"))
+  expect(panel.getByText("Closed in ServiceNow by Quai, successful: its content was applied.")).toBeInTheDocument()
+  const list = within(panel.getByRole("list", { name: "Evidence attached" }))
+  expect(list.getByText(/quai-evidence-3-0123456789abcdef\.json/)).toBeInTheDocument()
+  expect(list.getByText(/8\.5 KiB, sha256 e84d07235574/)).toBeInTheDocument()
+  expect(
+    within(screen.getByRole("list", { name: "Timeline" })).getByText("closed change request CHG0030001 in ServiceNow, successful, the evidence attached"),
+  ).toBeInTheDocument()
+  closed.unmount()
+
+  // Closing, ServiceNow unreachable: the request itself is done.
+  requests.current = {
+    ...pendingVM(),
+    state: "failed",
+    changeRequest: { number: "CHG0030002", kind: "normal", outcome: "approved", closeOutcome: "unsuccessful", failure: "ServiceNow: 503", failingSince: at },
+  }
+  const closing = renderApp(`/requests/${id}`)
+  panel = within(await screen.findByTestId("change-request"))
+  expect(panel.getByText("Quai is closing it, as its apply failed: it attaches the evidence, then moves it to Closed.")).toBeInTheDocument()
+  expect(panel.getByText("It tries again to close the change request; the request itself is done.")).toBeInTheDocument()
+  closing.unmount()
+
+  const problem = "ServiceNow did not take CHG0030003 to implement: <b>Invalid state transition</b>"
+  requests.current = {
+    ...pendingVM(),
+    state: "applied",
+    changeRequest: { number: "CHG0030003", kind: "normal", state: "Scheduled", outcome: "approved", closeOutcome: "successful", closeResult: "refused", closedAt: at, problem, attachments: files },
+  }
+  renderApp(`/requests/${id}`)
+  panel = within(await screen.findByTestId("change-request"))
+  expect(panel.getByText("Not closed: ServiceNow refused a step of closing it, as its content was applied.")).toBeInTheDocument()
+  expect(panel.getByText("Someone must act in ServiceNow")).toBeInTheDocument()
+  expect(panel.getByText(problem)).toBeInTheDocument() // as text, never markup
+})
+
+test("what the timeline and the audit log say of closing", () => {
+  expect(closeText({ outcome: "pending", closeOutcome: "successful", closedAt: at, closeResult: "left" })).toBe(
+    "Left to its change manager, as its content was applied: it was never approved in ServiceNow, so Quai added a work note instead of closing it.",
+  )
+  expect(closeText({ outcome: "approved", closeOutcome: "unsuccessful", closedAt: at, closeResult: "already" })).toBe(
+    "It was closed or canceled in ServiceNow already: Quai left it as it is, as its apply failed.",
+  )
+  expect(closeText({ outcome: "approved" })).toBe("")
+  expect(closedEventText("CHG0030001", "unsuccessful", "closed", 2, undefined)).toBe("closed change request CHG0030001 in ServiceNow, unsuccessful: the apply failed, the evidence attached")
+  expect(closedEventText("CHG0030001", "successful", "left", 2, undefined)).toBe(
+    "left change request CHG0030001 to its change manager: it was never approved in ServiceNow, the evidence attached",
+  )
+  expect(closedEventText("CHG0030001", "successful", "refused", 0, "ServiceNow did not take CHG0030001 to review")).toBe(
+    "could not close change request CHG0030001: ServiceNow did not take CHG0030001 to review",
+  )
+  expect(actionLabel("request.change_request_closed")).toBe("Change request closed or left, with the evidence")
 })

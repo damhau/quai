@@ -56,7 +56,29 @@ const (
 		"the full log proves its events too (quai audit export, quai audit verify)"
 	proofForAuditors = "the bundle carries no proof: the segments of the audit log that prove its events hold other requests' events, " +
 		"which only auditors of all repositories and platform admins read; the full log proves its events (quai audit export, quai audit verify)"
+	proofForITSM = "a bundle attached to a change request carries no proof: the segments of the audit log that prove its events hold " +
+		"other requests' events, which an auditor of all repositories or a platform admin downloads from Quai; " +
+		"the full log proves its events too (quai audit export, quai audit verify)"
 )
+
+// EvidenceForITSM makes the evidence Quai attaches to a request's change request when it closes
+// (requests.Evidence): its bundle without the proof, as an API token downloads it (open question
+// 102), and the bundle's PDF.
+func EvidenceForITSM(svc *requests.Service, s *store.Store, reg *repositories.Registry, version string, log *slog.Logger) requests.Evidence {
+	e := &evidenceMaker{svc: svc, s: s, reg: reg, version: version, log: log, now: time.Now}
+	return func(ctx context.Context, r db.Request) ([]byte, []byte, error) {
+		b, err := e.bundle(ctx, r, proofForITSM)
+		if err != nil {
+			return nil, nil, err
+		}
+		bundle, err := evidence.Marshal(b)
+		if err != nil {
+			return nil, nil, err
+		}
+		pdf, err := evidence.PDF(b)
+		return bundle, pdf, err
+	}
+}
 
 type evidenceInput struct {
 	ID     string `path:"id" doc:"The request's ID"`

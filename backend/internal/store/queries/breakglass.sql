@@ -2,10 +2,41 @@
 -- from the caller's clock, never now(), so that tests drive them.
 
 -- name: CreateBreakGlass :one
-INSERT INTO break_glass (request_id, breaker, breaker_email, auth_time, acr, step_up, reason, incident, change_set_hash, head, from_state, at)
+INSERT INTO break_glass (request_id, breaker, breaker_email, auth_time, acr, step_up, reason, incident, change_set_hash, head, from_state, at,
+                         incident_check, incident_sys_id, incident_checked_at, incident_failure)
 VALUES (sqlc.arg(request_id), sqlc.arg(breaker), sqlc.arg(breaker_email), sqlc.narg(auth_time), sqlc.arg(acr), sqlc.arg(step_up),
-        sqlc.arg(reason), sqlc.arg(incident), sqlc.arg(change_set_hash), sqlc.arg(head), sqlc.arg(from_state), sqlc.arg(at))
+        sqlc.arg(reason), sqlc.arg(incident), sqlc.arg(change_set_hash), sqlc.arg(head), sqlc.arg(from_state), sqlc.arg(at),
+        sqlc.arg(incident_check), sqlc.arg(incident_sys_id), sqlc.narg(incident_checked_at), sqlc.arg(incident_failure))
 RETURNING *;
+
+-- name: SetBreakGlassIncidentChecked :exec
+-- What ServiceNow said of the incident, asked again: verified or refuted (with the problem), or a
+-- refusal to say (the problem, and it is asked no more).
+UPDATE break_glass SET incident_check = sqlc.arg(incident_check), incident_sys_id = sqlc.arg(incident_sys_id),
+    incident_checked_at = sqlc.arg(at), incident_problem = sqlc.arg(incident_problem), incident_failure = '', incident_failures = 0,
+    incident_next_at = NULL
+WHERE request_id = sqlc.arg(request_id) AND incident_check = 'unverified';
+
+-- name: SetBreakGlassIncidentLinked :exec
+-- The incident's link to the change request: linked, kept, none or refused (with the problem).
+UPDATE break_glass SET incident_link = sqlc.arg(incident_link), incident_linked_at = sqlc.arg(at), incident_problem = sqlc.arg(incident_problem),
+    incident_failure = '', incident_failures = 0, incident_next_at = NULL
+WHERE request_id = sqlc.arg(request_id) AND incident_link = '';
+
+-- name: SetBreakGlassIncidentFailed :exec
+-- A check or link of the incident did not reach ServiceNow, or must wait: why, and when to try again.
+UPDATE break_glass SET incident_failure = sqlc.arg(incident_failure), incident_failures = incident_failures + 1,
+    incident_next_at = sqlc.arg(next_at)
+WHERE request_id = sqlc.arg(request_id);
+
+-- name: DueBreakGlassIncidents :many
+-- The break-glass records whose incident is due to be checked again or linked, the most overdue
+-- first: unverified, or verified and not linked yet, without a problem.
+SELECT * FROM break_glass
+WHERE (incident_check = 'unverified' OR incident_check = 'verified' AND incident_link = '') AND incident_problem = ''
+  AND (incident_next_at IS NULL OR incident_next_at <= sqlc.arg(now))
+ORDER BY incident_next_at NULLS FIRST, request_id
+LIMIT sqlc.arg(max_rows);
 
 -- name: GetBreakGlass :one
 SELECT * FROM break_glass WHERE request_id = $1;

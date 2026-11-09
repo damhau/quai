@@ -261,6 +261,18 @@ type ChangeRequestView struct {
 	FailingSince *time.Time `json:"failingSince,omitempty" doc:"Since when Quai fails to reach ServiceNow about it"`
 	Problem      string     `json:"problem,omitempty" doc:"What ServiceNow refused that Quai does not try again, such as taking it for approval: someone acts in ServiceNow"`
 	Superseded   int        `json:"superseded,omitempty" doc:"Change requests of earlier content of the request: their approvals do not count for its content now"`
+	// The closing, once the request's content is applied or its apply failed.
+	CloseOutcome string                  `json:"closeOutcome,omitempty" enum:"successful,unsuccessful" doc:"How Quai closes it: successful once its content is applied, unsuccessful when its apply failed"`
+	ClosedAt     *time.Time              `json:"closedAt,omitempty" doc:"When Quai was done closing it; absent while it attaches the evidence and closes it"`
+	CloseResult  string                  `json:"closeResult,omitempty" enum:"closed,already,left,refused" doc:"How: closed by Quai; closed or canceled in ServiceNow already; left to its change manager, never approved (or not Quai's); refused by ServiceNow, the problem says what"`
+	Attachments  []ChangeRequestFileView `json:"attachments,omitempty" doc:"The files of the evidence Quai attached to it"`
+}
+
+// ChangeRequestFileView is a file of the evidence Quai attached to a change request.
+type ChangeRequestFileView struct {
+	Name   string `json:"name"`
+	Bytes  int32  `json:"bytes"`
+	SHA256 string `json:"sha256" doc:"The SHA-256 of the file Quai sent, in hexadecimal"`
 }
 
 // changeRequestView is a request's change request; nil when no rule waits on ServiceNow.
@@ -283,6 +295,15 @@ func changeRequestView(ctx context.Context, svc *requests.Service, r db.Request)
 	}
 	if c.FailingSince.Valid {
 		v.FailingSince = &c.FailingSince.Time
+	}
+	v.CloseOutcome, v.CloseResult = c.CloseOutcome, c.CloseResult
+	if c.ClosedAt.Valid {
+		v.ClosedAt = &c.ClosedAt.Time
+	}
+	for _, a := range c.Attachments {
+		if a.SysID.Valid {
+			v.Attachments = append(v.Attachments, ChangeRequestFileView{Name: a.Name, Bytes: a.Bytes, SHA256: a.Sha256})
+		}
 	}
 	return v
 }

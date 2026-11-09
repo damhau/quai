@@ -267,6 +267,158 @@ func TestNoRedirect(t *testing.T) {
 	}
 }
 
+// TestAttachAndClose: a file is attached and found again by its name; an approved change is
+// implemented, reviewed and closed with its close code and notes, through the state model.
+func TestAttachAndClose(t *testing.T) {
+	sn, c := start(t)
+	ctx := context.Background()
+	r, err := c.Create(ctx, normal("quai:7:1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a, err := c.FindAttachment(ctx, r.SysID, "quai-evidence-7.json"); err != nil || a != nil {
+		t.Fatalf("FindAttachment before = %v, %v", a, err)
+	}
+	a, err := c.Attach(ctx, r.SysID, "quai-evidence-7.json", "application/json", []byte(`{"bundleVersion": 1}`))
+	if err != nil || !SysIDRe.MatchString(a.SysID) || a.FileName != "quai-evidence-7.json" || a.Size != 20 {
+		t.Fatalf("Attach = %+v, %v", a, err)
+	}
+	found, err := c.FindAttachment(ctx, r.SysID, "quai-evidence-7.json")
+	if err != nil || found == nil || found.SysID != a.SysID {
+		t.Fatalf("FindAttachment = %+v, %v", found, err)
+	}
+	if other, err := c.FindAttachment(ctx, r.SysID, "quai-evidence-7.pdf"); err != nil || other != nil {
+		t.Errorf("another name found %+v, %v", other, err)
+	}
+	files := sn.Attachments(r.SysID)
+	if len(files) != 1 || files[0].ContentType != "application/json" || string(files[0].Data) != `{"bundleVersion": 1}` {
+		t.Errorf("attachments = %+v", files)
+	}
+	// Names Quai does not make, a file too large and a record that is not a sys_id are not sent.
+	before := len(sn.Calls())
+	for _, name := range []string{"../x.json", "a^file_name=b", "Quai.json", ""} {
+		if _, err := c.Attach(ctx, r.SysID, name, "application/json", nil); err == nil {
+			t.Errorf("Attach(%q) was sent", name)
+		}
+	}
+	if _, err := c.Attach(ctx, r.SysID, "big.pdf", "application/pdf", make([]byte, MaxAttachment+1)); !errors.Is(err, ErrTooLarge) {
+		t.Errorf("a file too large: %v", err)
+	}
+	if _, err := c.FindAttachment(ctx, "x^table_name=incident", "a.json"); err == nil {
+		t.Error("a record that is not a sys_id was queried")
+	}
+	if n := len(sn.Calls()); n != before {
+		t.Errorf("%d calls for what is refused before any", n-before)
+	}
+	// Closing goes through Implement and Review, then Closed with the code and notes.
+	sn.Approve(r.SysID)
+	if moved, err := c.Move(ctx, r.SysID, "implement"); err != nil || moved.State != "-1" {
+		t.Fatalf("implement = %+v, %v", moved, err)
+	}
+	if _, err := c.Close(ctx, r.SysID, CloseSuccessful, "done"); err == nil {
+		t.Error("closed from Implement")
+	}
+	if moved, err := c.Move(ctx, r.SysID, "review"); err != nil || moved.State != "0" {
+		t.Fatalf("review = %+v, %v", moved, err)
+	}
+	if _, err := c.Close(ctx, r.SysID, "successful_issues", "done"); err == nil {
+		t.Error("a close code Quai does not set was sent")
+	}
+	closed, err := c.Close(ctx, r.SysID, CloseUnsuccessful, "the apply failed: [code]<b>x</b>[/code]")
+	if err != nil || closed.State != "3" || closed.CloseCode != CloseUnsuccessful {
+		t.Fatalf("Close = %+v, %v", closed, err)
+	}
+	ch, _ := sn.Change(r.SysID)
+	if ch.Fields["close_code"] != "unsuccessful" || ch.Fields["close_notes"] != "the apply failed: (code)&lt;b&gt;x&lt;/b&gt;(/code)" {
+		t.Errorf("closed change = %+v", ch.Fields)
+	}
+}
+
+// TestIncidents: an incident is found by its exact number only; none, two, or an answer of other
+// incidents are told apart; a number of another shape is never queried; linking sets its rfc.
+func TestIncidents(t *testing.T) {
+	sn, c := start(t)
+	ctx := context.Background()
+	open := sn.AddIncident("INC0010001", servicenowtest.IncidentInProgress)
+	sn.AddIncident("INC0010002", servicenowtest.IncidentCanceled)
+	sn.AddIncident("INC0010003", servicenowtest.IncidentNew)
+	sn.AddIncident("INC0010003", servicenowtest.IncidentNew)
+	inc, err := c.FindIncident(ctx, "INC0010001")
+	if err != nil || inc.SysID != open || inc.Active != "true" || inc.State != "2" || inc.Change != "" || inc.HasChange {
+		t.Fatalf("FindIncident = %+v, %v", inc, err)
+	}
+	if inc, err := c.FindIncident(ctx, "INC0010002"); err != nil || inc.Active != "false" || inc.State != "8" {
+		t.Errorf("canceled = %+v, %v", inc, err)
+	}
+	if _, err := c.FindIncident(ctx, "INC0019999"); !errors.Is(err, ErrNoIncident) {
+		t.Errorf("unknown: %v", err)
+	}
+	if _, err := c.FindIncident(ctx, "INC0010003"); !errors.Is(err, ErrIncidentAmbiguous) {
+		t.Errorf("two: %v", err)
+	}
+	before := len(sn.Calls())
+	for _, ref := range []string{"INC001^ORnumber!=x", "INC001=1", "INC001@x", "inc0010001", "INC-1", "", "INC 1", "INC0010001\n"} {
+		if _, err := c.FindIncident(ctx, ref); err == nil || errors.Is(err, ErrNoIncident) {
+			t.Errorf("FindIncident(%q) = %v", ref, err)
+		}
+	}
+	if n := len(sn.Calls()); n != before {
+		t.Errorf("%d calls for references of another shape", n-before)
+	}
+	// An answer of other incidents than the number's says neither yes nor no.
+	other := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Query().Get("sysparm_query") {
+		case "number=INC0000001":
+			_, _ = w.Write([]byte(`{"result": [{"sys_id": "` + strings.Repeat("b", 32) + `", "number": "INC0000002", "active": "true"}]}`))
+		case "number=INC0000003":
+			_, _ = w.Write([]byte(`{}`))
+		default:
+			_, _ = w.Write([]byte(`{"result": [{"sys_id": "x", "number": "INC0000004"}]}`))
+		}
+	}))
+	t.Cleanup(other.Close)
+	ca := filepath.Join(t.TempDir(), "ca.pem")
+	if err := os.WriteFile(ca, (&servicenowtest.Server{Server: other}).PEM(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := sn.Basic("env:SN_PASSWORD")
+	cfg.InstanceURL = other.URL
+	oc := clientOf(t, sn, cfg, ca)
+	for _, ref := range []string{"INC0000001", "INC0000003", "INC0000004"} {
+		if _, err := oc.FindIncident(ctx, ref); !errors.Is(err, ErrUnclear) {
+			t.Errorf("FindIncident(%s) on other answers = %v", ref, err)
+		}
+	}
+	// Linking sets rfc to the change request; the link is the configured root's.
+	r, err := c.Create(ctx, normal("quai:8:1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	linked, err := c.LinkIncident(ctx, open, r.SysID)
+	if err != nil || linked.Change != r.SysID || !linked.HasChange {
+		t.Fatalf("LinkIncident = %+v, %v", linked, err)
+	}
+	// An rfc that is no sys_id is a link Quai keeps, but never reads as a change request's.
+	sn.SetIncident(open, servicenowtest.IncidentInProgress, "CHG0000001")
+	if got, err := c.GetIncident(ctx, open); err != nil || got.Change != "" || !got.HasChange {
+		t.Errorf("an rfc that is no sys_id: %+v, %v", got, err)
+	}
+	sn.SetIncident(open, servicenowtest.IncidentInProgress, r.SysID)
+	if got, _ := sn.Incident(open); got.Change != r.SysID {
+		t.Errorf("incident = %+v", got)
+	}
+	if got, err := c.GetIncident(ctx, open); err != nil || got.Change != r.SysID || got.Number != "INC0010001" {
+		t.Errorf("GetIncident = %+v, %v", got, err)
+	}
+	if l := c.IncidentLink(open); l != sn.URL+"/incident.do?sys_id="+open {
+		t.Errorf("IncidentLink = %s", l)
+	}
+	if l := c.IncidentLink("https://evil.example/x"); l != "" {
+		t.Errorf("IncidentLink of no sys_id = %s", l)
+	}
+}
+
 func TestOutcome(t *testing.T) {
 	for _, tt := range []struct {
 		state, approval, want string

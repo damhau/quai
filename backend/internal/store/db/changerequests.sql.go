@@ -12,6 +12,32 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const addChangeRequestAttachment = `-- name: AddChangeRequestAttachment :exec
+INSERT INTO change_request_attachments (change_request_id, name, bytes, sha256)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (change_request_id, name) DO UPDATE SET bytes = EXCLUDED.bytes, sha256 = EXCLUDED.sha256
+WHERE change_request_attachments.sys_id IS NULL
+`
+
+type AddChangeRequestAttachmentParams struct {
+	ChangeRequestID uuid.UUID
+	Name            string
+	Bytes           int32
+	Sha256          string
+}
+
+// A file of the evidence is about to be attached: its size and hash, as sent; those of a file
+// attached already stay.
+func (q *Queries) AddChangeRequestAttachment(ctx context.Context, arg AddChangeRequestAttachmentParams) error {
+	_, err := q.db.Exec(ctx, addChangeRequestAttachment,
+		arg.ChangeRequestID,
+		arg.Name,
+		arg.Bytes,
+		arg.Sha256,
+	)
+	return err
+}
+
 const countChangeRequests = `-- name: CountChangeRequests :one
 
 SELECT count(*) FROM change_requests WHERE request_id = $1
@@ -30,7 +56,7 @@ const createChangeRequest = `-- name: CreateChangeRequest :one
 INSERT INTO change_requests (id, request_id, generation, correlation_id, change_set_hash, kind, template, created_at)
 VALUES ($1, $2, $3, $4, $5, $6,
         $7, $8)
-RETURNING id, request_id, org_id, generation, correlation_id, change_set_hash, kind, template, sys_id, number, state, state_label, approval, outcome, created_at, opened_at, prepared_at, polled_at, next_poll_at, failures, failure, failing_since, problem, superseded_at
+RETURNING id, request_id, org_id, generation, correlation_id, change_set_hash, kind, template, sys_id, number, state, state_label, approval, outcome, created_at, opened_at, prepared_at, polled_at, next_poll_at, failures, failure, failing_since, problem, superseded_at, close_outcome, close_requested_at, evidence_token, closed_at, close_result
 `
 
 type CreateChangeRequestParams struct {
@@ -81,12 +107,17 @@ func (q *Queries) CreateChangeRequest(ctx context.Context, arg CreateChangeReque
 		&i.FailingSince,
 		&i.Problem,
 		&i.SupersededAt,
+		&i.CloseOutcome,
+		&i.CloseRequestedAt,
+		&i.EvidenceToken,
+		&i.ClosedAt,
+		&i.CloseResult,
 	)
 	return i, err
 }
 
 const currentChangeRequest = `-- name: CurrentChangeRequest :one
-SELECT id, request_id, org_id, generation, correlation_id, change_set_hash, kind, template, sys_id, number, state, state_label, approval, outcome, created_at, opened_at, prepared_at, polled_at, next_poll_at, failures, failure, failing_since, problem, superseded_at FROM change_requests WHERE request_id = $1 AND superseded_at IS NULL
+SELECT id, request_id, org_id, generation, correlation_id, change_set_hash, kind, template, sys_id, number, state, state_label, approval, outcome, created_at, opened_at, prepared_at, polled_at, next_poll_at, failures, failure, failing_since, problem, superseded_at, close_outcome, close_requested_at, evidence_token, closed_at, close_result FROM change_requests WHERE request_id = $1 AND superseded_at IS NULL
 `
 
 // The request's change request that is not superseded, if any.
@@ -118,13 +149,19 @@ func (q *Queries) CurrentChangeRequest(ctx context.Context, requestID uuid.UUID)
 		&i.FailingSince,
 		&i.Problem,
 		&i.SupersededAt,
+		&i.CloseOutcome,
+		&i.CloseRequestedAt,
+		&i.EvidenceToken,
+		&i.ClosedAt,
+		&i.CloseResult,
 	)
 	return i, err
 }
 
 const dueChangeRequests = `-- name: DueChangeRequests :many
-SELECT c.id, c.request_id, c.org_id, c.generation, c.correlation_id, c.change_set_hash, c.kind, c.template, c.sys_id, c.number, c.state, c.state_label, c.approval, c.outcome, c.created_at, c.opened_at, c.prepared_at, c.polled_at, c.next_poll_at, c.failures, c.failure, c.failing_since, c.problem, c.superseded_at FROM change_requests c JOIN requests r ON r.id = c.request_id
-WHERE c.superseded_at IS NULL AND r.state IN ('pending_approval', 'approved') AND r.break_glass_at IS NULL
+SELECT c.id, c.request_id, c.org_id, c.generation, c.correlation_id, c.change_set_hash, c.kind, c.template, c.sys_id, c.number, c.state, c.state_label, c.approval, c.outcome, c.created_at, c.opened_at, c.prepared_at, c.polled_at, c.next_poll_at, c.failures, c.failure, c.failing_since, c.problem, c.superseded_at, c.close_outcome, c.close_requested_at, c.evidence_token, c.closed_at, c.close_result FROM change_requests c JOIN requests r ON r.id = c.request_id
+WHERE c.superseded_at IS NULL
+  AND (r.state IN ('pending_approval', 'approved') AND r.break_glass_at IS NULL OR c.close_requested_at IS NOT NULL AND c.closed_at IS NULL)
   AND (c.next_poll_at IS NULL OR c.next_poll_at <= $1)
 ORDER BY c.next_poll_at NULLS FIRST, c.id
 LIMIT $2
@@ -135,8 +172,9 @@ type DueChangeRequestsParams struct {
 	MaxRows int32
 }
 
-// The current change requests Quai waits on that are due, to open or to read, the most overdue
-// first: those of requests pending approval, or approved and not merging yet, without break-glass.
+// The current change requests that are due, the most overdue first: to open or to read, those of
+// requests pending approval, or approved and not merging yet, without break-glass; to close, those
+// whose content was applied or whose apply failed, until Quai is done.
 func (q *Queries) DueChangeRequests(ctx context.Context, arg DueChangeRequestsParams) ([]ChangeRequest, error) {
 	rows, err := q.db.Query(ctx, dueChangeRequests, arg.Now, arg.MaxRows)
 	if err != nil {
@@ -171,6 +209,11 @@ func (q *Queries) DueChangeRequests(ctx context.Context, arg DueChangeRequestsPa
 			&i.FailingSince,
 			&i.Problem,
 			&i.SupersededAt,
+			&i.CloseOutcome,
+			&i.CloseRequestedAt,
+			&i.EvidenceToken,
+			&i.ClosedAt,
+			&i.CloseResult,
 		); err != nil {
 			return nil, err
 		}
@@ -183,7 +226,7 @@ func (q *Queries) DueChangeRequests(ctx context.Context, arg DueChangeRequestsPa
 }
 
 const getChangeRequest = `-- name: GetChangeRequest :one
-SELECT id, request_id, org_id, generation, correlation_id, change_set_hash, kind, template, sys_id, number, state, state_label, approval, outcome, created_at, opened_at, prepared_at, polled_at, next_poll_at, failures, failure, failing_since, problem, superseded_at FROM change_requests WHERE id = $1
+SELECT id, request_id, org_id, generation, correlation_id, change_set_hash, kind, template, sys_id, number, state, state_label, approval, outcome, created_at, opened_at, prepared_at, polled_at, next_poll_at, failures, failure, failing_since, problem, superseded_at, close_outcome, close_requested_at, evidence_token, closed_at, close_result FROM change_requests WHERE id = $1
 `
 
 func (q *Queries) GetChangeRequest(ctx context.Context, id uuid.UUID) (ChangeRequest, error) {
@@ -214,12 +257,48 @@ func (q *Queries) GetChangeRequest(ctx context.Context, id uuid.UUID) (ChangeReq
 		&i.FailingSince,
 		&i.Problem,
 		&i.SupersededAt,
+		&i.CloseOutcome,
+		&i.CloseRequestedAt,
+		&i.EvidenceToken,
+		&i.ClosedAt,
+		&i.CloseResult,
 	)
 	return i, err
 }
 
+const listChangeRequestAttachments = `-- name: ListChangeRequestAttachments :many
+SELECT change_request_id, name, bytes, sha256, sys_id, attached_at FROM change_request_attachments WHERE change_request_id = $1 ORDER BY name
+`
+
+func (q *Queries) ListChangeRequestAttachments(ctx context.Context, changeRequestID uuid.UUID) ([]ChangeRequestAttachment, error) {
+	rows, err := q.db.Query(ctx, listChangeRequestAttachments, changeRequestID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ChangeRequestAttachment{}
+	for rows.Next() {
+		var i ChangeRequestAttachment
+		if err := rows.Scan(
+			&i.ChangeRequestID,
+			&i.Name,
+			&i.Bytes,
+			&i.Sha256,
+			&i.SysID,
+			&i.AttachedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listChangeRequests = `-- name: ListChangeRequests :many
-SELECT id, request_id, org_id, generation, correlation_id, change_set_hash, kind, template, sys_id, number, state, state_label, approval, outcome, created_at, opened_at, prepared_at, polled_at, next_poll_at, failures, failure, failing_since, problem, superseded_at FROM change_requests WHERE request_id = $1 ORDER BY generation DESC
+SELECT id, request_id, org_id, generation, correlation_id, change_set_hash, kind, template, sys_id, number, state, state_label, approval, outcome, created_at, opened_at, prepared_at, polled_at, next_poll_at, failures, failure, failing_since, problem, superseded_at, close_outcome, close_requested_at, evidence_token, closed_at, close_result FROM change_requests WHERE request_id = $1 ORDER BY generation DESC
 `
 
 // A request's change requests, the current (newest) first.
@@ -257,6 +336,11 @@ func (q *Queries) ListChangeRequests(ctx context.Context, requestID uuid.UUID) (
 			&i.FailingSince,
 			&i.Problem,
 			&i.SupersededAt,
+			&i.CloseOutcome,
+			&i.CloseRequestedAt,
+			&i.EvidenceToken,
+			&i.ClosedAt,
+			&i.CloseResult,
 		); err != nil {
 			return nil, err
 		}
@@ -269,7 +353,7 @@ func (q *Queries) ListChangeRequests(ctx context.Context, requestID uuid.UUID) (
 }
 
 const lockChangeRequest = `-- name: LockChangeRequest :one
-SELECT id, request_id, org_id, generation, correlation_id, change_set_hash, kind, template, sys_id, number, state, state_label, approval, outcome, created_at, opened_at, prepared_at, polled_at, next_poll_at, failures, failure, failing_since, problem, superseded_at FROM change_requests WHERE id = $1 FOR UPDATE
+SELECT id, request_id, org_id, generation, correlation_id, change_set_hash, kind, template, sys_id, number, state, state_label, approval, outcome, created_at, opened_at, prepared_at, polled_at, next_poll_at, failures, failure, failing_since, problem, superseded_at, close_outcome, close_requested_at, evidence_token, closed_at, close_result FROM change_requests WHERE id = $1 FOR UPDATE
 `
 
 // A change request, its row locked until the transaction ends; taken after its request's lock.
@@ -301,8 +385,96 @@ func (q *Queries) LockChangeRequest(ctx context.Context, id uuid.UUID) (ChangeRe
 		&i.FailingSince,
 		&i.Problem,
 		&i.SupersededAt,
+		&i.CloseOutcome,
+		&i.CloseRequestedAt,
+		&i.EvidenceToken,
+		&i.ClosedAt,
+		&i.CloseResult,
 	)
 	return i, err
+}
+
+const setChangeRequestAttached = `-- name: SetChangeRequestAttached :exec
+UPDATE change_request_attachments SET sys_id = $1, attached_at = $2
+WHERE change_request_id = $3 AND name = $4 AND sys_id IS NULL
+`
+
+type SetChangeRequestAttachedParams struct {
+	SysID           pgtype.Text
+	At              pgtype.Timestamptz
+	ChangeRequestID uuid.UUID
+	Name            string
+}
+
+// A file of the evidence is attached: the sys_id ServiceNow answered, or a lookup by its name found.
+func (q *Queries) SetChangeRequestAttached(ctx context.Context, arg SetChangeRequestAttachedParams) error {
+	_, err := q.db.Exec(ctx, setChangeRequestAttached,
+		arg.SysID,
+		arg.At,
+		arg.ChangeRequestID,
+		arg.Name,
+	)
+	return err
+}
+
+const setChangeRequestClosed = `-- name: SetChangeRequestClosed :exec
+UPDATE change_requests SET closed_at = $1, close_result = $2, problem = $3,
+    state = $4, state_label = $5, approval = $6, polled_at = $1, next_poll_at = NULL,
+    failures = 0, failure = '', failing_since = NULL
+WHERE id = $7 AND closed_at IS NULL
+`
+
+type SetChangeRequestClosedParams struct {
+	At          pgtype.Timestamptz
+	CloseResult string
+	Problem     string
+	State       string
+	StateLabel  string
+	Approval    string
+	ID          uuid.UUID
+}
+
+// Quai is done closing the change request: how (close_result), what ServiceNow reported last, and
+// what someone must do (problem).
+func (q *Queries) SetChangeRequestClosed(ctx context.Context, arg SetChangeRequestClosedParams) error {
+	_, err := q.db.Exec(ctx, setChangeRequestClosed,
+		arg.At,
+		arg.CloseResult,
+		arg.Problem,
+		arg.State,
+		arg.StateLabel,
+		arg.Approval,
+		arg.ID,
+	)
+	return err
+}
+
+const setChangeRequestClosing = `-- name: SetChangeRequestClosing :execrows
+UPDATE change_requests SET close_outcome = $1, close_requested_at = $2, evidence_token = $3,
+    next_poll_at = NULL, failures = 0, failure = '', failing_since = NULL, problem = ''
+WHERE id = $4 AND superseded_at IS NULL AND close_requested_at IS NULL
+`
+
+type SetChangeRequestClosingParams struct {
+	CloseOutcome  string
+	At            pgtype.Timestamptz
+	EvidenceToken string
+	ID            uuid.UUID
+}
+
+// The change request is to be closed, once: its content was applied (successful) or its apply
+// failed (unsuccessful). It is due at once, its earlier failures and problem forgotten.
+func (q *Queries) SetChangeRequestClosing(ctx context.Context, arg SetChangeRequestClosingParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setChangeRequestClosing,
+		arg.CloseOutcome,
+		arg.At,
+		arg.EvidenceToken,
+		arg.ID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const setChangeRequestFailed = `-- name: SetChangeRequestFailed :exec
@@ -415,7 +587,7 @@ func (q *Queries) SetChangeRequestPrepared(ctx context.Context, arg SetChangeReq
 const supersedeChangeRequest = `-- name: SupersedeChangeRequest :one
 UPDATE change_requests SET superseded_at = $1
 WHERE request_id = $2 AND superseded_at IS NULL
-RETURNING id, request_id, org_id, generation, correlation_id, change_set_hash, kind, template, sys_id, number, state, state_label, approval, outcome, created_at, opened_at, prepared_at, polled_at, next_poll_at, failures, failure, failing_since, problem, superseded_at
+RETURNING id, request_id, org_id, generation, correlation_id, change_set_hash, kind, template, sys_id, number, state, state_label, approval, outcome, created_at, opened_at, prepared_at, polled_at, next_poll_at, failures, failure, failing_since, problem, superseded_at, close_outcome, close_requested_at, evidence_token, closed_at, close_result
 `
 
 type SupersedeChangeRequestParams struct {
@@ -452,6 +624,11 @@ func (q *Queries) SupersedeChangeRequest(ctx context.Context, arg SupersedeChang
 		&i.FailingSince,
 		&i.Problem,
 		&i.SupersededAt,
+		&i.CloseOutcome,
+		&i.CloseRequestedAt,
+		&i.EvidenceToken,
+		&i.ClosedAt,
+		&i.CloseResult,
 	)
 	return i, err
 }

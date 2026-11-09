@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { AlertCircle, AlertTriangle, Check, ShieldAlert } from "lucide-react"
+import { AlertCircle, AlertTriangle, Check, ExternalLink, ShieldAlert } from "lucide-react"
 import {
   breakGlassMutation,
   getMeOptions,
@@ -18,7 +18,7 @@ import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, Di
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { capacityText, reviewStatus } from "@/lib/break-glass"
+import { capacityText, incidentProblemTitle, incidentText, reviewStatus } from "@/lib/break-glass"
 import { ago } from "@/lib/format"
 import { fieldErrors, hasFieldErrors, isStepUpRequired, problemMessage } from "@/lib/problems"
 
@@ -166,8 +166,10 @@ export function BreakGlassAction({ request }: { request: RequestView }) {
 }
 
 /**
- * BreakGlassCard shows a request's break-glass, who and why, and its post-incident review: the
- * sign-offs so far, and the box to sign it off for those who may.
+ * BreakGlassCard shows a request's break-glass, who and why, what ServiceNow said of its incident
+ * when it is configured, and its post-incident review: what ServiceNow did not confirm, the
+ * sign-offs so far, and the box to sign it off for those who may. The incident's link is the one
+ * the server built from the configured instance, never one typed.
  */
 export function BreakGlassCard({ request, breakGlass: bg }: { request: RequestView; breakGlass: BreakGlassView }) {
   return (
@@ -180,14 +182,30 @@ export function BreakGlassCard({ request, breakGlass: bg }: { request: RequestVi
         <AlertDescription className="grid gap-1">
           <p>
             {bg.from === "approved" ? "Merged past its change windows" : "Merged without its approvals"}, for incident{" "}
-            <code className="font-mono">{bg.incident}</code>.
+            {bg.incidentUrl ? (
+              <a href={bg.incidentUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-mono underline underline-offset-4">
+                {bg.incident}
+                <ExternalLink className="size-3" aria-hidden />
+              </a>
+            ) : (
+              <code className="font-mono">{bg.incident}</code>
+            )}
+            .
           </p>
+          {incidentText(bg) && <p>{incidentText(bg)}</p>}
           <p className="text-foreground whitespace-pre-wrap">{bg.reason}</p>
         </AlertDescription>
       </Alert>
       <div className="grid gap-2">
         <h3 className="text-sm font-medium">Post-incident review</h3>
         <p className="text-muted-foreground text-sm">{reviewStatus(bg)}</p>
+        {bg.incidentProblem && (
+          <Alert variant="destructive" data-testid="incident-problem">
+            <AlertCircle />
+            <AlertTitle>{incidentProblemTitle(bg)}</AlertTitle>
+            <AlertDescription>{bg.incidentProblem}</AlertDescription>
+          </Alert>
+        )}
         {(bg.signOffs ?? []).length > 0 && (
           <ul className="grid gap-3" aria-label="Sign-offs">
             {(bg.signOffs ?? []).map((s) => (

@@ -798,7 +798,7 @@
             "type": "string"
           },
           "incident": {
-            "description": "The incident's reference, such as INC0012345",
+            "description": "The incident's reference, such as INC0012345; with itsm.servicenow configured, a ServiceNow incident's number, checked against its incidents",
             "maxLength": 64,
             "type": "string"
           },
@@ -955,6 +955,33 @@
             "description": "The incident's reference",
             "type": "string"
           },
+          "incidentCheck": {
+            "description": "What ServiceNow says of the incident: verified; unverified, ServiceNow could not say yet (Quai asks again); refuted, the problem says why",
+            "enum": [
+              "verified",
+              "unverified",
+              "refuted"
+            ],
+            "type": "string"
+          },
+          "incidentLink": {
+            "description": "The incident's link to the change request: linked; kept, it names another change request; none, the request has no change request; refused by ServiceNow",
+            "enum": [
+              "linked",
+              "kept",
+              "none",
+              "refused"
+            ],
+            "type": "string"
+          },
+          "incidentProblem": {
+            "description": "What someone must look at: an incident ServiceNow refutes, or a link it refused",
+            "type": "string"
+          },
+          "incidentUrl": {
+            "description": "The incident's form in ServiceNow, once verified",
+            "type": "string"
+          },
           "needed": {
             "description": "How many people sign off the review to close it",
             "format": "int64",
@@ -1070,11 +1097,66 @@
         ],
         "type": "object"
       },
+      "ChangeRequestFileView": {
+        "additionalProperties": false,
+        "properties": {
+          "bytes": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "sha256": {
+            "description": "The SHA-256 of the file Quai sent, in hexadecimal",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "bytes",
+          "sha256"
+        ],
+        "type": "object"
+      },
       "ChangeRequestView": {
         "additionalProperties": false,
         "properties": {
           "approval": {
             "description": "Its approval in ServiceNow, as Quai last read it",
+            "type": "string"
+          },
+          "attachments": {
+            "description": "The files of the evidence Quai attached to it",
+            "items": {
+              "$ref": "#/components/schemas/ChangeRequestFileView"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "closeOutcome": {
+            "description": "How Quai closes it: successful once its content is applied, unsuccessful when its apply failed",
+            "enum": [
+              "successful",
+              "unsuccessful"
+            ],
+            "type": "string"
+          },
+          "closeResult": {
+            "description": "How: closed by Quai; closed or canceled in ServiceNow already; left to its change manager, never approved (or not Quai's); refused by ServiceNow, the problem says what",
+            "enum": [
+              "closed",
+              "already",
+              "left",
+              "refused"
+            ],
+            "type": "string"
+          },
+          "closedAt": {
+            "description": "When Quai was done closing it; absent while it attaches the evidence and closes it",
+            "format": "date-time",
             "type": "string"
           },
           "failingSince": {

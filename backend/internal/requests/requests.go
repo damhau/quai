@@ -86,6 +86,7 @@ type Service struct {
 	windows   []*window.Window                                                // Quai's configuration's change windows
 	snCfg     *config.ServiceNow                                              // itsm.servicenow; nil: no change requests
 	sn        *servicenow.Client                                              // calls ServiceNow; nil where nothing does
+	evidence  Evidence                                                        // the evidence attached to change requests (UseEvidence)
 }
 
 // New returns the request service. jobsClient inserts the delivery jobs.
@@ -1123,6 +1124,12 @@ func (s *Service) transition(ctx context.Context, r db.Request, from, to, kind s
 		}
 		for _, action := range transitionAudit(to, kind) {
 			if err := recordRequest(ctx, tx, r, action, transitionDetails(from, kind, data)); err != nil {
+				return err
+			}
+		}
+		// Its content applied, or its apply failed: its change request is closed.
+		if outcome := closeOutcome(to, kind); outcome != "" {
+			if err := s.closeChangeRequest(ctx, tx, q, next, outcome); err != nil {
 				return err
 			}
 		}

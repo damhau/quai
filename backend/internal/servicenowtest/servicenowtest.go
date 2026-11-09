@@ -16,6 +16,13 @@
 //   - The Table API on change_request: query (GET /api/now/table/change_request with
 //     sysparm_query, sysparm_fields, sysparm_limit; {"result": [...]}, plain values) and update a
 //     record (PATCH /api/now/table/change_request/{sys_id}, a JSON body), work notes included.
+//   - The Table API on incident: query (GET /api/now/table/incident), read one (GET
+//     /api/now/table/incident/{sys_id}) and update one (PATCH, its rfc field: the change request
+//     that fixes it). A reference field is {link, value} unless sysparm_exclude_reference_link is
+//     true.
+//   - The Attachment API: upload a file (POST /api/now/attachment/file with table_name,
+//     table_sys_id and file_name, the file as the body, of its Content-Type; 201 and its metadata)
+//     and list attachments (GET /api/now/attachment with sysparm_query and sysparm_limit).
 //
 // Each /api/ call needs Authorization: Bearer with a token the endpoint issued that has not
 // expired, or Basic with the service account's user name and password; errors are
@@ -38,7 +45,28 @@
 //     the states New (-5), Assess (-4), Authorize (-3), Scheduled (-2), Implement (-1), Review (0),
 //     Closed (3) and Canceled (4); a normal change goes through each; a standard change is
 //     pre-authorized and skips Assess and Authorize; a rejected change goes back to New; a change
-//     is canceled from any state but Review and Closed.
+//     is canceled from any state but Review and Closed; Implement is when the work is done, Review
+//     when the change requester determines whether it was successful, then Closed.
+//   - Update change request states (https://www.servicenow.com/docs/r/Recj91eIo1YnsOabQjgskg/XrCKLFA4Q3O9sjVkX6VY8A):
+//     a change is closed with a close code (successful, successful_issues, unsuccessful) and close
+//     notes.
+//   - Attachment API (https://www.servicenow.com/docs/r/api-reference/rest-apis/c_AttachmentAPI.html):
+//     POST /now/attachment/file and its query parameters (table_name, table_sys_id and file_name,
+//     required), its required Content-Type, its answer (201; sys_id, file_name, table_name,
+//     table_sys_id, size_bytes, content_type, download_link) and errors (400, 403, 404); GET
+//     /now/attachment with sysparm_query, sysparm_limit and sysparm_offset; the roles (those that
+//     create sys_attachment records and those that read and write the table); the size limit
+//     (com.glide.attachment.max_size, 1024 MB by default).
+//   - The Table API's incident example: the fields sys_id, number (INC0000046), active ("true"),
+//     state ("1"), rfc and caused_by; an invalid query's part ignored by default
+//     (glide.invalid_query.returns_no_rows).
+//   - Change request related tabs
+//     (https://www.servicenow.com/docs/r/4xj1xH858qF8uWRIN94F3g/EVgG2_3lxZl_XApnr2JBIQ): a change
+//     request lists its "Incidents Fixed By Change" and "Incidents Caused By Change".
+//   - Integer values for default choice lists
+//     (https://www.servicenow.com/docs/r/fBdxWC~8p08POQuUubVDig/87hsB7R2QyetNfUQLse2Yg): an
+//     incident's states, New (1), In Progress (2), On Hold (3), Resolved (6), Closed (7) and
+//     Canceled (8); a closed incident is not active.
 //   - Client credentials grant workflow
 //     (https://www.servicenow.com/docs/r/platform-security/authentication/client-credentials-grant-workflow.html):
 //     POST /oauth_token.do with grant_type, client_id and client_secret, then Authorization: Bearer.
@@ -48,8 +76,12 @@
 // seconds, and its form is application/x-www-form-urlencoded; the approval field's other values
 // ("requested" once approval is requested); a standard change's approval is "approved" once it is
 // scheduled; the error body's text for 401 and 404; a throttled call answers 429 with Retry-After
-// (ServiceNow's rate limit rules); the length of correlation_id (100). The fake's change numbers
-// are CHG0030001 and on.
+// (ServiceNow's rate limit rules); the length of correlation_id (100); that the Change
+// Management API's PATCH moves a change to Implement, Review and Closed by name, without waiting
+// for its planned start date; that "Incidents Fixed By Change" lists the incidents whose rfc field
+// names the change request (ServiceNow's community says so, not the page); that a canceled incident
+// is not active; that attachments are answered in the order they were made. The fake's change
+// numbers are CHG0030001 and on; its incidents' are the tests'.
 package servicenowtest
 
 import (
@@ -87,6 +119,19 @@ const (
 	Canceled  = 4
 )
 
+// The documented states of an incident, by value.
+const (
+	IncidentNew        = 1
+	IncidentInProgress = 2
+	IncidentOnHold     = 3
+	IncidentResolved   = 6
+	IncidentClosed     = 7
+	IncidentCanceled   = 8
+)
+
+// closeCodes are the documented close codes of a change request.
+var closeCodes = []string{"successful", "successful_issues", "unsuccessful"}
+
 // StateLabels are the states' display values.
 var StateLabels = map[int]string{New: "New", Assess: "Assess", Authorize: "Authorize", Scheduled: "Scheduled", Implement: "Implement",
 	Review: "Review", Closed: "Closed", Canceled: "Canceled"}
@@ -97,7 +142,7 @@ var approvalLabels = map[string]string{"not requested": "Not Yet Requested", "re
 // number, type, state, approval): any other is ignored, as a field that does not exist.
 var Fields = []string{"short_description", "description", "justification", "implementation_plan", "risk_impact_analysis",
 	"backout_plan", "test_plan", "correlation_id", "correlation_display", "start_date", "end_date", "assignment_group",
-	"category", "cmdb_ci", "work_notes", "comments", "risk", "impact"}
+	"category", "cmdb_ci", "work_notes", "comments", "risk", "impact", "close_code", "close_notes"}
 
 // templateIgnored are the fields a standard change ignores at its creation.
 var templateIgnored = []string{"description", "backout_plan", "test_plan", "implementation_plan"}
@@ -114,6 +159,22 @@ type Change struct {
 	StateValue, ApprovalValue string
 	Fields                    map[string]string
 	WorkNotes                 []string
+}
+
+// Incident is an incident of the fake.
+type Incident struct {
+	SysID, Number string
+	State         int    // its state's value (IncidentNew…)
+	Change        string // rfc: the sys_id of the change request that fixes it, or ""
+}
+
+// Active is the incident's active flag: false once it is closed or canceled.
+func (i Incident) Active() bool { return i.State != IncidentClosed && i.State != IncidentCanceled }
+
+// Attachment is a file attached to a record of the fake.
+type Attachment struct {
+	SysID, Table, Record, FileName, ContentType string
+	Data                                        []byte
 }
 
 // Template is a standard change template, and the fields its changes start with.
@@ -145,13 +206,19 @@ type Server struct {
 	tokens    map[string]time.Time
 	issued    int
 	changes   []*Change
+	incidents []*Incident
+	files     []*Attachment
 	templates map[string]*Template
 	calls     []Call
 	down      bool
 	throttled int
 	retry     string
 	lose      int // creates made whose answer is lost (500)
+	loseFiles int // uploads made whose answer is lost (500)
+	loseLinks int // incident updates made whose answer is lost (500)
+	loseMoves int // state moves made whose answer is lost (500)
 	refuse    map[string]int
+	drop      string        // the prefix of the paths whose calls fail as when down
 	moves     int           // state moves to refuse, as the state model would
 	hold      chan struct{} // the next reading of a change request waits until it is closed
 	reached   chan struct{} // closed when that reading arrives
@@ -235,11 +302,94 @@ func (s *Server) LoseCreates(n int) {
 	s.lose = n
 }
 
+// LoseAttachments makes the next n uploads attach the file and answer 500, as when the answer is
+// lost: what a retried upload must find again.
+func (s *Server) LoseAttachments(n int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.loseFiles = n
+}
+
+// LoseLinks makes the next n updates of an incident take and answer 500.
+func (s *Server) LoseLinks(n int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.loseLinks = n
+}
+
+// AddIncident adds an incident with a number (two may have the same) in a state, and returns its
+// sys_id.
+func (s *Server) AddIncident(number string, state int) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	i := &Incident{SysID: random(16), Number: number, State: state}
+	s.incidents = append(s.incidents, i)
+	return i.SysID
+}
+
+// Incident returns a copy of the incident with sys_id.
+func (s *Server) Incident(sysID string) (Incident, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, i := range s.incidents {
+		if i.SysID == sysID {
+			return *i, true
+		}
+	}
+	return Incident{}, false
+}
+
+// SetIncident changes an incident as a person in ServiceNow would: its state, its change request.
+func (s *Server) SetIncident(sysID string, state int, change string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, i := range s.incidents {
+		if i.SysID == sysID {
+			i.State, i.Change = state, change
+			return
+		}
+	}
+	panic("servicenowtest: no incident " + sysID)
+}
+
+// Attachments returns copies of the files attached to the record with sys_id, in the order they
+// were attached.
+func (s *Server) Attachments(record string) []Attachment {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []Attachment
+	for _, a := range s.files {
+		if a.Record == record {
+			c := *a
+			c.Data = slices.Clone(a.Data)
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// Drop makes every call whose path starts with prefix fail as Down makes every call fail, the
+// connection closed unanswered, until Drop(""). A count would not do: Go's client sends an
+// idempotent call again on its own when a connection it reused closes.
+func (s *Server) Drop(prefix string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.drop = prefix
+}
+
 // Refuse makes the next n calls whose path starts with prefix answer 400.
 func (s *Server) Refuse(prefix string, n int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.refuse[prefix] = n
+}
+
+// LoseMoves makes the next n state moves of the Change Management API happen, but answer 500, as
+// a move whose answer was lost.
+func (s *Server) LoseMoves(n int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.loseMoves = n
 }
 
 // RefuseMoves makes the next n state moves fail as one the state model does not allow.
@@ -356,8 +506,12 @@ func answer(w http.ResponseWriter, v any) {
 }
 
 func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
-	body, _ := io.ReadAll(io.LimitReader(r.Body, 1<<20))
-	const cm, table = "/api/sn_chg_rest/change/", "/api/now/table/change_request"
+	const cm, table, incidents, files = "/api/sn_chg_rest/change/", "/api/now/table/change_request", "/api/now/table/incident", "/api/now/attachment"
+	limit := int64(1 << 20)
+	if r.URL.Path == files+"/file" {
+		limit = 64 << 20
+	}
+	body, _ := io.ReadAll(io.LimitReader(r.Body, limit))
 	if rest, ok := strings.CutPrefix(r.URL.Path, cm); ok && r.Method == http.MethodGet && !strings.Contains(rest, "/") {
 		s.mu.Lock()
 		hold, reached := s.hold, s.reached
@@ -378,11 +532,14 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 	case strings.HasPrefix(auth, "Basic "):
 		call.Auth = "basic"
 	}
-	if r.URL.Path == "/oauth_token.do" {
+	switch r.URL.Path {
+	case "/oauth_token.do":
 		call.Body = "[form]" // it holds the client secret
+	case files + "/file":
+		call.Body = fmt.Sprintf("[%d bytes]", len(body))
 	}
 	s.calls = append(s.calls, call)
-	if s.down {
+	if s.down || s.drop != "" && strings.HasPrefix(r.URL.Path, s.drop) {
 		if hj, ok := w.(http.Hijacker); ok {
 			if conn, _, err := hj.Hijack(); err == nil {
 				_ = conn.Close()
@@ -448,10 +605,35 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 				failure(w, http.StatusBadRequest, "Invalid state transition", err.Error())
 				return
 			}
+			if _, moved := in["state"]; moved && s.loseMoves > 0 {
+				s.loseMoves--
+				failure(w, http.StatusInternalServerError, "Transaction cancelled: maximum execution time exceeded", "")
+				return
+			}
 		}
 		answer(w, map[string]any{"result": cmRecord(c, ignored)})
 	case r.Method == http.MethodGet && r.URL.Path == table:
-		s.query(w, r)
+		var rows []map[string]string
+		for _, c := range s.changes {
+			rows = append(rows, tableRecord(c, ""))
+		}
+		query(w, r, rows)
+	case r.Method == http.MethodGet && r.URL.Path == incidents:
+		var rows []map[string]string
+		for _, i := range s.incidents {
+			rows = append(rows, incidentRecord(i))
+		}
+		query(w, r, rows)
+	case strings.HasPrefix(r.URL.Path, incidents+"/") && (r.Method == http.MethodGet || r.Method == http.MethodPatch):
+		s.incident(w, r, strings.TrimPrefix(r.URL.Path, incidents+"/"), body)
+	case r.Method == http.MethodPost && r.URL.Path == files+"/file":
+		s.attach(w, r, body)
+	case r.Method == http.MethodGet && r.URL.Path == files:
+		var rows []map[string]string
+		for _, a := range s.files {
+			rows = append(rows, s.fileRecord(a))
+		}
+		query(w, r, rows)
 	case r.Method == http.MethodPatch && strings.HasPrefix(r.URL.Path, table+"/"):
 		c := s.find(strings.TrimPrefix(r.URL.Path, table+"/"))
 		if c == nil {
@@ -570,6 +752,15 @@ func (s *Server) patch(c *Change, in map[string]string) ([]string, error) {
 				c.State, c.Approval = Assess, "requested"
 			case c.State == New && to == Scheduled && c.Type == "standard":
 				c.State, c.Approval = Scheduled, "approved"
+			case c.State == Scheduled && to == Implement && c.Approval == "approved":
+				c.State = Implement
+			case c.State == Implement && to == Review:
+				c.State = Review
+			case c.State == Review && to == Closed:
+				if !slices.Contains(closeCodes, in["close_code"]) || strings.TrimSpace(in["close_notes"]) == "" {
+					return nil, fmt.Errorf("%s cannot be closed without a close code and close notes", c.Number)
+				}
+				c.State = Closed
 			case to == Canceled && c.State != Review && c.State != Closed:
 				c.State = Canceled
 			default:
@@ -637,20 +828,12 @@ func tableRecord(c *Change, fields string) map[string]string {
 	for k, v := range c.values() {
 		out[k] = v[0]
 	}
-	if fields == "" {
-		return out
-	}
-	only := map[string]string{}
-	for _, f := range strings.Split(fields, ",") {
-		if v, ok := out[f]; ok {
-			only[f] = v
-		}
-	}
-	return only
+	return only(out, fields)
 }
 
-// query answers a Table API query of field=value conditions joined by ^.
-func (s *Server) query(w http.ResponseWriter, r *http.Request) {
+// query answers a query of rows (each a record's plain values): field=value conditions joined by
+// ^, the fields asked for (sysparm_fields), at most sysparm_limit.
+func query(w http.ResponseWriter, r *http.Request, rows []map[string]string) {
 	q := r.URL.Query()
 	limit := 10000
 	if l := q.Get("sysparm_limit"); l != "" {
@@ -673,11 +856,111 @@ func (s *Server) query(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	result := []map[string]string{}
-	for _, c := range s.changes {
-		vals := c.values()
-		if !slices.ContainsFunc(conds, func(cond [2]string) bool { return vals[cond[0]][0] != cond[1] }) && len(result) < limit {
-			result = append(result, tableRecord(c, q.Get("sysparm_fields")))
+	for _, row := range rows {
+		if !slices.ContainsFunc(conds, func(cond [2]string) bool { return row[cond[0]] != cond[1] }) && len(result) < limit {
+			result = append(result, only(row, q.Get("sysparm_fields")))
 		}
 	}
 	answer(w, map[string]any{"result": result})
+}
+
+// only is a record's fields that were asked for (all without sysparm_fields).
+func only(row map[string]string, fields string) map[string]string {
+	if fields == "" {
+		return row
+	}
+	out := map[string]string{}
+	for _, f := range strings.Split(fields, ",") {
+		if v, ok := row[f]; ok {
+			out[f] = v
+		}
+	}
+	return out
+}
+
+// incidentRecord is an incident's plain values, for a query; its rfc a sys_id (the reference's
+// link is in incidentAnswer).
+func incidentRecord(i *Incident) map[string]string {
+	return map[string]string{"sys_id": i.SysID, "number": i.Number, "state": strconv.Itoa(i.State), "active": strconv.FormatBool(i.Active()),
+		"rfc": i.Change, "caused_by": "", "close_code": ""}
+}
+
+// incidentAnswer is an incident as the Table API answers it: its rfc a {link, value} reference
+// unless sysparm_exclude_reference_link is true.
+func (s *Server) incidentAnswer(i *Incident, q url.Values) map[string]any {
+	out := map[string]any{}
+	for k, v := range only(incidentRecord(i), q.Get("sysparm_fields")) {
+		out[k] = v
+	}
+	if _, ok := out["rfc"]; ok && i.Change != "" && q.Get("sysparm_exclude_reference_link") != "true" {
+		out["rfc"] = map[string]string{"link": s.URL + "/api/now/table/change_request/" + i.Change, "value": i.Change}
+	}
+	return out
+}
+
+// incident reads or updates an incident: its rfc (a change request's sys_id) and work notes.
+func (s *Server) incident(w http.ResponseWriter, r *http.Request, sysID string, body []byte) {
+	var inc *Incident
+	for _, i := range s.incidents {
+		if i.SysID == sysID {
+			inc = i
+		}
+	}
+	if inc == nil {
+		failure(w, http.StatusNotFound, "No Record found", "Record doesn't exist or ACL restricts the record retrieval")
+		return
+	}
+	if r.Method == http.MethodPatch {
+		var in map[string]string
+		if err := json.Unmarshal(body, &in); err != nil {
+			failure(w, http.StatusBadRequest, "Invalid request", "The body is not a JSON object of strings")
+			return
+		}
+		if rfc, ok := in["rfc"]; ok {
+			if rfc != "" && s.find(rfc) == nil {
+				failure(w, http.StatusBadRequest, "Invalid reference", "rfc names no change request")
+				return
+			}
+			inc.Change = rfc
+		}
+		if s.loseLinks > 0 {
+			s.loseLinks--
+			failure(w, http.StatusInternalServerError, "Transaction cancelled: maximum execution time exceeded", "")
+			return
+		}
+	}
+	answer(w, map[string]any{"result": s.incidentAnswer(inc, r.URL.Query())})
+}
+
+// fileRecord is an attachment's metadata, as the Attachment API answers it.
+func (s *Server) fileRecord(a *Attachment) map[string]string {
+	return map[string]string{"sys_id": a.SysID, "file_name": a.FileName, "table_name": a.Table, "table_sys_id": a.Record,
+		"size_bytes": strconv.Itoa(len(a.Data)), "content_type": a.ContentType, "download_link": s.URL + "/api/now/attachment/" + a.SysID + "/file"}
+}
+
+// attach uploads a file to a change request (the only table the fake has).
+func (s *Server) attach(w http.ResponseWriter, r *http.Request, body []byte) {
+	q := r.URL.Query()
+	table, record, name, ct := q.Get("table_name"), q.Get("table_sys_id"), q.Get("file_name"), r.Header.Get("Content-Type")
+	switch {
+	case table == "" || record == "" || name == "":
+		failure(w, http.StatusBadRequest, "Missing parameter", "table_name, table_sys_id and file_name are required")
+		return
+	case ct == "":
+		failure(w, http.StatusBadRequest, "Missing Content-Type", "Content-Type is required")
+		return
+	case table != "change_request" || s.find(record) == nil:
+		failure(w, http.StatusNotFound, "No Record found", "Record doesn't exist or ACL restricts the record retrieval")
+		return
+	}
+	a := &Attachment{SysID: random(16), Table: table, Record: record, FileName: name, ContentType: ct, Data: slices.Clone(body)}
+	s.files = append(s.files, a)
+	if s.loseFiles > 0 {
+		s.loseFiles--
+		failure(w, http.StatusInternalServerError, "Transaction cancelled: maximum execution time exceeded", "")
+		return
+	}
+	w.Header().Set("Content-Type", "application/json;charset=UTF-8")
+	w.WriteHeader(http.StatusCreated)
+	_ = json.NewEncoder(w).Encode(map[string]any{"result": s.fileRecord(a)})
 }

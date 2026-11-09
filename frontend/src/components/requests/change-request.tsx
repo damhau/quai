@@ -2,14 +2,15 @@ import { AlertTriangle, ClipboardCheck, ExternalLink } from "lucide-react"
 import type { ChangeRequestView, RequestView } from "@/api/generated/types.gen"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
-import { kindText, outcomeText, readText, supersededText } from "@/lib/change-request"
+import { closeText, kindText, outcomeText, readText, sizeText, supersededText } from "@/lib/change-request"
 import { ago } from "@/lib/format"
 
 /**
  * ChangeRequestPanel shows the request's change request in ServiceNow, which an
  * external: servicenow rule waits for (docs/design/05-delivery-and-approvals.md#itsm): its number
- * and link, what ServiceNow reported last, what it means for the request, and why Quai cannot
- * reach ServiceNow or what ServiceNow refused. What ServiceNow says is shown as text.
+ * and link, what ServiceNow reported last, what it means for the request, its closing and the
+ * evidence attached once applied, and why Quai cannot reach ServiceNow or what ServiceNow refused.
+ * What ServiceNow says is shown as text.
  */
 export function ChangeRequestPanel({ request: r, change: c }: { request: RequestView; change: ChangeRequestView }) {
   const waiting = (r.state === "pending_approval" || r.state === "approved") && !r.breakGlass
@@ -37,12 +38,25 @@ export function ChangeRequestPanel({ request: r, change: c }: { request: Request
         </p>
       )}
       <p>{outcomeText(c, waiting)}</p>
+      {closeText(c) && <p>{closeText(c)}</p>}
+      {(c.attachments ?? []).length > 0 && (
+        <div className="grid gap-1">
+          <p className="text-muted-foreground text-xs">The evidence attached to it, without its proof (verify the JSON bundle with quai audit verify --bundle):</p>
+          <ul aria-label="Evidence attached" className="grid gap-0.5">
+            {(c.attachments ?? []).map((a) => (
+              <li key={a.name} className="font-mono text-xs break-all">
+                {a.name} <span className="text-muted-foreground">({sizeText(a.bytes)}, sha256 {a.sha256.slice(0, 12)})</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {c.failure && (
         <Alert>
           <AlertTriangle aria-hidden />
           <AlertTitle>Quai cannot reach ServiceNow{c.failingSince ? ` since ${ago(c.failingSince)}` : ""}</AlertTitle>
           <AlertDescription>
-            <p>It tries again; the request waits, and nothing is approved meanwhile.</p>
+            <p>{c.closeOutcome ? "It tries again to close the change request; the request itself is done." : "It tries again; the request waits, and nothing is approved meanwhile."}</p>
             <p className="font-mono text-xs break-all">{c.failure}</p>
           </AlertDescription>
         </Alert>

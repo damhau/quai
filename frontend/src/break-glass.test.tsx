@@ -1,7 +1,8 @@
 import { screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import type { BreakGlassView } from "@/api/generated/types.gen"
-import { reviewStatus } from "@/lib/break-glass"
+import { actionLabel } from "@/lib/audit"
+import { incidentText, reviewStatus } from "@/lib/break-glass"
 import { eventText } from "@/lib/requests"
 import { renderApp } from "@/test/render"
 import { pendingVM, requests } from "@/test/requests"
@@ -230,4 +231,57 @@ test("what the timeline and the review say", () => {
     }),
   ).toBe("reminded the reviewers that the break-glass review is open")
   expect(reviewStatus(broken("dana"))).toMatch(/^Open: 1 of 2 sign-offs; it waits for 1 more/)
+})
+
+test("with ServiceNow, the break-glass links its incident when ServiceNow knows it, and the review shows what ServiceNow did not confirm", async () => {
+  const incidentUrl = "https://example.service-now.com/incident.do?sys_id=0123456789abcdef0123456789abcdef"
+  requests.current = {
+    ...pendingVM(),
+    state: "applied",
+    breakGlass: { ...broken(), incident: "INC0012345", incidentCheck: "verified", incidentUrl, incidentLink: "linked" },
+  }
+  state.user = "alice"
+  const linked = renderApp(`/requests/${id}`)
+  let section = within(await screen.findByRole("region", { name: "Break-glass" }, slow))
+  expect(section.getByRole("link", { name: /INC0012345/ })).toHaveAttribute("href", incidentUrl)
+  expect(section.getByText("ServiceNow knows this incident. It is linked to the request's change request.")).toBeInTheDocument()
+  expect(screen.queryByTestId("incident-problem")).not.toBeInTheDocument()
+  linked.unmount()
+
+  const problem = "ServiceNow has no incident INC0077777: glass was broken for it, unverified"
+  requests.current = {
+    ...pendingVM(),
+    state: "applied",
+    breakGlass: { ...broken(), incident: "INC0077777", incidentCheck: "refuted", incidentProblem: problem },
+  }
+  renderApp(`/requests/${id}`)
+  section = within(await screen.findByRole("region", { name: "Break-glass" }, slow))
+  expect(section.queryByRole("link", { name: /INC0077777/ })).not.toBeInTheDocument()
+  expect(section.getByText("ServiceNow does not confirm this incident.")).toBeInTheDocument()
+  const alert = within(screen.getByTestId("incident-problem"))
+  expect(alert.getByText("ServiceNow does not confirm the incident")).toBeInTheDocument()
+  expect(alert.getByText(problem)).toBeInTheDocument()
+})
+
+test("what the timeline says of a break-glass's incident in ServiceNow", () => {
+  expect(eventText({ kind: "break_glass", actor: "dave", data: { incident: "INC0077777", from: "pending_approval", incidentCheck: "unverified" }, at })).toBe(
+    "broke glass for incident INC0077777 (not verified in ServiceNow): it merges without its approvals",
+  )
+  expect(eventText({ kind: "break_glass_incident", actor: "", data: { incident: "INC0077777", check: "verified" }, at })).toBe("ServiceNow confirmed incident INC0077777")
+  expect(eventText({ kind: "break_glass_incident", actor: "", data: { incident: "INC0077777", check: "refuted", problem: "ServiceNow has no incident INC0077777" }, at })).toBe(
+    "ServiceNow has no incident INC0077777",
+  )
+  expect(eventText({ kind: "incident_linked", actor: "", data: { incident: "INC0012345", changeRequest: "CHG0030001", link: "linked" }, at })).toBe(
+    "linked incident INC0012345 to change request CHG0030001 in ServiceNow",
+  )
+  expect(eventText({ kind: "incident_linked", actor: "", data: { incident: "INC0012345", changeRequest: "CHG0030001", link: "kept" }, at })).toBe(
+    "incident INC0012345 names another change request in ServiceNow: Quai left it as it is",
+  )
+  expect(incidentText({ ...broken(), incidentCheck: "unverified" })).toBe(
+    "ServiceNow could not be asked whether this incident exists: glass was broken without it, and Quai asks again.",
+  )
+  expect(incidentText({ ...broken(), incidentCheck: "verified" })).toBe("ServiceNow knows this incident. Quai links it to the request's change request once it is opened.")
+  expect(incidentText(broken())).toBe("")
+  expect(actionLabel("request.break_glass_incident")).toBe("Break-glass incident checked in ServiceNow")
+  expect(actionLabel("request.incident_linked")).toBe("Incident linked to the change request")
 })

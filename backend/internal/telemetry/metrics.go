@@ -83,7 +83,7 @@ func use(mp metric.MeterProvider) error {
 		return err
 	}
 	if in.servicenow, err = m.Int64Counter("quai.servicenow.calls",
-		metric.WithDescription("Calls to ServiceNow about change requests, by operation (open, poll, note) and outcome: ok, refused (ServiceNow answered an error), unreachable")); err != nil {
+		metric.WithDescription("Calls to ServiceNow about change requests and incidents, by operation (open, poll, note, close, incident, link) and outcome: ok, refused (ServiceNow answered an error), unreachable")); err != nil {
 		return err
 	}
 	lag, err := m.Float64ObservableGauge("quai.audit.export.lag", metric.WithUnit("s"),
@@ -188,8 +188,9 @@ func GraphLookup(ctx context.Context, lookup, result string) {
 	}
 }
 
-// ServiceNowCalled records a call to ServiceNow about a change request: its operation (open,
-// poll, note) and outcome (ok, refused, unreachable).
+// ServiceNowCalled records a call to ServiceNow about a change request or a break-glass's
+// incident: its operation (open, poll, note, close, incident, link) and outcome (ok, refused,
+// unreachable).
 func ServiceNowCalled(ctx context.Context, operation, result string) {
 	if in := current.Load(); in != nil {
 		in.servicenow.Add(ctx, 1, metric.WithAttributes(attribute.String("operation", operation), attribute.String("outcome", result)))

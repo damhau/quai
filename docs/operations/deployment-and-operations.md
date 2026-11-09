@@ -1011,8 +1011,14 @@ approval:
 
 1. **A service account.** Create a user for Quai (*Web service access only*), with the roles that
    create, read and update change requests: `itil` (or `sn_change_write`), `sn_change_read`, and
-   whatever your instance requires to move a change to Assess or Scheduled. Quai never approves
-   (it never writes `approval`), so the account needs no approver role, and should not be one.
+   whatever your instance requires to move a change to Assess or Scheduled, and to Implement,
+   Review and Closed. Quai never approves (it never writes `approval`), so the account needs no
+   approver role, and should not be one. Since P4-20 it also needs, **from the documentation, not
+   verified on a real instance**: to attach files to change requests (the Attachment API needs a
+   role that creates `sys_attachment` records and reads them, and write access to
+   `change_request`, as `itil` gives on a default instance), and to read incidents and write their
+   `rfc` field (`itil`). A break-glass's incident is checked with this account: it must be able to
+   read every incident a break-glass may name.
 2. **OAuth (recommended).** In *System OAuth > Application Registry*, create an OAuth API
    endpoint for external clients with the client credentials grant, bound to that user (the
    `glide.oauth.inbound.client.credential.grant_type.enabled` system property must be `true`).
@@ -1045,15 +1051,34 @@ What happens then:
 - **When ServiceNow is down.** Requests wait, and nothing is approved meanwhile. Quai tries again
   with a backoff up to an hour; the request page says why and since when; the worker logs a
   warning for each failure and an error once it has failed for over an hour; the metric
-  `quai.servicenow.calls` counts calls by `operation` (`open`, `poll`, `note`) and `outcome`
-  (`ok`, `refused`, `unreachable`). A move ServiceNow refuses (to Assess or Scheduled, a template
+  `quai.servicenow.calls` counts calls by `operation` (`open`, `poll`, `note`, `close`,
+  `incident`, `link`) and `outcome` (`ok`, `refused`, `unreachable`). A move ServiceNow refuses (to Assess or Scheduled, a template
   that does not allow it, a mandatory field missing) is shown on the request page as a problem:
   someone moves the change in ServiceNow, and Quai reads it on its next poll.
+- **Closing.** Once the request's content is applied (or its apply failed), Quai attaches the
+  evidence to the change request, the bundle without its proof and its PDF
+  (`quai-evidence-<number>-<token>.json` and `.pdf`, at most 10 MiB each), then moves it to
+  Implement, Review and Closed with the close code `successful` (or `unsuccessful`) and close
+  notes naming the files. Verify an attached bundle with `quai audit verify --bundle`. A change
+  request that was never approved (break-glass, a merge outside Quai) gets the evidence and a work
+  note, and is left for its change manager to close; one closed or canceled already is left as it
+  is. A step ServiceNow refuses (a state your instance's model does not allow, a mandatory close
+  field, an attachment type it refuses) is a problem on the request page and a warning in the log,
+  not tried again: close the change in ServiceNow by hand. A change request superseded by new
+  content is never closed by Quai: cancel it.
 - **Break-glass** lets the request through without the change request's approval, and adds a
-  work note to it with the time, who broke glass and the incident (never the reason).
+  work note to it with the time, who broke glass and the incident (never the reason). With
+  `itsm.servicenow`, the incident must be the number of a ServiceNow incident that is not closed or
+  canceled (`INC0012345`): an unknown one, two with the number, or a closed one refuse the
+  break-glass. When ServiceNow cannot be reached, the break-glass goes ahead and the incident is
+  marked *not verified*; Quai asks again, and if ServiceNow then says it does not exist, the
+  break-glass review shows it, for the reviewers to look into. A confirmed incident is linked to
+  the change request (its *Incidents Fixed By Change*), unless it names another change already.
 - **Audit**: `request.change_request_opened`, `request.change_request_superseded`,
-  `request.approval_withdrawn`, and `request.approved` and `request.rejected` with the system
-  `servicenow` as the actor when a change request decides.
+  `request.approval_withdrawn`, `request.change_request_closed`, `request.incident_linked`,
+  `request.approved` and `request.rejected` with the system `servicenow` as the actor when a change
+  request decides, and `request.break_glass_incident` by `servicenow` when it answers for an
+  incident not verified at the break-glass.
 
 ### Notifications
 
@@ -1459,7 +1484,7 @@ Egress needed, all configurable through an HTTP proxy (`HTTPS_PROXY`, `NO_PROXY`
 | SMTP server (`notifications.email`) | Notifications by email, over TLS (port 465) or STARTTLS (587), straight to the server, never through the proxy |
 | Microsoft Teams (`notifications.teams`) | HTTPS, through the proxy: the bot's tokens from Entra ID (`login.microsoftonline.com`), its messages through the Bot Connector service (`smba.trafficmanager.net`), channel posts to each workflow's trigger (`*.logic.azure.com`, or the host of its URL). Nothing comes in from Teams |
 | Slack (`notifications.slack`) | HTTPS, through the proxy, to the Web API (`slack.com`, or `apiURL`'s host) |
-| ServiceNow (`itsm.servicenow`) | HTTPS, through the proxy, to `instanceURL`'s host only: the Change Management and Table APIs, and `/oauth_token.do` with OAuth. Nothing comes in from ServiceNow |
+| ServiceNow (`itsm.servicenow`) | HTTPS, through the proxy, to `instanceURL`'s host only: the Change Management, Table and Attachment APIs, and `/oauth_token.do` with OAuth. Nothing comes in from ServiceNow |
 | Executors (Kubernetes API, AWX, vCenter) | Imperative actions |
 
 Ingress: users and CLI (HTTPS), Git platform webhooks (Azure DevOps service hooks; on Server this needs a firewall path from the Server to Quai, otherwise Quai runs in polling mode), runner reports, Slack's interactions (`/slack/interactions`, from Slack over the internet, when `notifications.slack.signingSecret` is set). Webhook,
@@ -1510,9 +1535,10 @@ snoozed and retried. Different repositories proceed in parallel.
   - Microsoft Graph lookups at sign-in (`quai.graph.lookups`, by `lookup`, `groups` or `manager`,
     and `outcome`: `ok`, `none`, `error`, `skipped`); a rising `error` is people refused at sign-in
     (groups) or left without a manager ([managers and Microsoft Graph](#managers-and-microsoft-graph));
-  - calls to ServiceNow about change requests (`quai.servicenow.calls`, by `operation`, `open`,
-    `poll` or `note`, and `outcome`: `ok`, `refused`, `unreachable`); a rising `unreachable` is
-    requests waiting on their change requests ([ServiceNow change requests](#servicenow-change-requests)).
+  - calls to ServiceNow about change requests and incidents (`quai.servicenow.calls`, by
+    `operation`, `open`, `poll`, `note`, `close`, `incident` or `link`, and `outcome`: `ok`,
+    `refused`, `unreachable`); a rising `unreachable` is requests waiting on their change requests,
+    change requests left open and break-glass incidents not verified ([ServiceNow change requests](#servicenow-change-requests)).
 - **Dashboards and alerts** shipped with the chart: no webhook from a repository for 1 h while pushes happen, enforcement missing, credential expiring within 14 days, job failure rate above threshold, audit export lagging.
   Today the chart ships `QuaiAuditExportLagging` (`max by (destination) (quai_audit_export_lag_seconds)`
   above `prometheusRule.auditExportLag.seconds`, 600, for `.for`, 5m) in a PrometheusRule of the

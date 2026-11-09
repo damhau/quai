@@ -11,6 +11,7 @@ import (
 	"github.com/riverqueue/river"
 	"github.com/spf13/cobra"
 
+	"github.com/damhau/quai/backend/internal/api"
 	"github.com/damhau/quai/backend/internal/audit/keeper"
 	"github.com/damhau/quai/backend/internal/audit/siem"
 	"github.com/damhau/quai/backend/internal/auth"
@@ -117,6 +118,7 @@ func work(ctx context.Context, cfg *config.Config, log *slog.Logger, s *store.St
 			return err
 		} else if ok {
 			opts.Periodic = append(opts.Periodic, requests.ServiceNowPeriodic())
+			svc.UseEvidence(api.EvidenceForITSM(svc, s, reg, version, log))
 		}
 		hooks = ingest.New(s, reg, log)
 		hooks.UseHandler(svc)

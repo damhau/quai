@@ -20,6 +20,7 @@ import (
 	"github.com/damhau/quai/backend/internal/authz"
 	"github.com/damhau/quai/backend/internal/engine/schema"
 	"github.com/damhau/quai/backend/internal/jobs"
+	"github.com/damhau/quai/backend/internal/servicenow"
 	"github.com/damhau/quai/backend/internal/store/db"
 )
 
@@ -154,6 +155,9 @@ func (s *Service) BreakGlass(ctx context.Context, who auth.Identity, id uuid.UUI
 		fields["incident"] = why
 	} else if !incidentRe.MatchString(incident) {
 		fields["incident"] = "must be the incident's identifier (letters, digits and . _ : / # -), such as INC0012345"
+	} else if s.sn != nil && !servicenow.ValidNumber(incident) {
+		// Checked against ServiceNow's incidents: only the shape of their numbers is ever queried.
+		fields["incident"] = "must be a ServiceNow incident's number, capital letters then digits, such as INC0012345"
 	}
 	if len(fields) > 0 {
 		return r, &schema.ValidationError{Fields: fields}
@@ -204,6 +208,12 @@ func (s *Service) BreakGlass(ctx context.Context, who auth.Identity, id uuid.UUI
 			}
 			return r, fmt.Errorf("%w: the request went stale: plan it again", ErrConflict)
 		}
+	}
+	// The incident is checked against ServiceNow before the transaction, never while the request's
+	// row is locked: ServiceNow's "no" refuses, its silence does not.
+	check, err := s.checkIncident(ctx, incident)
+	if err != nil {
+		return r, err
 	}
 	var next db.Request
 	err = s.store.Tx(ctx, func(tx pgx.Tx, q *db.Queries) error {
@@ -264,11 +274,18 @@ func (s *Service) BreakGlass(ctx context.Context, who auth.Identity, id uuid.UUI
 		}
 		if _, err := q.CreateBreakGlass(ctx, db.CreateBreakGlassParams{RequestID: r.ID, Breaker: who.Principal.Name, BreakerEmail: who.Principal.Email,
 			AuthTime: pgtype.Timestamptz{Time: who.AuthTime, Valid: !who.AuthTime.IsZero()}, Acr: who.ACR, StepUp: steppedUp,
-			Reason: reason, Incident: incident, ChangeSetHash: sets[0].Hash, Head: head, FromState: from, At: instant(now)}); err != nil {
+			Reason: reason, Incident: incident, ChangeSetHash: sets[0].Hash, Head: head, FromState: from, At: instant(now),
+			IncidentCheck: check.result, IncidentSysID: check.sysID, IncidentCheckedAt: checkedAt(check, now), IncidentFailure: check.failure}); err != nil {
 			return err
 		}
 		data := map[string]any{"incident": incident, "reason": reason, "changeSet": sets[0].Hash, "from": from}
 		details := map[string]any{"from": from, "changeSet": sets[0].Hash, "incident": incident, "reason": audit.Personal(reason), "stepUp": steppedUp}
+		if check.result != "" {
+			data["incidentCheck"], details["incidentCheck"] = check.result, check.result
+		}
+		if check.sysID != "" {
+			details["incidentSysId"] = check.sysID
+		}
 		if head != "" {
 			data["head"], details["head"] = head, head
 		}
@@ -296,9 +313,15 @@ func (s *Service) BreakGlass(ctx context.Context, who auth.Identity, id uuid.UUI
 		if err := s.alert(ctx, tx, sets[0].Repository, "break_glass", alert); err != nil {
 			return err
 		}
-		// Recorded in ServiceNow too, on its change request (P4-20 links the incident to it).
+		// Recorded in ServiceNow too, on its change request, and the incident linked to it (checked
+		// again first when it could not be).
 		if err := s.noteBroken(ctx, tx, q, next); err != nil {
 			return err
+		}
+		if check.result != "" && s.jobs != nil {
+			if err := jobs.InsertTx(ctx, s.jobs, tx, BreakGlassIncidentArgs{RequestID: r.ID}, nil); err != nil {
+				return err
+			}
 		}
 		if err := s.statusJob(ctx, tx, q, next); err != nil {
 			return err
@@ -312,6 +335,11 @@ func (s *Service) BreakGlass(ctx context.Context, who auth.Identity, id uuid.UUI
 		return r, err
 	}
 	return next, nil
+}
+
+// checkedAt is when ServiceNow verified a break-glass's incident: now, or none.
+func checkedAt(c incidentCheck, now time.Time) pgtype.Timestamptz {
+	return pgtype.Timestamptz{Time: now, Valid: c.result == incidentVerified}
 }
 
 // unbreakable says why a request cannot be broken in its state.

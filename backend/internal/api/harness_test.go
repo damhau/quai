@@ -206,6 +206,7 @@ func startRepo(t *testing.T, dir, metadata, spec string, opts repositories.Optio
 		}
 		c.UseClock(clk.now)
 		svc.UseServiceNow(sn, c)
+		svc.UseEvidence(EvidenceForITSM(svc, s, reg, "test", log))
 	}
 	if cfg.Notifications.Email != nil || cfg.Notifications.Teams != nil || cfg.Notifications.Slack != nil {
 		network, err := netx.New(cfg.Network.CAFile)

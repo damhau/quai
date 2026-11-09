@@ -1,5 +1,5 @@
 import type { EventView, RequestView, RuleView } from "@/api/generated/types.gen"
-import { outcomeVerb } from "@/lib/change-request"
+import { closedEventText, outcomeVerb } from "@/lib/change-request"
 import { onBehalf } from "@/lib/delegations"
 import { shortSha, webURL } from "@/lib/format"
 import { localTime } from "@/lib/windows"
@@ -110,6 +110,8 @@ export function eventText(e: EventView): string {
       return `opened change request ${str(d, "changeRequest") ?? ""} in ServiceNow${str(d, "kind") === "standard" ? ", a standard change" : ""}`
     case "change_request_superseded":
       return `change request ${str(d, "changeRequest") || "(not opened yet)"} no longer counts: the content changed, and a new one is opened for it`
+    case "change_request_closed":
+      return closedEventText(str(d, "changeRequest") ?? "", str(d, "outcome"), str(d, "result"), list(d, "files").length, str(d, "problem"))
     case "stale":
       if (str(d, "separation")) return `${str(d, "separation")}; plan the request again`
       if (str(d, "definitions")) return `${str(d, "definitions")} since the plan; plan the request again`
@@ -139,7 +141,14 @@ export function eventText(e: EventView): string {
     case "merged":
       return `the pull request was merged as ${shortSha(str(d, "commit") ?? "")}${str(d, "breakGlass") ? `, by ${str(d, "breakGlass")}'s break-glass` : ""}`
     case "break_glass":
-      return `broke glass for incident ${str(d, "incident") ?? ""}: it merges ${str(d, "from") === "approved" ? "past its change windows" : "without its approvals"}`
+      return `broke glass for incident ${str(d, "incident") ?? ""}${str(d, "incidentCheck") === "unverified" ? " (not verified in ServiceNow)" : ""}: it merges ${str(d, "from") === "approved" ? "past its change windows" : "without its approvals"}`
+    case "break_glass_incident":
+      if (str(d, "check") === "verified") return `ServiceNow confirmed incident ${str(d, "incident") ?? ""}`
+      return str(d, "problem") ?? `incident ${str(d, "incident") ?? ""} is not verified in ServiceNow`
+    case "incident_linked":
+      if (str(d, "link") === "linked") return `linked incident ${str(d, "incident") ?? ""} to change request ${str(d, "changeRequest") ?? ""} in ServiceNow`
+      if (str(d, "link") === "kept") return `incident ${str(d, "incident") ?? ""} names another change request in ServiceNow: Quai left it as it is`
+      return `could not link incident ${str(d, "incident") ?? ""} to change request ${str(d, "changeRequest") ?? ""}${str(d, "problem") ? `: ${str(d, "problem")}` : ""}`
     case "break_glass_signed_off":
       return `signed off the break-glass review (${count(d, "signOffs")} of ${count(d, "needed")})`
     case "break_glass_review_closed":

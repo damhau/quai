@@ -26,3 +26,34 @@ export function reviewStatus(bg: BreakGlassView): string {
   const left = bg.needed - n
   return `Open: ${n} of ${bg.needed} sign-offs; it waits for ${left} more, by platform admins, auditors or the request's owners other than the person who broke glass and the requester.`
 }
+
+/**
+ * incidentText says what ServiceNow said of a break-glass's incident, when itsm.servicenow is
+ * configured: "" without. A problem the review must look at is in incidentProblem.
+ */
+export function incidentText(bg: BreakGlassView): string {
+  switch (bg.incidentCheck) {
+    case "verified": {
+      const link: Record<string, string> = {
+        linked: " It is linked to the request's change request.",
+        kept: " It names another change request already, which Quai left as it is.",
+        none: "",
+        refused: "",
+      }
+      return `ServiceNow knows this incident.${link[bg.incidentLink ?? ""] ?? " Quai links it to the request's change request once it is opened."}`
+    }
+    case "unverified":
+      if (bg.incidentProblem) return "ServiceNow did not say whether this incident exists: glass was broken without it."
+      return "ServiceNow could not be asked whether this incident exists: glass was broken without it, and Quai asks again."
+    case "refuted":
+      return "ServiceNow does not confirm this incident."
+  }
+  return ""
+}
+
+/** incidentProblemTitle names what the review must look at in incidentProblem. */
+export function incidentProblemTitle(bg: BreakGlassView): string {
+  if (bg.incidentCheck === "refuted") return "ServiceNow does not confirm the incident"
+  if (bg.incidentCheck === "unverified") return "ServiceNow does not say whether the incident exists"
+  return "ServiceNow refused to link the incident"
+}

@@ -71,25 +71,31 @@ func (q *Queries) CloseBreakGlass(ctx context.Context, arg CloseBreakGlassParams
 
 const createBreakGlass = `-- name: CreateBreakGlass :one
 
-INSERT INTO break_glass (request_id, breaker, breaker_email, auth_time, acr, step_up, reason, incident, change_set_hash, head, from_state, at)
+INSERT INTO break_glass (request_id, breaker, breaker_email, auth_time, acr, step_up, reason, incident, change_set_hash, head, from_state, at,
+                         incident_check, incident_sys_id, incident_checked_at, incident_failure)
 VALUES ($1, $2, $3, $4, $5, $6,
-        $7, $8, $9, $10, $11, $12)
-RETURNING request_id, org_id, breaker, breaker_email, auth_time, acr, step_up, reason, incident, change_set_hash, head, from_state, at, reminded_at, closed_at
+        $7, $8, $9, $10, $11, $12,
+        $13, $14, $15, $16)
+RETURNING request_id, org_id, breaker, breaker_email, auth_time, acr, step_up, reason, incident, change_set_hash, head, from_state, at, reminded_at, closed_at, incident_check, incident_sys_id, incident_checked_at, incident_link, incident_linked_at, incident_problem, incident_failure, incident_failures, incident_next_at
 `
 
 type CreateBreakGlassParams struct {
-	RequestID     uuid.UUID
-	Breaker       string
-	BreakerEmail  string
-	AuthTime      pgtype.Timestamptz
-	Acr           string
-	StepUp        bool
-	Reason        string
-	Incident      string
-	ChangeSetHash string
-	Head          string
-	FromState     string
-	At            pgtype.Timestamptz
+	RequestID         uuid.UUID
+	Breaker           string
+	BreakerEmail      string
+	AuthTime          pgtype.Timestamptz
+	Acr               string
+	StepUp            bool
+	Reason            string
+	Incident          string
+	ChangeSetHash     string
+	Head              string
+	FromState         string
+	At                pgtype.Timestamptz
+	IncidentCheck     string
+	IncidentSysID     string
+	IncidentCheckedAt pgtype.Timestamptz
+	IncidentFailure   string
 }
 
 // Break-glass and its post-incident reviews (migrations/00030_break_glass.sql). Instants come
@@ -108,6 +114,10 @@ func (q *Queries) CreateBreakGlass(ctx context.Context, arg CreateBreakGlassPara
 		arg.Head,
 		arg.FromState,
 		arg.At,
+		arg.IncidentCheck,
+		arg.IncidentSysID,
+		arg.IncidentCheckedAt,
+		arg.IncidentFailure,
 	)
 	var i BreakGlass
 	err := row.Scan(
@@ -126,12 +136,81 @@ func (q *Queries) CreateBreakGlass(ctx context.Context, arg CreateBreakGlassPara
 		&i.At,
 		&i.RemindedAt,
 		&i.ClosedAt,
+		&i.IncidentCheck,
+		&i.IncidentSysID,
+		&i.IncidentCheckedAt,
+		&i.IncidentLink,
+		&i.IncidentLinkedAt,
+		&i.IncidentProblem,
+		&i.IncidentFailure,
+		&i.IncidentFailures,
+		&i.IncidentNextAt,
 	)
 	return i, err
 }
 
+const dueBreakGlassIncidents = `-- name: DueBreakGlassIncidents :many
+SELECT request_id, org_id, breaker, breaker_email, auth_time, acr, step_up, reason, incident, change_set_hash, head, from_state, at, reminded_at, closed_at, incident_check, incident_sys_id, incident_checked_at, incident_link, incident_linked_at, incident_problem, incident_failure, incident_failures, incident_next_at FROM break_glass
+WHERE (incident_check = 'unverified' OR incident_check = 'verified' AND incident_link = '') AND incident_problem = ''
+  AND (incident_next_at IS NULL OR incident_next_at <= $1)
+ORDER BY incident_next_at NULLS FIRST, request_id
+LIMIT $2
+`
+
+type DueBreakGlassIncidentsParams struct {
+	Now     pgtype.Timestamptz
+	MaxRows int32
+}
+
+// The break-glass records whose incident is due to be checked again or linked, the most overdue
+// first: unverified, or verified and not linked yet, without a problem.
+func (q *Queries) DueBreakGlassIncidents(ctx context.Context, arg DueBreakGlassIncidentsParams) ([]BreakGlass, error) {
+	rows, err := q.db.Query(ctx, dueBreakGlassIncidents, arg.Now, arg.MaxRows)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []BreakGlass{}
+	for rows.Next() {
+		var i BreakGlass
+		if err := rows.Scan(
+			&i.RequestID,
+			&i.OrgID,
+			&i.Breaker,
+			&i.BreakerEmail,
+			&i.AuthTime,
+			&i.Acr,
+			&i.StepUp,
+			&i.Reason,
+			&i.Incident,
+			&i.ChangeSetHash,
+			&i.Head,
+			&i.FromState,
+			&i.At,
+			&i.RemindedAt,
+			&i.ClosedAt,
+			&i.IncidentCheck,
+			&i.IncidentSysID,
+			&i.IncidentCheckedAt,
+			&i.IncidentLink,
+			&i.IncidentLinkedAt,
+			&i.IncidentProblem,
+			&i.IncidentFailure,
+			&i.IncidentFailures,
+			&i.IncidentNextAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getBreakGlass = `-- name: GetBreakGlass :one
-SELECT request_id, org_id, breaker, breaker_email, auth_time, acr, step_up, reason, incident, change_set_hash, head, from_state, at, reminded_at, closed_at FROM break_glass WHERE request_id = $1
+SELECT request_id, org_id, breaker, breaker_email, auth_time, acr, step_up, reason, incident, change_set_hash, head, from_state, at, reminded_at, closed_at, incident_check, incident_sys_id, incident_checked_at, incident_link, incident_linked_at, incident_problem, incident_failure, incident_failures, incident_next_at FROM break_glass WHERE request_id = $1
 `
 
 func (q *Queries) GetBreakGlass(ctx context.Context, requestID uuid.UUID) (BreakGlass, error) {
@@ -153,12 +232,21 @@ func (q *Queries) GetBreakGlass(ctx context.Context, requestID uuid.UUID) (Break
 		&i.At,
 		&i.RemindedAt,
 		&i.ClosedAt,
+		&i.IncidentCheck,
+		&i.IncidentSysID,
+		&i.IncidentCheckedAt,
+		&i.IncidentLink,
+		&i.IncidentLinkedAt,
+		&i.IncidentProblem,
+		&i.IncidentFailure,
+		&i.IncidentFailures,
+		&i.IncidentNextAt,
 	)
 	return i, err
 }
 
 const listBreakGlass = `-- name: ListBreakGlass :many
-SELECT request_id, org_id, breaker, breaker_email, auth_time, acr, step_up, reason, incident, change_set_hash, head, from_state, at, reminded_at, closed_at FROM break_glass
+SELECT request_id, org_id, breaker, breaker_email, auth_time, acr, step_up, reason, incident, change_set_hash, head, from_state, at, reminded_at, closed_at, incident_check, incident_sys_id, incident_checked_at, incident_link, incident_linked_at, incident_problem, incident_failure, incident_failures, incident_next_at FROM break_glass
 WHERE NOT $1::boolean OR closed_at IS NULL
 ORDER BY closed_at IS NOT NULL, at DESC, request_id
 LIMIT $2
@@ -195,6 +283,15 @@ func (q *Queries) ListBreakGlass(ctx context.Context, arg ListBreakGlassParams) 
 			&i.At,
 			&i.RemindedAt,
 			&i.ClosedAt,
+			&i.IncidentCheck,
+			&i.IncidentSysID,
+			&i.IncidentCheckedAt,
+			&i.IncidentLink,
+			&i.IncidentLinkedAt,
+			&i.IncidentProblem,
+			&i.IncidentFailure,
+			&i.IncidentFailures,
+			&i.IncidentNextAt,
 		); err != nil {
 			return nil, err
 		}
@@ -240,7 +337,7 @@ func (q *Queries) ListBreakGlassSignOffs(ctx context.Context, requestID uuid.UUI
 }
 
 const listOpenBreakGlass = `-- name: ListOpenBreakGlass :many
-SELECT request_id, org_id, breaker, breaker_email, auth_time, acr, step_up, reason, incident, change_set_hash, head, from_state, at, reminded_at, closed_at FROM break_glass WHERE closed_at IS NULL ORDER BY at, request_id
+SELECT request_id, org_id, breaker, breaker_email, auth_time, acr, step_up, reason, incident, change_set_hash, head, from_state, at, reminded_at, closed_at, incident_check, incident_sys_id, incident_checked_at, incident_link, incident_linked_at, incident_problem, incident_failure, incident_failures, incident_next_at FROM break_glass WHERE closed_at IS NULL ORDER BY at, request_id
 `
 
 // The open reviews, the oldest first: those reminders may be due for.
@@ -269,6 +366,15 @@ func (q *Queries) ListOpenBreakGlass(ctx context.Context) ([]BreakGlass, error) 
 			&i.At,
 			&i.RemindedAt,
 			&i.ClosedAt,
+			&i.IncidentCheck,
+			&i.IncidentSysID,
+			&i.IncidentCheckedAt,
+			&i.IncidentLink,
+			&i.IncidentLinkedAt,
+			&i.IncidentProblem,
+			&i.IncidentFailure,
+			&i.IncidentFailures,
+			&i.IncidentNextAt,
 		); err != nil {
 			return nil, err
 		}
@@ -281,7 +387,7 @@ func (q *Queries) ListOpenBreakGlass(ctx context.Context) ([]BreakGlass, error) 
 }
 
 const lockBreakGlass = `-- name: LockBreakGlass :one
-SELECT request_id, org_id, breaker, breaker_email, auth_time, acr, step_up, reason, incident, change_set_hash, head, from_state, at, reminded_at, closed_at FROM break_glass WHERE request_id = $1 FOR UPDATE
+SELECT request_id, org_id, breaker, breaker_email, auth_time, acr, step_up, reason, incident, change_set_hash, head, from_state, at, reminded_at, closed_at, incident_check, incident_sys_id, incident_checked_at, incident_link, incident_linked_at, incident_problem, incident_failure, incident_failures, incident_next_at FROM break_glass WHERE request_id = $1 FOR UPDATE
 `
 
 // A break-glass, its row locked until the transaction ends: sign-offs and reminders of its
@@ -305,8 +411,87 @@ func (q *Queries) LockBreakGlass(ctx context.Context, requestID uuid.UUID) (Brea
 		&i.At,
 		&i.RemindedAt,
 		&i.ClosedAt,
+		&i.IncidentCheck,
+		&i.IncidentSysID,
+		&i.IncidentCheckedAt,
+		&i.IncidentLink,
+		&i.IncidentLinkedAt,
+		&i.IncidentProblem,
+		&i.IncidentFailure,
+		&i.IncidentFailures,
+		&i.IncidentNextAt,
 	)
 	return i, err
+}
+
+const setBreakGlassIncidentChecked = `-- name: SetBreakGlassIncidentChecked :exec
+UPDATE break_glass SET incident_check = $1, incident_sys_id = $2,
+    incident_checked_at = $3, incident_problem = $4, incident_failure = '', incident_failures = 0,
+    incident_next_at = NULL
+WHERE request_id = $5 AND incident_check = 'unverified'
+`
+
+type SetBreakGlassIncidentCheckedParams struct {
+	IncidentCheck   string
+	IncidentSysID   string
+	At              pgtype.Timestamptz
+	IncidentProblem string
+	RequestID       uuid.UUID
+}
+
+// What ServiceNow said of the incident, asked again: verified or refuted (with the problem), or a
+// refusal to say (the problem, and it is asked no more).
+func (q *Queries) SetBreakGlassIncidentChecked(ctx context.Context, arg SetBreakGlassIncidentCheckedParams) error {
+	_, err := q.db.Exec(ctx, setBreakGlassIncidentChecked,
+		arg.IncidentCheck,
+		arg.IncidentSysID,
+		arg.At,
+		arg.IncidentProblem,
+		arg.RequestID,
+	)
+	return err
+}
+
+const setBreakGlassIncidentFailed = `-- name: SetBreakGlassIncidentFailed :exec
+UPDATE break_glass SET incident_failure = $1, incident_failures = incident_failures + 1,
+    incident_next_at = $2
+WHERE request_id = $3
+`
+
+type SetBreakGlassIncidentFailedParams struct {
+	IncidentFailure string
+	NextAt          pgtype.Timestamptz
+	RequestID       uuid.UUID
+}
+
+// A check or link of the incident did not reach ServiceNow, or must wait: why, and when to try again.
+func (q *Queries) SetBreakGlassIncidentFailed(ctx context.Context, arg SetBreakGlassIncidentFailedParams) error {
+	_, err := q.db.Exec(ctx, setBreakGlassIncidentFailed, arg.IncidentFailure, arg.NextAt, arg.RequestID)
+	return err
+}
+
+const setBreakGlassIncidentLinked = `-- name: SetBreakGlassIncidentLinked :exec
+UPDATE break_glass SET incident_link = $1, incident_linked_at = $2, incident_problem = $3,
+    incident_failure = '', incident_failures = 0, incident_next_at = NULL
+WHERE request_id = $4 AND incident_link = ''
+`
+
+type SetBreakGlassIncidentLinkedParams struct {
+	IncidentLink    string
+	At              pgtype.Timestamptz
+	IncidentProblem string
+	RequestID       uuid.UUID
+}
+
+// The incident's link to the change request: linked, kept, none or refused (with the problem).
+func (q *Queries) SetBreakGlassIncidentLinked(ctx context.Context, arg SetBreakGlassIncidentLinkedParams) error {
+	_, err := q.db.Exec(ctx, setBreakGlassIncidentLinked,
+		arg.IncidentLink,
+		arg.At,
+		arg.IncidentProblem,
+		arg.RequestID,
+	)
+	return err
 }
 
 const setBreakGlassReminded = `-- name: SetBreakGlassReminded :exec
