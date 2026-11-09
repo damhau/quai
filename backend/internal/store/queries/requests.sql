@@ -55,3 +55,12 @@ UPDATE requests SET escalated_at = sqlc.arg(at) WHERE id = sqlc.arg(id);
 
 -- name: SetRequestExpiryWarned :exec
 UPDATE requests SET expiry_warned_at = sqlc.arg(at) WHERE id = sqlc.arg(id);
+
+-- name: PendingReviewedBy :many
+-- The requests waiting for approval that a person reviewed, or that were reviewed on their behalf,
+-- with a review not voided.
+SELECT r.* FROM requests r
+WHERE r.state = 'pending_approval' AND EXISTS (
+    SELECT 1 FROM reviews v WHERE v.request_id = r.id AND v.voided_at IS NULL
+      AND (v.reviewer = sqlc.arg(name) OR v.on_behalf_of = sqlc.arg(name)))
+ORDER BY r.submitted_at, r.id;

@@ -22,6 +22,7 @@ import (
 	"github.com/damhau/quai/backend/internal/netx"
 	"github.com/damhau/quai/backend/internal/notify"
 	"github.com/damhau/quai/backend/internal/requests"
+	"github.com/damhau/quai/backend/internal/scim"
 	"github.com/damhau/quai/backend/internal/store"
 	"github.com/damhau/quai/backend/internal/telemetry"
 	"github.com/damhau/quai/backend/internal/web"
@@ -121,6 +122,10 @@ func serve(ctx context.Context, cfg *config.Config, log *slog.Logger, ln net.Lis
 			hooks.UseJobs(ins)
 			opts.Webhooks, opts.WebhookHost, opts.PublicURL = hooks.Webhooks(), cfg.Webhooks.Host, cfg.Server.PublicURL
 		}
+	}
+	// The identity provider's provisioning, after the requests a deactivation ends.
+	if h := scim.New(cfg.Auth, cfg.Server.PublicURL, s, secretStore(cfg), opts.Requests, log); h != nil {
+		opts.SCIM = h
 	}
 	srv := &http.Server{
 		Handler:           api.New(opts),

@@ -170,6 +170,43 @@ func (q *Queries) RevokeAPIToken(ctx context.Context, arg RevokeAPITokenParams) 
 	return result.RowsAffected(), nil
 }
 
+const revokeOwnerAPITokens = `-- name: RevokeOwnerAPITokens :many
+UPDATE api_tokens SET revoked_at = now() WHERE owner = $1 AND revoked_at IS NULL RETURNING id, org_id, owner, groups, name, hash, scopes, expires_at, created_at, last_used_at, revoked_at
+`
+
+// Revokes every token of a person whom SCIM deactivates.
+func (q *Queries) RevokeOwnerAPITokens(ctx context.Context, owner string) ([]ApiToken, error) {
+	rows, err := q.db.Query(ctx, revokeOwnerAPITokens, owner)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ApiToken{}
+	for rows.Next() {
+		var i ApiToken
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.Owner,
+			&i.Groups,
+			&i.Name,
+			&i.Hash,
+			&i.Scopes,
+			&i.ExpiresAt,
+			&i.CreatedAt,
+			&i.LastUsedAt,
+			&i.RevokedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const touchAPIToken = `-- name: TouchAPIToken :exec
 UPDATE api_tokens SET last_used_at = now() WHERE id = $1
 `

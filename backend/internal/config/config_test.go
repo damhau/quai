@@ -549,6 +549,42 @@ func TestGraph(t *testing.T) {
 	}
 }
 
+// TestSCIM: auth.scim names its tokens by the secrets that hold their hashes; groups are named by
+// externalId by default; it needs the identity provider's sign-in.
+func TestSCIM(t *testing.T) {
+	c, err := Load(write(t, "auth: { scim: { tokens: [{ name: entra, sha256: { ref: \"k8s:quai/scim#sha256\" } }], reserved: [breakglass@contoso.com] } }\n"), env(oidcEnv))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s := c.Auth.SCIM; s.GroupName != SCIMGroupExternalID || len(s.Tokens) != 1 || s.Tokens[0].SHA256.Ref != "k8s:quai/scim#sha256" || s.Reserved[0] != "breakglass@contoso.com" {
+		t.Errorf("scim = %+v", s)
+	}
+	if c, err = Load("", env(oidcEnv)); err != nil || c.Auth.SCIM != nil {
+		t.Errorf("no scim = %+v, %v", c.Auth.SCIM, err)
+	}
+	tok := func(name, ref string) string { return "{ name: " + name + ", sha256: { ref: \"" + ref + "\" } }" }
+	scim := func(body string) string { return "auth: { scim: { " + body + " } }\n" }
+	for name, tt := range map[string]struct {
+		env  map[string]string
+		file string
+		want string
+	}{
+		"dev":              {file: scim("tokens: [" + tok("a", "env:A") + "]"), want: "auth.scim needs auth.mode oidc"},
+		"no token":         {env: oidcEnv, file: scim("tokens: []"), want: "auth.scim.tokens must name 1 to 4 tokens"},
+		"five tokens":      {env: oidcEnv, file: scim("tokens: [" + strings.Join([]string{tok("a", "env:A"), tok("b", "env:B"), tok("c", "env:C"), tok("d", "env:D"), tok("e", "env:E")}, ",") + "]"), want: "1 to 4"},
+		"a name":           {env: oidcEnv, file: scim("tokens: [" + tok("Entra ID", "env:A") + "]"), want: "auth.scim.tokens[0].name must be"},
+		"a name twice":     {env: oidcEnv, file: scim("tokens: [" + tok("a", "env:A") + "," + tok("a", "env:B") + "]"), want: "a names another token"},
+		"the hash itself":  {env: oidcEnv, file: scim("tokens: [" + tok("a", strings.Repeat("ab", 32)) + "]"), want: "auth.scim.tokens[0].sha256.ref must be a secret reference"},
+		"no ref":           {env: oidcEnv, file: scim("tokens: [{ name: a }]"), want: "sha256.ref must be"},
+		"a group name":     {env: oidcEnv, file: scim("tokens: [" + tok("a", "env:A") + "], groupName: objectId"), want: "auth.scim.groupName must be externalId or displayName"},
+		"an empty reserve": {env: oidcEnv, file: scim("tokens: [" + tok("a", "env:A") + "], reserved: [\" \"]"), want: "auth.scim.reserved[0] is empty"},
+	} {
+		if _, err := Load(write(t, tt.file), env(tt.env)); err == nil || !strings.Contains(err.Error(), tt.want) {
+			t.Errorf("%s: error = %v, want %q", name, err, tt.want)
+		}
+	}
+}
+
 func TestRepositories(t *testing.T) {
 	p := write(t, "repositories: { path: /etc/quai/repositories.d }\ngit: { cacheDir: /var/cache/quai }\n")
 	c, err := Load(p, env(nil))

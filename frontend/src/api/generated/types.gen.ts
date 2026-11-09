@@ -10,6 +10,10 @@ export type AccessReportView = {
      */
     readonly $schema?: string;
     generatedAt: string;
+    /**
+     * The SCIM tokens used, which can change who is active and their groups
+     */
+    scimTokens: Array<AccessScimTokenView> | null;
     users: Array<AccessUserView> | null;
 };
 
@@ -25,10 +29,21 @@ export type AccessRoleView = {
     scope: string;
 };
 
+export type AccessScimTokenView = {
+    /**
+     * Its last use, to the minute
+     */
+    lastUsedAt: string;
+    /**
+     * Its name in auth.scim.tokens
+     */
+    name: string;
+};
+
 export type AccessTokenView = {
     expiresAt: string;
     /**
-     * The groups its owner had when creating it, which it acts with
+     * The groups its owner had when creating it, which it acts with; for a provisioned owner, those SCIM still gives them
      */
     groups: Array<string> | null;
     id: string;
@@ -61,6 +76,10 @@ export type AccessUserView = {
      * Entra ID's object ID (oid)
      */
     objectId?: string;
+    /**
+     * The identity provider's provisioning (SCIM) keeps the person current: their groups are those of their last sign-in that SCIM still gives them
+     */
+    provisioned?: boolean;
     roles: Array<AccessRoleView> | null;
     state: 'active' | 'deactivated';
     /**
@@ -107,7 +126,7 @@ export type AuditActorView = {
      * The API token's ID
      */
     token?: string;
-    type: 'user' | 'token' | 'runner' | 'system';
+    type: 'user' | 'token' | 'runner' | 'system' | 'scim';
 };
 
 export type AuditCheckpointView = {
@@ -1342,7 +1361,7 @@ export type ReviewView = {
      */
     stepUp?: boolean;
     /**
-     * The request expired: the review is void and never counts again
+     * The review is void and never counts again: the request expired, or the reviewer (or the person they approved for) was deactivated
      */
     voided?: boolean;
 };
@@ -1795,6 +1814,10 @@ export type Webhooks = {
 
 export type AccessReportViewWritable = {
     generatedAt: string;
+    /**
+     * The SCIM tokens used, which can change who is active and their groups
+     */
+    scimTokens: Array<AccessScimTokenView> | null;
     users: Array<AccessUserView> | null;
 };
 

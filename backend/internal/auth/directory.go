@@ -74,6 +74,15 @@ type Granted struct {
 	Group string
 }
 
+// GrantNames returns the names of the grants groups give (GrantNames), sorted, each once.
+func (d *Directory) GrantNames(groups []string) []string {
+	var grants []authz.Grant
+	for _, g := range d.Grants(groups) {
+		grants = append(grants, g.Grant)
+	}
+	return GrantNames(grants)
+}
+
 // Grants returns what groups give, in the order of auth.roles: each grant with each group of
 // groups that gives it.
 func (d *Directory) Grants(groups []string) []Granted {

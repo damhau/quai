@@ -57,6 +57,7 @@ const report = (): AccessReportView => ({
     {
       name: "sam",
       objectId: "8f0c-oid",
+      provisioned: true,
       groups: ["sg-quai-platform", "sg-quai-shop"],
       teams: ["platform", "shop"],
       roles: [{ role: "platform-admin", scope: "global", groups: ["sg-quai-platform"] }],
@@ -65,6 +66,7 @@ const report = (): AccessReportView => ({
       lastLogin: "2026-11-07T10:00:00Z",
     },
   ],
+  scimTokens: [{ name: "entra", lastUsedAt: "2026-11-09T07:00:00Z" }],
 })
 
 export const access = { reads: 0 }

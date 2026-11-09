@@ -20,3 +20,7 @@ SELECT * FROM api_tokens WHERE owner = $1 ORDER BY created_at, id;
 -- name: ListLiveAPITokens :many
 -- Every token neither revoked nor expired, for the access report.
 SELECT * FROM api_tokens WHERE revoked_at IS NULL AND expires_at > now() ORDER BY owner, created_at, id;
+
+-- name: RevokeOwnerAPITokens :many
+-- Revokes every token of a person whom SCIM deactivates.
+UPDATE api_tokens SET revoked_at = now() WHERE owner = $1 AND revoked_at IS NULL RETURNING *;

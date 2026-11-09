@@ -32,7 +32,7 @@ type AccessTokenView struct {
 	ID         string           `json:"id"`
 	Name       string           `json:"name"`
 	Scopes     []string         `json:"scopes"`
-	Groups     []string         `json:"groups" doc:"The groups its owner had when creating it, which it acts with"`
+	Groups     []string         `json:"groups" doc:"The groups its owner had when creating it, which it acts with; for a provisioned owner, those SCIM still gives them"`
 	Roles      []AccessRoleView `json:"roles" doc:"The roles those groups give now; the scopes narrow what the token may do with them"`
 	ExpiresAt  time.Time        `json:"expiresAt"`
 	LastUsedAt *time.Time       `json:"lastUsedAt,omitempty"`
@@ -53,13 +53,21 @@ type AccessUserView struct {
 	LastLogin     *time.Time        `json:"lastLogin,omitempty" doc:"Absent when no sign-in is recorded: the person's tokens predate the directory"`
 	AuthTime      *time.Time        `json:"authTime,omitempty" doc:"When the person last authenticated with the identity provider"`
 	DeactivatedAt *time.Time        `json:"deactivatedAt,omitempty"`
+	Provisioned   bool              `json:"provisioned,omitempty" doc:"The identity provider's provisioning (SCIM) keeps the person current: their groups are those of their last sign-in that SCIM still gives them"`
+}
+
+// AccessSCIMTokenView is a SCIM token that was used: the identity provider's provisioning.
+type AccessSCIMTokenView struct {
+	Name       string    `json:"name" doc:"Its name in auth.scim.tokens"`
+	LastUsedAt time.Time `json:"lastUsedAt" doc:"Its last use, to the minute"`
 }
 
 // AccessReportView is who can do what in Quai: every person who signed in or holds an API token,
 // by name.
 type AccessReportView struct {
-	GeneratedAt time.Time        `json:"generatedAt"`
-	Users       []AccessUserView `json:"users"`
+	GeneratedAt time.Time             `json:"generatedAt"`
+	Users       []AccessUserView      `json:"users"`
+	SCIMTokens  []AccessSCIMTokenView `json:"scimTokens" doc:"The SCIM tokens used, which can change who is active and their groups"`
 }
 
 func registerAccess(a huma.API, s *store.Store, dir *auth.Directory, log *slog.Logger) {
@@ -119,7 +127,17 @@ func accessReport(ctx context.Context, s *store.Store, dir *auth.Directory) (Acc
 	if err != nil {
 		return AccessReportView{}, err
 	}
-	r := AccessReportView{GeneratedAt: time.Now().UTC().Truncate(time.Second), Users: make([]AccessUserView, 0, len(users))}
+	scim, err := s.ListSCIMTokens(ctx)
+	if err != nil {
+		return AccessReportView{}, err
+	}
+	r := AccessReportView{GeneratedAt: time.Now().UTC().Truncate(time.Second), Users: make([]AccessUserView, 0, len(users)),
+		SCIMTokens: make([]AccessSCIMTokenView, 0, len(scim))}
+	for _, t := range scim {
+		r.SCIMTokens = append(r.SCIMTokens, AccessSCIMTokenView{Name: t.Name, LastUsedAt: t.LastUsedAt.Time.UTC()})
+	}
+	provisioned := map[string][]string{} // a provisioned person's groups now, which bound their tokens'
+
 	at := func(t pgtype.Timestamptz) *time.Time {
 		if !t.Valid {
 			return nil
@@ -136,6 +154,9 @@ func accessReport(ctx context.Context, s *store.Store, dir *auth.Directory) (Acc
 		if u.DeactivatedAt.Valid {
 			v.State = "deactivated"
 		}
+		if u.ScimID.Valid {
+			v.Provisioned, provisioned[u.Name] = true, u.Groups
+		}
 		r.Users = append(r.Users, v)
 	}
 	for _, t := range tokens {
@@ -144,8 +165,12 @@ func accessReport(ctx context.Context, s *store.Store, dir *auth.Directory) (Acc
 			r.Users = append(r.Users, AccessUserView{Name: t.Owner, Groups: []string{}, Teams: []string{}, Roles: []AccessRoleView{}, Tokens: []AccessTokenView{}, State: "active"})
 			i = len(r.Users) - 1
 		}
+		groups := t.Groups
+		if now, ok := provisioned[t.Owner]; ok {
+			groups = slices.DeleteFunc(slices.Clone(groups), func(g string) bool { return !slices.Contains(now, g) })
+		}
 		r.Users[i].Tokens = append(r.Users[i].Tokens, AccessTokenView{
-			ID: t.ID.String(), Name: t.Name, Scopes: t.Scopes, Groups: slices.Sorted(slices.Values(t.Groups)), Roles: rolesOf(dir, t.Groups),
+			ID: t.ID.String(), Name: t.Name, Scopes: t.Scopes, Groups: slices.Sorted(slices.Values(groups)), Roles: rolesOf(dir, groups),
 			ExpiresAt: t.ExpiresAt.Time.UTC(), LastUsedAt: at(t.LastUsedAt),
 		})
 	}

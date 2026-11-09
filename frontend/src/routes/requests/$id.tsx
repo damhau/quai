@@ -144,7 +144,7 @@ function RequestPage() {
                           {ago(v.at)}
                           {v.stepUp && " · signed in recently"}
                           {v.onBehalfOf && " · through a delegation"}
-                          {v.voided && " · void: the request expired"}
+                          {v.voided && (r.state === "expired" ? " · void: the request expired" : " · void: no longer counts")}
                         </span>
                         {v.comment && <p className="whitespace-pre-wrap">{v.comment}</p>}
                       </div>

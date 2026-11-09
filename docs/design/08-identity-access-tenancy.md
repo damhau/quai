@@ -78,8 +78,10 @@ and generating their run tokens.
   the ID token's `sub` and Entra ID's `oid`, the time of the login and of the authentication, and
   whether the person is deactivated. A person is their name, everywhere in Quai: a login whose name
   the directory holds for another `sub` is refused, since it would act as that person
-  ([open question 45](../plan/open-questions.md#still-open)); a deactivated person cannot sign in.
-  Nothing erases a person yet ([open question 44](../plan/open-questions.md#still-open)).
+  ([open question 45](../plan/open-questions.md#still-open)); a deactivated person cannot sign in,
+  and their sessions and API tokens are refused from their next request (a session is checked
+  against the directory at every request). Nothing erases a person yet
+  ([open question 44](../plan/open-questions.md#still-open)).
 - **Teams.** `auth.teams` maps groups to Quai teams
   ([open question 20](../plan/open-questions.md#still-open)): a list of `{group, team}`, where the
   group is a name or a pattern with one `*` (one or more characters, with their case) and a `*` in
@@ -103,12 +105,15 @@ and generating their run tokens.
   the current configuration gives the groups of the person's last login. CSV cells starting with
   `=`, `+`, `-`, `@`, a tab or a carriage return get a leading apostrophe, so that a spreadsheet does
   not run a name or a group from the IdP as a formula, and every cell is quoted.
-- SCIM 2.0 provisioning (optional) keeps users and groups current between logins and deactivates leavers immediately, which matters for pending approvals.
+- **SCIM 2.0 provisioning** (optional, P4-15) keeps people and groups current between logins and
+  deactivates leavers at once, with their sessions, tokens, requests and approvals
+  ([below](#scim-provisioning)).
 - **Manager** (for `approvers: [manager]`, P4-11). Each sign-in keeps the person's manager in the
   directory as an immutable identifier of the identity provider, never a name or an email: the ID
   token's claim `auth.oidc.managerClaim` (the manager's `sub`, or their Entra ID `oid`), or Microsoft
-  Graph's `/me/manager` with `auth.graph.manager` (the manager's `oid`); the two are exclusive, and
-  SCIM will be a third source (P4-15). Where it came from is kept with it, and when there is none,
+  Graph's `/me/manager` with `auth.graph.manager` (the manager's `oid`); the two are exclusive. For a
+  person SCIM provisions, SCIM's `manager` alone counts, and sign-ins leave it
+  ([below](#scim-provisioning)). Where it came from is kept with it, and when there is none,
   why: no claim, a value that is not one identifier, no manager in Graph, a manager who is a contact
   rather than a user, a Graph lookup that failed, a sign-in from another tenant. A sign-in always
   replaces them: a failed lookup leaves no manager, never the one found before, since whoever
@@ -157,6 +162,92 @@ and generating their run tokens.
   repository's mapping (groups match through `group:` entries either way).
 - The `manager` attribute is not in tokens; with `auth.graph.manager` it is read at each login from Microsoft Graph (`GET /v1.0/me/manager`, delegated `User.Read.All`, which needs an administrator's consent), with the same token, limits and tenant check as the groups. A manager lookup that fails does not refuse the login: the person has no manager until a login finds one, logged and counted, and their requests' manager rules say why. Without Graph or a claim, `manager` approvers are unavailable and requests say so.
 - **Step-up:** Entra Conditional Access *authentication contexts* express "MFA required for this action". Quai requests the context (`auth.stepUp.authContext`) for step-up approvals, break-glass and, with `auth.stepUp.admin`, repository changes, checks the `acrs` claim in the returned ID token, and combines it with `max_age` and `prompt=login` for a recent sign-in. The registration must add the optional claims `auth_time` and `acrs` to the ID token, and the Conditional Access policy on the context should set the sign-in frequency to every time ([operations guide](../operations/deployment-and-operations.md#step-up-authentication)).
+
+### SCIM provisioning
+
+As built (P4-15, [open questions 83 to 88](../plan/open-questions.md#still-open)). The tests send
+the requests Microsoft Entra ID's provisioning service sends, as Microsoft documents them; it is
+**not verified against a real Entra ID tenant**. Setting it up: the
+[operations guide](../operations/deployment-and-operations.md#provisioning-with-scim).
+
+- **Endpoint and token** ([open question 83](../plan/open-questions.md#still-open)). With
+  `auth.scim` (which needs `auth.mode: oidc`), Quai serves `/scim/v2`: `Users`, `Groups`,
+  `ServiceProviderConfig`, `ResourceTypes` and `Schemas`. The provisioning service authenticates
+  with a bearer token of its own, `quai_scim_` and 64 hex characters, made by `quai scim-token`
+  outside Quai. Quai keeps only its SHA-256, in the secret each `auth.scim.tokens` entry names (one,
+  and the next while rotating; at most four), and compares it in constant time with each. Nothing
+  else is taken there, no session and no API token, and the rest of the API does not take a SCIM
+  token. A token is revoked by removing it from the configuration or changing its secret (read
+  again within a minute). The access report shows each token's last use, to the minute. Everything
+  SCIM changes is in the audit log as the provisioning's (actor type `scim`, the token's name),
+  never a person's.
+- **Bounds.** 50 requests a second (bursts of 100), then 429 with `Retry-After`. A body of at most
+  1 MiB, `application/scim+json` or `application/json`: one JSON object, attribute names in any case
+  and none twice, at most 100 in an object. Strings of at most 256 characters, without control
+  characters. A PATCH has 1 to 100 operations; a request adds or removes at most 1,000 members.
+  Pages are `startIndex` and `count`, at most 200 (100 by default), in name order. **Filters** are
+  what Entra ID sends, nothing more: `attribute eq "value"` comparisons joined by `and`, each
+  attribute once, at most four, 1,024 bytes, of `userName`, `externalId`, `id` and `manager` for
+  users and `displayName`, `externalId`, `id` and `members` for groups; anything else is 400
+  `invalidFilter`. Their values are only ever query parameters. Errors are SCIM's (RFC 7644 §3.12)
+  and never carry an internal error. No PUT, no Bulk (501), no sorting, no ETags.
+- **What Quai keeps** ([open question 88](../plan/open-questions.md#still-open)). Of a user:
+  `userName`, `externalId`, `active` and the enterprise extension's `manager`. Other attributes
+  (emails, names, roles, phone numbers) are accepted in the forms Entra ID sends them (paths with a
+  filter such as `emails[type eq "work"].value`, a PATCH without a path, booleans as `"True"` and
+  `"False"`) and not kept: the ID token gives the email at sign-in. Of a group: `displayName`
+  (unique, in any case), `externalId` (set once) and its members.
+- **Binding** ([open question 84](../plan/open-questions.md#still-open)). `externalId` is required
+  and must be the account's immutable identifier: Entra ID's object ID (the default mapping uses
+  `mailNickname`, which must be changed to `objectId`), or the ID token's `sub` with another
+  identity provider. A provisioned user's `userName` becomes their Quai name, for good: a rename
+  changes their `userName`, not the person. Someone who signed in before is adopted only when their
+  identifiers in the directory match the `externalId`. A name the directory holds for another
+  account, a name equal to another but for case, another user's `externalId`, a reserved name: 409
+  `uniqueness`, at creation and at a rename alike. `externalId` cannot change (400 `mutability`). At
+  sign-in, a provisioned person is found by their `oid` (else `sub`) and acts under the name SCIM
+  bound, whatever name the ID token gives; before their first sign-in, that must be their Quai name
+  or their current `userName`. A sign-in with a provisioned name and another identifier, or a
+  provisioned identifier and another name, is refused (403, saying why). A DELETE deactivates the
+  person, takes them out of the groups SCIM provisions and unbinds them (a GET then answers 404):
+  their row and name stay, so a new person given the old `userName` is refused (409), never
+  inheriting the old one's requests, reviews, delegations or groups, and the same `externalId`
+  provisioned again gets the account back.
+- **Groups** ([open question 85](../plan/open-questions.md#still-open)). A provisioned group's name
+  in Quai is its `externalId` (`auth.scim.groupName: externalId`, the default: Entra ID maps the
+  group's object ID to it, which is how the ID token's `groups` claim names groups) or its
+  `displayName`. A provisioned person's groups are those of their last sign-in, less every group
+  SCIM has provisioned (its name, even after the group is deleted) that does not list them: SCIM
+  never gives a group the ID token does not, and takes one away at once. A session or an API token
+  acts with the groups it was issued with that the person still has, checked at every request: out
+  of the admin group, a person is no admin at their next request, by session or token; back in, a
+  session or token issued with the group has it again, others from the next sign-in. A change of a
+  person's groups is audited with the groups and grants before and after (`auth.groups_changed`),
+  as are the memberships (`scim.members_changed`). People SCIM does not provision keep their ID
+  token's groups.
+- **Deactivation** ([open question 86](../plan/open-questions.md#still-open)). `active: false`
+  (`"False"` from Entra ID) or a DELETE, at once and completely: the person's sessions end at their
+  next request (the session's epoch no longer matches), their API tokens are revoked, the
+  delegations they gave or received are revoked, their requests not yet delivered are cancelled
+  ("its requester was deactivated"), and their reviews of requests still waiting for approval, and
+  reviews made on their behalf, are voided: shown as void, never counted again, the request's
+  approvers notified again (`reviews_voided`). Approvals of requests already approved or delivered
+  stand. A request waiting for them as its approver (its requester's manager) waits until it
+  expires or is cancelled. Chat links need the person's session, so they stop working, and no
+  notification is sent to them. They cannot sign in. Each effect is an audit event, the
+  provisioning's. `active: true` reactivates the account: the person signs in again, and nothing
+  revoked comes back. SCIM decides: it reactivates someone an administrator deactivated by hand.
+- **Manager** ([open question 87](../plan/open-questions.md#still-open)). For a provisioned person,
+  the enterprise extension's `manager` (the manager's SCIM `id`) is the manager, whatever
+  `auth.oidc.managerClaim` or `auth.graph.manager` say for others; sign-ins do not change it. It
+  may name someone provisioned later; until then, and when the manager is deactivated or is the
+  requester, there is no manager, with the reason, as for the other sources. A change is audited
+  (`scim.user_changed`).
+- **Out of reach** ([open question 88](../plan/open-questions.md#still-open)). The names in
+  `auth.scim.reserved` (the identity provider's emergency, break-glass accounts) and the development
+  users' names: SCIM never creates or renames to them (409), nor changes, deactivates or deletes
+  them (403), whatever the case. The `break-glass` role is a group's, like any other: a provisioned
+  person who leaves loses it.
 
 ## Tenancy
 
@@ -259,7 +350,11 @@ far). Decisions the roles do not spell out:
 
 ## Sessions and accounts
 
-- Sessions expire after 8 hours of activity and 30 minutes idle (configurable), and are revoked on logout and on SCIM deactivation.
-- Deactivated users' pending requests are cancelled; their pending approvals are dropped and approvers re-notified.
+- Sessions expire after 8 hours of activity and 30 minutes idle (configurable), and are revoked on
+  logout and on deactivation: every request checks the person in the directory, so a deactivated
+  person's session ends at their next request, and a deactivation by SCIM ends it for good.
+- A deactivation by SCIM cancels the person's requests not yet delivered, voids their approvals of
+  requests still waiting (approvers notified again), and revokes their API tokens and delegations
+  ([SCIM](#scim-provisioning)).
 - Every login, token creation and role change is an audit event: `auth.login`, `token.created`,
   and `auth.grants_changed` when a login's grants differ from the person's previous login.

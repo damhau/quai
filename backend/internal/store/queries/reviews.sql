@@ -15,3 +15,10 @@ SELECT * FROM reviews WHERE request_id = $1 ORDER BY created_at, id;
 -- name: VoidReviews :execrows
 -- The reviews of a request that expired: they never count again.
 UPDATE reviews SET voided_at = sqlc.arg(at) WHERE request_id = sqlc.arg(request_id) AND voided_at IS NULL;
+
+-- name: VoidReviewsOf :many
+-- The reviews of a request by a person, or on their behalf, that count no longer: they were
+-- deactivated.
+UPDATE reviews SET voided_at = sqlc.arg(at)
+WHERE request_id = sqlc.arg(request_id) AND voided_at IS NULL AND (reviewer = sqlc.arg(name) OR on_behalf_of = sqlc.arg(name))
+RETURNING *;

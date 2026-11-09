@@ -133,6 +133,8 @@ export function eventText(e: EventView): string {
       return `reminded its approvers${str(d, "after") ? `, ${str(d, "after")} after it was submitted` : ""}`
     case "escalated":
       return `notified the escalation contacts${str(d, "after") ? `, ${str(d, "after")} after it was submitted` : ""}`
+    case "reviews_voided":
+      return `${str(d, "approver") ?? "an approver"} was deactivated: their approvals no longer count, and the request waits for approval again`
     case "expiring_soon":
       return "told the requester it expires soon"
     case "expired":

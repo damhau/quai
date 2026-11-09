@@ -100,6 +100,23 @@ test("a request says when it expires; expired, its approvals show as void and th
   expect(screen.queryByRole("button", { name: "Cancel request" })).not.toBeInTheDocument()
 })
 
+test("an approver deactivated by provisioning: their approval shows as void, and the timeline says why", async () => {
+  requests.current = {
+    ...pendingVM(),
+    reviews: [{ reviewer: "alice", decision: "approve", at: "2026-10-28T09:00:00Z", stepUp: false, voided: true }],
+    events: [
+      ...(pendingVM().events ?? []),
+      { kind: "reviews_voided", actor: "", data: { approver: "alice", reviews: 1, reason: "they were deactivated" }, at: "2026-10-29T10:00:00Z" },
+    ],
+  }
+  renderApp(`/requests/${id}`)
+  expect(await within(await screen.findByRole("list", { name: "Reviews" })).findByText(/void: no longer counts/)).toBeInTheDocument()
+  const timeline = within(screen.getByRole("list", { name: "Timeline" }))
+  expect(
+    timeline.getByText("alice was deactivated: their approvals no longer count, and the request waits for approval again"),
+  ).toBeInTheDocument()
+})
+
 test("a request that does not exist says so", async () => {
   renderApp("/requests/22222222-2222-4222-8222-222222222222")
   expect(await screen.findByText("This page cannot be shown")).toBeInTheDocument()

@@ -12,7 +12,7 @@ import (
 )
 
 const getUser = `-- name: GetUser :one
-SELECT org_id, name, email, groups, subject, object_id, last_login, auth_time, deactivated_at, created_at, updated_at, manager_id, manager_source, manager_reason FROM users WHERE name = $1
+SELECT org_id, name, email, groups, subject, object_id, last_login, auth_time, deactivated_at, created_at, updated_at, manager_id, manager_source, manager_reason, scim_id, scim_external_id, scim_user_name, login_groups, session_epoch FROM users WHERE name = $1
 `
 
 func (q *Queries) GetUser(ctx context.Context, name string) (User, error) {
@@ -33,12 +33,17 @@ func (q *Queries) GetUser(ctx context.Context, name string) (User, error) {
 		&i.ManagerID,
 		&i.ManagerSource,
 		&i.ManagerReason,
+		&i.ScimID,
+		&i.ScimExternalID,
+		&i.ScimUserName,
+		&i.LoginGroups,
+		&i.SessionEpoch,
 	)
 	return i, err
 }
 
 const listUsers = `-- name: ListUsers :many
-SELECT org_id, name, email, groups, subject, object_id, last_login, auth_time, deactivated_at, created_at, updated_at, manager_id, manager_source, manager_reason FROM users ORDER BY name COLLATE "C"
+SELECT org_id, name, email, groups, subject, object_id, last_login, auth_time, deactivated_at, created_at, updated_at, manager_id, manager_source, manager_reason, scim_id, scim_external_id, scim_user_name, login_groups, session_epoch FROM users ORDER BY name COLLATE "C"
 `
 
 func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
@@ -65,6 +70,11 @@ func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
 			&i.ManagerID,
 			&i.ManagerSource,
 			&i.ManagerReason,
+			&i.ScimID,
+			&i.ScimExternalID,
+			&i.ScimUserName,
+			&i.LoginGroups,
+			&i.SessionEpoch,
 		); err != nil {
 			return nil, err
 		}
@@ -76,18 +86,30 @@ func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
 	return items, nil
 }
 
-const recordUserLogin = `-- name: RecordUserLogin :execrows
-INSERT INTO users (name, email, groups, subject, object_id, last_login, auth_time, manager_id, manager_source, manager_reason)
-VALUES ($1, $2, $3, $4, $5, now(), $6, $7, $8, $9)
+const recordUserLogin = `-- name: RecordUserLogin :one
+INSERT INTO users (name, email, groups, login_groups, subject, object_id, last_login, auth_time, manager_id, manager_source, manager_reason)
+VALUES ($1, $2, $3::text[], $3::text[], $4, $5, now(),
+        $6, $7, $8, $9)
 ON CONFLICT (org_id, name) DO UPDATE SET
-    email = EXCLUDED.email, groups = EXCLUDED.groups,
+    email = EXCLUDED.email, login_groups = EXCLUDED.login_groups,
+    groups = CASE WHEN users.scim_id IS NULL THEN EXCLUDED.groups ELSE ARRAY(
+        SELECT t.g FROM unnest($3::text[]) WITH ORDINALITY AS t(g, i)
+        WHERE NOT EXISTS (SELECT 1 FROM scim_known_groups k WHERE k.org_id = users.org_id AND k.kind = $10::text AND k.name = t.g)
+           OR EXISTS (SELECT 1 FROM scim_members m JOIN scim_groups sg ON sg.id = m.group_id
+                      WHERE m.org_id = users.org_id AND m.user_name = users.name
+                        AND CASE WHEN $10::text = 'displayName' THEN sg.display_name ELSE sg.external_id END = t.g)
+        ORDER BY t.i) END,
     subject = COALESCE(NULLIF(EXCLUDED.subject, ''), users.subject),
     object_id = COALESCE(NULLIF(EXCLUDED.object_id, ''), users.object_id),
     last_login = EXCLUDED.last_login, auth_time = EXCLUDED.auth_time,
-    manager_id = EXCLUDED.manager_id, manager_source = EXCLUDED.manager_source, manager_reason = EXCLUDED.manager_reason,
+    manager_id = CASE WHEN users.scim_id IS NULL THEN EXCLUDED.manager_id ELSE users.manager_id END,
+    manager_source = CASE WHEN users.scim_id IS NULL THEN EXCLUDED.manager_source ELSE users.manager_source END,
+    manager_reason = CASE WHEN users.scim_id IS NULL THEN EXCLUDED.manager_reason ELSE users.manager_reason END,
     updated_at = now()
 WHERE users.deactivated_at IS NULL
   AND (EXCLUDED.subject = '' OR users.subject = '' OR users.subject = EXCLUDED.subject)
+  AND (users.scim_id IS NULL OR ($11::text <> '' AND lower(users.scim_external_id) = lower($11::text)))
+RETURNING groups, session_epoch
 `
 
 type RecordUserLoginParams struct {
@@ -100,16 +122,26 @@ type RecordUserLoginParams struct {
 	ManagerID     string
 	ManagerSource string
 	ManagerReason string
+	GroupKind     string
+	Binding       string
+}
+
+type RecordUserLoginRow struct {
+	Groups       []string
+	SessionEpoch int64
 }
 
 // A login: the person as their ID token (or the development switcher) describes them now. A login
 // without the identity provider's identifiers (a development user) keeps the ones known. The
 // manager is always the login's, none included: a lookup that failed leaves no manager, not the
-// one found before (open question 69). It changes no row of a deactivated person, nor one another
-// subject holds (open question 45): no row affected, the login is refused, even when that changed
-// after the caller looked.
-func (q *Queries) RecordUserLogin(ctx context.Context, arg RecordUserLoginParams) (int64, error) {
-	result, err := q.db.Exec(ctx, recordUserLogin,
+// one found before (open question 69); a person SCIM provisions keeps SCIM's (open question 87).
+// Their groups are the login's, less those of the groups SCIM provisioned that do not list them
+// (open question 85). It changes no row of a deactivated person, nor one another subject holds
+// (open question 45), nor one SCIM bound to another identifier than binding (the login's oid, or
+// its sub): no row, the login is refused, even when that changed after the caller looked. It
+// returns what the session keeps: the groups and the epoch.
+func (q *Queries) RecordUserLogin(ctx context.Context, arg RecordUserLoginParams) (RecordUserLoginRow, error) {
+	row := q.db.QueryRow(ctx, recordUserLogin,
 		arg.Name,
 		arg.Email,
 		arg.Groups,
@@ -119,15 +151,49 @@ func (q *Queries) RecordUserLogin(ctx context.Context, arg RecordUserLoginParams
 		arg.ManagerID,
 		arg.ManagerSource,
 		arg.ManagerReason,
+		arg.GroupKind,
+		arg.Binding,
 	)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
+	var i RecordUserLoginRow
+	err := row.Scan(&i.Groups, &i.SessionEpoch)
+	return i, err
+}
+
+const userByBinding = `-- name: UserByBinding :one
+SELECT org_id, name, email, groups, subject, object_id, last_login, auth_time, deactivated_at, created_at, updated_at, manager_id, manager_source, manager_reason, scim_id, scim_external_id, scim_user_name, login_groups, session_epoch FROM users WHERE scim_id IS NOT NULL AND lower(scim_external_id) = lower($1::text)
+`
+
+// The person SCIM provisions with this immutable identifier of the identity provider, in any
+// case: the one a sign-in with it is, whatever its name claim says.
+func (q *Queries) UserByBinding(ctx context.Context, binding string) (User, error) {
+	row := q.db.QueryRow(ctx, userByBinding, binding)
+	var i User
+	err := row.Scan(
+		&i.OrgID,
+		&i.Name,
+		&i.Email,
+		&i.Groups,
+		&i.Subject,
+		&i.ObjectID,
+		&i.LastLogin,
+		&i.AuthTime,
+		&i.DeactivatedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ManagerID,
+		&i.ManagerSource,
+		&i.ManagerReason,
+		&i.ScimID,
+		&i.ScimExternalID,
+		&i.ScimUserName,
+		&i.LoginGroups,
+		&i.SessionEpoch,
+	)
+	return i, err
 }
 
 const usersByEmail = `-- name: UsersByEmail :many
-SELECT org_id, name, email, groups, subject, object_id, last_login, auth_time, deactivated_at, created_at, updated_at, manager_id, manager_source, manager_reason FROM users
+SELECT org_id, name, email, groups, subject, object_id, last_login, auth_time, deactivated_at, created_at, updated_at, manager_id, manager_source, manager_reason, scim_id, scim_external_id, scim_user_name, login_groups, session_epoch FROM users
 WHERE email <> '' AND lower(email) = ANY(COALESCE($1::text[], '{}'))
 ORDER BY name COLLATE "C"
 `
@@ -157,6 +223,11 @@ func (q *Queries) UsersByEmail(ctx context.Context, emails []string) ([]User, er
 			&i.ManagerID,
 			&i.ManagerSource,
 			&i.ManagerReason,
+			&i.ScimID,
+			&i.ScimExternalID,
+			&i.ScimUserName,
+			&i.LoginGroups,
+			&i.SessionEpoch,
 		); err != nil {
 			return nil, err
 		}
@@ -169,7 +240,7 @@ func (q *Queries) UsersByEmail(ctx context.Context, emails []string) ([]User, er
 }
 
 const usersByIdentifier = `-- name: UsersByIdentifier :many
-SELECT org_id, name, email, groups, subject, object_id, last_login, auth_time, deactivated_at, created_at, updated_at, manager_id, manager_source, manager_reason FROM users
+SELECT org_id, name, email, groups, subject, object_id, last_login, auth_time, deactivated_at, created_at, updated_at, manager_id, manager_source, manager_reason, scim_id, scim_external_id, scim_user_name, login_groups, session_epoch FROM users
 WHERE $1::text <> ''
   AND (lower(object_id) = lower($1::text) OR ($2::boolean AND subject = $1::text))
 ORDER BY name COLLATE "C"
@@ -207,6 +278,11 @@ func (q *Queries) UsersByIdentifier(ctx context.Context, arg UsersByIdentifierPa
 			&i.ManagerID,
 			&i.ManagerSource,
 			&i.ManagerReason,
+			&i.ScimID,
+			&i.ScimExternalID,
+			&i.ScimUserName,
+			&i.LoginGroups,
+			&i.SessionEpoch,
 		); err != nil {
 			return nil, err
 		}

@@ -154,3 +154,58 @@ func (q *Queries) VoidReviews(ctx context.Context, arg VoidReviewsParams) (int64
 	}
 	return result.RowsAffected(), nil
 }
+
+const voidReviewsOf = `-- name: VoidReviewsOf :many
+UPDATE reviews SET voided_at = $1
+WHERE request_id = $2 AND voided_at IS NULL AND (reviewer = $3 OR on_behalf_of = $3)
+RETURNING id, request_id, reviewer, groups, decision, comment, change_set_hash, created_at, reviewer_email, reviewer_auth_time, teams, reviewer_acr, reviewer_acrs, step_up, on_behalf_of, delegation_id, on_behalf_email, on_behalf_groups, on_behalf_teams, voided_at
+`
+
+type VoidReviewsOfParams struct {
+	At        pgtype.Timestamptz
+	RequestID uuid.UUID
+	Name      string
+}
+
+// The reviews of a request by a person, or on their behalf, that count no longer: they were
+// deactivated.
+func (q *Queries) VoidReviewsOf(ctx context.Context, arg VoidReviewsOfParams) ([]Review, error) {
+	rows, err := q.db.Query(ctx, voidReviewsOf, arg.At, arg.RequestID, arg.Name)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Review{}
+	for rows.Next() {
+		var i Review
+		if err := rows.Scan(
+			&i.ID,
+			&i.RequestID,
+			&i.Reviewer,
+			&i.Groups,
+			&i.Decision,
+			&i.Comment,
+			&i.ChangeSetHash,
+			&i.CreatedAt,
+			&i.ReviewerEmail,
+			&i.ReviewerAuthTime,
+			&i.Teams,
+			&i.ReviewerAcr,
+			&i.ReviewerAcrs,
+			&i.StepUp,
+			&i.OnBehalfOf,
+			&i.DelegationID,
+			&i.OnBehalfEmail,
+			&i.OnBehalfGroups,
+			&i.OnBehalfTeams,
+			&i.VoidedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

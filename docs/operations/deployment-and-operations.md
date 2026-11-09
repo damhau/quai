@@ -432,9 +432,11 @@ upgrade to the version with the directory.
   UPDATE users SET subject = '', object_id = '' WHERE name = 'alice';
   ```
 
-- **Deactivating someone**, until SCIM does it (P4-15): their next sign-ins are refused, and the
-  report shows them as deactivated. Their session ends with its lifetime, and their API tokens work
-  until revoked:
+- **Deactivating someone** by hand, without SCIM ([below](#provisioning-with-scim), which does all
+  of it): their sign-ins are refused, their sessions end at their next request, their API tokens are
+  refused while they are deactivated, and the report shows them as deactivated. Revoke the tokens
+  too, so that they stay refused if the person comes back. Their requests, approvals and
+  delegations are left as they are: cancel, and revoke, what should not outlive them:
 
   ```sql
   UPDATE users SET deactivated_at = now() WHERE name = 'alice';
@@ -519,6 +521,113 @@ lookup is counted (`quai.graph.lookups`, by `lookup`, `groups` or `manager`, and
   directory.
 
 Development users have no manager: the user switcher reads no identity provider.
+
+### Provisioning with SCIM
+
+With SCIM 2.0, the identity provider keeps Quai's people and groups current between sign-ins, and
+a leaver is deactivated at once: sessions ended, API tokens and delegations revoked, requests
+cancelled, approvals of waiting requests voided and their approvers told again
+([design 08](../design/08-identity-access-tenancy.md#scim-provisioning)). Quai serves it at
+`/scim/v2` with `auth.scim` set, and `auth.mode: oidc`.
+
+> **Not verified against a real Entra ID tenant.** Quai's tests send the requests Microsoft
+> documents for Entra ID's provisioning service (its test connection, users looked up by
+> `userName`, then created, PATCH operations on attributes and members, a deactivation, a delete).
+> Try it on a test application first, and check the provisioning logs.
+
+**1. Make a SCIM token**, on a trusted machine, and keep the two lines apart:
+
+```bash
+quai scim-token
+# token: quai_scim_…   → Entra ID's Secret Token, and nowhere else
+# sha256: 3f1a…        → the secret Quai reads
+kubectl -n quai create secret generic quai-scim --from-literal=sha256=3f1a…
+```
+
+Quai keeps only the hash: it cannot show the token again, nor mint one.
+
+**2. Configure Quai:**
+
+```yaml
+auth:
+  scim:
+    tokens:
+      - { name: entra, sha256: { ref: "k8s:quai/quai-scim#sha256" } } # the name is the audit log's actor
+    groupName: externalId        # the default: a group is named by its externalId, Entra ID's object ID
+    reserved: [breakglass@contoso.com] # emergency accounts: never created, changed or deactivated by SCIM
+```
+
+`groupName: externalId` matches groups the way the ID token's `groups` claim names them (object
+IDs); use `displayName` only if `auth.roles` and `auth.teams` name groups by display name (the
+`roles` claim of app roles does not come from SCIM, and SCIM groups then have no effect on them).
+List in `reserved` the identity provider's emergency (break-glass) accounts, whatever their case:
+they must sign in whatever provisioning does. Development users are reserved too.
+
+**3. In Entra ID**, under **Enterprise applications**, the application Quai signs in with (or a
+non-gallery application for provisioning), **Provisioning**:
+
+1. **Provisioning Mode**: Automatic. **Tenant URL**: `https://quai.example.com/scim/v2` (the server's
+   public URL). **Secret Token**: the `token` line. **Test Connection**: Entra ID looks up a user
+   and a group that do not exist; Quai answers with empty lists.
+2. **Mappings, Provision Microsoft Entra ID Users**: map `objectId` to `externalId` (the default maps
+   `mailNickname`, which Quai would take for the account's identifier: change it), keep
+   `userPrincipalName` to `userName` (the name people sign in with, `preferred_username`), keep
+   `Switch([IsSoftDeleted], …)` to `active`, and `manager` to
+   `urn:ietf:params:scim:schemas:extension:enterprise:2.0:User:manager` for `approvers: [manager]`.
+   Delete the other mappings: Quai accepts and ignores them, and fewer attributes leave fewer
+   personal data in transit. Matching: `userName`.
+3. **Mappings, Provision Microsoft Entra ID Groups**: map `objectId` to `externalId`, keep
+   `displayName` and `members`. Matching: `displayName` (unique in Quai, in any case).
+4. **Users and groups**: assign who is provisioned. Groups assigned are provisioned with their
+   members (nested groups are not).
+5. **Provisioning Status**: On. The first cycle takes everything assigned; the next ones, every 40
+   minutes, the changes. **Provision on demand** tries one user at once.
+
+**What it changes.** A person signs in under the name SCIM gave them, from their `userName` at
+creation, even after a rename in Entra ID: Quai binds them by `externalId`, their object ID. Someone
+who signed in before provisioning is adopted when their object ID matches. Their groups are their
+sign-in's, less the groups SCIM provisions that do not list them: SCIM never adds a group the ID
+token does not have, and a removal (from the admin group, say) applies at their next request, in
+their sessions and API tokens too. An addition applies to sessions and tokens made with the group,
+otherwise at the next sign-in. For people SCIM provisions, SCIM's manager is the manager, whatever
+`auth.oidc.managerClaim` or `auth.graph.manager` say. The access report marks them **Provisioned**
+and shows each SCIM token's last use; the audit log names the token for each change (actor
+`Provisioning (SCIM token entra)`, filter `scim`).
+
+**Rotating the token.** Make a new one, add it as a second entry (say `entra-2`), put its `token` in
+Entra ID, check its last use in the access report, then remove the old entry and its secret. A
+token is revoked by removing its entry or changing its secret: Quai reads secrets again within a
+minute.
+
+**Leavers.** Entra ID sends `active: false` when a user is disabled, deleted or unassigned, and a
+delete when the user is deleted for good (30 days later); Quai acts at the first: sign-ins refused, sessions ended, API tokens
+and delegations revoked, requests not yet delivered cancelled, approvals of requests still waiting
+voided (their approvers told again; approvals of requests already approved stand). A requester's
+manager who leaves stays the manager of the requests they had: those wait until they expire.
+Re-enabled, the person signs in again, with none of it back. A delete keeps the person's name and
+history in Quai, and the same object ID provisioned again gets them back. A new person given the
+same `userName` is refused (409): the name, and what was done under it, are the old person's. To
+hand them over deliberately, release the name; the next provisioning of that `userName` then
+adopts the row, history included:
+
+```sql
+UPDATE users SET subject = '', object_id = '', scim_external_id = '' WHERE name = 'alice' AND scim_id IS NULL;
+```
+
+**When something fails** (Entra ID's provisioning logs show Quai's answer):
+
+- **401** "a SCIM token is needed": the token is wrong, revoked, or not a SCIM token (an API token is
+  not one). Quai logs the refusal with the client's address.
+- **503** "the SCIM tokens cannot be checked now": a token's secret cannot be read, or does not hold
+  a SHA-256 in hex; the log names the token.
+- **409** "uniqueness" on a user: the `userName` is reserved, is another person's name in Quai (in
+  any case), or another user has the `externalId`. On a group: the `displayName` is taken.
+- **400** "mutability" on `externalId`: the mapping changed after users were provisioned; Quai does
+  not move a person to another account. "invalidFilter": a filter Quai does not take.
+- **429**: more than 50 requests a second; Entra ID retries.
+- **A provisioned person's sign-in is refused** with "Quai's provisioning knows you as …" or "gave
+  the name … to another account": the ID token's object ID and the `externalId` disagree. Check that
+  `externalId` is mapped from `objectId` and that `auth.oidc.nameClaim` is `preferred_username`.
 
 ### Step-up authentication
 

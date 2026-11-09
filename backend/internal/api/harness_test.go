@@ -30,6 +30,7 @@ import (
 	"github.com/damhau/quai/backend/internal/pgtest"
 	"github.com/damhau/quai/backend/internal/repositories"
 	"github.com/damhau/quai/backend/internal/requests"
+	"github.com/damhau/quai/backend/internal/scim"
 	"github.com/damhau/quai/backend/internal/secrets"
 	"github.com/damhau/quai/backend/internal/store"
 )
@@ -56,6 +57,8 @@ type harness struct {
 	clock *testClock
 	// requests is the requests' service: its sweep takes reminders, escalation and expiry by clock.
 	requests *requests.Service
+	// scim is the identity provider's provisioning, with auth.scim configured.
+	scim *scim.Handler
 }
 
 func git(t *testing.T, dir string, args ...string) string {
@@ -256,10 +259,15 @@ func startRepo(t *testing.T, dir, metadata, spec string, opts repositories.Optio
 		si.UseClock(clk.now)
 		apiOpts.SlackInteractions = si
 	}
+	sh := scim.New(cfg.Auth, public, s, opts.Secrets, svc, log)
+	if sh != nil {
+		sh.UseClock(clk.now)
+		apiOpts.SCIM = sh
+	}
 	srv.Config.Handler = New(apiOpts)
 	srv.Start()
 	t.Cleanup(srv.Close)
-	return &harness{t: t, srv: srv, store: s, reg: reg, ingest: hooks, auth: authn, log: &logs, jobs: worker, notify: n, clock: clk, requests: svc}
+	return &harness{t: t, srv: srv, store: s, reg: reg, ingest: hooks, auth: authn, log: &logs, jobs: worker, notify: n, clock: clk, requests: svc, scim: sh}
 }
 
 // push commits a change to the repository as a person would.

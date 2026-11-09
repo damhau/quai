@@ -46,3 +46,10 @@ ORDER BY delegator, id;
 -- A delegation, locked until the transaction ends against its revocation: a review made on its
 -- strength is recorded before the delegation is revoked, or not at all.
 SELECT * FROM delegations WHERE id = $1 FOR SHARE;
+
+-- name: RevokeDelegationsOf :many
+-- Revokes the delegations neither revoked nor ended at an instant that a person gave or received:
+-- they were deactivated.
+UPDATE delegations SET revoked_at = sqlc.arg(at), revoked_by = sqlc.arg(revoked_by)
+WHERE revoked_at IS NULL AND ends_at > sqlc.arg(at) AND (delegator = sqlc.arg(name) OR delegate = sqlc.arg(name))
+RETURNING *;

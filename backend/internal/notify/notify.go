@@ -296,8 +296,9 @@ func audienceOf(e db.Event) audience {
 	switch e.Kind {
 	case "submitted":
 		return audience{requester: Submitted, approvers: ApprovalNeeded}
-	case "approval_needed", "plan_decided", "reminded":
-		// A reminder is an approval needed again: the same recipients, preferences and checks.
+	case "approval_needed", "plan_decided", "reminded", "reviews_voided":
+		// A reminder is an approval needed again: the same recipients, preferences and checks. So
+		// are approvals that no longer count, their approver deactivated.
 		return audience{approvers: ApprovalNeeded}
 	case "escalated":
 		return audience{escalation: true}

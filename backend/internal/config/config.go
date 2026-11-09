@@ -507,6 +507,73 @@ type Auth struct {
 	// Graph lets Quai call Microsoft Graph at an Entra ID sign-in, for the person's manager and the
 	// groups of a group overage; nil: Quai never calls it.
 	Graph *Graph `yaml:"graph"`
+	// SCIM lets the identity provider provision people and groups at /scim/v2; nil: no SCIM.
+	SCIM *SCIM `yaml:"scim"`
+}
+
+// SCIM configures SCIM 2.0 provisioning (docs/design/08-identity-access-tenancy.md#scim-provisioning):
+// the identity provider's provisioning service calls /scim/v2 with a bearer token of its own,
+// which is neither an API token nor a session.
+type SCIM struct {
+	// Tokens are the SCIM tokens Quai accepts, by name: each a secret that holds the token's
+	// SHA-256 in hex, never the token (quai scim-token makes one). Two while rotating.
+	Tokens []SCIMToken `yaml:"tokens"`
+	// GroupName is what names a provisioned group in Quai, as the ID token's groups claim names
+	// it: externalId (the default: Entra ID maps the group's object ID to it) or displayName.
+	GroupName string `yaml:"groupName"`
+	// Reserved are the names SCIM never creates, changes or deactivates: the identity provider's
+	// emergency (break-glass) accounts, which must sign in whatever provisioning does. The
+	// development users are reserved too.
+	Reserved []string `yaml:"reserved"`
+}
+
+// SCIMToken is a SCIM token Quai accepts.
+type SCIMToken struct {
+	// Name names the token in the audit log, which attributes what it does to it.
+	Name string `yaml:"name"`
+	// SHA256 is the secret that holds the token's SHA-256, in hex (k8s:quai/scim#sha256, env:NAME).
+	SHA256 SecretRef `yaml:"sha256"`
+}
+
+// SCIM group names.
+const (
+	SCIMGroupExternalID  = "externalId"
+	SCIMGroupDisplayName = "displayName"
+)
+
+// maxSCIMTokens bounds auth.scim.tokens: one, and the next while rotating.
+const maxSCIMTokens = 4
+
+func (s *SCIM) validate(mode string) error {
+	var errs []error
+	if mode != AuthOIDC {
+		errs = append(errs, errors.New("auth.scim needs auth.mode oidc: SCIM provisions the identity provider's accounts"))
+	}
+	if len(s.Tokens) == 0 || len(s.Tokens) > maxSCIMTokens {
+		errs = append(errs, fmt.Errorf("auth.scim.tokens must name 1 to %d tokens", maxSCIMTokens))
+	}
+	seen := map[string]bool{}
+	for i, t := range s.Tokens {
+		if !exportNameRe.MatchString(t.Name) {
+			errs = append(errs, fmt.Errorf("auth.scim.tokens[%d].name must be lowercase letters, digits and dashes, not %q", i, t.Name))
+		}
+		if seen[t.Name] {
+			errs = append(errs, fmt.Errorf("auth.scim.tokens[%d].name: %s names another token already", i, t.Name))
+		}
+		seen[t.Name] = true
+		if !signingRefRe.MatchString(t.SHA256.Ref) {
+			errs = append(errs, fmt.Errorf("auth.scim.tokens[%d].sha256.ref must be a secret reference such as k8s:namespace/name#key or env:NAME, not %q", i, t.SHA256.Ref))
+		}
+	}
+	if s.GroupName != SCIMGroupExternalID && s.GroupName != SCIMGroupDisplayName {
+		errs = append(errs, fmt.Errorf("auth.scim.groupName must be %s or %s, not %q", SCIMGroupExternalID, SCIMGroupDisplayName, s.GroupName))
+	}
+	for i, r := range s.Reserved {
+		if strings.TrimSpace(r) == "" {
+			errs = append(errs, fmt.Errorf("auth.scim.reserved[%d] is empty", i))
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // Graph configures the calls to Microsoft Graph at an Entra ID sign-in
@@ -810,6 +877,9 @@ func (c *Config) defaults() {
 			g.BaseURL = DefaultGraphBaseURL
 		}
 		g.BaseURL = strings.TrimSuffix(g.BaseURL, "/")
+	}
+	if s := a.SCIM; s != nil && s.GroupName == "" {
+		s.GroupName = SCIMGroupExternalID
 	}
 	if a.Session.Lifetime == 0 {
 		a.Session.Lifetime = 8 * time.Hour
@@ -1295,6 +1365,9 @@ func (a *Auth) validate(env string) error {
 	}
 	if g := a.Graph; g != nil {
 		errs = append(errs, g.validate(a))
+	}
+	if s := a.SCIM; s != nil {
+		errs = append(errs, s.validate(a.Mode))
 	}
 	return errors.Join(errs...)
 }

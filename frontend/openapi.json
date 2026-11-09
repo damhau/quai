@@ -17,6 +17,16 @@
             "format": "date-time",
             "type": "string"
           },
+          "scimTokens": {
+            "description": "The SCIM tokens used, which can change who is active and their groups",
+            "items": {
+              "$ref": "#/components/schemas/AccessSCIMTokenView"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "users": {
             "items": {
               "$ref": "#/components/schemas/AccessUserView"
@@ -29,7 +39,8 @@
         },
         "required": [
           "generatedAt",
-          "users"
+          "users",
+          "scimTokens"
         ],
         "type": "object"
       },
@@ -61,6 +72,25 @@
         ],
         "type": "object"
       },
+      "AccessSCIMTokenView": {
+        "additionalProperties": false,
+        "properties": {
+          "lastUsedAt": {
+            "description": "Its last use, to the minute",
+            "format": "date-time",
+            "type": "string"
+          },
+          "name": {
+            "description": "Its name in auth.scim.tokens",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "lastUsedAt"
+        ],
+        "type": "object"
+      },
       "AccessTokenView": {
         "additionalProperties": false,
         "properties": {
@@ -69,7 +99,7 @@
             "type": "string"
           },
           "groups": {
-            "description": "The groups its owner had when creating it, which it acts with",
+            "description": "The groups its owner had when creating it, which it acts with; for a provisioned owner, those SCIM still gives them",
             "items": {
               "type": "string"
             },
@@ -154,6 +184,10 @@
           "objectId": {
             "description": "Entra ID's object ID (oid)",
             "type": "string"
+          },
+          "provisioned": {
+            "description": "The identity provider's provisioning (SCIM) keeps the person current: their groups are those of their last sign-in that SCIM still gives them",
+            "type": "boolean"
           },
           "roles": {
             "items": {
@@ -297,7 +331,8 @@
               "user",
               "token",
               "runner",
-              "system"
+              "system",
+              "scim"
             ],
             "type": "string"
           }
@@ -3544,7 +3579,7 @@
             "type": "boolean"
           },
           "voided": {
-            "description": "The request expired: the review is void and never counts again",
+            "description": "The review is void and never counts again: the request expired, or the reviewer (or the person they approved for) was deactivated",
             "type": "boolean"
           }
         },

@@ -34,7 +34,7 @@ type AuditInput struct {
 // AuditActorView is who did what an event records. Personal data is a pseudonym (pd:…), its
 // clear value in the page's personal map until it is deleted.
 type AuditActorView struct {
-	Type     string `json:"type" enum:"user,token,runner,system"`
+	Type     string `json:"type" enum:"user,token,runner,system,scim"`
 	ID       string `json:"id"`
 	Token    string `json:"token,omitempty" doc:"The API token's ID"`
 	IP       string `json:"ip,omitempty"`

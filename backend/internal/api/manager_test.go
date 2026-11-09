@@ -22,6 +22,23 @@ import (
 // production rule asks for the requester's manager instead of a platform admin.
 func managerHarness(t *testing.T, configure func(c *config.Config, g *graphtest.Graph)) (*harness, *oidctest.Provider, *graphtest.Graph) {
 	t.Helper()
+	h, p, g := oidcHarness(t, repositories.Options{}, configure)
+	vm, err := os.ReadFile(filepath.Join(h.work, ".quai/types/vm.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const production = "        approvers: [group:platform-admins]\n"
+	if strings.Count(string(vm), production) != 1 {
+		t.Fatal("the example vm type changed its production rule")
+	}
+	h.push(".quai/types/vm.yaml", strings.Replace(string(vm), production, "        approvers: [manager]\n", 1))
+	return h, p, g
+}
+
+// oidcHarness is a harness where people sign in with an identity provider (oidctest), with the
+// development users' roles, and Microsoft Graph (graphtest) at hand.
+func oidcHarness(t *testing.T, opts repositories.Options, configure func(c *config.Config, g *graphtest.Graph)) (*harness, *oidctest.Provider, *graphtest.Graph) {
+	t.Helper()
 	p, g := oidctest.New(t), graphtest.New(t)
 	p.IssueAccessTokens(g.Issue)
 	var bundle []byte
@@ -38,7 +55,7 @@ func managerHarness(t *testing.T, configure func(c *config.Config, g *graphtest.
 		t.Fatal(err)
 	}
 	bare, work := localRemote(t, dir)
-	h := start(t, dir, "connector: generic\n  url: "+bare+"\n  sync: { minInterval: 1ns }", repositories.Options{}, func(c *config.Config) {
+	h := start(t, dir, "connector: generic\n  url: "+bare+"\n  sync: { minInterval: 1ns }", opts, func(c *config.Config) {
 		// The development users' roles, for people who sign in with the identity provider.
 		c.Auth.Mode, c.Auth.Dev = config.AuthOIDC, config.Dev{}
 		c.Auth.OIDC = config.OIDC{Issuer: p.Issuer(), ClientID: oidctest.ClientID, ClientSecret: "s", Scopes: []string{"openid"},
@@ -47,15 +64,6 @@ func managerHarness(t *testing.T, configure func(c *config.Config, g *graphtest.
 		configure(c, g)
 	})
 	h.bare, h.work = bare, work
-	vm, err := os.ReadFile(filepath.Join(h.work, ".quai/types/vm.yaml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	const production = "        approvers: [group:platform-admins]\n"
-	if strings.Count(string(vm), production) != 1 {
-		t.Fatal("the example vm type changed its production rule")
-	}
-	h.push(".quai/types/vm.yaml", strings.Replace(string(vm), production, "        approvers: [manager]\n", 1))
 	return h, p, g
 }
 

@@ -5,7 +5,9 @@ import (
 	"errors"
 	"slices"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/damhau/quai/backend/internal/auth"
 	"github.com/damhau/quai/backend/internal/engine/policy"
@@ -44,7 +46,20 @@ func (s *Service) managerOf(ctx context.Context, requester string) (name, reason
 	case u.ManagerID == "":
 		return "", "Quai knows no manager for " + requester + ": no ID token claim or Microsoft Graph lookup names one", nil
 	}
-	found, err := s.store.UsersByIdentifier(ctx, db.UsersByIdentifierParams{ID: u.ManagerID, BySubject: u.ManagerSource != auth.ManagerFromGraph})
+	var found []db.User
+	if u.ManagerSource == auth.ManagerFromSCIM { // the manager's SCIM id (open question 87)
+		id, perr := uuid.Parse(u.ManagerID)
+		m, err := s.store.SCIMUser(ctx, pgtype.UUID{Bytes: id, Valid: perr == nil})
+		switch {
+		case perr != nil, errors.Is(err, pgx.ErrNoRows):
+			return "", requester + "'s manager is not provisioned in Quai", nil
+		case err != nil:
+			return "", "", err
+		}
+		found = []db.User{m}
+	} else {
+		found, err = s.store.UsersByIdentifier(ctx, db.UsersByIdentifierParams{ID: u.ManagerID, BySubject: u.ManagerSource != auth.ManagerFromGraph})
+	}
 	switch {
 	case err != nil:
 		return "", "", err

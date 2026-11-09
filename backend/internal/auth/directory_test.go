@@ -2,12 +2,15 @@ package auth_test
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/jackc/pgx/v5"
 
 	"github.com/damhau/quai/backend/internal/auth"
 	"github.com/damhau/quai/backend/internal/authz"
@@ -163,16 +166,13 @@ func TestUsers(t *testing.T) {
 		t.Errorf("the refused login changed bob: %+v", u)
 	}
 	// The query refuses it too, for a login that looked before the name was taken.
-	record := func(subject string) int64 {
+	record := func(subject string) error {
 		t.Helper()
-		n, err := s.RecordUserLogin(ctx, db.RecordUserLoginParams{Name: "bob", Subject: subject, Groups: []string{"never-recorded"}})
-		if err != nil {
-			t.Fatal(err)
-		}
-		return n
+		_, err := s.RecordUserLogin(ctx, db.RecordUserLoginParams{Name: "bob", Subject: subject, Groups: []string{"never-recorded"}})
+		return err
 	}
-	if n := record("sub-other"); n != 0 {
-		t.Errorf("another subject recorded: %d", n)
+	if err := record("sub-other"); !errors.Is(err, pgx.ErrNoRows) {
+		t.Errorf("another subject recorded: %v", err)
 	}
 	// An administrator releases the name: the next login takes it.
 	if _, err := s.Pool.Exec(ctx, "UPDATE users SET subject = '' WHERE name = 'bob'"); err != nil {
@@ -193,8 +193,8 @@ func TestUsers(t *testing.T) {
 	if status != http.StatusForbidden || !strings.Contains(body, "deactivated") {
 		t.Errorf("deactivated = %d %s", status, body)
 	}
-	if n := record("sub-other"); n != 0 {
-		t.Errorf("a deactivated person's login recorded: %d", n)
+	if err := record("sub-other"); !errors.Is(err, pgx.ErrNoRows) {
+		t.Errorf("a deactivated person's login recorded: %v", err)
 	}
 	if u, _ := s.GetUser(ctx, "bob"); slices.Contains(u.Groups, "never-recorded") {
 		t.Errorf("refused logins changed bob: %+v", u)

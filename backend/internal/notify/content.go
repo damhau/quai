@@ -266,6 +266,8 @@ func (s *Service) requestMessage(ctx context.Context, kind string, e db.Event, r
 			m.Headline = "Request " + num + " was changed outside Quai: its approvals are void, and it needs yours for the new content."
 		case "reminded":
 			m.Headline = "Reminder: " + r.Requester + "'s request " + num + " still waits for your approval" + after(e) + "."
+		case "reviews_voided":
+			m.Headline = "Request " + num + " needs your approval again: " + str("approver") + " was deactivated, and their approval no longer counts."
 		default:
 			m.Headline = "Request " + num + " needs your approval: its plan makes a rule apply."
 		}
@@ -491,6 +493,8 @@ func (s *Service) channelMessage(ctx context.Context, n db.Notification, e db.Ev
 			m.Headline = "Request " + num + " was changed outside Quai: it waits for approval of its new content."
 		case "reminded":
 			m.Headline = "Request " + num + " still waits for approval" + after(e) + "."
+		case "reviews_voided":
+			m.Headline = "Request " + num + " waits for approval again: an approver was deactivated."
 		}
 	case Approved:
 		m.Headline = "Request " + num + " was approved."

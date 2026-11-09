@@ -280,6 +280,32 @@ type Run struct {
 	Plan        json.RawMessage
 }
 
+type ScimGroup struct {
+	ID          uuid.UUID
+	OrgID       string
+	ExternalID  string
+	DisplayName string
+	CreatedAt   pgtype.Timestamptz
+	UpdatedAt   pgtype.Timestamptz
+}
+
+type ScimKnownGroup struct {
+	OrgID string
+	Kind  string
+	Name  string
+}
+
+type ScimMember struct {
+	OrgID    string
+	GroupID  uuid.UUID
+	UserName string
+}
+
+type ScimToken struct {
+	Name       string
+	LastUsedAt pgtype.Timestamptz
+}
+
 type Session struct {
 	Token  string
 	Data   []byte
@@ -287,20 +313,25 @@ type Session struct {
 }
 
 type User struct {
-	OrgID         string
-	Name          string
-	Email         string
-	Groups        []string
-	Subject       string
-	ObjectID      string
-	LastLogin     pgtype.Timestamptz
-	AuthTime      pgtype.Timestamptz
-	DeactivatedAt pgtype.Timestamptz
-	CreatedAt     pgtype.Timestamptz
-	UpdatedAt     pgtype.Timestamptz
-	ManagerID     string
-	ManagerSource string
-	ManagerReason string
+	OrgID          string
+	Name           string
+	Email          string
+	Groups         []string
+	Subject        string
+	ObjectID       string
+	LastLogin      pgtype.Timestamptz
+	AuthTime       pgtype.Timestamptz
+	DeactivatedAt  pgtype.Timestamptz
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+	ManagerID      string
+	ManagerSource  string
+	ManagerReason  string
+	ScimID         pgtype.UUID
+	ScimExternalID string
+	ScimUserName   string
+	LoginGroups    []string
+	SessionEpoch   int64
 }
 
 type WebhookDelivery struct {

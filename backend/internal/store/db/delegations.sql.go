@@ -270,6 +270,50 @@ func (q *Queries) RevokeDelegation(ctx context.Context, arg RevokeDelegationPara
 	return i, err
 }
 
+const revokeDelegationsOf = `-- name: RevokeDelegationsOf :many
+UPDATE delegations SET revoked_at = $1, revoked_by = $2
+WHERE revoked_at IS NULL AND ends_at > $1 AND (delegator = $3 OR delegate = $3)
+RETURNING id, org_id, delegator, delegate, starts_at, ends_at, created_at, revoked_at, revoked_by
+`
+
+type RevokeDelegationsOfParams struct {
+	At        pgtype.Timestamptz
+	RevokedBy string
+	Name      string
+}
+
+// Revokes the delegations neither revoked nor ended at an instant that a person gave or received:
+// they were deactivated.
+func (q *Queries) RevokeDelegationsOf(ctx context.Context, arg RevokeDelegationsOfParams) ([]Delegation, error) {
+	rows, err := q.db.Query(ctx, revokeDelegationsOf, arg.At, arg.RevokedBy, arg.Name)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Delegation{}
+	for rows.Next() {
+		var i Delegation
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.Delegator,
+			&i.Delegate,
+			&i.StartsAt,
+			&i.EndsAt,
+			&i.CreatedAt,
+			&i.RevokedAt,
+			&i.RevokedBy,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const shareDelegation = `-- name: ShareDelegation :one
 SELECT id, org_id, delegator, delegate, starts_at, ends_at, created_at, revoked_at, revoked_by FROM delegations WHERE id = $1 FOR SHARE
 `

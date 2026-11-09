@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router"
 import { useQuery } from "@tanstack/react-query"
 import { Download } from "lucide-react"
 import { getAccessReportOptions } from "@/api/generated/@tanstack/react-query.gen"
-import type { AccessRoleView, AccessUserView } from "@/api/generated/types.gen"
+import type { AccessRoleView, AccessScimTokenView, AccessUserView } from "@/api/generated/types.gen"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { buttonVariants } from "@/components/ui/button"
@@ -37,7 +37,8 @@ function AccessReport() {
           </h1>
           <p className="text-muted-foreground">
             Everyone who has signed in or holds an API token: the groups of their last sign-in, and the teams and roles the
-            current configuration gives them. A token acts with the groups its owner had when creating it.
+            current configuration gives them. A token acts with the groups its owner had when creating it. For someone the
+            identity provider provisions (SCIM), only the groups it still gives them count, in sessions and tokens alike.
           </p>
         </div>
         <a href={accessExportURL} download className={buttonVariants({ variant: "outline" })}>
@@ -91,6 +92,7 @@ function AccessReport() {
               </TableBody>
             </Table>
           )}
+          <ScimTokens tokens={report.data.scimTokens ?? []} />
         </>
       )}
     </section>
@@ -115,6 +117,11 @@ function Person({ user: u }: { user: AccessUserView }) {
           </Badge>
         ) : (
           <Badge variant="secondary">Active</Badge>
+        )}
+        {u.provisioned && (
+          <Badge variant="outline" className="mt-1 block w-fit" title="The identity provider's provisioning (SCIM) keeps this person current">
+            Provisioned
+          </Badge>
         )}
       </TableCell>
       <TableCell className="min-w-40 text-sm whitespace-normal">{list(u.groups)}</TableCell>
@@ -143,6 +150,29 @@ function Person({ user: u }: { user: AccessUserView }) {
         {u.authTime && <div className="text-muted-foreground">authenticated {when(u.authTime)}</div>}
       </TableCell>
     </TableRow>
+  )
+}
+
+/** ScimTokens lists the SCIM tokens the identity provider's provisioning used, and when last. */
+function ScimTokens({ tokens }: { tokens: AccessScimTokenView[] }) {
+  if (tokens.length === 0) return null
+  return (
+    <section aria-labelledby="scim-title" className="grid gap-2">
+      <h2 id="scim-title" className="text-lg font-semibold">
+        Provisioning (SCIM)
+      </h2>
+      <p className="text-muted-foreground text-sm">
+        The tokens of <code>auth.scim.tokens</code> the identity provider used: they can deactivate people and change their
+        groups.
+      </p>
+      <ul className="grid gap-1 text-sm" aria-label="SCIM tokens">
+        {tokens.map((t) => (
+          <li key={t.name}>
+            <span className="font-medium">{t.name}</span> <span className="text-muted-foreground">last used {when(t.lastUsedAt)}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
   )
 }
 

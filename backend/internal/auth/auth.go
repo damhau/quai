@@ -80,6 +80,8 @@ type sessionUser struct {
 	AuthTime time.Time `json:"auth_time"`
 	ACR      string    `json:"acr,omitempty"`
 	ACRS     []string  `json:"acrs,omitempty"`
+	// Epoch is the person's session epoch at the sign-in: a deactivation since ends the session.
+	Epoch int64 `json:"epoch,omitempty"`
 }
 
 // login is a sign-in: the session's user, how they signed in, and the identity provider's
@@ -123,6 +125,17 @@ const SlackInteractionsPath = "/slack/interactions"
 // under it, nor one that only decodes to it.
 func IsSlackInteractions(r *http.Request) bool {
 	return r.URL.Path == SlackInteractionsPath && r.URL.RawPath == ""
+}
+
+// SCIMPath is where the identity provider's provisioning calls (docs/design/08-identity-access-
+// tenancy.md#scim-provisioning): no session is loaded or saved there, no API token or CSRF token
+// checked; internal/scim takes its own token, and nothing else.
+const SCIMPath = "/scim/"
+
+// IsSCIM reports whether a request is for a path under SCIMPath, exactly: not one that only
+// decodes to it.
+func IsSCIM(r *http.Request) bool {
+	return strings.HasPrefix(r.URL.Path, SCIMPath) && r.URL.RawPath == ""
 }
 
 // Session keys.
@@ -193,8 +206,8 @@ func (a *Authenticator) Directory() *Directory { return a.dir }
 
 // Middleware loads the session and identifies the request: an API token in the Authorization
 // header, or else the session's user. It refuses a state-changing request made with a session
-// but without its CSRF token. Slack's interactions (SlackInteractionsPath) pass through untouched:
-// no session, no identity.
+// but without its CSRF token. Slack's interactions (SlackInteractionsPath) and SCIM (SCIMPath)
+// pass through untouched: no session, no identity.
 func (a *Authenticator) Middleware(next http.Handler) http.Handler {
 	identify := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
@@ -228,7 +241,7 @@ func (a *Authenticator) Middleware(next http.Handler) http.Handler {
 	})
 	sessions := a.sessions.LoadAndSave(identify)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if IsSlackInteractions(r) {
+		if IsSlackInteractions(r) || IsSCIM(r) {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -240,6 +253,10 @@ func safeMethod(m string) bool {
 	return m == http.MethodGet || m == http.MethodHead || m == http.MethodOptions
 }
 
+// sessionIdentity is the session's user, as the directory has them now: a session of a person
+// deactivated since it began is over, and destroyed, a reactivation notwithstanding (the epoch);
+// a provisioned person holds only those of the session's groups the directory still gives them,
+// so that SCIM taking a group away takes it from their sessions at once (open question 85).
 func (a *Authenticator) sessionIdentity(ctx context.Context) (Identity, bool) {
 	raw := a.sessions.GetBytes(ctx, keyUser)
 	if raw == nil {
@@ -248,6 +265,19 @@ func (a *Authenticator) sessionIdentity(ctx context.Context) (Identity, bool) {
 	var u sessionUser
 	if err := json.Unmarshal(raw, &u); err != nil || u.Name == "" {
 		return Identity{}, false
+	}
+	switch row, err := a.store.GetUser(ctx, u.Name); {
+	case errors.Is(err, pgx.ErrNoRows): // not in the directory: as the session says
+	case err != nil:
+		a.log.ErrorContext(ctx, "session: the directory cannot be read", slog.Any("error", err))
+		return Identity{}, false
+	case row.DeactivatedAt.Valid || row.SessionEpoch != u.Epoch:
+		if err := a.sessions.Destroy(ctx); err != nil {
+			a.log.WarnContext(ctx, "session: a session of a deactivated person was not destroyed", slog.Any("error", err))
+		}
+		return Identity{}, false
+	case row.ScimID.Valid:
+		u.Groups = held(u.Groups, row.Groups)
 	}
 	p := a.principal(u.Name, u.Groups, nil)
 	p.Email = u.Email
@@ -270,6 +300,17 @@ func (a *Authenticator) principal(name string, groups, scopes []string) authz.Pr
 		}
 	}
 	return p
+}
+
+// held returns those of groups that the directory gives the person (current), in their order.
+func held(groups, current []string) []string {
+	out := []string{}
+	for _, g := range groups {
+		if slices.Contains(current, g) {
+			out = append(out, g)
+		}
+	}
+	return out
 }
 
 // signIn starts a session for a user: a new session token, against fixation, and a CSRF token.
@@ -443,7 +484,7 @@ func (a *Authenticator) callback(w http.ResponseWriter, r *http.Request) {
 			a.log.WarnContext(ctx, "login: the step-up is not satisfied", slog.String("user", u.Name), slog.String("reason", why))
 		}
 	}
-	if err := a.recordLogin(ctx, u); err != nil {
+	if err := a.recordLogin(ctx, &u); err != nil {
 		a.refuseOrFail(w, r, err)
 		return
 	}
@@ -575,7 +616,7 @@ func (a *Authenticator) devLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	du := a.cfg.Dev.Users[i]
 	u := login{sessionUser: sessionUser{Name: du.Name, Email: du.Email, Groups: du.Groups, AuthTime: a.now().Truncate(time.Second)}, Method: config.AuthDev, ObjectID: du.ObjectID}
-	if err := a.recordLogin(r.Context(), u); err != nil {
+	if err := a.recordLogin(r.Context(), &u); err != nil {
 		a.refuseOrFail(w, r, err)
 		return
 	}
@@ -633,11 +674,24 @@ func (a *Authenticator) tokenIdentity(ctx context.Context, header string) (Ident
 	if err := a.store.TouchAPIToken(ctx, t.ID); err != nil {
 		a.log.WarnContext(ctx, "api token: last use not recorded", slog.Any("error", err))
 	}
+	// A token acts with its owner's groups when they created it; a provisioned owner, with those
+	// the directory still gives them (open question 85). A deactivated owner's tokens are revoked;
+	// one deactivated outside SCIM is refused all the same.
+	groups := t.Groups
+	switch owner, err := a.store.GetUser(ctx, t.Owner); {
+	case errors.Is(err, pgx.ErrNoRows):
+	case err != nil:
+		return Identity{}, err
+	case owner.DeactivatedAt.Valid:
+		return Identity{}, errors.New("the API token's owner is deactivated")
+	case owner.ScimID.Valid:
+		groups = held(groups, owner.Groups)
+	}
 	scopes := t.Scopes
 	if scopes == nil {
 		scopes = []string{}
 	}
-	return Identity{Principal: a.principal(t.Owner, t.Groups, scopes), TokenID: t.ID.String()}, nil
+	return Identity{Principal: a.principal(t.Owner, groups, scopes), TokenID: t.ID.String()}, nil
 }
 
 // random returns n random bytes, URL-safe base64 encoded.

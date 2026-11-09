@@ -415,6 +415,70 @@ func (q *Queries) LockRequest(ctx context.Context, id uuid.UUID) (Request, error
 	return i, err
 }
 
+const pendingReviewedBy = `-- name: PendingReviewedBy :many
+SELECT r.id, r.org_id, r.kind, r.action, r.target, r.type_name, r.blueprint, r.requester, r.reason, r.inputs, r.state, r.definitions_commit, r.base_commit, r.created_at, r.updated_at, r.number, r.requester_email, r.stack, r.rules, r.owners, r.stacks, r.codeowners, r.codeowners_unmatched, r.step_up, r.manager, r.manager_reason, r.separation, r.submitted_at, r.expiry, r.expires_at, r.reminded_at, r.escalated_at, r.expiry_warned_at FROM requests r
+WHERE r.state = 'pending_approval' AND EXISTS (
+    SELECT 1 FROM reviews v WHERE v.request_id = r.id AND v.voided_at IS NULL
+      AND (v.reviewer = $1 OR v.on_behalf_of = $1))
+ORDER BY r.submitted_at, r.id
+`
+
+// The requests waiting for approval that a person reviewed, or that were reviewed on their behalf,
+// with a review not voided.
+func (q *Queries) PendingReviewedBy(ctx context.Context, name string) ([]Request, error) {
+	rows, err := q.db.Query(ctx, pendingReviewedBy, name)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Request{}
+	for rows.Next() {
+		var i Request
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.Kind,
+			&i.Action,
+			&i.Target,
+			&i.TypeName,
+			&i.Blueprint,
+			&i.Requester,
+			&i.Reason,
+			&i.Inputs,
+			&i.State,
+			&i.DefinitionsCommit,
+			&i.BaseCommit,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Number,
+			&i.RequesterEmail,
+			&i.Stack,
+			&i.Rules,
+			&i.Owners,
+			&i.Stacks,
+			&i.Codeowners,
+			&i.CodeownersUnmatched,
+			&i.StepUp,
+			&i.Manager,
+			&i.ManagerReason,
+			&i.Separation,
+			&i.SubmittedAt,
+			&i.Expiry,
+			&i.ExpiresAt,
+			&i.RemindedAt,
+			&i.EscalatedAt,
+			&i.ExpiryWarnedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const setRequestEscalated = `-- name: SetRequestEscalated :exec
 UPDATE requests SET escalated_at = $1 WHERE id = $2
 `

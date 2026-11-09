@@ -27,6 +27,7 @@ const labels: Record<string, string> = {
   "auth.logout": "Signed out",
   "auth.grants_changed": "Roles changed",
   "auth.manager_changed": "Manager changed",
+  "auth.groups_changed": "Groups changed by provisioning",
   "auth.step_up_refused": "Refused: sign-in not recent enough",
   "token.created": "API token created",
   "token.revoked": "API token revoked",
@@ -42,6 +43,7 @@ const labels: Record<string, string> = {
   "request.merged_without_approval": "Merged without approval",
   "request.applied": "Request applied",
   "request.failed": "Request failed",
+  "request.reviews_voided": "Approvals voided: approver deactivated",
   "repository.created": "Repository connected",
   "repository.updated": "Repository changed",
   "repository.deleted": "Repository disconnected",
@@ -51,6 +53,15 @@ const labels: Record<string, string> = {
   "audit.verified": "Audit log verified",
   "audit.broken": "Audit log does not verify",
   "audit.pruned": "Audit log pruned",
+  "scim.user_created": "User provisioned",
+  "scim.user_changed": "Provisioned user changed",
+  "scim.user_deactivated": "User deactivated by provisioning",
+  "scim.user_reactivated": "User reactivated by provisioning",
+  "scim.user_deleted": "User deprovisioned",
+  "scim.group_created": "Group provisioned",
+  "scim.group_changed": "Provisioned group changed",
+  "scim.group_deleted": "Group deprovisioned",
+  "scim.members_changed": "Group members changed",
 }
 
 /** actionLabel names an action for people; an action this version does not know keeps its code. */
@@ -68,6 +79,7 @@ export const actionGroups = [
   { value: "request", label: "Requests" },
   { value: "repository", label: "Repositories" },
   { value: "definitions", label: "Definitions" },
+  { value: "scim", label: "Provisioning (SCIM)" },
   { value: "audit", label: "The audit log itself" },
 ]
 
@@ -78,6 +90,8 @@ export function actorLabel(a: AuditActorView, personal: Personal): string {
       return "Quai"
     case "runner":
       return `Runner of ${a.id}`
+    case "scim":
+      return `Provisioning (SCIM token ${a.id})`
     case "token":
       return `${clear(a.id, personal)} (API token)`
     default:

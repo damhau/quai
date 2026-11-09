@@ -173,7 +173,7 @@ type ReviewView struct {
 	// OnBehalfOf and Delegation: a review made with the approvals someone delegated.
 	OnBehalfOf string `json:"onBehalfOf,omitempty" doc:"The person on whose behalf the reviewer reviewed, with the approvals they delegated: the review counts for them and the reviewer, once"`
 	Delegation string `json:"delegation,omitempty" doc:"The delegation the review used"`
-	Voided     bool   `json:"voided,omitempty" doc:"The request expired: the review is void and never counts again"`
+	Voided     bool   `json:"voided,omitempty" doc:"The review is void and never counts again: the request expired, or the reviewer (or the person they approved for) was deactivated"`
 }
 
 // ReviewForView is someone the caller may review a request for now, with the approvals they
@@ -618,11 +618,10 @@ func requestView(ctx context.Context, svc *requests.Service, s *store.Store, r d
 	if err != nil {
 		reviews = nil
 	}
-	if r.State == requests.Expired {
-		// Its approvals are void: shown as its history, marked so (they count no longer).
-		if voided, err := svc.Voided(ctx, r); err == nil {
-			reviews = append(reviews, voided...)
-		}
+	// Reviews made void, by its expiry or their reviewer's deactivation, are shown as its history,
+	// marked so (they count no longer).
+	if voided, err := svc.Voided(ctx, r); err == nil {
+		reviews = append(reviews, voided...)
 	}
 	v.Rules = ruleViews(rules, outcome.Rules)
 	v.Codeowners = codeownersView(rules, r.Codeowners, r.CodeownersUnmatched)

@@ -38,6 +38,10 @@ test("auditors read who has which roles, from which groups, and download it as C
   expect(within(sam).getByText("sg-quai-platform, sg-quai-shop")).toBeInTheDocument()
   expect(within(sam).getByText("platform, shop")).toBeInTheDocument()
   expect(within(sam).getByText("oid 8f0c-oid")).toBeInTheDocument()
+  // Provisioned by the identity provider, whose SCIM token's last use is listed.
+  expect(within(sam).getByText("Provisioned")).toBeInTheDocument()
+  expect(within(bob).queryByText("Provisioned")).not.toBeInTheDocument()
+  expect(within(screen.getByRole("list", { name: "SCIM tokens" })).getByText("entra")).toBeInTheDocument()
 
   const carol = row(table, "carol")
   expect(within(carol).getByText("Deactivated")).toBeInTheDocument()

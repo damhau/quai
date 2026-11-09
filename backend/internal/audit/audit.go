@@ -35,13 +35,16 @@ const (
 	Token  = "token"  // a person's API token
 	Runner = "runner" // a repository's runner, reporting with its run token
 	System = "system" // Quai itself: jobs, webhooks, its configuration
+	// Provisioning is the identity provider's provisioning, with a SCIM token: its ID is the
+	// token's name (auth.scim.tokens), never a person.
+	Provisioning = "scim"
 )
 
 // Actor is who did what an event records.
 type Actor struct {
 	Type string
 	// ID is the person's name for a user or a token (personal data), the repository for a runner,
-	// quai for the system.
+	// the SCIM token's name for provisioning, quai for the system.
 	ID string
 	// Token is the API token's ID.
 	Token string

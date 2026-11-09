@@ -49,6 +49,8 @@ const (
 const (
 	ManagerFromClaim = "claim"
 	ManagerFromGraph = "graph"
+	// ManagerFromSCIM: the enterprise extension's manager, the manager's SCIM id (open question 87).
+	ManagerFromSCIM = "scim"
 )
 
 type graphClient struct {
