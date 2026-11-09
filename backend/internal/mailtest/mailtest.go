@@ -6,6 +6,7 @@ package mailtest
 
 import (
 	"archive/tar"
+	"bufio"
 	"bytes"
 	"compress/gzip"
 	"context"
@@ -13,11 +14,13 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"math/big"
@@ -77,36 +80,59 @@ type Server struct {
 }
 
 // Start starts a Mailpit for a test, stopped when it ends.
+//
+// Its ports are free when chosen, not when Mailpit binds them: a server another test starts at the
+// same moment can take one in between, and Mailpit then exits. Until it does, the other server can
+// answer in its place: on 2026-11-09 another test's Mailpit answered the API, and the SMTP client
+// read EOF from this one as it exited. So it is ready only once the API reports its own database
+// and its SMTP port greets, and a start that lost a port is retried on others.
 func Start(t testing.TB, opts Options) *Server {
 	t.Helper()
 	bin, err := binary()
 	if err != nil {
 		t.Fatalf("mailtest: %v", err)
 	}
+	switch opts.Transport {
+	case "", STARTTLS, TLS, Plain:
+	default:
+		t.Fatalf("mailtest: unknown transport %q", opts.Transport)
+	}
+	for attempt := 1; ; attempt++ {
+		s, err := start(t, bin, opts)
+		if err == nil {
+			return s
+		}
+		if !errors.Is(err, errPortTaken) || attempt == 5 {
+			t.Fatalf("mailtest: %v", err)
+		}
+	}
+}
+
+var errPortTaken = errors.New("a port was taken before mailpit bound it")
+
+func start(t testing.TB, bin string, opts Options) (*Server, error) {
 	dir := t.TempDir()
 	s := &Server{Host: "127.0.0.1", Port: freePort(t), CAFile: filepath.Join(dir, "ca.pem")}
 	apiPort := freePort(t)
 	s.API = "http://127.0.0.1:" + strconv.Itoa(apiPort)
 	cert, key := filepath.Join(dir, "cert.pem"), filepath.Join(dir, "key.pem")
 	if err := certificates(s.CAFile, cert, key); err != nil {
-		t.Fatalf("mailtest: %v", err)
+		return nil, err
 	}
+	database := filepath.Join(dir, "mailpit.db")
 	args := []string{"--disable-version-check", "--quiet", "--enable-chaos", "--smtp-disable-rdns", "--smtp-strict-rfc-headers",
-		"--database", filepath.Join(dir, "mailpit.db"),
+		"--database", database,
 		"--listen", "127.0.0.1:" + strconv.Itoa(apiPort), "--smtp", "127.0.0.1:" + strconv.Itoa(s.Port)}
 	switch opts.Transport {
 	case "", STARTTLS:
 		args = append(args, "--smtp-tls-cert", cert, "--smtp-tls-key", key, "--smtp-require-starttls")
 	case TLS:
 		args = append(args, "--smtp-tls-cert", cert, "--smtp-tls-key", key, "--smtp-require-tls")
-	case Plain:
-	default:
-		t.Fatalf("mailtest: unknown transport %q", opts.Transport)
 	}
 	if opts.Username != "" {
 		auth := filepath.Join(dir, "auth")
 		if err := os.WriteFile(auth, []byte(opts.Username+":"+opts.Password+"\n"), 0o600); err != nil {
-			t.Fatal(err)
+			return nil, err
 		}
 		args = append(args, "--smtp-auth-file", auth)
 	}
@@ -114,7 +140,7 @@ func Start(t testing.TB, opts Options) *Server {
 	cmd := exec.Command(bin, args...) // #nosec G204 -- the checksummed binary
 	cmd.Dir, cmd.Stdout, cmd.Stderr = dir, &log, &log
 	if err := cmd.Start(); err != nil {
-		t.Fatalf("mailtest: %v", err)
+		return nil, err
 	}
 	done := make(chan struct{})
 	go func() { _ = cmd.Wait(); close(done) }()
@@ -129,23 +155,65 @@ func Start(t testing.TB, opts Options) *Server {
 	})
 	deadline := time.Now().Add(30 * time.Second)
 	for {
-		resp, err := http.Get(s.API + "/readyz")
-		if err == nil {
-			_ = resp.Body.Close()
-			if resp.StatusCode == http.StatusOK {
-				return s
-			}
-		}
 		select {
-		case <-done:
-			t.Fatalf("mailtest: mailpit stopped: %s", log.String())
+		case <-done: // the log is complete once it exited
+			if strings.Contains(log.String(), "address already in use") {
+				return nil, fmt.Errorf("%w: %s", errPortTaken, log.String())
+			}
+			return nil, fmt.Errorf("mailpit stopped: %s", log.String())
 		default:
 		}
+		if s.ours(database) && s.greets(opts.Transport) {
+			select {
+			case <-done: // it lost a port after all: the loop says which
+			default:
+				return s, nil
+			}
+		}
 		if time.Now().After(deadline) {
-			t.Fatalf("mailtest: mailpit did not start: %v\n%s", err, log.String())
+			_ = cmd.Process.Kill()
+			<-done
+			return nil, fmt.Errorf("mailpit did not start: %s", log.String())
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
+}
+
+// ours reports whether the Mailpit answering on the API port is this one, by its database.
+func (s *Server) ours(database string) bool {
+	resp, err := http.Get(s.API + "/api/v1/info")
+	if err != nil {
+		return false
+	}
+	defer func() { _ = resp.Body.Close() }()
+	var info struct{ Database string }
+	return resp.StatusCode == http.StatusOK && json.NewDecoder(resp.Body).Decode(&info) == nil && info.Database == database
+}
+
+// greets reports whether the SMTP port answers with a greeting, over TLS for transport TLS.
+func (s *Server) greets(transport string) bool {
+	addr := net.JoinHostPort(s.Host, strconv.Itoa(s.Port))
+	conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
+	if err != nil {
+		return false
+	}
+	defer func() { _ = conn.Close() }()
+	_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
+	if transport == TLS {
+		ca, err := os.ReadFile(s.CAFile)
+		if err != nil {
+			return false
+		}
+		roots := x509.NewCertPool()
+		roots.AppendCertsFromPEM(ca)
+		tlsConn := tls.Client(conn, &tls.Config{RootCAs: roots, ServerName: s.Host, MinVersion: tls.VersionTLS12})
+		if tlsConn.Handshake() != nil {
+			return false
+		}
+		conn = tlsConn
+	}
+	greeting, err := bufio.NewReader(conn).ReadString('\n')
+	return err == nil && strings.HasPrefix(greeting, "220 ")
 }
 
 // Address is a mailbox of a message.
