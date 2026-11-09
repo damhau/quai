@@ -75,6 +75,18 @@ test("someone without a verified email is told nothing reaches them", async () =
   expect(screen.getByText(/gives Quai no verified email of yours/)).toBeInTheDocument()
 })
 
+test("Slack is a channel of its own, which finds people by their email too", async () => {
+  preferences.channels = ["email", "slack"]
+  state.user = "dana"
+  renderApp("/profile")
+  const table = await screen.findByRole("table", { name: "Notification preferences" }, slow)
+  expect(within(table).getByRole("columnheader", { name: "Slack" })).toBeInTheDocument()
+  expect(within(table).getAllByRole("combobox")).toHaveLength(18)
+  // With two channels, approvals may be off on one.
+  expect(options(screen.getByRole("combobox", { name: "Approval needed by Slack" }))).toEqual(["At once (default)", "In the daily digest", "Off"])
+  expect(screen.getByText(/no email or Slack message reaches you/)).toBeInTheDocument()
+})
+
 test("without a channel, there is nothing to choose", async () => {
   preferences.channels = []
   renderApp("/profile")

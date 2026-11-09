@@ -611,13 +611,13 @@ export type ErrorModel = {
 };
 
 export type EventPreferenceInput = {
-    channel: 'email' | 'teams';
+    channel: 'email' | 'teams' | 'slack';
     kind: 'approval_needed' | 'submitted' | 'approved' | 'rejected' | 'stale' | 'merged' | 'applied' | 'failed' | 'expiring_soon';
     mode: 'immediate' | 'digest' | 'off';
 };
 
 export type EventPreferenceView = {
-    channel: 'email' | 'teams';
+    channel: 'email' | 'teams' | 'slack';
     /**
      * The mode until one is chosen (notifications.defaults)
      */

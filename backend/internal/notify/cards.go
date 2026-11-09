@@ -108,8 +108,8 @@ func (w *refreshWorker) Timeout(*river.Job[RefreshArgs]) time.Duration { return 
 
 // refresh updates each open card of a request that no longer waits for its recipient, and marks
 // it closed. A card is taken before it is updated, so two jobs never both update it; an update
-// that failed puts it back, for the job's next attempt. A card Teams refuses for good (the app
-// uninstalled, the message deleted) is left closed.
+// that failed puts it back, for the job's next attempt. A card the channel refuses for good
+// (Teams' app uninstalled, the message deleted, Slack's edit window closed) is left closed.
 func (s *Service) refresh(ctx context.Context, id uuid.UUID) error {
 	cards, err := s.opts.Store.OpenChatCards(ctx, id)
 	if err != nil || len(cards) == 0 {
@@ -167,17 +167,17 @@ func (s *Service) refresh(ctx context.Context, id uuid.UUID) error {
 		if err == nil {
 			continue
 		}
-		var se *StatusError
-		if errors.As(err, &se) && se.Permanent() {
-			s.opts.Log.WarnContext(ctx, "an approval card was not updated: Teams refused it", slog.Int64("notification", card.NotificationID),
-				slog.String("recipient", card.Recipient), slog.String("error", clip(err.Error(), 1000)))
+		var pe interface{ Permanent() bool }
+		if errors.As(err, &pe) && pe.Permanent() {
+			s.opts.Log.WarnContext(ctx, "an approval card was not updated: the channel refused it", slog.Int64("notification", card.NotificationID),
+				slog.String("channel", card.Channel), slog.String("recipient", card.Recipient), slog.String("error", clip(err.Error(), 1000)))
 			continue
 		}
 		if rerr := s.opts.Store.ReopenChatCard(ctx, card.NotificationID); rerr != nil {
 			err = errors.Join(err, rerr)
 		}
 		s.opts.Log.WarnContext(ctx, "an approval card was not updated", slog.Int64("notification", card.NotificationID),
-			slog.String("recipient", card.Recipient), slog.String("error", clip(err.Error(), 1000)))
+			slog.String("channel", card.Channel), slog.String("recipient", card.Recipient), slog.String("error", clip(err.Error(), 1000)))
 		errs = append(errs, err)
 	}
 	return errors.Join(errs...)

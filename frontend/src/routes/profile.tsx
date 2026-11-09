@@ -40,6 +40,10 @@ function Profile() {
 
 function Notifications({ email }: { email?: string }) {
   const prefs = useQuery(getPreferencesOptions())
+  // Email and Slack find people by their verified email.
+  const byEmail = ([["email", "email"], ["slack", "Slack message"]] as const)
+    .filter(([c]) => (prefs.data?.channels ?? []).includes(c))
+    .map(([, what]) => what)
   return (
     <Card>
       <CardHeader>
@@ -63,11 +67,12 @@ function Notifications({ email }: { email?: string }) {
         )}
         {prefs.data && (prefs.data.channels ?? []).length > 0 && (
           <>
-            {(prefs.data.channels ?? []).includes("email") && !email && (
+            {byEmail.length > 0 && !email && (
               <Alert>
                 <AlertTitle>No email</AlertTitle>
                 <AlertDescription>
-                  Your identity provider gives Quai no verified email of yours: no email reaches you, whatever you choose here.
+                  Your identity provider gives Quai no verified email of yours: no {byEmail.join(" or ")} reaches you, whatever
+                  you choose here.
                 </AlertDescription>
               </Alert>
             )}

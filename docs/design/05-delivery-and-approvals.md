@@ -384,11 +384,15 @@ Built (`internal/notify`):
   approvals whose approvers Quai cannot reach says so on the request
   (`noOneToNotify`), and so does a request whose requester Quai cannot reach
   (`requesterNotNotified`). An approver is reached when they have an address on
-  a channel that notifies people (a verified email; an Entra ID object ID with
-  the Teams bot) where they did not turn approvals needed off; the requester
-  when they have an address on one, whatever they chose. A Teams channel post
-  reaches no one in particular and does not count ([open question
-  60](../plan/open-questions.md#still-open)).
+  a channel that notifies people (a verified email, for email and Slack; an
+  Entra ID object ID with the Teams bot) where they did not turn approvals
+  needed off; the requester when they have an address on one, whatever they
+  chose. A Teams or Slack channel post reaches no one in particular and does
+  not count ([open question 60](../plan/open-questions.md#still-open)). Slack
+  is counted from the verified email alone: whether Slack has a member with it
+  is known only when sending, so the request may say someone is reached whom
+  Slack then skips (the row says why; [open question
+  67](../plan/open-questions.md#still-open)).
 - **Preferences** (P4-08). Each person chooses, per channel and kind of
   notification (approval needed, submitted, approved, rejected, stale, merged,
   applied, failed, expiring soon), whether it goes at once (`immediate`), in
@@ -447,11 +451,16 @@ Built (`internal/notify`):
   ([open question 64](../plan/open-questions.md#still-open)). With the bot,
   preferences have a Teams channel, every kind at once unless
   `notifications.defaults.channels.teams` says otherwise; channel posts are
-  not a preference.
+  not a preference. Slack (P4-10) is the same: direct messages to the member of
+  the app's workspace with the person's verified email, skipped with the reason
+  when there is none ([open question 66](../plan/open-questions.md#still-open)),
+  posts to the Slack channels configured (`slack-channel:<name>`), and a Slack
+  channel in the preferences, `notifications.defaults.channels.slack`
+  configuring its defaults.
 
 ### Approving from chat
 
-An approval card in Teams (Slack: P4-10) has **Approve** and **Deny**. Each
+An approval card in Teams, or message in Slack, has **Approve** and **Deny**. Each
 opens a link made for that person, that decision and the change set the card
 showed; the link opens the request with the decision ready and decides
 nothing ([open question 22](../plan/open-questions.md#still-open)):
@@ -471,3 +480,7 @@ nothing ([open question 22](../plan/open-questions.md#still-open)):
   is updated to say so, without its buttons: a refresh job on the
   notifications queue, after each event of the request
   ([integrations](11-integrations.md#approving-from-chat)).
+- Slack also sends Quai a request for each click, even on a button that opens a
+  link: Quai verifies its signature and acknowledges it, and nothing else. The
+  decision is never taken from Slack's request, nor the person from Slack's
+  account ([open question 67](../plan/open-questions.md#still-open)).

@@ -56,12 +56,15 @@ type Options struct {
 	// Webhooks receives the platforms' deliveries under /webhooks/; nil without a database.
 	Webhooks http.Handler
 	// WebhookHost, when set, is the only host name /webhooks/ answers on, and that host answers
-	// nothing but /webhooks/, the run reports and /healthz: it can be exposed to the platforms
-	// without exposing the rest.
+	// nothing but /webhooks/, the run reports, Slack's interactions and /healthz: it can be exposed
+	// to the platforms without exposing the rest.
 	WebhookHost string
 	// PublicURL is where people reach Quai (server.publicURL): webhooks are installed at it,
 	// unless WebhookHost names their host.
 	PublicURL string
+	// SlackInteractions acknowledges the clicks Slack sends at auth.SlackInteractionsPath; nil
+	// without a Slack signing secret: the path is then absent.
+	SlackInteractions http.Handler
 	// Notifications are what people may choose of their notifications, and the defaults.
 	Notifications notify.Settings
 }
@@ -111,6 +114,9 @@ func build(opts Options, all bool) (*chi.Mux, huma.API) {
 	if opts.Webhooks != nil {
 		r.Mount(auth.WebhooksPath, opts.Webhooks)
 	}
+	if opts.SlackInteractions != nil {
+		r.Post(auth.SlackInteractionsPath, opts.SlackInteractions.ServeHTTP)
+	}
 	r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		_, _ = w.Write([]byte("ok\n"))
@@ -152,7 +158,8 @@ func build(opts Options, all bool) (*chi.Mux, huma.API) {
 	return r, a
 }
 
-// webhookHost keeps the webhooks on their own host name, and that host to the webhooks.
+// webhookHost keeps the webhooks on their own host name, and that host to the webhooks, the run
+// reports, Slack's interactions and /healthz.
 func webhookHost(host string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		name := r.Host
@@ -161,7 +168,7 @@ func webhookHost(host string, next http.Handler) http.Handler {
 		}
 		onHost := strings.EqualFold(name, host)
 		hook := strings.HasPrefix(r.URL.Path, auth.WebhooksPath)
-		if hook != onHost && !(onHost && (auth.IsRunsPath(r.URL.Path) || r.URL.Path == "/healthz")) {
+		if hook != onHost && !(onHost && (auth.IsRunsPath(r.URL.Path) || auth.IsSlackInteractions(r) || r.URL.Path == "/healthz")) {
 			writeProblem(w, http.StatusNotFound, "no such resource")
 			return
 		}

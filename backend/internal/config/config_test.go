@@ -297,6 +297,64 @@ notifications:
 	}
 }
 
+// TestSlack: a bot token and an optional signing secret that are secret references, Slack's Web
+// API by default and https, channels by ID, and a key for the links of approval messages. Slack
+// reaches people: it is among the channels they choose for.
+func TestSlack(t *testing.T) {
+	c, err := Load(write(t, `server: { publicURL: https://quai.example.com }
+notifications:
+  links: { key: { ref: "k8s:quai/chat-links#key" } }
+  slack:
+    botToken: { ref: "k8s:quai/slack#bot-token" }
+    signingSecret: { ref: "k8s:quai/slack#signing-secret" }
+    channels:
+      - { name: platform, channel: C0123ABCDEF, repositories: [gitops], teams: [platform], events: [approval_needed, alert] }
+  defaults: { channels: { slack: { submitted: off } } }
+`), env(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s := c.Notifications.Slack; s.APIURL != DefaultSlackAPIURL || s.BotToken.Ref != "k8s:quai/slack#bot-token" || s.Channels[0].Channel != "C0123ABCDEF" ||
+		!slices.Equal(c.Notifications.Channels(), []string{"slack"}) {
+		t.Errorf("slack = %+v, channels %v", s, c.Notifications.Channels())
+	}
+	// Without a signing secret: no interaction endpoint, nothing else changes.
+	if _, err := Load(write(t, "server: { publicURL: https://quai.example.com }\nnotifications:\n  links: { key: { ref: env:LINKS } }\n  slack: { botToken: { ref: env:BOT } }\n"), env(nil)); err != nil {
+		t.Errorf("no signing secret: %v", err)
+	}
+	const links = "  links: { key: { ref: env:LINKS } }\n"
+	slack := func(extra string) string { return links + "  slack: { botToken: { ref: env:BOT }" + extra + " }" }
+	channel := func(extra string) string {
+		return slack(", channels: [{ name: ops, channel: C0123ABCDEF" + extra + " }]")
+	}
+	for name, tt := range map[string]struct{ file, want string }{
+		"public URL":      {slack(""), "notifications.slack needs server.publicURL"},
+		"no token":        {links + "  slack: {}", "notifications.slack.botToken.ref must be a secret reference"},
+		"token":           {links + "  slack: { botToken: { ref: xoxb-1234-5678-abcdef } }", "notifications.slack.botToken.ref must be a secret reference"},
+		"signing secret":  {slack(", signingSecret: { ref: 8f742231b10e8888abcd99yyyzzz85a5 }"), "notifications.slack.signingSecret.ref must be a secret reference"},
+		"api http":        {slack(", apiURL: http://slack.com/api"), "notifications.slack.apiURL must be an https URL"},
+		"api creds":       {slack(", apiURL: \"https://u:p@slack.example.com/api\""), "notifications.slack.apiURL must be an https URL without credentials"},
+		"api query":       {slack(", apiURL: \"https://slack.example.com/api?token=x\""), "notifications.slack.apiURL must be an https URL without credentials or a query"},
+		"no links":        {"  slack: { botToken: { ref: env:BOT } }", "notifications.slack needs notifications.links.key"},
+		"channel name":    {slack(", channels: [{ name: Ops, channel: C0123ABCDEF, teams: [ops], events: [merged] }]"), `notifications.slack.channels[0].name must be lowercase letters, digits and dashes, not "Ops"`},
+		"channel twice":   {slack(", channels: [{ name: ops, channel: C0123ABCDEF, teams: [ops], events: [merged] }, { name: ops, channel: C0123ABCDEG, teams: [ops], events: [merged] }]"), "notifications.slack.channels[1].name: ops names another channel already"},
+		"channel by name": {slack(", channels: [{ name: ops, channel: \"#ops\", teams: [ops], events: [merged] }]"), `notifications.slack.channels[0].channel must be the Slack channel's ID, such as C0123ABCDEF (its details in Slack show it), not "#ops"`},
+		"user channel":    {slack(", channels: [{ name: ops, channel: U0123ABCDEF, teams: [ops], events: [merged] }]"), "notifications.slack.channels[0].channel must be the Slack channel's ID"},
+		"nobody's events": {channel(", events: [merged]"), "notifications.slack.channels[0] needs repositories, teams, or both"},
+		"no events":       {channel(", teams: [ops]"), "notifications.slack.channels[0].events: name at least one"},
+		"unknown event":   {channel(", teams: [ops], events: [deployed]"), `notifications.slack.channels[0].events: "deployed" is not an event`},
+		"defaults":        {"  defaults: { channels: { slack: { submitted: off } } }", "notifications.defaults.channels.slack needs notifications.slack"},
+	} {
+		head := "server: { publicURL: https://quai.example.com }\nnotifications:\n"
+		if name == "public URL" {
+			head = "server: { publicURL: \"\" }\nnotifications:\n"
+		}
+		if _, err := Load(write(t, head+tt.file+"\n"), env(nil)); err == nil || !strings.Contains(err.Error(), tt.want) {
+			t.Errorf("%s: error = %v, want %q", name, err, tt.want)
+		}
+	}
+}
+
 // TestTimeZone: an IANA name, never a path, Local or an empty name.
 func TestTimeZone(t *testing.T) {
 	for _, name := range []string{"UTC", "Europe/Zurich", "America/Argentina/Buenos_Aires", "Etc/GMT+5", "Etc/GMT-14", "America/Port-au-Prince", "Asia/Kolkata"} {

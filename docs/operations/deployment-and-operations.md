@@ -58,7 +58,7 @@ single pod with both roles.
   | `git.cacheDir`, `git.committer` | `QUAI_GIT_CACHE_DIR` | the user cache directory; `Quai <quai@localhost>` |
   | `git.signingKey.ref` | `QUAI_GIT_SIGNING_KEY_REF` | none: Quai's commits are unsigned. A reference to an SSH private key (`k8s:quai/signing-key#ssh-privatekey`) Quai signs its commits with; see [verifying them](../design/05-delivery-and-approvals.md#merge) |
   | `repositories.path` | `QUAI_REPOSITORIES_PATH` | none: a YAML file, or a directory of them, holding `Repository` documents ([repository connections](../design/01-repository-connections.md#repository-connection)); reconciled into the database at start-up, read-only through the API |
-  | `webhooks.host` | `QUAI_WEBHOOKS_HOST` | none: `/webhooks/{repository}` answers on every host. When set, only that host name answers webhooks, and it answers nothing else but run reports and `/healthz`, so it can be exposed to the Git platforms alone |
+  | `webhooks.host` | `QUAI_WEBHOOKS_HOST` | none: `/webhooks/{repository}` answers on every host. When set, only that host name answers webhooks, and it answers nothing else but run reports, Slack's interactions (`/slack/interactions`) and `/healthz`, so it can be exposed to the Git platforms and Slack alone |
   | `network.caFile` | `QUAI_NETWORK_CA_FILE` | none: a PEM file of CA certificates trusted in addition to the system's (an internal CA), by Git and every HTTPS call Quai makes |
   | (proxy) | `HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY` | none: the HTTP proxy for Git over HTTPS and every HTTP call; loopback addresses are never proxied |
   | `secrets.kubernetes.kubeconfig` | `QUAI_SECRETS_KUBECONFIG` | none: the cluster Quai runs in, or the default kubeconfig outside one. Where `k8s:namespace/name#key` references resolve; `env:NAME` references read Quai's environment |
@@ -74,12 +74,16 @@ single pod with both roles.
   | `notifications.email.from` | | required: the sender, an address with or without a display name (`Quai <quai@example.com>`) |
   | `notifications.email.username`, `.password.ref` | | none: no authentication. PLAIN, or LOGIN when the server offers only that, over TLS only; the password is a secret reference (`k8s:quai/quai-smtp#password`), read at each send |
   | `notifications.alerts` | | none: email addresses that get every alert (a pull request merged without Quai's approval, approvals no longer enforced), besides the repository's admins; alerts only, never a request's content. Needs `notifications.email` |
-  | `notifications.defaults.channels` | | none: every kind at once. What people get until they choose on their profile page: per channel (`email`, or `teams` with its bot, which must be configured) and kind (`approval_needed`, `submitted`, `approved`, `rejected`, `stale`, `merged`, `applied`, `failed`, `expiring_soon`), `immediate`, `digest` or `off` ([preferences](#preferences-and-digests)). Not `alert`: alerts always go at once; `approval_needed` is never `off` on every channel |
+  | `notifications.defaults.channels` | | none: every kind at once. What people get until they choose on their profile page: per channel (`email`, `teams` with its bot, or `slack`, which must be configured) and kind (`approval_needed`, `submitted`, `approved`, `rejected`, `stale`, `merged`, `applied`, `failed`, `expiring_soon`), `immediate`, `digest` or `off` ([preferences](#preferences-and-digests)). Not `alert`: alerts always go at once; `approval_needed` is never `off` on every channel |
   | `notifications.defaults.digest.hour`, `.timeZone` | | `8`, `UTC`: when a digest goes until people choose: an hour (0 to 23) in an IANA time zone (`Europe/Zurich`) |
   | `notifications.teams.bot.appId`, `.tenantId`, `.clientSecret.ref` | | none: no personal cards in Teams ([Microsoft Teams](#microsoft-teams)). The bot's Entra ID application (client) ID and directory (tenant) ID, GUIDs; a secret reference to its client secret (`k8s:quai/quai-teams#client-secret`), read when a token is fetched. Needs `notifications.links` |
   | `notifications.teams.bot.tokenURL`, `.scope`, `.serviceURL` | | `https://login.microsoftonline.com/<tenantId>/oauth2/v2.0/token`, `https://api.botframework.com/.default`, `https://smba.trafficmanager.net/teams/`: Microsoft's public cloud. Another cloud's (GCC, DoD) endpoints; https, without credentials or a query |
   | `notifications.teams.channels` | | none: no channel posts. A list of channels, each a `name` (lowercase letters, digits and `-`), a `webhook.ref` (a secret reference to the URL of the workflow's webhook trigger: the URL is the credential), `repositories` and `teams` (the requests to these repositories, or to resources these teams own, and the alerts of these repositories; at least one), and `events` (`submitted`, `approval_needed`, `approved`, `rejected`, `stale`, `merged`, `applied`, `failed`, `expiring_soon`, `alert`) |
-  | `notifications.links.key.ref`, `.previousKeys` | | none: required with the Teams bot. A secret reference to the key that signs the Approve and Deny links of approval cards: at least 32 bytes, used for nothing else (`openssl rand -base64 32`); the keys before a rotation, kept a day ([rotating the link key](#rotating-the-link-key)) |
+  | `notifications.slack.botToken.ref` | | none: no Slack ([Slack](#slack)). A secret reference to the app's bot token (`xoxb-…`, or `xoxe.xoxb-…` when Slack rotates it; a user token is refused), read at each call. Needs `server.publicURL` and `notifications.links` |
+  | `notifications.slack.signingSecret.ref` | | none: no endpoint for Slack's interactions (`POST /slack/interactions` answers 404). A secret reference to the app's signing secret, which verifies the requests Slack sends when someone clicks a button |
+  | `notifications.slack.apiURL` | | `https://slack.com/api`: Slack's Web API (GovSlack: `https://slack-gov.com/api`); https, without credentials or a query |
+  | `notifications.slack.channels` | | none: no channel posts. A list of channels, each a `name` (lowercase letters, digits and `-`), a `channel` (the Slack channel's ID, `C0123ABCDEF`, from its details in Slack; not its name), `repositories` and `teams`, and `events`, as `notifications.teams.channels` |
+  | `notifications.links.key.ref`, `.previousKeys` | | none: required with the Teams bot or Slack. A secret reference to the key that signs the Approve and Deny links of approval cards: at least 32 bytes, used for nothing else (`openssl rand -base64 32`); the keys before a rotation, kept a day ([rotating the link key](#rotating-the-link-key)) |
   | `log.level` | `QUAI_LOG_LEVEL` | `info` (`debug`, `info`, `warn`, `error`) |
   | `log.format` | `QUAI_LOG_FORMAT` | `json` in production, `text` otherwise |
   | `telemetry.otlpEndpoint` | `QUAI_TELEMETRY_OTLP_ENDPOINT` | none: no traces are exported; traces go to `<url>/v1/traces` |
@@ -696,6 +700,101 @@ set: the card was updated, or is being).
 
 Errors name a channel and never its webhook's URL: its query is replaced by `[redacted]`.
 
+#### Slack
+
+With `notifications.slack`, a Slack app sends people direct messages and posts to Slack channels
+([Slack as built](../design/11-integrations.md#notifications)). One app, in one workspace (or one
+Enterprise organization).
+
+```yaml
+notifications:
+  slack:
+    botToken: { ref: "k8s:quai/quai-slack#bot-token" }
+    signingSecret: { ref: "k8s:quai/quai-slack#signing-secret" }
+    channels:
+      - name: infra-approvals
+        channel: C0123ABCDEF                 # the channel's ID, from its details in Slack
+        repositories: [infra-live]
+        teams: [platform]
+        events: [approval_needed, approved, rejected, failed, alert]
+  links:
+    key: { ref: "k8s:quai/quai-links#key" }  # signs the Approve and Deny links
+```
+
+- **Direct messages** go to the Slack account with the person's verified email (the directory's,
+  from their sign-in), and only when it is an active full member of the app's workspace (or of
+  its Enterprise organization): someone without one, a guest, a bot, an account of another
+  workspace, or one whose email Slack has not confirmed gets nothing, and the notification is
+  `skipped` with the reason ([open question 66](../plan/open-questions.md#still-open)). An
+  approval needed carries what email does, with **Approve** and **Deny**, which decide nothing,
+  as in Teams (above); once the request no longer waits for that person, the message is updated
+  to say why, without its buttons. Each person chooses, on their profile page, what reaches them
+  on Slack; `notifications.defaults.channels.slack` sets what they get until they do.
+- **Channel posts** carry the event, the request's number, its repository, state and a link,
+  never a title, reason, diff or plan ([open question
+  64](../plan/open-questions.md#still-open)). The app posts only to channels it is in.
+- **Interactions.** Slack sends Quai a request for every click on a button, even one that opens
+  a link, and shows the person a warning when it is not acknowledged. Quai answers them at
+  `POST /slack/interactions`: it verifies the signature with the signing secret and the
+  timestamp (five minutes either way: the server's clock must be right), acknowledges, and does
+  nothing else. Every refusal is the same `401`, logged as `a Slack interaction request was
+  refused` with the reason and the client's address. Without `signingSecret`, the path answers
+  404.
+
+##### Creating the Slack app
+
+Not verified against a Slack workspace: the tests use a fake built from Slack's documentation
+([testing](../engineering/testing.md#tiers), [services with no
+account](../plan/phase-4-backlog.md#test-infrastructure)).
+
+1. **The app.** At `api.slack.com/apps`, **Create New App**, **From scratch**, in the workspace
+   (on Enterprise Grid, installed at the organization or in one workspace). Under **OAuth &
+   Permissions**, the bot token scopes: `chat:write` (send and update messages), `im:write` (open
+   direct messages), `users:read` and `users:read.email` (find people by email). No user token
+   scope; not `chat:write.public` (the app posts only to the channels it is invited to).
+2. **Interactivity.** Under **Interactivity & Shortcuts**, turn it on, with the request URL
+   `https://<server.publicURL's host, or webhooks.host>/slack/interactions`. It must be reachable
+   from Slack over the internet, with a certificate Slack trusts (a public CA's): with
+   `webhooks.host`, expose that host to Slack, which answers only webhooks, run reports, Slack's
+   interactions and `/healthz`.
+3. **Install it** to the workspace; copy the **Bot User OAuth Token** (`xoxb-…`) into the secret
+   `botToken.ref` names, and the **Signing Secret** (**Basic Information**, **App Credentials**)
+   into the one `signingSecret.ref` names. Token rotation, when turned on, gives `xoxe.xoxb-…`
+   tokens that expire in 12 hours: Quai does not refresh them, so leave it off, or have
+   something else refresh the secret.
+4. **The channels.** In each channel, `/invite @<the app>`; its ID is at the bottom of its
+   details. Then `notifications.slack`, `notifications.links` and restart the server and the
+   worker.
+
+To rotate the signing secret, **Regenerate** it in **App Credentials** and update the secret at
+once: Slack signs with the new one only, so clicks are refused (`401`) until Quai has it (a
+minute for the secret store's cache, or a restart). A clicked button still opens its link either
+way. To revoke the bot token, **Revoke** it under **OAuth & Permissions**, reinstall the app, and
+put the new token in the secret.
+
+##### When a Slack message does not arrive
+
+The notifications of a request are found as for mail, above; Slack's rows have the channel
+`slack`, and a channel post's recipient is `slack-channel:<name>`. Direct messages are in
+`chat_cards` too.
+
+| Error, or `last_error` | What to do |
+| --- | --- |
+| `Quai knows no verified email of theirs to find them in Slack with` | The identity provider gives Quai no verified email for the person |
+| `Slack knows no active account with their email in the app's workspace` | The person's Slack account has another email, is deactivated, or is in another workspace: their Slack profile's email must be the directory's |
+| `… is a guest's: Quai writes to full members of the workspace only`, `… belongs to another workspace than the app's`, `… a bot's or an app's`, `… has not confirmed it` | By design ([open question 66](../plan/open-questions.md#still-open)): the person gets email, or another channel |
+| `Slack does not let the app write to their account (user_not_visible)` and others | The account is not visible to the app (Enterprise Grid: the app not installed in their workspace) |
+| `the Slack bot token (…): …`, `… is not a bot token: a bot token starts with xoxb-` | The reference does not resolve, or holds a user token: the bot token, which starts `xoxb-` |
+| `Slack's <method>: invalid_auth`, `not_authed`, `token_revoked`, `account_inactive` | The token is wrong or revoked: reinstall the app and update the secret |
+| `Slack's <method>: missing_scope` | A scope is missing (above): add it and reinstall the app |
+| `post to Slack channel <name>: Slack's chat.postMessage: not_in_channel`, `channel_not_found` | Invite the app to the channel; `channel` is the channel's ID, not its name |
+| `Slack's <method>: HTTP 429 ratelimited`, `HTTP 5…` | Slack throttles, or fails: Quai waits for `Retry-After` up to 10 seconds, twice, then the job backs off |
+| `Slack's <method>: invalid_blocks`, `msg_too_long` | The message was refused: report it, with the request |
+| `an approval card was not updated: the channel refused it` (log, `channel=slack`) | The message was deleted, or can no longer be edited: nothing to do |
+| `a Slack interaction request was refused` (log) | `a timestamp more than five minutes from the server's clock`: the server's clock (NTP); `a signature that does not match`: the signing secret in the secret is not the app's (rotated?); many from one address: someone else is calling the endpoint, which they cannot do more than knock on |
+
+Errors and logs never show the bot token, the signing secret or a request's signature.
+
 ### Runners
 
 Pipelines report their plans and applies with `quai report`, a step after `terraform plan` and
@@ -791,11 +890,12 @@ Egress needed, all configurable through an HTTP proxy (`HTTPS_PROXY`, `NO_PROXY`
 | SIEMs (`audit.export`) | The audit log's export: syslog over TLS straight to the receiver, never through the proxy; OTLP and Splunk HEC over HTTPS |
 | SMTP server (`notifications.email`) | Notifications by email, over TLS (port 465) or STARTTLS (587), straight to the server, never through the proxy |
 | Microsoft Teams (`notifications.teams`) | HTTPS, through the proxy: the bot's tokens from Entra ID (`login.microsoftonline.com`), its messages through the Bot Connector service (`smba.trafficmanager.net`), channel posts to each workflow's trigger (`*.logic.azure.com`, or the host of its URL). Nothing comes in from Teams |
-| ITSM, Slack | Optional integrations |
+| Slack (`notifications.slack`) | HTTPS, through the proxy, to the Web API (`slack.com`, or `apiURL`'s host) |
+| ITSM | Optional integrations |
 | Executors (Kubernetes API, AWX, vCenter) | Imperative actions |
 
-Ingress: users and CLI (HTTPS), Git platform webhooks (Azure DevOps service hooks; on Server this needs a firewall path from the Server to Quai, otherwise Quai runs in polling mode), runner reports. Webhook
-and run-report endpoints can be exposed on a separate host name for firewalling (`webhooks.host`).
+Ingress: users and CLI (HTTPS), Git platform webhooks (Azure DevOps service hooks; on Server this needs a firewall path from the Server to Quai, otherwise Quai runs in polling mode), runner reports, Slack's interactions (`/slack/interactions`, from Slack over the internet, when `notifications.slack.signingSecret` is set). Webhook,
+run-report and Slack endpoints can be exposed on a separate host name for firewalling (`webhooks.host`).
 
 ## Scale targets
 

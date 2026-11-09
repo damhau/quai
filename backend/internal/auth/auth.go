@@ -107,6 +107,17 @@ const FluxRunsPath = "/api/v1/runs/flux"
 // a run token.
 func IsRunsPath(path string) bool { return path == RunsPath || path == FluxRunsPath }
 
+// SlackInteractionsPath is where Slack sends the clicks on the buttons of Quai's messages: no
+// session is loaded or saved there, no token or CSRF token checked; the signing secret verifies
+// each request (notify.SlackInteractions).
+const SlackInteractionsPath = "/slack/interactions"
+
+// IsSlackInteractions reports whether a request is for SlackInteractionsPath, exactly: not a path
+// under it, nor one that only decodes to it.
+func IsSlackInteractions(r *http.Request) bool {
+	return r.URL.Path == SlackInteractionsPath && r.URL.RawPath == ""
+}
+
 // Session keys.
 const (
 	keyUser     = "user"
@@ -167,7 +178,8 @@ func (a *Authenticator) Directory() *Directory { return a.dir }
 
 // Middleware loads the session and identifies the request: an API token in the Authorization
 // header, or else the session's user. It refuses a state-changing request made with a session
-// but without its CSRF token.
+// but without its CSRF token. Slack's interactions (SlackInteractionsPath) pass through untouched:
+// no session, no identity.
 func (a *Authenticator) Middleware(next http.Handler) http.Handler {
 	identify := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
@@ -199,7 +211,14 @@ func (a *Authenticator) Middleware(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
-	return a.sessions.LoadAndSave(identify)
+	sessions := a.sessions.LoadAndSave(identify)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if IsSlackInteractions(r) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		sessions.ServeHTTP(w, r)
+	})
 }
 
 func safeMethod(m string) bool {

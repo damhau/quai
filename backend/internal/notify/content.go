@@ -111,7 +111,7 @@ func (s *Service) compose(ctx context.Context, n db.Notification, c Channel) (Re
 		to = Recipient{ID: n.Recipient, Name: u.Name, Address: addr}
 	case "email":
 		to = Recipient{ID: n.Recipient, Address: v}
-	case "teams-channel":
+	case "teams-channel", "slack-channel":
 		to = Recipient{ID: n.Recipient}
 	default:
 		return to, Message{}, "an unknown recipient", nil
@@ -126,7 +126,7 @@ func (s *Service) compose(ctx context.Context, n db.Notification, c Channel) (Re
 	if n.Kind == Alert {
 		return to, s.alertMessage(e), "", nil
 	}
-	if strings.HasPrefix(n.Recipient, ChannelRecipient) {
+	if group(n.Recipient) {
 		return s.channelMessage(ctx, n, e, to)
 	}
 	if !e.RequestID.Valid {
@@ -396,7 +396,7 @@ func (s *Service) alertMessage(e db.Event) Message {
 	return m
 }
 
-// channelMessage is a post to a group channel (a Teams channel): its people may not all read the
+// channelMessage is a post to a group channel (Teams', Slack's): its people may not all read the
 // request, so it says what an alert says, identifiers and the state, and links to the request; never
 // its reason, files or plan (open question 64). An approval needed is posted while the request
 // still waits for approval.

@@ -169,8 +169,9 @@ func (s *Service) sendDigest(ctx context.Context, id int64, last bool) error {
 	}
 	c := s.channels[d.Channel]
 	var (
-		to    Recipient
-		items []DigestItem
+		to       Recipient
+		items    []DigestItem
+		gathered []db.Notification
 	)
 	for _, n := range ns {
 		if c == nil {
@@ -195,6 +196,7 @@ func (s *Service) sendDigest(ctx context.Context, id int64, last bool) error {
 			item.Request = fmt.Sprintf("#%d %s (%s)", rc.Number, rc.Title, rc.Repository)
 		}
 		items = append(items, item)
+		gathered = append(gathered, n)
 	}
 	if len(items) == 0 {
 		return s.opts.Store.DigestSkipped(ctx, db.DigestSkippedParams{ID: d.ID, LastError: "nothing left to tell: each of its notifications says why"})
@@ -210,6 +212,14 @@ func (s *Service) sendDigest(ctx context.Context, id int64, last bool) error {
 	sctx, cancel := context.WithTimeout(ctx, sendTimeout)
 	_, err = c.Send(sctx, to, m)
 	cancel()
+	if u := (*Unreachable)(nil); errors.As(err, &u) {
+		for _, n := range gathered {
+			if err := skip(n, u.Reason); err != nil {
+				return err
+			}
+		}
+		return s.opts.Store.DigestSkipped(ctx, db.DigestSkippedParams{ID: d.ID, LastError: u.Reason})
+	}
 	if err != nil {
 		state, result, level := Pending, "retried", slog.LevelWarn
 		if last {

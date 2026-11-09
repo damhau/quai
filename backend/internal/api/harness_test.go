@@ -169,7 +169,7 @@ func startRepo(t *testing.T, dir, metadata, spec string, opts repositories.Optio
 	hooks.UseHandler(svc)
 	var n *notify.Service
 	clk := &testClock{}
-	if cfg.Notifications.Email != nil || cfg.Notifications.Teams != nil {
+	if cfg.Notifications.Email != nil || cfg.Notifications.Teams != nil || cfg.Notifications.Slack != nil {
 		network, err := netx.New(cfg.Network.CAFile)
 		if err != nil {
 			t.Fatal(err)
@@ -189,6 +189,14 @@ func startRepo(t *testing.T, dir, metadata, spec string, opts repositories.Optio
 			}
 			teams.UseClock(clk.now)
 			channels = append(channels, teams)
+		}
+		if sc := cfg.Notifications.Slack; sc != nil {
+			slack, err := notify.NewSlack(*sc, network, opts.Secrets)
+			if err != nil {
+				t.Fatal(err)
+			}
+			slack.UseClock(clk.now)
+			channels = append(channels, slack)
 		}
 		links := notify.Links(cfg.Notifications.Links, opts.Secrets)
 		if links != nil {
@@ -225,8 +233,13 @@ func startRepo(t *testing.T, dir, metadata, spec string, opts repositories.Optio
 		defer cancel()
 		_ = worker.StopAndCancel(ctx)
 	})
-	srv := httptest.NewServer(New(Options{Version: "test", Env: cfg.Env, Logger: log, Store: s, Auth: authn, Repositories: reg, Requests: svc, PublicURL: public,
-		Webhooks: hooks.Webhooks(), Notifications: notify.NewSettings(cfg.Notifications)}))
+	apiOpts := Options{Version: "test", Env: cfg.Env, Logger: log, Store: s, Auth: authn, Repositories: reg, Requests: svc, PublicURL: public,
+		Webhooks: hooks.Webhooks(), Notifications: notify.NewSettings(cfg.Notifications)}
+	if si := notify.NewSlackInteractions(cfg.Notifications.Slack, opts.Secrets, log); si != nil {
+		si.UseClock(clk.now)
+		apiOpts.SlackInteractions = si
+	}
+	srv := httptest.NewServer(New(apiOpts))
 	t.Cleanup(srv.Close)
 	return &harness{t: t, srv: srv, store: s, reg: reg, ingest: hooks, auth: authn, log: &logs, jobs: worker, notify: n, clock: clk}
 }

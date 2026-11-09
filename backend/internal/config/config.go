@@ -61,7 +61,10 @@ type Notifications struct {
 	// Teams posts to Microsoft Teams channels through Workflows webhooks, and sends people
 	// personal cards through a bot; nil: no Teams.
 	Teams *Teams `yaml:"teams"`
-	// Links signs the links of approval cards in chat; Teams' bot needs it.
+	// Slack sends people direct messages and posts to Slack channels through a Slack app; nil:
+	// no Slack.
+	Slack *Slack `yaml:"slack"`
+	// Links signs the links of approval cards in chat; Teams' bot and Slack need it.
 	Links *ChatLinks `yaml:"links"`
 	// Alerts are email addresses that receive every alert (a pull request merged without Quai's
 	// approval, enforcement lost), besides the repository's owners: alerts only, never a request's
@@ -92,9 +95,9 @@ type DigestDefaults struct {
 // The vocabulary of notification preferences (docs/design/05-delivery-and-approvals.md#notifications).
 var (
 	// NotificationChannels are the channels that reach people, which they choose preferences for,
-	// configured or not. Teams' channel posts are not among them: they reach a channel, not a
-	// person.
-	NotificationChannels = []string{"email", "teams"}
+	// configured or not. Teams' and Slack's channel posts are not among them: they reach a channel,
+	// not a person.
+	NotificationChannels = []string{"email", "teams", "slack"}
 	// NotificationKinds are the kinds of notification people choose how they receive, in the
 	// order the profile page lists them. Alerts are not among them.
 	NotificationKinds = []string{"approval_needed", "submitted", "approved", "rejected", "stale", "merged", "applied", "failed", "expiring_soon"}
@@ -114,7 +117,7 @@ const (
 const DefaultDigestHour = 8
 
 // Channels returns the channels configured that reach people, in NotificationChannels' order:
-// email, and Teams when its bot is configured.
+// email, Teams when its bot is configured, and Slack, whose app sends direct messages.
 func (n *Notifications) Channels() []string {
 	var out []string
 	if n.Email != nil {
@@ -123,11 +126,14 @@ func (n *Notifications) Channels() []string {
 	if n.Teams != nil && n.Teams.Bot != nil {
 		out = append(out, "teams")
 	}
+	if n.Slack != nil {
+		out = append(out, "slack")
+	}
 	return out
 }
 
-// ChannelEvents are the events a Teams channel may be posted: the kinds of notification, and
-// alerts.
+// ChannelEvents are the events a Teams or Slack channel may be posted: the kinds of
+// notification, and alerts.
 var ChannelEvents = append(slices.Clone(NotificationKinds), "alert")
 
 // Teams sends notifications to Microsoft Teams (docs/design/11-integrations.md#notifications):
@@ -179,6 +185,39 @@ type TeamsChannel struct {
 	// Events are the events posted: kinds of notification (submitted, approval_needed, approved,
 	// rejected, stale, merged, applied, failed, expiring_soon) and alert.
 	Events []string `yaml:"events"`
+}
+
+// Slack sends notifications to Slack through a Slack app installed in one workspace
+// (docs/design/11-integrations.md#notifications): direct messages to people, found by their
+// verified email, approval messages with Approve and Deny among them, and posts to Slack
+// channels. Slack's Web API is https and comes from here, never from what Slack sends.
+type Slack struct {
+	// BotToken is the app's bot token (xoxb-...), a secret reference.
+	BotToken SecretRef `yaml:"botToken"`
+	// SigningSecret is the app's signing secret, a secret reference: Quai verifies with it the
+	// requests Slack sends when someone clicks a button, and only acknowledges them. Unset, the
+	// endpoint they go to (/slack/interactions) is absent.
+	SigningSecret SecretRef `yaml:"signingSecret"`
+	// APIURL is Slack's Web API: https://slack.com/api by default (https://slack-gov.com/api for
+	// GovSlack).
+	APIURL string `yaml:"apiURL"`
+	// Channels are posted the events chosen, with identifiers only, for the repositories and teams
+	// they name.
+	Channels []SlackChannel `yaml:"channels"`
+}
+
+// DefaultSlackAPIURL is Slack's Web API.
+const DefaultSlackAPIURL = "https://slack.com/api"
+
+// SlackChannel is a Slack channel Quai posts to, which the app was added to.
+type SlackChannel struct {
+	Name string `yaml:"name"` // names it in the notifications table: lowercase letters, digits and dashes
+	// Channel is the Slack channel's ID (C0123ABCDEF), from its details in Slack.
+	Channel string `yaml:"channel"`
+	// Repositories, Teams and Events are as a Teams channel's.
+	Repositories []string `yaml:"repositories"`
+	Teams        []string `yaml:"teams"`
+	Events       []string `yaml:"events"`
 }
 
 // ChatLinks signs the links of approval cards in chat: the key, a secret of at least 32 bytes
@@ -645,6 +684,9 @@ func (c *Config) defaults() {
 			b.ServiceURL = DefaultTeamsServiceURL
 		}
 	}
+	if s := c.Notifications.Slack; s != nil && s.APIURL == "" {
+		s.APIURL = DefaultSlackAPIURL
+	}
 	if c.Git.Committer.Name == "" {
 		c.Git.Committer = Committer{Name: "Quai", Email: "quai@localhost"}
 	}
@@ -867,6 +909,9 @@ func (n *Notifications) validate(publicURL string) error {
 	if n.Teams != nil {
 		errs = append(errs, n.Teams.validate(publicURL, n.Links != nil))
 	}
+	if n.Slack != nil {
+		errs = append(errs, n.Slack.validate(publicURL, n.Links != nil))
+	}
 	if l := n.Links; l != nil {
 		if !signingRefRe.MatchString(l.Key.Ref) {
 			errs = append(errs, errors.New("notifications.links.key.ref must be a secret reference such as k8s:namespace/name#key or env:NAME"))
@@ -921,27 +966,72 @@ func (t *Teams) validate(publicURL string, links bool) error {
 		if !signingRefRe.MatchString(c.Webhook.Ref) {
 			errs = append(errs, fmt.Errorf("%s.webhook.ref must be a secret reference such as k8s:namespace/name#key or env:NAME: the URL is a credential", key))
 		}
-		if len(c.Repositories) == 0 && len(c.Teams) == 0 {
-			errs = append(errs, fmt.Errorf("%s needs repositories, teams, or both: they say whose events it gets", key))
+		errs = append(errs, channelRoutes(key, c.Repositories, c.Teams, c.Events))
+	}
+	return errors.Join(errs...)
+}
+
+// channelRoutes checks whose events a group channel gets, and which.
+func channelRoutes(key string, repositories, teams, events []string) error {
+	var errs []error
+	if len(repositories) == 0 && len(teams) == 0 {
+		errs = append(errs, fmt.Errorf("%s needs repositories, teams, or both: they say whose events it gets", key))
+	}
+	for j, r := range repositories {
+		if r == "" {
+			errs = append(errs, fmt.Errorf("%s.repositories[%d] is empty", key, j))
 		}
-		for j, r := range c.Repositories {
-			if r == "" {
-				errs = append(errs, fmt.Errorf("%s.repositories[%d] is empty", key, j))
-			}
+	}
+	for j, team := range teams {
+		if team == "" {
+			errs = append(errs, fmt.Errorf("%s.teams[%d] is empty", key, j))
 		}
-		for j, team := range c.Teams {
-			if team == "" {
-				errs = append(errs, fmt.Errorf("%s.teams[%d] is empty", key, j))
-			}
+	}
+	if len(events) == 0 {
+		errs = append(errs, fmt.Errorf("%s.events: name at least one (%s)", key, strings.Join(ChannelEvents, ", ")))
+	}
+	for _, e := range events {
+		if !slices.Contains(ChannelEvents, e) {
+			errs = append(errs, fmt.Errorf("%s.events: %q is not an event (%s)", key, e, strings.Join(ChannelEvents, ", ")))
 		}
-		if len(c.Events) == 0 {
-			errs = append(errs, fmt.Errorf("%s.events: name at least one (%s)", key, strings.Join(ChannelEvents, ", ")))
+	}
+	return errors.Join(errs...)
+}
+
+// slackChannelRe is a Slack channel's ID: C (public) or G (private), then uppercase letters and
+// digits.
+var slackChannelRe = regexp.MustCompile(`^[CG][A-Z0-9]{6,20}$`)
+
+func (s *Slack) validate(publicURL string, links bool) error {
+	var errs []error
+	// Messages link to Quai: without the address people reach it at, there is nothing to link.
+	if u, err := url.Parse(publicURL); err != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") {
+		errs = append(errs, errors.New("notifications.slack needs server.publicURL, an http or https URL: the messages link to Quai"))
+	}
+	if !signingRefRe.MatchString(s.BotToken.Ref) {
+		errs = append(errs, errors.New("notifications.slack.botToken.ref must be a secret reference such as k8s:namespace/name#key or env:NAME"))
+	}
+	if s.SigningSecret.Ref != "" && !signingRefRe.MatchString(s.SigningSecret.Ref) {
+		errs = append(errs, errors.New("notifications.slack.signingSecret.ref must be a secret reference such as k8s:namespace/name#key or env:NAME"))
+	}
+	errs = append(errs, httpsURL("notifications.slack.apiURL", s.APIURL))
+	if !links {
+		// Approval messages carry signed links (open question 61).
+		errs = append(errs, errors.New("notifications.slack needs notifications.links.key: approval messages carry signed links"))
+	}
+	names := map[string]bool{}
+	for i, c := range s.Channels {
+		key := fmt.Sprintf("notifications.slack.channels[%d]", i)
+		if !exportNameRe.MatchString(c.Name) {
+			errs = append(errs, fmt.Errorf("%s.name must be lowercase letters, digits and dashes, not %q", key, c.Name))
+		} else if names[c.Name] {
+			errs = append(errs, fmt.Errorf("%s.name: %s names another channel already", key, c.Name))
 		}
-		for _, e := range c.Events {
-			if !slices.Contains(ChannelEvents, e) {
-				errs = append(errs, fmt.Errorf("%s.events: %q is not an event (%s)", key, e, strings.Join(ChannelEvents, ", ")))
-			}
+		names[c.Name] = true
+		if !slackChannelRe.MatchString(c.Channel) {
+			errs = append(errs, fmt.Errorf("%s.channel must be the Slack channel's ID, such as C0123ABCDEF (its details in Slack show it), not %q", key, c.Channel))
 		}
+		errs = append(errs, channelRoutes(key, c.Repositories, c.Teams, c.Events))
 	}
 	return errors.Join(errs...)
 }

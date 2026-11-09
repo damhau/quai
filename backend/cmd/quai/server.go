@@ -81,6 +81,9 @@ func newServerCmd() *cobra.Command {
 // network (nil: the defaults).
 func serve(ctx context.Context, cfg *config.Config, log *slog.Logger, ln net.Listener, s *store.Store, network *netx.Network) error {
 	opts := api.Options{Version: version, Env: cfg.Env, Logger: log, UI: web.Files(), Notifications: notify.NewSettings(cfg.Notifications)}
+	if h := notify.NewSlackInteractions(cfg.Notifications.Slack, secretStore(cfg), log); h != nil {
+		opts.SlackInteractions = h
+	}
 	if s != nil {
 		var client *http.Client
 		if network != nil {

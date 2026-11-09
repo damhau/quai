@@ -13,13 +13,13 @@ import (
 )
 
 // notifications returns the notifications service of the configured channels (email, Microsoft
-// Teams), hooked to the store's events and telling the requests service whom it reaches and how
+// Teams, Slack), hooked to the store's events and telling the requests service whom it reaches and how
 // to check the links of approval cards in chat; nil when no channel is configured. The caller
 // gives it its job client.
 func notifications(cfg *config.Config, s *store.Store, reg *repositories.Registry, svc *requests.Service, network *netx.Network,
 	log *slog.Logger) (*notify.Service, error) {
 	n := cfg.Notifications
-	if n.Email == nil && n.Teams == nil {
+	if n.Email == nil && n.Teams == nil && n.Slack == nil {
 		return nil, nil
 	}
 	sec := secretStore(cfg)
@@ -37,6 +37,13 @@ func notifications(cfg *config.Config, s *store.Store, reg *repositories.Registr
 			return nil, err
 		}
 		channels = append(channels, teams)
+	}
+	if n.Slack != nil {
+		slack, err := notify.NewSlack(*n.Slack, network, sec)
+		if err != nil {
+			return nil, err
+		}
+		channels = append(channels, slack)
 	}
 	links := notify.Links(n.Links, sec)
 	ns := notify.New(notify.Options{Store: s, Requests: svc, Repositories: reg, Directory: auth.NewDirectory(cfg.Auth),

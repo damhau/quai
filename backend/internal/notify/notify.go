@@ -16,7 +16,8 @@
 // for the day, which is sent once.
 //
 // A channel (Channel) renders a Message its own way: email, Microsoft Teams (personal cards
-// through a bot, and posts to Teams channels), Slack later. A personal approval card in chat
+// through a bot, and posts to Teams channels), Slack (direct messages and posts to Slack channels,
+// through a Slack app). A personal approval card in chat
 // carries Approve and Deny, links signed with internal/chatlink that open the request with the
 // decision ready; the card is updated once the request no longer waits for that person
 // (RefreshArgs).
@@ -89,7 +90,7 @@ func Backoff(attempt int) time.Duration {
 	return min(30*time.Second<<(attempt-1), time.Hour)
 }
 
-// Channel delivers messages to people: email, Microsoft Teams; Slack later.
+// Channel delivers messages to people: email, Microsoft Teams, Slack.
 type Channel interface {
 	// Name names the channel in the notifications table and the metrics.
 	Name() string
@@ -98,8 +99,26 @@ type Channel interface {
 	Address(u db.User) (string, bool)
 	// NoAddress says why a person without an address is not reached, for the notifications table.
 	NoAddress() string
-	// Send delivers a message. Its error must never hold a credential.
+	// Send delivers a message. Its error must never hold a credential. An *Unreachable error
+	// skips the notification instead of trying again.
 	Send(ctx context.Context, to Recipient, m Message) (Receipt, error)
+}
+
+// Unreachable is a send's error when the channel cannot reach its recipient and trying again
+// would not help (Slack knows no full member of the workspace with their email): the
+// notification is skipped, and Reason says why.
+type Unreachable struct{ Reason string }
+
+func (u *Unreachable) Error() string { return u.Reason }
+
+// GroupRecipient starts the recipients that are a channel's group channels:
+// teams-channel:<name>, slack-channel:<name>.
+func GroupRecipient(channel string) string { return channel + "-channel:" }
+
+// group reports whether a recipient is a group channel.
+func group(recipient string) bool {
+	kind, _, _ := strings.Cut(recipient, ":")
+	return strings.HasSuffix(kind, "-channel")
 }
 
 // Receipt is where a channel put a message it can update: a chat's conversation and message.
@@ -107,12 +126,12 @@ type Receipt struct {
 	Conversation, Message string
 }
 
-// Updater is a channel that updates the messages it sent: Teams' cards.
+// Updater is a channel that updates the messages it sent: Teams' cards, Slack's messages.
 type Updater interface {
 	Update(ctx context.Context, at Receipt, m Message) error
 }
 
-// Poster is a channel that also posts to group channels (Teams' channels): those that get an event
+// Poster is a channel that also posts to group channels (Teams' and Slack's): those that get an event
 // of a kind (the first of kinds they take) for a repository, or a request with these owners.
 type Poster interface {
 	Posts(kinds []string, repository string, owners []string) []Post
@@ -126,7 +145,7 @@ func people(c Channel) bool {
 
 // Recipient is who a message goes to.
 type Recipient struct {
-	ID      string // user:<name>, email:<address> (notifications.alerts), or teams-channel:<name>
+	ID      string // user:<name>, email:<address> (notifications.alerts), teams-channel:<name> or slack-channel:<name>
 	Name    string // the person's name; empty for an address
 	Address string // on the channel
 }
@@ -335,7 +354,7 @@ const sendTimeout = time.Minute
 
 // recipient is someone an event is notified to, with the message they get.
 type recipient struct {
-	id   string   // user:<name>, email:<address> or teams-channel:<name>
+	id   string   // user:<name>, email:<address>, teams-channel:<name> or slack-channel:<name>
 	user *db.User // the person, for user: recipients; nil when the directory does not know them
 	kind string
 	only string // the one channel an address or a group channel is on
@@ -506,7 +525,8 @@ func (s *Service) recipients(ctx context.Context, e db.Event) ([]recipient, erro
 }
 
 // posts returns the group channels that post an event of these kinds for a repository, or a
-// request with these owners: Teams channels (notifications.teams.channels).
+// request with these owners: Teams and Slack channels (notifications.teams.channels,
+// notifications.slack.channels).
 func (s *Service) posts(kinds []string, repository string, owners []string) []recipient {
 	if len(kinds) == 0 {
 		return nil
@@ -515,7 +535,7 @@ func (s *Service) posts(kinds []string, repository string, owners []string) []re
 	for _, c := range s.opts.Channels {
 		if p, ok := c.(Poster); ok {
 			for _, post := range p.Posts(kinds, repository, owners) {
-				out = append(out, recipient{id: ChannelRecipient + post.Channel, kind: post.Kind, only: c.Name()})
+				out = append(out, recipient{id: GroupRecipient(c.Name()) + post.Channel, kind: post.Kind, only: c.Name()})
 			}
 		}
 	}
@@ -627,6 +647,9 @@ func (s *Service) send(ctx context.Context, id int64, last bool) error {
 	sctx, cancel := context.WithTimeout(ctx, sendTimeout)
 	receipt, err := c.Send(sctx, to, m)
 	cancel()
+	if u := (*Unreachable)(nil); errors.As(err, &u) {
+		return skip(u.Reason)
+	}
 	if err != nil {
 		state, result, level := Pending, "retried", slog.LevelWarn
 		if last {

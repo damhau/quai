@@ -117,24 +117,32 @@ func (t *Teams) NoAddress() string {
 func (t *Teams) Posts(kinds []string, repository string, owners []string) []Post {
 	var out []Post
 	for _, c := range t.cfg.Channels {
-		mine := slices.Contains(c.Repositories, repository) || slices.ContainsFunc(c.Teams, func(team string) bool {
-			return slices.Contains(owners, "team:"+team)
-		})
-		if !mine {
-			continue
-		}
-		for _, k := range kinds {
-			if slices.Contains(c.Events, k) {
-				out = append(out, Post{Channel: c.Name, Kind: k})
-				break
-			}
+		if k, ok := routes(c.Repositories, c.Teams, c.Events, kinds, repository, owners); ok {
+			out = append(out, Post{Channel: c.Name, Kind: k})
 		}
 	}
 	return out
 }
 
-// Post is an event a Teams channel gets, as a kind of notification.
+// Post is an event a group channel gets, as a kind of notification.
 type Post struct{ Channel, Kind string }
+
+// routes returns the first of kinds a group channel gets among its events, when it gets those of
+// the repository or of the owners (team:<name>).
+func routes(repositories, teams, events, kinds []string, repository string, owners []string) (string, bool) {
+	mine := slices.Contains(repositories, repository) || slices.ContainsFunc(teams, func(team string) bool {
+		return slices.Contains(owners, "team:"+team)
+	})
+	if !mine {
+		return "", false
+	}
+	for _, k := range kinds {
+		if slices.Contains(events, k) {
+			return k, true
+		}
+	}
+	return "", false
+}
 
 // Send sends a personal card, or posts to a channel (recipients teams-channel:<name>).
 func (t *Teams) Send(ctx context.Context, to Recipient, m Message) (Receipt, error) {
@@ -180,7 +188,7 @@ func (t *Teams) Update(ctx context.Context, at Receipt, m Message) error {
 	return nil
 }
 
-// ChannelRecipient starts the recipients that are Teams channels.
+// ChannelRecipient starts the recipients that are Teams channels: GroupRecipient("teams").
 const ChannelRecipient = "teams-channel:"
 
 // StatusError is an answer of Teams that is not a success.
@@ -254,23 +262,29 @@ func (t *Teams) connector(ctx context.Context, method, path string, body, out an
 	}
 }
 
-// retry says whether to try a throttled request again, and after how long: what Retry-After
-// says, or an exponential backoff with jitter, when it is within maxWait and the deadline.
+// retry says whether to try a throttled request again (429, 412, 502, 504), and after how long.
 func (t *Teams) retry(ctx context.Context, resp *http.Response, attempt int) (time.Duration, bool) {
 	switch resp.StatusCode {
 	case http.StatusTooManyRequests, http.StatusPreconditionFailed, http.StatusBadGateway, http.StatusGatewayTimeout:
 	default:
 		return 0, false
 	}
+	return retryWait(ctx, resp.Header, attempt, t.now())
+}
+
+// retryWait says whether to try a request again, and after how long: what its answer's
+// Retry-After says, or an exponential backoff with jitter, when it is within maxWait and the
+// deadline, at most maxRetries times.
+func retryWait(ctx context.Context, h http.Header, attempt int, now time.Time) (time.Duration, bool) {
 	if attempt >= maxRetries {
 		return 0, false
 	}
 	wait := time.Second<<attempt + rand.N(500*time.Millisecond) // #nosec G404 -- jitter, not a secret
-	if s := resp.Header.Get("Retry-After"); s != "" {
+	if s := h.Get("Retry-After"); s != "" {
 		if n, err := strconv.Atoi(s); err == nil && n >= 0 {
 			wait = time.Duration(n) * time.Second
 		} else if at, err := http.ParseTime(s); err == nil {
-			wait = at.Sub(t.now())
+			wait = at.Sub(now)
 		}
 	}
 	if wait > maxWait {
