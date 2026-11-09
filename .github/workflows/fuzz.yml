@@ -1,0 +1,48 @@
+name: fuzz
+
+# Nightly, and on demand (gh workflow run fuzz.yml): each editor's fuzz target for an hour
+# (docs/engineering/testing.md); every push runs them for 60 s (backend.yml).
+on:
+  schedule:
+    - cron: "7 0 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 80
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { package: yamledit, target: FuzzYAMLEdit }
+          - { package: jsonedit, target: FuzzJSONEdit }
+          - { package: hcledit, target: FuzzHCLEdit }
+    name: fuzz (${{ matrix.package }})
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: backend/go.mod
+          cache: false # the cache below
+      # Go's cache holds the corpus the runs found: shared with backend.yml's smoke run, so each run
+      # starts from what the previous ones found.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-fuzz-${{ runner.os }}-${{ matrix.target }}-${{ github.sha }}-nightly
+          restore-keys: go-fuzz-${{ runner.os }}-${{ matrix.target }}-
+      - run: go test -run='^$' -fuzz='^${{ matrix.target }}$' -fuzztime=1h ./internal/engine/edit/${{ matrix.package }}
+      - name: The failing input, to add to the package's testdata/fuzz
+        if: failure()
+        run: git ls-files --others --exclude-standard internal/engine/edit | while read -r f; do echo "== $f"; cat "$f"; done

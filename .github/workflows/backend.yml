@@ -84,3 +84,38 @@ jobs:
           key: test-binaries-${{ runner.os }}-${{ hashFiles('backend/internal/pgtest/*.go', 'backend/internal/k8stest/*.go', 'backend/internal/giteatest/*.go', 'backend/internal/mailtest/*.go', 'backend/go.sum') }}
           restore-keys: test-binaries-${{ runner.os }}-
       - run: make test-${{ matrix.half }}
+
+  # The editors' fuzzing smoke run (docs/engineering/testing.md): 60 s per fuzz target; fuzz.yml
+  # runs each for an hour nightly. Go's cache holds the corpus the runs found, kept as above.
+  fuzz:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { package: yamledit, target: FuzzYAMLEdit }
+          - { package: jsonedit, target: FuzzJSONEdit }
+          - { package: hcledit, target: FuzzHCLEdit }
+    name: fuzz (${{ matrix.package }})
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: backend/go.mod
+          cache: false # the cache below, kept per commit
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-fuzz-${{ runner.os }}-${{ matrix.target }}-${{ github.sha }}
+          restore-keys: go-fuzz-${{ runner.os }}-${{ matrix.target }}-
+      - run: go test -run='^$' -fuzz='^${{ matrix.target }}$' -fuzztime=60s ./internal/engine/edit/${{ matrix.package }}
+      - name: The failing input, to add to the package's testdata/fuzz
+        if: failure()
+        run: git ls-files --others --exclude-standard internal/engine/edit | while read -r f; do echo "== $f"; cat "$f"; done
