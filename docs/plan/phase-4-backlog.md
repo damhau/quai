@@ -21,7 +21,8 @@ Commit as `P4-NN: <summary> (closes #<issue>)`. A task may take a few commits; t
 closes it.
 
 Phase 4 started on 2026-11-08, while P3-19 (#133) waits on the owner to complete !407 to !410;
-the Phase 3 review, P3-21 (#135), is written once P3-19 is done.
+the [Phase 3 review](phase-3-backlog.md#phase-3-review-p3-21), P3-21 (#135), was written on
+2026-11-09 with P3-19 still waiting.
 
 Tests run in [three tiers](../engineering/testing.md#tiers), and an iteration waits only for
 the first:
