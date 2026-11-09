@@ -127,10 +127,14 @@ func (h *harness) poll() {
 }
 
 // awaitDelivery waits until the request's delivery satisfies ok, polling the repository as the
-// scheduler would.
+// scheduler would. A poll holds the repository's lock, which a delivery job that finds it taken
+// snoozes on: polling at most every two seconds leaves the jobs room, where back-to-back polls
+// of a remote repository (about a second each) once kept a pull request from opening for a
+// minute.
 func (u *user) awaitDelivery(id string, what string, ok func(RequestView) bool) RequestView {
 	u.h.t.Helper()
 	deadline := time.Now().Add(60 * time.Second)
+	var polled time.Time
 	for {
 		var r RequestView
 		u.do(http.MethodGet, Prefix+"/requests/"+id, nil, &r)
@@ -140,7 +144,10 @@ func (u *user) awaitDelivery(id string, what string, ok func(RequestView) bool) 
 		if time.Now().After(deadline) {
 			u.h.t.Fatalf("request %s: still not %s: %+v (delivery %+v)\nlog:\n%s", id, what, r.State, r.Delivery, u.h.log.String())
 		}
-		_ = u.h.ingest.Poll(context.Background(), "infra-live")
+		if time.Since(polled) >= 2*time.Second {
+			_ = u.h.ingest.Poll(context.Background(), "infra-live")
+			polled = time.Now()
+		}
 		time.Sleep(300 * time.Millisecond)
 	}
 }
