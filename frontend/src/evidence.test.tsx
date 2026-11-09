@@ -80,8 +80,9 @@ test("an auditor of one repository samples that repository only", async () => {
   await screen.findByRole("table", { name: "Requests" }, slow)
   expect(evidence.queries.at(-1)?.get("repository")).toBe("infra-live")
   const repository = within(screen.getByRole("form", { name: "Sample" })).getByLabelText("Repository")
+  // The repositories come from a query of their own, which may answer after the requests'.
+  expect(await within(repository).findByRole("option", { name: "Infrastructure" }, slow)).toBeInTheDocument()
   expect(within(repository).queryByRole("option", { name: "All" })).not.toBeInTheDocument()
-  expect(within(repository).getByRole("option", { name: "Infrastructure" })).toBeInTheDocument()
 })
 
 test("an archive keeps the server's name only when it is one Quai gives", () => {
