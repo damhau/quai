@@ -75,6 +75,7 @@ type Service struct {
 	publicURL string          // for the links in pull requests; "" leaves them out
 	dir       *auth.Directory // the teams of the groups of reviews from before auth.teams
 	stepUp    *auth.StepUp
+	reach     func(db.User) bool // whether notifications reach a person; nil without a channel
 }
 
 // New returns the request service. jobsClient inserts the delivery jobs.
@@ -625,7 +626,7 @@ func (s *Service) Submit(ctx context.Context, who auth.Identity, p *Plan, reason
 				return err
 			}
 		}
-		if err := event(ctx, q, r, "submitted", who.Principal.Name, nil); err != nil {
+		if err := s.event(ctx, tx, r, "submitted", who.Principal.Name, nil); err != nil {
 			return err
 		}
 		if err := recordRequest(ctx, tx, r, "submitted", map[string]any{"kind": p.Kind, "action": p.Action, "type": p.Type, "blueprint": p.Blueprint,
@@ -633,7 +634,7 @@ func (s *Service) Submit(ctx context.Context, who auth.Identity, p *Plan, reason
 			return err
 		}
 		if state == Approved {
-			if err := event(ctx, q, r, "approved", "", map[string]any{"reason": "no approval rule applies"}); err != nil {
+			if err := s.event(ctx, tx, r, "approved", "", map[string]any{"reason": "no approval rule applies"}); err != nil {
 				return err
 			}
 			if err := audit.Add(ctx, tx, audit.Event{Actor: audit.Quai, Action: "request.approved",
@@ -772,7 +773,7 @@ func (s *Service) Review(ctx context.Context, who auth.Identity, id uuid.UUID, d
 		}); err != nil {
 			return err
 		}
-		if err := event(ctx, q, r, decision, who.Principal.Name, map[string]any{"comment": comment}); err != nil {
+		if err := s.event(ctx, tx, r, decision, who.Principal.Name, map[string]any{"comment": comment}); err != nil {
 			return err
 		}
 		details := map[string]any{"decision": decision, "comment": audit.Personal(comment), "changeSet": sets[0].Hash, "stepUp": steppedUp}
@@ -798,7 +799,7 @@ func (s *Service) Review(ctx context.Context, who auth.Identity, id uuid.UUID, d
 			if next, err = q.TransitionRequest(ctx, db.TransitionRequestParams{ID: r.ID, FromState: PendingApproval, ToState: Approved}); err != nil {
 				return err
 			}
-			if err := event(ctx, q, r, "approved", "", nil); err != nil {
+			if err := s.event(ctx, tx, r, "approved", "", nil); err != nil {
 				return err
 			}
 			if err := recordRequest(ctx, tx, r, "approved", map[string]any{"changeSet": sets[0].Hash, "approvals": approvalsOf(reviews)}); err != nil {
@@ -809,7 +810,7 @@ func (s *Service) Review(ctx context.Context, who auth.Identity, id uuid.UUID, d
 			if next, err = q.TransitionRequest(ctx, db.TransitionRequestParams{ID: r.ID, FromState: PendingApproval, ToState: Rejected}); err != nil {
 				return err
 			}
-			if err := event(ctx, q, r, "rejected", who.Principal.Name, nil); err != nil {
+			if err := s.event(ctx, tx, r, "rejected", who.Principal.Name, nil); err != nil {
 				return err
 			}
 			if err := recordRequest(ctx, tx, r, "rejected", map[string]any{"changeSet": sets[0].Hash}); err != nil {
@@ -892,7 +893,7 @@ func (s *Service) Retry(ctx context.Context, who auth.Identity, id uuid.UUID) (d
 		if next, err = q.TransitionRequest(ctx, db.TransitionRequestParams{ID: r.ID, FromState: Failed, ToState: Approved}); err != nil {
 			return conflict(err, r)
 		}
-		if err := event(ctx, q, r, "retried", who.Principal.Name, nil); err != nil {
+		if err := s.event(ctx, tx, r, "retried", who.Principal.Name, nil); err != nil {
 			return err
 		}
 		if err := recordRequest(ctx, tx, r, "retried", nil); err != nil {
@@ -931,7 +932,7 @@ func (s *Service) transition(ctx context.Context, r db.Request, from, to, kind s
 		if next, err = q.TransitionRequest(ctx, db.TransitionRequestParams{ID: r.ID, FromState: from, ToState: to}); err != nil {
 			return conflict(err, r)
 		}
-		if err := event(ctx, q, r, kind, "", data); err != nil {
+		if err := s.event(ctx, tx, r, kind, "", data); err != nil {
 			return err
 		}
 		for _, action := range transitionAudit(to, kind) {
@@ -1232,13 +1233,19 @@ func author(r db.Request) gitx.Signature {
 	return gitx.Signature{Name: r.Requester, Email: email}
 }
 
-func event(ctx context.Context, q *db.Queries, r db.Request, kind, actor string, data map[string]any) error {
+// event adds an event to a request's timeline in tx, where notifications learn of it
+// (store.RecordEvent).
+func (s *Service) event(ctx context.Context, tx pgx.Tx, r db.Request, kind, actor string, data map[string]any) error {
+	_, err := s.store.RecordEvent(ctx, tx, eventParams(r, kind, actor, data))
+	return err
+}
+
+func eventParams(r db.Request, kind, actor string, data map[string]any) db.AddEventParams {
 	raw := []byte(`{}`)
 	if data != nil {
 		raw, _ = json.Marshal(data)
 	}
-	_, err := q.AddEvent(ctx, db.AddEventParams{RequestID: pgtype.UUID{Bytes: r.ID, Valid: true}, Target: r.Target, Kind: kind, Actor: actor, Data: raw})
-	return err
+	return db.AddEventParams{RequestID: pgtype.UUID{Bytes: r.ID, Valid: true}, Target: r.Target, Kind: kind, Actor: actor, Data: raw}
 }
 
 // reviews returns the request's reviews that count (counted).

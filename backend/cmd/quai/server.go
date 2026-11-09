@@ -106,6 +106,13 @@ func serve(ctx context.Context, cfg *config.Config, log *slog.Logger, ln net.Lis
 			opts.Requests.UsePublicURL(cfg.Server.PublicURL)
 			opts.Requests.UseDirectory(auth.NewDirectory(cfg.Auth))
 			opts.Requests.UseStepUp(opts.Auth.StepUp())
+			n, err := notifications(cfg, s, reg, opts.Requests, network, log)
+			if err != nil {
+				return err
+			}
+			if n != nil {
+				n.UseJobs(ins)
+			}
 			hooks := ingest.New(s, reg, log)
 			hooks.UseJobs(ins)
 			opts.Webhooks, opts.WebhookHost, opts.PublicURL = hooks.Webhooks(), cfg.Webhooks.Host, cfg.Server.PublicURL

@@ -153,6 +153,47 @@ func TestAuditExport(t *testing.T) {
 	}
 }
 
+// TestNotifications: email through an SMTP server over TLS or STARTTLS, never plaintext; the
+// password a secret reference; the addresses one line each; a link to Quai in every message.
+func TestNotifications(t *testing.T) {
+	p := write(t, `server: { publicURL: https://quai.example.com }
+notifications:
+  email: { host: smtp.example.com, from: "Quai <quai@example.com>", username: quai, password: { ref: "k8s:quai/smtp#password" } }
+  alerts: [secops@example.com]
+`)
+	c, err := Load(p, env(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e := c.Notifications.Email; e.Transport != EmailSTARTTLS || e.Port != 587 || e.Password.Ref != "k8s:quai/smtp#password" || len(c.Notifications.Alerts) != 1 {
+		t.Errorf("notifications = %+v, %+v", c.Notifications, e)
+	}
+	c, err = Load(write(t, "server: { publicURL: https://quai.example.com }\nnotifications: { email: { host: smtp.example.com, transport: tls, from: quai@example.com } }\n"), env(nil))
+	if err != nil || c.Notifications.Email.Port != 465 {
+		t.Errorf("implicit TLS = %+v, %v", c.Notifications.Email, err)
+	}
+	for name, tt := range map[string]struct{ file, want string }{
+		"plaintext":   {"notifications: { email: { host: smtp, transport: none, from: q@example.com } }", `notifications.email.transport must be starttls or tls, not "none"`},
+		"no host":     {"notifications: { email: { from: q@example.com } }", "notifications.email.host must be a host name"},
+		"port":        {"notifications: { email: { host: smtp, port: 70000, from: q@example.com } }", "notifications.email.port must be 1 to 65535"},
+		"from":        {"notifications: { email: { host: smtp, from: quai } }", `notifications.email.from: "quai" is not an email address`},
+		"from lines":  {"notifications: { email: { host: smtp, from: \"Quai\\r\\nBcc: x@example.com <q@example.com>\" } }", "must be one line"},
+		"password":    {"notifications: { email: { host: smtp, from: q@example.com, username: quai, password: { ref: hunter2 } } }", "notifications.email.password.ref must be a secret reference"},
+		"no username": {"notifications: { email: { host: smtp, from: q@example.com, password: { ref: env:SMTP } } }", "notifications.email.password needs notifications.email.username"},
+		"public URL":  {"notifications: { email: { host: smtp, from: q@example.com } }", "notifications.email needs server.publicURL"},
+		"alert":       {"notifications: { email: { host: smtp, from: q@example.com }, alerts: [\"SecOps <secops@example.com>\"] }", `notifications.alerts[0]: "SecOps <secops@example.com>" must be an address alone`},
+		"no email":    {"notifications: { alerts: [secops@example.com] }", "notifications.alerts are email addresses: they need notifications.email"},
+	} {
+		_, err := Load(write(t, "server: { publicURL: \"\" }\n"+tt.file+"\n"), env(nil))
+		if name != "public URL" {
+			_, err = Load(write(t, "server: { publicURL: https://quai.example.com }\n"+tt.file+"\n"), env(nil))
+		}
+		if err == nil || !strings.Contains(err.Error(), tt.want) {
+			t.Errorf("%s: error = %v, want %q", name, err, tt.want)
+		}
+	}
+}
+
 // TestAudit: the audit log's retention and checkpoints.
 func TestAudit(t *testing.T) {
 	c, err := Load("", env(nil))

@@ -166,7 +166,7 @@ func (s *Service) rebuild(ctx context.Context, repo *repositories.Repo, r db.Req
 		if _, err := q.PutDelivery(ctx, db.PutDeliveryParams{RequestID: r.ID, Repository: d.Repository, Branch: d.Branch, PullRequest: d.PullRequest, Url: d.Url, Head: sha}); err != nil {
 			return err
 		}
-		if err := event(ctx, q, r, "rebuilt", "", map[string]any{"base": base, "commit": sha, "hash": cs.Hash}); err != nil {
+		if err := s.event(ctx, tx, r, "rebuilt", "", map[string]any{"base": base, "commit": sha, "hash": cs.Hash}); err != nil {
 			return err
 		}
 		// The platform may reset statuses on a push; an approved request is merged on the new head.
@@ -258,7 +258,7 @@ func (s *Service) outsidePush(ctx context.Context, repo *repositories.Repo, r db
 				return conflict(err, r)
 			}
 		}
-		if err := event(ctx, q, r, "modified_outside_quai", "", map[string]any{"commit": head, "hash": hash,
+		if err := s.event(ctx, tx, r, "modified_outside_quai", "", map[string]any{"commit": head, "hash": hash,
 			"reason": "the pull request was changed outside Quai: its approvals are void, approve the new content"}); err != nil {
 			return err
 		}
@@ -294,11 +294,11 @@ func (s *Service) owned(ctx context.Context, cs db.ChangeSet) (func(string) bool
 }
 
 // alert records something an administrator must look at, on the repository's timeline.
-func alert(ctx context.Context, q *db.Queries, repository, kind string, data map[string]any) error {
+func (s *Service) alert(ctx context.Context, tx pgx.Tx, repository, kind string, data map[string]any) error {
 	b, err := json.Marshal(data)
 	if err != nil {
 		return err
 	}
-	_, err = q.AddEvent(ctx, db.AddEventParams{RequestID: pgtype.UUID{}, Target: "repository:" + repository, Kind: "alert_" + kind, Data: b})
+	_, err = s.store.RecordEvent(ctx, tx, db.AddEventParams{RequestID: pgtype.UUID{}, Target: "repository:" + repository, Kind: "alert_" + kind, Data: b})
 	return err
 }

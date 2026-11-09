@@ -19,6 +19,7 @@ type instruments struct {
 	auditCps   metric.Int64Counter
 	auditVer   metric.Int64Counter
 	auditExp   metric.Int64Counter
+	notified   metric.Int64Counter
 }
 
 var current atomic.Pointer[instruments]
@@ -69,6 +70,10 @@ func use(mp metric.MeterProvider) error {
 	}
 	if in.auditExp, err = m.Int64Counter("quai.audit.exports",
 		metric.WithDescription("Runs of the audit log's export to a SIEM, by destination and outcome (ok, error)")); err != nil {
+		return err
+	}
+	if in.notified, err = m.Int64Counter("quai.notifications",
+		metric.WithDescription("Notifications, by channel and outcome: sent, retried (an attempt failed), failed (no attempt left), skipped (nothing to send)")); err != nil {
 		return err
 	}
 	lag, err := m.Float64ObservableGauge("quai.audit.export.lag", metric.WithUnit("s"),
@@ -153,5 +158,13 @@ func AuditVerified(ctx context.Context, result string) {
 func AuditExported(ctx context.Context, destination string, err error) {
 	if in := current.Load(); in != nil {
 		in.auditExp.Add(ctx, 1, metric.WithAttributes(attribute.String("destination", destination), attribute.String("outcome", outcome(err))))
+	}
+}
+
+// Notified records what became of a notification on a channel: sent, retried (an attempt failed),
+// failed (no attempt left) or skipped (nothing to send: no address, the request moved on).
+func Notified(ctx context.Context, channel, result string) {
+	if in := current.Load(); in != nil {
+		in.notified.Add(ctx, 1, metric.WithAttributes(attribute.String("channel", channel), attribute.String("outcome", result)))
 	}
 }

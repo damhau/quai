@@ -19,6 +19,7 @@ import (
 	"github.com/damhau/quai/backend/internal/ingest"
 	"github.com/damhau/quai/backend/internal/jobs"
 	"github.com/damhau/quai/backend/internal/netx"
+	"github.com/damhau/quai/backend/internal/notify"
 	"github.com/damhau/quai/backend/internal/requests"
 	"github.com/damhau/quai/backend/internal/store"
 	"github.com/damhau/quai/backend/internal/telemetry"
@@ -76,6 +77,7 @@ func work(ctx context.Context, cfg *config.Config, log *slog.Logger, s *store.St
 	opts := jobs.Options{Logger: log}
 	var svc *requests.Service
 	var hooks *ingest.Service
+	var n *notify.Service
 	reg, err := openRepositories(ctx, cfg, s, network, log)
 	if err != nil {
 		return err
@@ -108,6 +110,12 @@ func work(ctx context.Context, cfg *config.Config, log *slog.Logger, s *store.St
 		hooks = ingest.New(s, reg, log)
 		hooks.UseHandler(svc)
 		workers = append(workers, svc.Workers, hooks.Workers)
+		if n, err = notifications(cfg, s, reg, svc, network, log); err != nil {
+			return err
+		}
+		if n != nil {
+			workers = append(workers, n.Workers)
+		}
 		opts.Periodic = append(opts.Periodic, ingest.Periodic())
 	}
 	opts.Workers = func(w *river.Workers) {
@@ -122,6 +130,9 @@ func work(ctx context.Context, cfg *config.Config, log *slog.Logger, s *store.St
 	if svc != nil {
 		svc.UseJobs(c)
 		hooks.UseJobs(c)
+		if n != nil {
+			n.UseJobs(c)
+		}
 	}
 	if err := c.Start(ctx); err != nil {
 		return err

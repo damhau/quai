@@ -2,8 +2,9 @@
 # Seeds the local Gitea: a quai account with a random password and an access token for Quai,
 # the infra-live repository holding examples/gitops-repo (public, so that its pull requests can
 # be read without signing in), its main protected so that pull
-# requests need quai/approval, its webhook to Quai, and an empty network repository the
-# end-to-end scenarios connect with the registration wizard. Each step runs once. The token and
+# requests need quai/approval, its webhook to Quai, an empty network repository the end-to-end
+# scenarios connect with the registration wizard, and the mail server's certificate. Each step
+# runs once. The token and
 # the webhook secret are left in /run/quai, where run-quai.sh reads them; nothing secret is in
 # the repository.
 set -eu
@@ -28,6 +29,17 @@ fi
 if [ ! -s /run/quai/run-token.sha256 ]; then
 	(umask 027 && head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n' >/run/quai/run-token)
 	(umask 027 && printf '%s' "$(cat /run/quai/run-token)" | sha256sum | cut -d' ' -f1 | tr -d '\n' >/run/quai/run-token.sha256)
+fi
+# The local mail server's certificate, self-signed for the name mailpit: Quai trusts it through
+# network.caFile and sends its notifications over STARTTLS, as to a real one.
+if [ ! -s /run/quai/mailpit.crt ]; then
+	tmp=$(mktemp -d)
+	chown git "$tmp"
+	su-exec git gitea cert --host mailpit --ca --ecdsa-curve P256 --duration 87600h \
+		--out "$tmp/mailpit.crt" --keyout "$tmp/mailpit.key" >/dev/null
+	(umask 027 && cat "$tmp/mailpit.key" >/run/quai/mailpit.key && cat "$tmp/mailpit.crt" >/run/quai/mailpit.crt)
+	rm -rf "$tmp"
+	echo "Made the mail server's certificate"
 fi
 exists() { curl -fs -o /dev/null -H "Authorization: token $token" "$api/repos/quai/$1"; }
 

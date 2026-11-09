@@ -29,6 +29,26 @@ type Store struct {
 	Pool  *pgxpool.Pool
 	Locks *Locks
 	*db.Queries
+	events EventHook
+}
+
+// EventHook is told of each event RecordEvent adds to a timeline, in the transaction that adds
+// it: notifications enqueue their jobs from it, so that an event is notified if and only if it
+// is committed (docs/design/05-delivery-and-approvals.md#notifications). An error rolls the
+// transaction back.
+type EventHook func(ctx context.Context, tx pgx.Tx, e db.Event) error
+
+// UseEvents makes hook the one told of recorded events; nil: none. Set it before the store is
+// used.
+func (s *Store) UseEvents(hook EventHook) { s.events = hook }
+
+// RecordEvent adds an event to a timeline in tx, and tells the event hook.
+func (s *Store) RecordEvent(ctx context.Context, tx pgx.Tx, p db.AddEventParams) (db.Event, error) {
+	e, err := s.Queries.WithTx(tx).AddEvent(ctx, p)
+	if err != nil || s.events == nil {
+		return e, err
+	}
+	return e, s.events(ctx, tx, e)
 }
 
 // Locks is the pool PostgreSQL's advisory locks are held on (jobs.WithLock,

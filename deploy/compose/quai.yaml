@@ -6,8 +6,31 @@ database:
   # (QUAI_DATABASE_MIGRATE_URL), and grants it the audit log to read and append only.
   url: postgres://quai_app@postgres:5432/quai?sslmode=disable
 auth:
-  mode: dev # the user switcher, with its demo users: alice (platform admin), bob, carol, fiona
+  mode: dev # the user switcher
+  dev:
+    # The demo users, with emails for the notifications (Mailpit catches them all); carol has
+    # none, to show what a request says of whom its notifications do not reach.
+    users:
+      - { name: alice, email: alice@example.com, groups: [platform-admins] }
+      - { name: bob, email: bob@example.com, groups: [developers, shop] }
+      - { name: fiona, email: fiona@example.com, groups: [finops, developers] }
+      - { name: carol, groups: [shop, developers] }
+  roles:
+    - { group: platform-admins, role: platform-admin }
+    - { group: developers, role: viewer }
+    - { group: developers, role: requester }
+    - { group: developers, role: operator }
+    - { group: finops, role: viewer }
 git:
   cacheDir: /var/cache/quai
 repositories:
   path: /etc/quai/repositories.yaml
+network:
+  caFile: /run/quai/mailpit.crt # the local mail server's self-signed certificate (the seed step)
+notifications:
+  email:
+    host: mailpit
+    port: 1025
+    transport: starttls
+    from: Quai <quai@example.com>
+  alerts: [platform-team@example.com]

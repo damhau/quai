@@ -106,7 +106,7 @@ func CheckEnforcement(ctx context.Context, s *store.Store, repo *Repo) (Enforcem
 		if err != nil {
 			return err
 		}
-		if _, err = q.AddEvent(ctx, db.AddEventParams{RequestID: pgtype.UUID{}, Target: "repository:" + repo.Name, Kind: kind, Data: data}); err != nil {
+		if _, err = s.RecordEvent(ctx, tx, db.AddEventParams{RequestID: pgtype.UUID{}, Target: "repository:" + repo.Name, Kind: kind, Data: data}); err != nil {
 			return err
 		}
 		action := "repository.enforcement_restored"

@@ -43,6 +43,23 @@ config:
   #     - { name: siem, syslog: { address: "siem.example.com:6514" } }
   #     - name: splunk
   #       splunk: { url: "https://splunk.example.com:8088", token: { ref: "k8s:quai/quai-splunk#token" }, index: audit }
+  # Notifications by email (docs/operations/deployment-and-operations.md#notifications): the
+  # worker mails requesters, the approvers a request waits for and, of alerts, the repositories'
+  # admins and notifications.alerts. Mail goes over TLS only, implicit (tls, port 465) or
+  # STARTTLS (starttls, port 587, refused when the server does not offer it), verified with the
+  # image's CAs and network.caBundle. The links in it start with server.publicURL, which email
+  # requires.
+  # server:
+  #   publicURL: https://quai.example.com
+  # notifications:
+  #   email:
+  #     host: smtp.example.com
+  #     port: 587
+  #     transport: starttls
+  #     from: "Quai <quai@example.com>"
+  #     username: quai
+  #     password: { ref: "k8s:quai/quai-smtp#password" }
+  #   alerts: [platform-team@example.com]
 configSecret: "" # an existing Secret with the quai.yaml and repositories.yaml keys, used instead of config and repositories
 
 # The repository connections declared here: Repository documents

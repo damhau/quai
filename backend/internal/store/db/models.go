@@ -116,6 +116,20 @@ type Event struct {
 	CreatedAt pgtype.Timestamptz
 }
 
+type Notification struct {
+	ID        int64
+	OrgID     string
+	EventID   int64
+	Recipient string
+	Channel   string
+	Kind      string
+	State     string
+	Attempts  int32
+	LastError string
+	CreatedAt pgtype.Timestamptz
+	SentAt    pgtype.Timestamptz
+}
+
 type Repository struct {
 	OrgID      string
 	Name       string

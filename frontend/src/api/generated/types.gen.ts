@@ -958,6 +958,10 @@ export type RequestView = {
     reason: string;
     repository: string;
     requester: string;
+    /**
+     * Notifications do not reach the requester: Quai knows no verified email of theirs
+     */
+    requesterNotNotified?: boolean;
     reviews?: Array<ReviewView> | null;
     rules: Array<RuleView> | null;
     stack?: string;
@@ -1123,6 +1127,10 @@ export type RuleView = {
     external?: string;
     min: number;
     names: Array<string> | null;
+    /**
+     * The request waits for the rule, and no one who may approve for it is reached by a notification: none signed in to Quai, or Quai knows no verified email of theirs
+     */
+    noOneToNotify?: boolean;
     /**
      * The plan says the rule does not apply
      */
@@ -1858,6 +1866,10 @@ export type RequestViewWritable = {
     reason: string;
     repository: string;
     requester: string;
+    /**
+     * Notifications do not reach the requester: Quai knows no verified email of theirs
+     */
+    requesterNotNotified?: boolean;
     reviews?: Array<ReviewView> | null;
     rules: Array<RuleView> | null;
     stack?: string;

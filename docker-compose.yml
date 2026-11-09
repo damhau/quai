@@ -1,9 +1,11 @@
-# A local Quai: the server and a worker, PostgreSQL, and Gitea holding the example repository.
+# A local Quai: the server and a worker, PostgreSQL, Gitea holding the example repository, and
+# Mailpit catching the mail Quai sends.
 #
 #   docker compose up --build
 #
 # Then open http://localhost:8080 and sign in as one of the demo users; Gitea is at
-# http://localhost:3000 (quai/infra-live). QUAI_PORT and GITEA_PORT choose other ports. For
+# http://localhost:3000 (quai/infra-live), the mail at http://localhost:8025. QUAI_PORT,
+# GITEA_PORT and MAILPIT_PORT choose other ports. For
 # local use only: PostgreSQL trusts the compose network and is not published, and Gitea's
 # account gets a random password at first start. `docker compose down -v` starts over (a volume
 # from before the application role, quai_app, needs it).
@@ -13,6 +15,8 @@ x-quai: &quai
   image: quai:local
   build: { context: ., args: { VERSION: local } }
   entrypoint: ["/bin/sh", "/etc/quai/run-quai.sh"]
+  environment:
+    QUAI_SERVER_PUBLIC_URL: http://localhost:${QUAI_PORT:-8080} # the links in pull requests and notifications
   read_only: true
   tmpfs: [/tmp]
   volumes:
@@ -67,6 +71,7 @@ services:
     <<: *quai
     command: ["migrate"]
     environment:
+      QUAI_SERVER_PUBLIC_URL: http://localhost:${QUAI_PORT:-8080}
       # The schema's owner, for the migrations alone: the server and the worker connect as quai_app.
       QUAI_DATABASE_MIGRATE_URL: postgres://quai@postgres:5432/quai?sslmode=disable
     depends_on:
@@ -99,7 +104,22 @@ services:
       - ./deploy/compose/run-quai.sh:/etc/quai/run-quai.sh:ro
       - seed:/run/quai:ro
       - worker-cache:/var/cache/quai
-    depends_on: { migrate: { condition: service_completed_successfully } }
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      mailpit: { condition: service_healthy }
+
+  # The mail server notifications go to (notifications.email in deploy/compose/quai.yaml): it
+  # catches every message, shown at http://localhost:8025. It requires STARTTLS, with the
+  # certificate the seed step made for the name mailpit, which Quai trusts through network.caFile.
+  mailpit:
+    image: axllent/mailpit:v1.32.0@sha256:0790692be935ea4420d085694f7985b1f692ca6a8771ab0e0bd8ba75ac180498
+    command: ["--smtp-tls-cert", "/run/quai/mailpit.crt", "--smtp-tls-key", "/run/quai/mailpit.key", "--smtp-require-starttls",
+      "--smtp-disable-rdns", "--disable-version-check"]
+    ports: ["${MAILPIT_PORT:-8025}:8025"] # its web UI and API; SMTP stays on the compose network
+    read_only: true
+    tmpfs: [/tmp]
+    volumes: [seed:/run/quai:ro]
+    depends_on: { seed: { condition: service_completed_successfully } }
 
   # The repository's pipelines, faked (backend/tools/fakerunner): on Gitea's webhooks it reports
   # plans of pull requests and applies of main with quai report.
@@ -131,6 +151,7 @@ services:
       E2E_BASE_URL: http://server:8080
       E2E_GITEA_URL: http://gitea:3000 # the scenarios read pull requests and statuses there
       E2E_GITEA_TOKEN_FILE: /run/quai/git-token
+      E2E_MAILPIT_URL: http://mailpit:8025 # the scenarios read the mail Quai sent there
       E2E_OUTPUT: /tmp/e2e # copy it out with docker cp to read the report
       CI: ${CI:-}
     volumes: [./e2e:/src:ro, seed:/run/quai:ro]
@@ -140,6 +161,7 @@ services:
       server: { condition: service_healthy }
       worker: { condition: service_started }
       fake-runner: { condition: service_healthy }
+      mailpit: { condition: service_healthy }
 
 volumes:
   postgres:

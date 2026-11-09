@@ -183,7 +183,7 @@ func (w *openWorker) Work(ctx context.Context, job *river.Job[OpenArgs]) error {
 			if err != nil {
 				return err
 			}
-			if err := event(ctx, q, r, "pull_request_opened", "", map[string]any{"pullRequest": pr.ID, "url": pr.URL, "branch": d.Branch, "commit": sha}); err != nil {
+			if err := s.event(ctx, tx, r, "pull_request_opened", "", map[string]any{"pullRequest": pr.ID, "url": pr.URL, "branch": d.Branch, "commit": sha}); err != nil {
 				return err
 			}
 			if err := jobs.InsertTx(ctx, s.jobs, tx, StatusArgs{RequestID: r.ID}, nil); err != nil {
@@ -493,8 +493,8 @@ func (s *Service) commentApprovals(ctx context.Context, prs connectors.PullReque
 		if err := prs.Comment(ctx, d.PullRequest, b.String()); err != nil {
 			return fmt.Errorf("comment on pull request %s: %w", d.PullRequest, err)
 		}
-		return s.store.Tx(ctx, func(_ pgx.Tx, q *db.Queries) error {
-			return event(ctx, q, r, "approvals_commented", "", map[string]any{"pullRequest": d.PullRequest})
+		return s.store.Tx(ctx, func(tx pgx.Tx, _ *db.Queries) error {
+			return s.event(ctx, tx, r, "approvals_commented", "", map[string]any{"pullRequest": d.PullRequest})
 		})
 	})
 }
@@ -555,7 +555,7 @@ func (s *Service) merged(ctx context.Context, r db.Request, d db.Delivery, pr co
 			return conflict(err, r)
 		}
 		r = next
-		if err := event(ctx, q, r, kind, "", data); err != nil {
+		if err := s.event(ctx, tx, r, kind, "", data); err != nil {
 			return err
 		}
 		if err := recordRequest(ctx, tx, r, kind, map[string]any{"from": from, "commit": pr.MergeCommit, "pullRequest": pr.ID}); err != nil {
@@ -572,7 +572,7 @@ func (s *Service) merged(ctx context.Context, r db.Request, d db.Delivery, pr co
 			}
 		}
 		if bypass {
-			return alert(ctx, q, d.Repository, "bypass", map[string]any{"request": r.ID.String(), "number": r.Number, "state": from,
+			return s.alert(ctx, tx, d.Repository, "bypass", map[string]any{"request": r.ID.String(), "number": r.Number, "state": from,
 				"pullRequest": pr.ID, "commit": pr.MergeCommit, "message": fmt.Sprintf("pull request %s was merged without Quai's approval: check the branch protection", pr.ID)})
 		}
 		return nil

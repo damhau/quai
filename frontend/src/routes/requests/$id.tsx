@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import { createFileRoute, Link } from "@tanstack/react-router"
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query"
-import { AlertCircle, Check, GitPullRequest, KeyRound, RotateCcw, X } from "lucide-react"
+import { AlertCircle, BellOff, Check, GitPullRequest, KeyRound, RotateCcw, X } from "lucide-react"
 import {
   cancelRequestMutation,
   getMeOptions,
@@ -71,6 +71,12 @@ function RequestPage() {
           )}
         </p>
         {r.delivery && <DeliveryLine delivery={r.delivery} />}
+        {r.requesterNotNotified && (
+          <p className="text-muted-foreground flex items-center gap-1 text-sm">
+            <BellOff className="size-4 shrink-0" aria-hidden />
+            {r.requester} gets no notifications of this request: Quai knows no verified email of theirs.
+          </p>
+        )}
       </header>
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <div className="grid gap-6">

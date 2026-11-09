@@ -32,7 +32,7 @@ func (s *Service) RunReported(ctx context.Context, run db.Run) error {
 		if err != nil {
 			return err
 		}
-		if err := event(ctx, s.store.Queries, r, "plan_reported", "", runData(run)); err != nil {
+		if _, err := s.store.AddEvent(ctx, eventParams(r, "plan_reported", "", runData(run))); err != nil {
 			return err
 		}
 		if run.Status == "succeeded" {

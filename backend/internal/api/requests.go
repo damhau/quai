@@ -47,6 +47,7 @@ type RuleView struct {
 	WaitingForPlan bool   `json:"waitingForPlan,omitempty" doc:"The rule waits for a plan to say whether it applies"`
 	NotApplicable  bool   `json:"notApplicable,omitempty" doc:"The plan says the rule does not apply"`
 	PlanError      string `json:"planError,omitempty" doc:"Why the condition could not be evaluated on the plan: the rule applies"`
+	NoOneToNotify  bool   `json:"noOneToNotify,omitempty" doc:"The request waits for the rule, and no one who may approve for it is reached by a notification: none signed in to Quai, or Quai knows no verified email of theirs"`
 }
 
 // PlanView is what a request would change.
@@ -147,6 +148,8 @@ type RequestView struct {
 	Events     []EventView     `json:"events,omitempty"`
 	Plans      []RunView       `json:"plans,omitempty" doc:"The latest plan of each stack the request's pull request was planned in"`
 	Delivery   *DeliveryView   `json:"delivery,omitempty" doc:"The pull request the change goes through; absent in direct mode"`
+	// RequesterNotNotified is set when notifications are configured and do not reach the requester.
+	RequesterNotNotified bool `json:"requesterNotNotified,omitempty" doc:"Notifications do not reach the requester: Quai knows no verified email of theirs"`
 }
 
 // DeliveryView is a request's pull request.
@@ -472,6 +475,15 @@ func requestView(ctx context.Context, svc *requests.Service, s *store.Store, r d
 	}
 	if !detail {
 		return v
+	}
+	// Who notifications do not reach (docs/design/05-delivery-and-approvals.md#notifications).
+	if requester, rules, ok, err := svc.Unnotified(ctx, r); err == nil && ok {
+		v.RequesterNotNotified = requester
+		for _, i := range rules {
+			if i < len(v.Rules) {
+				v.Rules[i].NoOneToNotify = true
+			}
+		}
 	}
 	if runs, err := s.LatestRequestRuns(ctx, db.LatestRequestRunsParams{RequestID: pgtype.UUID{Bytes: r.ID, Valid: true}, Kind: "plan"}); err == nil {
 		for _, run := range runs {

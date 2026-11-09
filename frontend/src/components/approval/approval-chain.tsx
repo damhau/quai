@@ -1,4 +1,4 @@
-import { CircleCheck, CircleMinus, Clock, FileClock } from "lucide-react"
+import { BellOff, CircleCheck, CircleMinus, Clock, FileClock } from "lucide-react"
 import type { RuleView } from "@/api/generated/types.gen"
 import { Badge } from "@/components/ui/badge"
 
@@ -40,6 +40,12 @@ export function ApprovalChain({ rules }: { rules: RuleView[] }) {
                 {r.external && <Badge variant="outline">{r.external}</Badge>}
               </span>
               {approvals.length > 0 && <span className="text-muted-foreground text-xs">Approved by {approvals.join(", ")}</span>}
+              {r.noOneToNotify && (
+                <span className="text-muted-foreground flex items-center gap-1 text-xs">
+                  <BellOff className="size-3.5 shrink-0" aria-hidden />
+                  No one who may approve is notified: none signed in to Quai with a verified email. Tell them yourself.
+                </span>
+              )}
             </div>
           </li>
         )

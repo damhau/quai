@@ -25,6 +25,8 @@ import (
 	"github.com/damhau/quai/backend/internal/giteatest"
 	"github.com/damhau/quai/backend/internal/ingest"
 	"github.com/damhau/quai/backend/internal/jobs"
+	"github.com/damhau/quai/backend/internal/netx"
+	"github.com/damhau/quai/backend/internal/notify"
 	"github.com/damhau/quai/backend/internal/pgtest"
 	"github.com/damhau/quai/backend/internal/repositories"
 	"github.com/damhau/quai/backend/internal/requests"
@@ -47,6 +49,8 @@ type harness struct {
 	ingest *ingest.Service
 	auth   *auth.Authenticator
 	log    *bytes.Buffer
+	jobs   *jobs.Client
+	notify *notify.Service // with notifications.email configured
 }
 
 func git(t *testing.T, dir string, args ...string) string {
@@ -117,6 +121,15 @@ func localRemote(t *testing.T, dir string) (bare, work string) {
 // Webhooks and polls are processed by h.ingest. configure changes Quai's configuration.
 func start(t *testing.T, dir, spec string, opts repositories.Options, configure ...func(*config.Config)) *harness {
 	t.Helper()
+	return startRepo(t, dir, "{ name: infra-live, title: Infrastructure }", spec, opts, configure...)
+}
+
+// notifyBackoff is how long the harness's notifications wait before trying again.
+func notifyBackoff(int) time.Duration { return 200 * time.Millisecond }
+
+// startRepo is start with the repository's metadata given.
+func startRepo(t *testing.T, dir, metadata, spec string, opts repositories.Options, configure ...func(*config.Config)) *harness {
+	t.Helper()
 	cfg, err := config.Load("", func(string) (string, bool) { return "", false })
 	if err != nil {
 		t.Fatal(err)
@@ -125,7 +138,7 @@ func start(t *testing.T, dir, spec string, opts repositories.Options, configure 
 		c(cfg)
 	}
 	cfg.Git.CacheDir = filepath.Join(dir, "mirrors")
-	docs, err := repositories.Parse([]byte("apiVersion: quai.dev/v1beta1\nkind: Repository\nmetadata: { name: infra-live, title: Infrastructure }\nspec:\n  " + spec + "\n"))
+	docs, err := repositories.Parse([]byte("apiVersion: quai.dev/v1beta1\nkind: Repository\nmetadata: " + metadata + "\nspec:\n  " + spec + "\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,12 +165,36 @@ func start(t *testing.T, dir, spec string, opts repositories.Options, configure 
 	svc.UseStepUp(authn.StepUp())
 	hooks := ingest.New(s, reg, log)
 	hooks.UseHandler(svc)
-	worker, err := jobs.NewWorker(s.Pool, jobs.Options{Logger: log, Workers: func(w *river.Workers) { svc.Workers(w); hooks.Workers(w) }})
+	var n *notify.Service
+	if e := cfg.Notifications.Email; e != nil {
+		network, err := netx.New(cfg.Network.CAFile)
+		if err != nil {
+			t.Fatal(err)
+		}
+		email, err := notify.NewEmail(*e, network, opts.Secrets, public)
+		if err != nil {
+			t.Fatal(err)
+		}
+		n = notify.New(notify.Options{Store: s, Requests: svc, Repositories: reg, Directory: auth.NewDirectory(cfg.Auth),
+			Channels: []notify.Channel{email}, Alerts: cfg.Notifications.Alerts, PublicURL: public, Log: log, Backoff: notifyBackoff})
+		s.UseEvents(n.EventRecorded)
+		svc.UseReach(n.Reach)
+	}
+	worker, err := jobs.NewWorker(s.Pool, jobs.Options{Logger: log, Workers: func(w *river.Workers) {
+		svc.Workers(w)
+		hooks.Workers(w)
+		if n != nil {
+			n.Workers(w)
+		}
+	}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	svc.UseJobs(worker)
 	hooks.UseJobs(worker)
+	if n != nil {
+		n.UseJobs(worker)
+	}
 	if err := worker.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +206,7 @@ func start(t *testing.T, dir, spec string, opts repositories.Options, configure 
 	srv := httptest.NewServer(New(Options{Version: "test", Env: cfg.Env, Logger: log, Store: s, Auth: authn, Repositories: reg, Requests: svc, PublicURL: public,
 		Webhooks: hooks.Webhooks()}))
 	t.Cleanup(srv.Close)
-	return &harness{t: t, srv: srv, store: s, reg: reg, ingest: hooks, auth: authn, log: &logs}
+	return &harness{t: t, srv: srv, store: s, reg: reg, ingest: hooks, auth: authn, log: &logs, jobs: worker, notify: n}
 }
 
 // push commits a change to the repository as a person would.

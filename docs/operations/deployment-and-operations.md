@@ -30,7 +30,7 @@ single pod with both roles.
 
 - **Image:** static Go binary on a distroless or UBI-minimal base, plus `git` and `openssh` (needed for transport). Non-root, read-only root file system, no shell in the distroless variant. Today (`Dockerfile`): Alpine with `git` and `openssh-client`, user 10001 in group 0 (OpenShift's arbitrary user ids run in it), the frontend's build embedded in the binary and served by `quai server` at every path the API and `/auth` do not answer, with a strict Content-Security-Policy and year-long caching of hashed assets. It runs with a read-only root file system given a writable `/tmp` and `/var/cache/quai` (the Git mirror cache). Base images are pinned by digest. CI builds the final stage without its layer cache, and that stage upgrades Alpine's packages, so each image has the fixes Alpine has that day, without waiting for a new base image. The Go dependencies compile in a layer of their own, cached while the packages the binaries import and `go.sum` do not change, so a commit compiles only Quai's packages. Each commit on `main` publishes it to `ghcr.io/damhau/quai` as `main`, `sha-<commit>` and `main-<commit time, UTC, YYYYMMDDHHMMSS>-<short commit>`, which sorts by date so that Argo CD Image Updater can follow `main`; the local stack's fake runner (the `fake-runner` target) is published with the same tags to `ghcr.io/damhau/quai-fake-runner`, for demo installations in a cluster.
 - **Helm chart:** server and worker Deployments, PodDisruptionBudgets, HorizontalPodAutoscaler for the server, NetworkPolicies, ServiceMonitor, optional CloudNativePG `Cluster`, configuration via values and a mounted `quai.yaml`. Today (`deploy/helm/quai`, [below](#helm)): server and worker Deployments, the server's Service, PodDisruptionBudget and optional HorizontalPodAutoscaler, an optional Ingress, an optional PrometheusRule with the chart's alerts (`prometheusRule`, [observability](#observability)), `quai migrate` as a pre-install and pre-upgrade hook Job (it needs the database Secrets alone, so it runs before the release's other objects exist), the configuration from values (or from an existing Secret when repository URLs carry tokens), the database URL and OIDC client secret from existing Secrets, a Role that lets the pods read the Secrets that repository connections reference (`secretStore.kubernetes`, optionally restricted by name), and the outgoing network setup (`network`: an internal CA from a ConfigMap, the proxy variables). The migrations Job alone connects as the schema's owner, from a Secret of its own (`database.migrate`); the server and the worker never get it. Pods run non-root with a read-only root file system and no capabilities. CI lints it and checks the rendered objects against the Kubernetes schemas (the PrometheusRule against the Prometheus Operator's), and installs it on kind.
-- **Local stack:** `docker compose up --build` runs the server, a worker, PostgreSQL (with the schema's owner, `quai`, which the `migrate` step connects as, and the application role, `quai_app`, which the server and the worker connect as) and Gitea, which a one-shot step seeds with `examples/gitops-repo` as `quai/infra-live` (a random password, and a token and a webhook secret Quai reads from a shared volume). Requests go through pull requests: `main` requires `quai/approval`, and Gitea's webhook reaches Quai's server. A fake runner stands in for the repository's pipelines: on Gitea's webhooks it reports a plan of each pull request and an apply of each push to `main` with `quai report`, so merged requests go through *Applying* to *Applied*. The development sign-in and its demo users are on; `QUAI_PORT`, `GITEA_PORT` and `FAKERUNNER_PORT` move the published ports.
+- **Local stack:** `docker compose up --build` runs the server, a worker, PostgreSQL (with the schema's owner, `quai`, which the `migrate` step connects as, and the application role, `quai_app`, which the server and the worker connect as) and Gitea, which a one-shot step seeds with `examples/gitops-repo` as `quai/infra-live` (a random password, and a token and a webhook secret Quai reads from a shared volume). Requests go through pull requests: `main` requires `quai/approval`, and Gitea's webhook reaches Quai's server. A fake runner stands in for the repository's pipelines: on Gitea's webhooks it reports a plan of each pull request and an apply of each push to `main` with `quai report`, so merged requests go through *Applying* to *Applied*. Mailpit catches the notifications the worker sends over STARTTLS (a certificate the seed step makes, trusted through `network.caFile`); its inbox is on `:8025`. The development sign-in and its demo users are on; `QUAI_PORT`, `GITEA_PORT`, `FAKERUNNER_PORT` and `MAILPIT_PORT` move the published ports.
 - **OpenShift:** runs under the `restricted-v2` SCC with an arbitrary UID; a `Route` instead of an `Ingress`; UBI-based image variant.
 - **Air-gapped:** an offline bundle (images, chart, `quai` CLI binaries for Linux, macOS and Windows) with checksums and signatures. Nothing is fetched at runtime: no CDNs, no fonts, no telemetry.
 - **Configuration:** a YAML file, overridable by environment variables; secrets only as references (Vault, Kubernetes Secrets). Repository connections can be managed in the UI or declared in the configuration (GitOps for Quai itself).
@@ -40,7 +40,7 @@ single pod with both roles.
   | (file) | `QUAI_CONFIG`, or `quai server --config` | none: environment and defaults only |
   | `env` | `QUAI_ENV` | `development`; `production` refuses development-only features |
   | `server.addr` | `QUAI_SERVER_ADDR` | `:8080` |
-  | `server.publicURL` | `QUAI_SERVER_PUBLIC_URL` | none: where people reach Quai, for the links to requests in pull requests and statuses; without it, pull requests name the request without a link |
+  | `server.publicURL` | `QUAI_SERVER_PUBLIC_URL` | none: where people reach Quai, for the links to requests in pull requests, statuses and notifications; without it, pull requests name the request without a link. Required, `http` or `https`, with `notifications.email`: notifications never take a link from a request's `Host` |
   | `server.shutdownTimeout` | `QUAI_SERVER_SHUTDOWN_TIMEOUT` | `20s` for requests in flight to finish |
   | `database.url` | `QUAI_DATABASE_URL` | none. The application role the server and the worker connect as. Each process opens two pools of up to `pool_max_conns` connections (a URL parameter; by default the number of CPUs, at least four): one for its work, one for its advisory locks |
   | `database.migrateURL` | `QUAI_DATABASE_MIGRATE_URL` | `database.url`. The schema's owner, for `quai migrate` alone: it applies the migrations, then grants the role of `database.url` what the server and the worker need, the audit log to read and append only ([database roles](#database-roles)). Without it, or with the same role, the audit log is not protected, and `quai migrate`, the server and the audit log page say so |
@@ -70,6 +70,10 @@ single pod with both roles.
   | `audit.export[].syslog.address`, `.transport`, `.facility` | | required `host:port` (RFC 5425's port is 6514); `tls`, or `tcp`, unencrypted, which production refuses except to a loopback address; `13` (log audit) |
   | `audit.export[].otlp.endpoint`, `.headers` | | required: the collector's URL, `https`, its logs at `/v1/logs` unless it names a path; `http` only to a loopback address in production. Headers by name, each a secret reference (`{ ref: env:OTLP_TOKEN }`) |
   | `audit.export[].splunk.url`, `.token.ref`, `.index`, `.sourcetype` | | required: the HTTP Event Collector's base URL (`https://splunk.example.com:8088`), `http` only to a loopback address in production; required: a secret reference to the HEC token, a token without indexer acknowledgment; the token's default index; none |
+  | `notifications.email.host`, `.port`, `.transport` | | none: no email is sent ([notifications](#notifications)). The SMTP server's host name or address; `587` with `starttls`, `465` with `tls`; `starttls` (the default), which the server must offer, or `tls` from the first byte. There is no plaintext transport, and the certificate is verified against the system's CAs and `network.caFile` |
+  | `notifications.email.from` | | required: the sender, an address with or without a display name (`Quai <quai@example.com>`) |
+  | `notifications.email.username`, `.password.ref` | | none: no authentication. PLAIN, or LOGIN when the server offers only that, over TLS only; the password is a secret reference (`k8s:quai/quai-smtp#password`), read at each send |
+  | `notifications.alerts` | | none: email addresses that get every alert (a pull request merged without Quai's approval, approvals no longer enforced), besides the repository's admins; alerts only, never a request's content. Needs `notifications.email` |
   | `log.level` | `QUAI_LOG_LEVEL` | `info` (`debug`, `info`, `warn`, `error`) |
   | `log.format` | `QUAI_LOG_FORMAT` | `json` in production, `text` otherwise |
   | `telemetry.otlpEndpoint` | `QUAI_TELEMETRY_OTLP_ENDPOINT` | none: no traces are exported; traces go to `<url>/v1/traces` |
@@ -225,6 +229,14 @@ schema's owner, delete the rows whose value is their name, their emails and thei
 
 ```sql
 DELETE FROM audit_personal WHERE value IN ('alice', 'alice@example.com');
+```
+
+Their notifications name them too (`user:alice`, or `email:alice@example.com` for an address of
+`notifications.alerts`), and the error of one that failed may quote their address: delete those
+rows, which nothing else refers to.
+
+```sql
+DELETE FROM notifications WHERE recipient IN ('user:alice', 'email:alice@example.com');
 ```
 
 The audit log page then shows "(erased)" where they were.
@@ -462,6 +474,86 @@ when the policy was satisfied. This round trip is tested against a fake identity
 answers as Microsoft documents it, not yet against a real tenant ([open question
 49](../plan/open-questions.md#still-open)).
 
+### Notifications
+
+With `notifications.email`, Quai tells people what happens by email ([what is sent to
+whom](../design/05-delivery-and-approvals.md#notifications)): requesters, of their requests;
+approvers, of a request waiting for them; and of alerts (a pull request merged without Quai's
+approval, approvals no longer enforced), the repository's admins (`metadata.owners`) and the
+addresses of `notifications.alerts`. The server records the events, the worker sends the mail.
+
+```yaml
+server:
+  publicURL: https://quai.example.com # required: the messages link to the requests
+notifications:
+  email:
+    host: smtp.example.com
+    port: 587             # 465 with transport: tls
+    transport: starttls   # or tls
+    from: "Quai <quai@example.com>"
+    username: quai        # none: no authentication
+    password: { ref: "k8s:quai/quai-smtp#password" }
+  alerts: [platform-team@example.com]
+```
+
+- **TLS only.** `starttls` needs the server to offer STARTTLS, and sends nothing when it does
+  not; `tls` speaks TLS from the first byte. There is no plaintext transport, not even to a local
+  relay ([open question 52](../plan/open-questions.md#still-open)). The certificate must name
+  `host` and chain to the image's CAs or `network.caFile` (the chart's `network.caBundle`).
+  The worker connects to the server directly, not through the HTTP proxy.
+- **People are reached at the verified email** the directory holds from their last sign-in
+  (`email`, with `email_verified` or Entra ID's `xms_edov`). Someone who never signed in, or whose
+  identity provider sends no verified email, is not reached, and the request says so ("No one
+  who may approve is notified", "… gets no notifications of this request").
+- **A request never waits for its notifications.** Each message is a job on the worker's
+  `notifications` queue, tried 20 times from 30 seconds to an hour apart (about 14 hours), and a
+  row of the `notifications` table, one per event, recipient and channel, so that a message is
+  sent once ([open question 57](../plan/open-questions.md#still-open)).
+- **What a message holds**: a request's title, reason, diff summary and plan (its summary, cost,
+  policy results and the resources it changes, never an attribute's value) go to its requester
+  and the approvers it waits for; alerts carry identifiers only (the repository, the request's
+  number and state, the pull request, the commit), since admins and the addresses of
+  `notifications.alerts` may not read the request.
+
+The worker counts each message in `quai.notifications` (`channel`, `outcome`: `sent`, `retried`,
+`skipped` or `failed`) and logs `a notification was not sent` with the error: a warning while
+attempts remain, an error after the last.
+
+#### When mail does not arrive
+
+1. **Find the notifications** of the request, as any role that reads the database:
+
+   ```sql
+   SELECT n.recipient, n.kind, n.state, n.attempts, n.last_error, n.created_at, n.sent_at
+     FROM notifications n JOIN events e ON e.id = n.event_id
+    WHERE e.request_id = '<the request id>' ORDER BY n.id;
+   ```
+
+   Alerts are on the repository's timeline: `WHERE e.target = 'repository:<name>'`.
+2. **By state**:
+
+   | State | What it means | What to do |
+   | --- | --- | --- |
+   | (no row) | The event notifies no one (a cancellation, a review), no one can be reached (the request says so), or the worker has not run its `notifications` queue yet | The worker's health and logs |
+   | `skipped` | Nothing was sent, `last_error` says why: no verified email, never signed in, deactivated, or the request no longer waits for them | The person signs in once, with an identity provider that sends their verified email |
+   | `pending`, attempts above 0 | It is being retried: `last_error` is the last answer | By error, below |
+   | `failed` | Every attempt failed; nothing sends it again | By error, below |
+   | `sent` | The mail server accepted it | The server's logs, spam filters, the address in the directory (`SELECT name, email FROM users WHERE name = '…'`) |
+
+3. **By error**:
+
+   | Error | What to do |
+   | --- | --- |
+   | `connect to the SMTP server …: connection refused`, `i/o timeout`, `no such host` | The server is down or unreachable: `host` and `port`, the network path (not through the proxy) |
+   | `does not offer STARTTLS: Quai sends no mail in plaintext` | The server, or something between, does not offer STARTTLS: enable it, or use `transport: tls` and port 465 |
+   | `certificate signed by unknown authority`, `certificate is valid for …` | Its certificate is not signed by a CA in `network.caFile`, or does not name `host` |
+   | `authenticate to the SMTP server … as …: 535 …` | The username, or the secret the password reference names |
+   | `offers no authentication`, `offers neither PLAIN nor LOGIN` | The server's authentication: Quai needs PLAIN or LOGIN when `username` is set |
+   | `refused the sender: 5…` | The server does not let this account send as `from` |
+   | `refused the recipient: 5…` | The recipient's address (the directory's, or one of `notifications.alerts`) |
+   | `4…` (`421`, `451`) | The server deferred it: Quai tries again |
+   | `the SMTP password: …` | The reference does not resolve: the secret it names, the worker's access to it |
+
 ### Runners
 
 Pipelines report their plans and applies with `quai report`, a step after `terraform plan` and
@@ -555,6 +647,7 @@ Egress needed, all configurable through an HTTP proxy (`HTTPS_PROXY`, `NO_PROXY`
 | IdP | OIDC discovery, token exchange, JWKS |
 | Secret store | Credentials |
 | SIEMs (`audit.export`) | The audit log's export: syslog over TLS straight to the receiver, never through the proxy; OTLP and Splunk HEC over HTTPS |
+| SMTP server (`notifications.email`) | Notifications by email, over TLS (port 465) or STARTTLS (587), straight to the server, never through the proxy |
 | ITSM, chat | Optional integrations |
 | Executors (Kubernetes API, AWX, vCenter) | Imperative actions |
 
@@ -599,7 +692,10 @@ snoozed and retried. Different repositories proceed in parallel.
     log (`quai.audit.verifications`: `ok`, `broken`, `error`);
   - the audit log's export, by destination: runs (`quai.audit.exports`, by outcome), the lag
     (`quai.audit.export.lag`, seconds) and the events pending (`quai.audit.export.pending`). Every
-    worker reports the same lag, read from the database.
+    worker reports the same lag, read from the database;
+  - notifications (`quai.notifications`, by `channel` and `outcome`: `sent`, `retried`, `skipped`,
+    `failed`); a rising `failed` or `retried` is mail that does not go out
+    ([when mail does not arrive](#when-mail-does-not-arrive)).
 - **Dashboards and alerts** shipped with the chart: no webhook from a repository for 1 h while pushes happen, enforcement missing, credential expiring within 14 days, job failure rate above threshold, audit export lagging.
   Today the chart ships `QuaiAuditExportLagging` (`max by (destination) (quai_audit_export_lag_seconds)`
   above `prometheusRule.auditExportLag.seconds`, 600, for `.for`, 5m) in a PrometheusRule of the

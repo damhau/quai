@@ -44,6 +44,12 @@ type Options struct {
 	JobTimeout time.Duration
 }
 
+// QueueNotifications is the queue of notifications: an SMTP server that hangs takes its few workers,
+// never those of the default queue, so a notification never holds a request back.
+const QueueNotifications = "notifications"
+
+const notificationWorkers = 4
+
 // NewWorker returns a client that works jobs and runs the periodic ones. Start it, and Stop it
 // to let jobs in flight finish.
 func NewWorker(pool *pgxpool.Pool, opts Options) (*Client, error) {
@@ -57,8 +63,9 @@ func NewWorker(pool *pgxpool.Pool, opts Options) (*Client, error) {
 		maxWorkers = 10
 	}
 	return river.NewClient(riverpgxv5.New(pool), &river.Config{
-		Logger:               opts.Logger,
-		Queues:               map[string]river.QueueConfig{river.QueueDefault: {MaxWorkers: maxWorkers}},
+		Logger: opts.Logger,
+		Queues: map[string]river.QueueConfig{river.QueueDefault: {MaxWorkers: maxWorkers},
+			QueueNotifications: {MaxWorkers: notificationWorkers}},
 		Workers:              workers,
 		RescueStuckJobsAfter: opts.RescueStuckJobsAfter,
 		JobTimeout:           opts.JobTimeout,

@@ -13,6 +13,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"net/mail"
 	"net/url"
 	"os"
 	"regexp"
@@ -33,19 +34,56 @@ const (
 type Config struct {
 	// Env is development or production. Development-only features, such as the user switcher,
 	// are refused in production.
-	Env          string       `yaml:"env"`
-	Server       Server       `yaml:"server"`
-	Database     Database     `yaml:"database"`
-	Auth         Auth         `yaml:"auth"`
-	Git          Git          `yaml:"git"`
-	Repositories Repositories `yaml:"repositories"`
-	Secrets      Secrets      `yaml:"secrets"`
-	Network      Network      `yaml:"network"`
-	Webhooks     Webhooks     `yaml:"webhooks"`
-	Audit        Audit        `yaml:"audit"`
-	Log          Log          `yaml:"log"`
-	Telemetry    Telemetry    `yaml:"telemetry"`
+	Env           string        `yaml:"env"`
+	Server        Server        `yaml:"server"`
+	Database      Database      `yaml:"database"`
+	Auth          Auth          `yaml:"auth"`
+	Git           Git           `yaml:"git"`
+	Repositories  Repositories  `yaml:"repositories"`
+	Secrets       Secrets       `yaml:"secrets"`
+	Network       Network       `yaml:"network"`
+	Webhooks      Webhooks      `yaml:"webhooks"`
+	Audit         Audit         `yaml:"audit"`
+	Notifications Notifications `yaml:"notifications"`
+	Log           Log           `yaml:"log"`
+	Telemetry     Telemetry     `yaml:"telemetry"`
 }
+
+// Notifications configures how Quai tells people what happens to requests, and whom it alerts
+// (docs/design/05-delivery-and-approvals.md#notifications). Without a channel, nobody is
+// notified.
+type Notifications struct {
+	// Email sends notifications by email, through an SMTP server; nil: no email.
+	Email *Email `yaml:"email"`
+	// Alerts are email addresses that receive every alert (a pull request merged without Quai's
+	// approval, enforcement lost), besides the repository's owners: alerts only, never a request's
+	// content.
+	Alerts []string `yaml:"alerts"`
+}
+
+// Email is the SMTP server notifications are sent through, over TLS: STARTTLS, which the server
+// must offer (never a fall back to plaintext), or TLS from the first byte. The server's
+// certificate is verified against the system's CAs and network.caFile.
+type Email struct {
+	Host string `yaml:"host"`
+	// Port is 587 (submission) with starttls and 465 with tls by default.
+	Port int `yaml:"port"`
+	// Transport is starttls (the default) or tls.
+	Transport string `yaml:"transport"`
+	// From is the messages' sender: an address, with a display name or not
+	// ("Quai <quai@example.com>").
+	From string `yaml:"from"`
+	// Username and Password authenticate to the server (PLAIN, or LOGIN when it offers only
+	// that); none: no authentication. The password is a secret reference.
+	Username string    `yaml:"username"`
+	Password SecretRef `yaml:"password"`
+}
+
+// Email transports.
+const (
+	EmailSTARTTLS = "starttls"
+	EmailTLS      = "tls"
+)
 
 // Server configures the HTTP server.
 type Server struct {
@@ -429,6 +467,17 @@ func (c *Config) defaults() {
 			d.Syslog.Facility = &f
 		}
 	}
+	if e := c.Notifications.Email; e != nil {
+		if e.Transport == "" {
+			e.Transport = EmailSTARTTLS
+		}
+		if e.Port == 0 {
+			e.Port = 587
+			if e.Transport == EmailTLS {
+				e.Port = 465
+			}
+		}
+	}
 	if c.Git.Committer.Name == "" {
 		c.Git.Committer = Committer{Name: "Quai", Email: "quai@localhost"}
 	}
@@ -498,6 +547,7 @@ func (c *Config) validate() error {
 		errs = append(errs, errors.New("server.shutdownTimeout must not be negative"))
 	}
 	errs = append(errs, c.Auth.validate(c.Env))
+	errs = append(errs, c.Notifications.validate(c.Server.PublicURL))
 	if _, err := c.Log.SlogLevel(); err != nil {
 		errs = append(errs, err)
 	}
@@ -607,6 +657,64 @@ func exportURL(key, s, env string) error {
 		return fmt.Errorf("%s: http sends the audit log unencrypted: production refuses it but to a loopback address", key)
 	}
 	return nil
+}
+
+func (n *Notifications) validate(publicURL string) error {
+	var errs []error
+	if e := n.Email; e != nil {
+		if e.Host == "" || strings.ContainsAny(e.Host, " \t\r\n/:") && net.ParseIP(e.Host) == nil {
+			errs = append(errs, fmt.Errorf("notifications.email.host must be a host name or an address, not %q", e.Host))
+		}
+		if e.Port < 1 || e.Port > 65535 {
+			errs = append(errs, fmt.Errorf("notifications.email.port must be 1 to 65535, not %d", e.Port))
+		}
+		if e.Transport != EmailSTARTTLS && e.Transport != EmailTLS {
+			// No plaintext: notifications carry reasons, diffs and plans (open question 52).
+			errs = append(errs, fmt.Errorf("notifications.email.transport must be starttls or tls, not %q", e.Transport))
+		}
+		if _, err := MailAddress(e.From, true); err != nil {
+			errs = append(errs, fmt.Errorf("notifications.email.from: %w", err))
+		}
+		switch {
+		case e.Username == "" && e.Password.Ref != "":
+			errs = append(errs, errors.New("notifications.email.password needs notifications.email.username"))
+		case e.Username != "" && !signingRefRe.MatchString(e.Password.Ref):
+			errs = append(errs, errors.New("notifications.email.password.ref must be a secret reference such as k8s:namespace/name#key or env:NAME"))
+		case strings.ContainsAny(e.Username, "\r\n\x00"):
+			errs = append(errs, errors.New("notifications.email.username must be one line"))
+		}
+		// Every message links to its request: without the address people reach Quai at, there is
+		// no link to give (open question 52).
+		if u, err := url.Parse(publicURL); err != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") {
+			errs = append(errs, errors.New("notifications.email needs server.publicURL, an http or https URL: the messages link to Quai"))
+		}
+	}
+	for i, a := range n.Alerts {
+		if _, err := MailAddress(a, false); err != nil {
+			errs = append(errs, fmt.Errorf("notifications.alerts[%d]: %w", i, err))
+		}
+	}
+	if len(n.Alerts) > 0 && n.Email == nil {
+		errs = append(errs, errors.New("notifications.alerts are email addresses: they need notifications.email"))
+	}
+	return errors.Join(errs...)
+}
+
+// MailAddress parses an email address, with a display name when named is true
+// ("Quai <quai@example.com>"), and only the address otherwise. It refuses what could add a line
+// to a message's header.
+func MailAddress(s string, named bool) (*mail.Address, error) {
+	if strings.ContainsAny(s, "\r\n\x00") {
+		return nil, fmt.Errorf("%q must be one line", s)
+	}
+	a, err := mail.ParseAddress(s)
+	if err != nil {
+		return nil, fmt.Errorf("%q is not an email address", s)
+	}
+	if !named && (a.Name != "" || a.Address != strings.TrimSpace(s)) {
+		return nil, fmt.Errorf("%q must be an address alone, such as secops@example.com", s)
+	}
+	return a, nil
 }
 
 // loopback reports whether host is this machine: localhost or a loopback address.

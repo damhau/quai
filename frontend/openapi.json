@@ -2621,6 +2621,10 @@
           "requester": {
             "type": "string"
           },
+          "requesterNotNotified": {
+            "description": "Notifications do not reach the requester: Quai knows no verified email of theirs",
+            "type": "boolean"
+          },
           "reviews": {
             "items": {
               "$ref": "#/components/schemas/ReviewView"
@@ -3084,6 +3088,10 @@
               "array",
               "null"
             ]
+          },
+          "noOneToNotify": {
+            "description": "The request waits for the rule, and no one who may approve for it is reached by a notification: none signed in to Quai, or Quai knows no verified email of theirs",
+            "type": "boolean"
           },
           "notApplicable": {
             "description": "The plan says the rule does not apply",

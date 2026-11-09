@@ -178,9 +178,9 @@ holds:
 - A bypass is a `merged_without_approval` event on the request and an
   `alert_bypass` event on the repository's timeline (`repository:<name>`),
   naming the pull request, the merge commit and the state the request was in.
-- "Requester notified": until the notification channels (Phase 7,
-  [integrations](11-integrations.md)), the requester sees the stale state and
-  its reason on the request.
+- "Requester notified": the requester sees the stale state and its reason on
+  the request, and is sent a `stale` notification when a channel is configured
+  ([notifications](#notifications)).
 
 ## Approval policy
 
@@ -327,7 +327,60 @@ Management):
 ## Notifications
 
 Events: request submitted, approval needed, approved, rejected, stale, merged,
-applied, failed, expiring soon. Channels: email, Microsoft Teams, Slack,
-outgoing webhooks. Approvers can approve from Teams or Slack messages when the
-rule does not require step-up authentication. See
-[integrations](11-integrations.md).
+applied, failed, expiring soon; and alerts: a bypass (`alert_bypass`),
+enforcement lost (`alert_enforcement`), break-glass. Channels: email (Phase 4,
+P4-07), Microsoft Teams and Slack (P4-09, P4-10), outgoing webhooks. Approvers
+can approve from Teams or Slack messages when the rule does not require step-up
+authentication. See [integrations](11-integrations.md#notifications).
+
+Built (`internal/notify`):
+
+- **One place.** The events below are recorded through `store.RecordEvent`,
+  whose hook enqueues a `notify_event` job in the event's transaction
+  (River's `InsertTx`): an event is notified once, and a rollback notifies
+  nothing.
+  The events notified, by kind: `submitted` (the requester, unless no rule
+  applies, and the approvers), `approval_needed`, `plan_decided` and
+  `modified_outside_quai` with a new content hash (the approvers);
+  `approved`, `rejected`, `stale` (the requester); `merged`,
+  `merged_without_approval` and `committed` (the requester, as merged);
+  `applied`; `failed` and `apply_failed`; `expiring_soon` (P4-14 records it);
+  `alert_bypass`, `alert_enforcement`, `alert_break_glass` (P4-17 records
+  it), to admins. A cancelled request and reviews notify no one.
+- **Recipients**, resolved when the job runs, from the directory (people who
+  signed in): the requester, and the people who may give each approval the
+  request still waits for (`policy.CanReview`: users, owners, members of a
+  group Quai knows from logins), skipping the rules no one may give. After a
+  plan, only the rules its decision made apply are announced. Alerts go to the
+  repository's admins (`metadata.owners`, matched as an `owners` rule is) and
+  to `notifications.alerts`, plain addresses that get alerts only. A
+  deactivated person gets nothing ([open question
+  56](../plan/open-questions.md#still-open)).
+- **Content.** A request's content (title, reason, diff summary, plan) goes
+  only to people who may read the request: its requester, and an approver
+  while the request waits for them (`requests.CanReview`, checked again when
+  the message is sent). The plan in a message is its summary, cost, policy
+  results and the addresses of the resources it changes with their actions,
+  never an attribute's value: less than the request page shows. Alerts carry
+  identifiers only (the repository, the request's number and state, the pull
+  request, the merge commit, the branch, the problems), since their
+  recipients may not read the request. Links start with `server.publicURL`,
+  never with a request's `Host`
+  ([open questions 53 to 55](../plan/open-questions.md#still-open)).
+- **Delivery.** One `notifications` row per event, recipient and channel
+  (unique: a job run twice sends once), and one `send_notification` job per
+  row, retried with backoff (30 seconds doubling to an hour, 20 attempts,
+  about 14 hours) on the `notifications` queue: a failure never holds a
+  request back. An approval-needed message is checked again when sent: the
+  request still pending, the person still among those it waits for; otherwise
+  the row is `skipped` with the reason. A row is `pending`, `sent`, `skipped`
+  (no address, the person deactivated, no longer needed) or `failed` (the
+  last attempt failed); `last_error` and `attempts` say why. A crash between
+  sending and recording it may send a message twice (at least once; [open
+  question 57](../plan/open-questions.md#still-open)).
+- **No one to notify.** When a channel is configured, a rule waiting for
+  approvals whose approvers Quai cannot reach (none signed in with a verified
+  email) says so on the request (`noOneToNotify`), and so does a request whose
+  requester has none (`requesterNotNotified`).
+- **Preferences** (P4-08) filter the recipients `notify` resolves, before the
+  rows are written; digests group the rows.

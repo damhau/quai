@@ -18,7 +18,8 @@ export async function approve(page: Page, user: "alice" | "fiona", title: string
   await signIn(page, user, "/approvals")
   await page.getByRole("link", { name: title }).click()
   await page.getByRole("button", { name: "Approve" }).click()
-  await expect(page.getByText(new RegExp(`Approved by .*\\b${user}\\b`))).toBeVisible()
+  // Anchored: the rule's "Approved by …" line, not the card around it.
+  await expect(page.getByText(new RegExp(`^Approved by .*\\b${user}\\b`))).toBeVisible()
 }
 
 /** delivered waits for the request on screen to be committed to the repository. */

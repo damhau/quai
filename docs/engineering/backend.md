@@ -34,7 +34,8 @@ quai/
 │   │   ├── audit/                      # hash chain, checkpoints, export and verification
 │   │   │   ├── keeper/                 # the worker's: hourly checkpoints and pruning, daily verification
 │   │   │   └── siem/                       # the worker's export to SIEMs: syslog, OTLP logs, Splunk HEC
-│   │   ├── notify/                     # email, Teams, Slack, outgoing webhooks
+│   │   ├── notify/                     # events → recipients → one job per message; channels: email (Teams, Slack later)
+│   │   ├── mailtest/                   # tests: Mailpit, checksum-verified, started per test
 │   │   ├── itsm/                       # ServiceNow, JSM
 │   │   ├── gitx/                       # mirror cache, worktrees, git CLI wrapper
 │   │   ├── ingest/                     # webhooks and polling: deliveries verified, re-read as jobs
@@ -95,6 +96,7 @@ default), but a current local install is preferred.
 | Logging | `log/slog` | JSON handler in production, text in development |
 | Telemetry | OpenTelemetry Go SDK, OTLP/HTTP exporters | Traces and metrics, to a collector (which can serve Prometheus) |
 | Audit export to SIEMs | `go.opentelemetry.io/proto/otlp`; the standard library for syslog and Splunk HEC; in tests, `leodido/go-syslog/v4` | The OTLP protobufs the SDK's exporters already use, without the logs SDK's batching, which would hide whether a record was delivered and so when to move the cursor. Syslog (RFC 5424 with octet counting) and HEC (JSON over HTTPS) are a few lines each; the tests check the syslog messages with an independent, maintained RFC 5424 parser |
+| Email | The standard library: `net/smtp` (STARTTLS, PLAIN), `crypto/tls`, `net/mail` and `mime` (addresses and RFC 2047 headers), `mime/multipart` and `mime/quotedprintable`, `html/template` | Everything SMTP and MIME needs is there; Quai adds only what `net/smtp` lacks, implicit TLS (a `tls.Dialer`), LOGIN authentication and the refusal to go on without STARTTLS. The tests send to Mailpit's release binary, not a library |
 | CLI | `spf13/cobra` | Sub-commands for every role |
 | Config | YAML file + environment, validated at start-up | One typed `Config` struct; nothing else reads the environment |
 

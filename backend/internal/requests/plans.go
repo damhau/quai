@@ -59,7 +59,7 @@ func (s *Service) PlanReported(ctx context.Context, id uuid.UUID) error {
 				said = append(said, d)
 			}
 		}
-		if err := event(ctx, q, r, "plan_decided", "", map[string]any{"decisions": said}); err != nil {
+		if err := s.event(ctx, tx, r, "plan_decided", "", map[string]any{"decisions": said}); err != nil {
 			return err
 		}
 		all, err := q.ListReviews(ctx, r.ID)
@@ -72,7 +72,7 @@ func (s *Service) PlanReported(ctx context.Context, id uuid.UUID) error {
 			if _, err := q.TransitionRequest(ctx, db.TransitionRequestParams{ID: r.ID, FromState: PendingApproval, ToState: Approved}); err != nil {
 				return conflict(err, r)
 			}
-			if err := event(ctx, q, r, "approved", "", nil); err != nil {
+			if err := s.event(ctx, tx, r, "approved", "", nil); err != nil {
 				return err
 			}
 			if err := recordRequest(ctx, tx, r, "approved", map[string]any{"changeSet": sets[0].Hash, "reason": "the plan makes no rule that needs more approvals apply",
@@ -85,7 +85,7 @@ func (s *Service) PlanReported(ctx context.Context, id uuid.UUID) error {
 			if err != nil {
 				return conflict(err, r)
 			}
-			if err := event(ctx, q, r, "approval_needed", "", map[string]any{"reason": "a new plan makes a rule apply"}); err != nil {
+			if err := s.event(ctx, tx, r, "approval_needed", "", map[string]any{"reason": "a new plan makes a rule apply"}); err != nil {
 				return err
 			}
 			return s.statusJob(ctx, tx, q, next)
