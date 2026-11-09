@@ -33,7 +33,12 @@ func sodUsers(c *config.Config) {
 func (u *user) submit(body map[string]any) RequestView {
 	u.h.t.Helper()
 	var r RequestView
-	if status, raw := u.do(http.MethodPost, Prefix+"/requests/type", body, &r); status != http.StatusCreated {
+	status, raw := u.do(http.MethodPost, Prefix+"/requests/type", body, &r)
+	switch {
+	case status >= 500:
+		// "internal error" says nothing: the server's log has the cause (TestAzureDevOpsExpiry, live).
+		u.h.t.Fatalf("submit = %d %s\nlog:\n%s", status, raw, u.h.log.String())
+	case status != http.StatusCreated:
 		u.h.t.Fatalf("submit = %d %s", status, raw)
 	}
 	return r
