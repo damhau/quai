@@ -141,11 +141,11 @@ func Run(t *testing.T, h Harness) {
 		if first.ID == "" || c.Statuses() == nil {
 			t.Skip("no pull request, or no statuses")
 		}
+		// A platform may list a status a moment after accepting it: GitHub showed none right after
+		// pending was set (live, 2026-11-09), as comments in step 1.
 		for _, state := range []connectors.StatusState{connectors.StatusPending, connectors.StatusSuccess} {
 			s.setStatus(t, c, first, state)
-			if got := s.status(t, first); got != state {
-				t.Errorf("after setting %s, the platform shows %q", state, got)
-			}
+			s.eventually(t, "the platform shows "+string(state)+" after it was set", func() bool { return s.status(t, first) == state })
 		}
 	})
 
