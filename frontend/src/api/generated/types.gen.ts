@@ -226,6 +226,10 @@ export type BlueprintView = {
         [key: string]: unknown;
     };
     description?: string;
+    /**
+     * Who the item lets see it and request it (spec.entitlements), when it restricts them
+     */
+    entitlements?: EntitlementsView;
     icon?: string;
     kind: 'type' | 'blueprint';
     name: string;
@@ -251,6 +255,10 @@ export type BlueprintView = {
 export type CatalogItem = {
     category?: string;
     description?: string;
+    /**
+     * Who the item lets see it and request it (spec.entitlements), when it restricts them
+     */
+    entitlements?: EntitlementsView;
     icon?: string;
     kind: 'type' | 'blueprint';
     name: string;
@@ -485,6 +493,41 @@ export type EnforcementView = {
      * Pull-request delivery: the target branch must require the check, or Quai opens no pull request
      */
     required: boolean;
+};
+
+export type EntitlementsView = {
+    /**
+     * Whether the caller may request the item in an environment it does not narrow; absent in a preview
+     */
+    canRequest?: boolean;
+    /**
+     * Narrower requesters for some values of the env param (types) or input (blueprints)
+     */
+    environments: Array<EnvironmentEntitlementView> | null;
+    /**
+     * Why the caller may not request it
+     */
+    reason?: string;
+    /**
+     * Who may request it, among those who see it; empty: everyone who sees it
+     */
+    requesters: Array<string> | null;
+    /**
+     * Who sees the item in the catalog: group:<name or pattern> or user:<name>; empty: everyone with a catalog role
+     */
+    visibility: Array<string> | null;
+};
+
+export type EnvironmentEntitlementView = {
+    /**
+     * Whether the caller may request the item there; absent in a preview
+     */
+    canRequest?: boolean;
+    environment: string;
+    /**
+     * Who may request the item there, among its requesters: it narrows them, never widens them
+     */
+    requesters: Array<string> | null;
 };
 
 export type ErrorDetail = {
@@ -1337,6 +1380,10 @@ export type TypeView = {
     category?: string;
     deletion: string;
     description?: string;
+    /**
+     * Who the item lets see it and request it (spec.entitlements), when it restricts them
+     */
+    entitlements?: EntitlementsView;
     icon?: string;
     kind: 'type' | 'blueprint';
     locate: string;
@@ -1460,6 +1507,10 @@ export type BlueprintViewWritable = {
         [key: string]: unknown;
     };
     description?: string;
+    /**
+     * Who the item lets see it and request it (spec.entitlements), when it restricts them
+     */
+    entitlements?: EntitlementsView;
     icon?: string;
     kind: 'type' | 'blueprint';
     name: string;
@@ -1999,6 +2050,10 @@ export type TypeViewWritable = {
     category?: string;
     deletion: string;
     description?: string;
+    /**
+     * Who the item lets see it and request it (spec.entitlements), when it restricts them
+     */
+    entitlements?: EntitlementsView;
     icon?: string;
     kind: 'type' | 'blueprint';
     locate: string;
@@ -2630,7 +2685,12 @@ export type GetBlueprintData = {
         repository: string;
         name: string;
     };
-    query?: never;
+    query?: {
+        /**
+         * The name of one of the blueprint's instances the caller may read: the blueprint is described for that instance's page and its day-2 forms, whether or not the caller sees the blueprint in the catalog
+         */
+        instance?: string;
+    };
     url: '/api/v1/repositories/{repository}/blueprints/{name}';
 };
 
@@ -2935,7 +2995,12 @@ export type GetTypeData = {
         repository: string;
         name: string;
     };
-    query?: never;
+    query?: {
+        /**
+         * The key of one of the type's resources the caller may read: the type is described for that resource's page and its day-2 forms, whether or not the caller sees the type in the catalog
+         */
+        resource?: string;
+    };
     url: '/api/v1/repositories/{repository}/types/{name}';
 };
 

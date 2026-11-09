@@ -141,15 +141,46 @@ item.
 
 ### Entitlements
 
-Catalog items declare who may request them:
+Catalog items, types and blueprints alike, declare who sees them and who may request them, in
+`spec.entitlements`:
 
 ```yaml
-catalog:
-  visibility: [group:developers, group:data-*]
-  requesters: [group:developers]
-  environments:                  # narrower entitlements per param value
-    prod: [group:prod-requesters]
+spec:
+  entitlements:
+    visibility: [group:developers, group:data-*]   # who sees the item in the catalog
+    requesters: [group:developers]                 # who may request it, among those
+    environments:                                  # narrower requesters per environment
+      prod: [group:prod-requesters]
 ```
+
+- Entries are group patterns (`group:developers`, `group:data-*`, matched with Go's `path.Match`
+  against the person's IdP groups, never their teams) or people (`user:zoe`). An empty or absent
+  list does not restrict. `quai lint` refuses any other entry (`team:shop`, a bare name, a
+  malformed pattern, a pattern in a `user:` entry).
+- Requesting needs to be in `visibility` and in `requesters`. `environments` is keyed by the value
+  of the type's `env` param, or the blueprint's `env` input, and narrows the requesters for that
+  value: a request for prod needs to be in `requesters` and in the prod list, which never widens
+  `requesters`. The value matches without regard to case or surrounding spaces, as the param is
+  written. `quai lint` refuses `environments` on an item with no `env` param or input, an empty
+  list, two keys naming the same environment, and a key that is not among the param's options or
+  the input's `enum` when the definition lists them.
+- A blueprint's request needs the blueprint's entitlements, for its `env` input, and, for each
+  resource it creates, that resource's type's, for the resource's `env` param: a blueprint does not
+  open a type to more people ([open question 47](../plan/open-questions.md)).
+- The catalog leaves out the items hidden from the caller. Their form (`get-type`,
+  `get-blueprint`), plans and requests are refused with 403 and the reason ("this catalog item is
+  not visible to your groups", "… is not open to your groups", "… in prod", or "type database
+  is …" for a type a blueprint creates), as is a request for an environment whose list does not
+  name the caller. The API decides; the catalog and forms only show the lists, and what the
+  caller may request in each environment.
+- Entitlements are about requesting new things. Owners and those who may read a resource or an
+  instance keep its page, its day-2 actions, updates and deletion whatever the lists say
+  (`get-type?resource=<key>`, `get-blueprint?instance=<name>` describe the item for them;
+  [open question 48](../plan/open-questions.md)).
+- Platform admins see and request everything; auditors see every item and request none; catalog
+  authors describe every item of their repositories (previews and the designer show the lists).
+- Changing an item's entitlements changes its definition: open requests made under the old lists
+  are refused at delivery as stale, like any change to the definitions they were planned from.
 
 ### Evaluation
 
@@ -175,7 +206,7 @@ far). Decisions the roles do not spell out:
 - The access report needs the auditor role (or platform admin), at the global scope; an API token
   cannot read it.
 - Entitlements are group patterns (`group:data-*`) or names (`user:zoe`); an empty
-  list does not restrict.
+  list does not restrict ([entitlements](#entitlements)).
 
 ## Sessions and accounts
 

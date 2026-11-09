@@ -33,7 +33,9 @@ Shared files, many resources in one file, each a stack of its own directory:
 - `databases/<env>/databases.auto.tfvars.json`: a JSON list of databases,
   instances of `modules/database`. The `database` type's form asks for an engine
   and a size; its `mapping` generator writes the vCPUs, memory and storage from
-  the size and reads the size back from the vCPUs.
+  the size and reads the size back from the vCPUs. Its `entitlements` restrict
+  it: developers and FinOps see it in the catalog, developers request it, and
+  only the shop team in `prod`.
 - `.quai/tests/`: the golden examples `quai lint` runs, the VMs' and, for the
   shared files, a database created and a record set moved beside its TTL
   defined in code.

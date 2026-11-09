@@ -114,11 +114,28 @@ type Object struct {
 	Entitlement Entitlement
 }
 
-// Entitlement lists, as group patterns (group:developers, group:data-*), who may see a catalog
-// item and who may request it. An empty list does not restrict.
+// Entitlement lists, as group patterns (group:developers, group:data-*) or people (user:zoe), who
+// may see a catalog item and who may request it (docs/design/08-identity-access-tenancy.md#entitlements).
+// An empty list does not restrict. Requesting needs to be in Visibility and in Requesters, and, for
+// an environment the item narrows, in that environment's list too: it never widens Requesters.
 type Entitlement struct {
 	Visibility []string
 	Requesters []string
+	// Environment is the environment a request is for when the item narrows its requesters there,
+	// and EnvironmentRequesters that narrower list; empty otherwise.
+	Environment           string
+	EnvironmentRequesters []string
+	// Item names what the lists belong to in a denial when it is not the object's catalog item:
+	// "type vm" for a resource a blueprint creates.
+	Item string
+}
+
+// subject is what a denial names.
+func (e Entitlement) subject() string {
+	if e.Item != "" {
+		return e.Item
+	}
+	return "this catalog item"
 }
 
 // Decision is the answer, with the reason when it is no.
@@ -151,7 +168,7 @@ func Authorize(_ context.Context, p Principal, a Action, o Object) (Decision, er
 			return deny("viewing the catalog needs the viewer or requester role"), nil
 		}
 		if !p.inAny(o.Entitlement.Visibility) && !p.has(Auditor, o) {
-			return deny("this catalog item is not visible to your groups"), nil
+			return deny("%s is not visible to your groups", o.Entitlement.subject()), nil
 		}
 	case ReadInventory:
 		if !p.has(Viewer, o) && !p.has(Operator, o) && !p.has(Auditor, o) && !p.owns(o) {
@@ -165,8 +182,16 @@ func Authorize(_ context.Context, p Principal, a Action, o Object) (Decision, er
 		if !p.has(Requester, o) {
 			return deny("requesting needs the requester role here"), nil
 		}
-		if !p.inAny(o.Entitlement.Requesters) || !p.inAny(o.Entitlement.Visibility) {
-			return deny("this catalog item is not open to your groups"), nil
+		e := o.Entitlement
+		switch {
+		case !p.inAny(e.Visibility):
+			return deny("%s is not visible to your groups", e.subject()), nil
+		case !p.inAny(e.Requesters):
+			return deny("%s is not open to your groups", e.subject()), nil
+		case e.Environment != "" && (len(e.EnvironmentRequesters) == 0 || !p.inAny(e.EnvironmentRequesters)):
+			// An environment's list only narrows; definitions never have an empty one (quai lint),
+			// and none would let anyone in.
+			return deny("%s is not open to your groups in %s", e.subject(), e.Environment), nil
 		}
 	case ReviewRequest:
 		// Eligibility comes from the request's approval rules; here only who may see it.
@@ -262,7 +287,9 @@ func (p Principal) is(entry string) bool {
 	return false
 }
 
-// inAny reports whether p is in one of the group patterns; an empty list allows everyone.
+// inAny reports whether one of the entries names p: a group pattern (group:data-*) matching one of
+// their groups, never a team, or user:<their name>. Any other entry names no one; an empty list
+// allows everyone.
 func (p Principal) inAny(patterns []string) bool {
 	if len(patterns) == 0 {
 		return true

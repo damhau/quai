@@ -76,6 +76,9 @@ func TestBrokenCopies(t *testing.T) {
 	// The hidden value has an anchor that another value uses: Quai cannot remove it safely.
 	set("envs/dev/vms/anchored.yaml", "owner: x\ntemplate: rhel-9\ncpu: 2\nmemory_gb: 4\ndisks: [{ size_gb: 50 }]\nnetwork: { vlan: 110 }\nbackup: false\nbackup_policy: &p hourly\ntags: { policy: *p }\n")
 	set("blueprints/bad.yaml", "apiVersion: quai.dev/v1alpha1\nkind: Blueprint\n")
+	// Entitlements by environment, on a blueprint whose environment input is not named env.
+	vm := string(fsys["blueprints/linux-vm.yaml"].Data)
+	set("blueprints/linux-vm.yaml", strings.Replace(vm, "\nspec:\n", "\nspec:\n  entitlements: { environments: { prod: [group:sre] } }\n", 1))
 
 	r := Run(fsys)
 	text := r.Problems.Error()
@@ -86,6 +89,7 @@ func TestBrokenCopies(t *testing.T) {
 		"envs/dev/vms/anchored.yaml: round trip: Quai cannot edit this file: yamledit: refused",
 		`envs/prod/vms/db01.yaml: round trip: Quai would rewrite this file on its first edit (removes "backup_policy: hourly")`,
 		"envs/prod/vms/web01.yaml: cpu: must be at most 32 (schema catalog/schemas/vm.schema.json)",
+		"blueprints/linux-vm.yaml: spec.entitlements.environments: are keyed by the value of the env input, and this blueprint's inputs have none",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("no problem contains %q; problems:\n%s", want, text)

@@ -18,7 +18,8 @@ export const Route = createFileRoute("/resources/$repository/$type/$")({
   loader: ({ context, params }) =>
     Promise.all([
       context.queryClient.ensureQueryData(getResourceOptions({ query: { id: `${params.repository}/${params.type}/${params._splat}` } })),
-      context.queryClient.ensureQueryData(getTypeOptions({ path: { repository: params.repository, name: params.type } })),
+      // Described for this resource: its page and day-2 forms show whatever the type's entitlements say.
+      context.queryClient.ensureQueryData(getTypeOptions({ path: { repository: params.repository, name: params.type }, query: { resource: params._splat } })),
     ]),
   component: ResourcePage,
 })
@@ -27,7 +28,7 @@ function ResourcePage() {
   const { repository, type: typeName, _splat: key } = Route.useParams()
   const id = `${repository}/${typeName}/${key}`
   const { data: r } = useSuspenseQuery({ ...getResourceOptions({ query: { id } }), refetchInterval: 15_000 })
-  const { data: t } = useSuspenseQuery(getTypeOptions({ path: { repository, name: typeName } }))
+  const { data: t } = useSuspenseQuery(getTypeOptions({ path: { repository, name: typeName }, query: { resource: key } }))
   const [day2, setDay2] = useState<Day2 | null>(null)
   const requests = r.requests ?? []
   const open = requests.find((q) => openStates.includes(q.state))

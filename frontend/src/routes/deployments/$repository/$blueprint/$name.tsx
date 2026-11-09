@@ -17,7 +17,8 @@ export const Route = createFileRoute("/deployments/$repository/$blueprint/$name"
   loader: ({ context, params }) =>
     Promise.all([
       context.queryClient.ensureQueryData(getInstanceOptions({ path: params })),
-      context.queryClient.ensureQueryData(getBlueprintOptions({ path: { repository: params.repository, name: params.blueprint } })),
+      // Described for this instance: its page and actions show whatever the blueprint's entitlements say.
+      context.queryClient.ensureQueryData(getBlueprintOptions({ path: { repository: params.repository, name: params.blueprint }, query: { instance: params.name } })),
     ]),
   component: DeploymentPage,
 })
@@ -27,7 +28,7 @@ const show = (v: unknown) => (typeof v === "string" ? v : JSON.stringify(v))
 function DeploymentPage() {
   const params = Route.useParams()
   const { data: inst } = useSuspenseQuery({ ...getInstanceOptions({ path: params }), refetchInterval: 15_000 })
-  const { data: b } = useSuspenseQuery(getBlueprintOptions({ path: { repository: params.repository, name: params.blueprint } }))
+  const { data: b } = useSuspenseQuery(getBlueprintOptions({ path: { repository: params.repository, name: params.blueprint }, query: { instance: params.name } }))
   const [action, setAction] = useState<ActionView | null>(null)
   const requests = inst.requests ?? []
   const open = requests.find((q) => openStates.includes(q.state))

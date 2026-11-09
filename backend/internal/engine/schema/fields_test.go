@@ -147,6 +147,24 @@ func TestReadOnlyFieldsAndDefaults(t *testing.T) {
 	}
 }
 
+func TestEnum(t *testing.T) {
+	s := compile(t, map[string]any{"s.json": map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"env":    map[string]any{"$ref": "#/$defs/env"},
+			"region": map[string]any{"const": "ch"},
+			"name":   map[string]any{"type": "string"},
+		},
+		"$defs": map[string]any{"env": map[string]any{"type": "string", "enum": []any{"dev", "prod"}}},
+	}}, "s.json")
+	for prop, want := range map[string][]any{"env": {"dev", "prod"}, "region": {"ch"}, "name": nil, "missing": nil} {
+		got, ok := s.Enum(prop)
+		if !reflect.DeepEqual(got, want) || ok != (want != nil) {
+			t.Errorf("Enum(%q) = %v, %v; want %v", prop, got, ok, want)
+		}
+	}
+}
+
 func TestPointer(t *testing.T) {
 	doc := map[string]any{"a/b": map[string]any{"~c": []any{"x", "y"}}}
 	for ptr, want := range map[string]any{"": doc, "/a~1b/~0c/1": "y"} {

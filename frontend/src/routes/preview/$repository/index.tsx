@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { entitlementLines } from "@/lib/entitlements"
 import { previewLabel, previewSearch } from "@/lib/preview"
 import { problemMessage } from "@/lib/problems"
 
@@ -101,6 +102,13 @@ function Preview() {
                     </Badge>
                     <CardTitle>{item.title}</CardTitle>
                     {item.description && <CardDescription>{item.description}</CardDescription>}
+                    {item.entitlements && (
+                      <ul className="text-muted-foreground text-xs" aria-label={`Who may request ${item.title}`}>
+                        {entitlementLines(item.entitlements).map((l) => (
+                          <li key={l}>{l}</li>
+                        ))}
+                      </ul>
+                    )}
                   </CardHeader>
                   <CardContent>
                     <Link

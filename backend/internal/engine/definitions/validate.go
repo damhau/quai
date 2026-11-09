@@ -8,6 +8,7 @@ import (
 	"github.com/Masterminds/semver/v3"
 	"io/fs"
 	"maps"
+	"path"
 	"regexp"
 	"slices"
 	"strings"
@@ -23,6 +24,7 @@ var (
 	placeholder  = regexp.MustCompile(`\{([^{}]*)\}`)
 	fieldPathRe  = regexp.MustCompile(`^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*$`)
 	approverRe   = regexp.MustCompile(`^(group|user):[^\s:]+$`)
+	entitledRe   = regexp.MustCompile(`^(group|user):[^\s:]+$`)
 	digestRe     = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 	durationRe   = regexp.MustCompile(`^[0-9]+[mhd]$`)
 	dataFileRe   = regexp.MustCompile(`\.(ya?ml|json|tfvars|hcl|tf)$`)
@@ -212,6 +214,12 @@ func (l *loader) resourceType(file string) *ResourceType {
 		}
 	}
 	oneOf(c, "spec.catalog", s.Catalog, "", "visible", "hidden")
+	env := slices.IndexFunc(s.Params, func(p Param) bool { return p.Name == EnvParam })
+	var envValues []string
+	if env >= 0 && !s.Params[env].Discover {
+		envValues = s.Params[env].Options
+	}
+	c.entitlements("spec.entitlements", s.Entitlements, env >= 0, "the env param, and this type has none", "the env param's options", envValues)
 	c.ui("spec.ui", &s.UI)
 	c.approval("spec.approval", &s.Approval)
 
@@ -514,6 +522,57 @@ func (c *check) approval(at string, a *Approval) {
 	}
 }
 
+// entitlements checks a catalog item's entitlements. hasEnv says whether the item has the env
+// param or input its environments are keyed by (noEnv says it has none, values names its values);
+// envValues are the values the definition allows, nil when it does not list them (a discovered
+// param, an input without an enum).
+func (c *check) entitlements(at string, e *Entitlements, hasEnv bool, noEnv, values string, envValues []string) {
+	if e == nil {
+		return
+	}
+	c.entitled(at+".visibility", e.Visibility)
+	c.entitled(at+".requesters", e.Requesters)
+	if len(e.Environments) > 0 && !hasEnv {
+		c.add(at+".environments", "are keyed by the value of %s", noEnv)
+	}
+	seen := map[string]string{}
+	for _, k := range slices.Sorted(maps.Keys(e.Environments)) {
+		eat := at + ".environments." + k
+		switch lower := strings.ToLower(k); {
+		case k == "" || strings.TrimSpace(k) != k:
+			c.add(eat, "must be the name of an environment, without surrounding spaces")
+		case seen[lower] != "":
+			// Environments match without regard to case: one value would have two lists.
+			c.add(eat, "names the same environment as %s", seen[lower])
+		case envValues != nil && !slices.Contains(envValues, k):
+			c.add(eat, "%s is not one of %s (%s)", k, values, strings.Join(envValues, ", "))
+		default:
+			seen[lower] = k
+		}
+		if len(e.Environments[k]) == 0 {
+			c.add(eat, "is empty: an environment's list narrows the requesters there, and an empty list would narrow nothing")
+		}
+		c.entitled(eat, e.Environments[k])
+	}
+}
+
+// entitled checks a list of entitlement entries: group:<name or pattern> or user:<name>.
+func (c *check) entitled(at string, entries []string) {
+	for _, en := range entries {
+		kind, name, _ := strings.Cut(en, ":")
+		switch {
+		case !entitledRe.MatchString(en):
+			c.add(at, "%q is not an entitlement: use group:<name or pattern> or user:<name>", en)
+		case kind == "group":
+			if _, err := path.Match(name, ""); err != nil {
+				c.add(at, "%q is not a valid group pattern: %v", en, err)
+			}
+		case strings.ContainsAny(name, `*?[\`):
+			c.add(at, "%q: a user entry names one person; patterns are for groups", en)
+		}
+	}
+}
+
 func (c *check) actionName(at, name string, names map[string]bool) {
 	switch {
 	case !nameRe.MatchString(name):
@@ -599,6 +658,17 @@ func (l *loader) blueprint(file string, types map[string]*ResourceType) *Bluepri
 	}
 	c.ui("spec.ui", &s.UI)
 	c.approval("spec.approval", &s.Approval)
+	if b.InputSchema != nil {
+		var envValues []string
+		if values, ok := b.InputSchema.Enum(EnvParam); ok {
+			envValues = []string{}
+			for _, v := range values {
+				envValues = append(envValues, fmt.Sprint(v))
+			}
+		}
+		c.entitlements("spec.entitlements", s.Entitlements, slices.Contains(b.InputSchema.Properties(), EnvParam),
+			"the env input, and this blueprint's inputs have none", "the env input's values", envValues)
+	}
 
 	if len(s.Resources) == 0 {
 		c.add("spec.resources", "a blueprint needs at least one resource")

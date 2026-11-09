@@ -15,6 +15,17 @@ var (
 	request   = Object{Repository: "infra-live", Requester: "bob"}
 	// teamOwned is owned through team: entries (ownership.codeowners mapped to a team).
 	teamOwned = Object{Repository: "infra-live", Owners: []string{"team:platform"}}
+	// inProd is a request for the item in prod, which narrows its requesters to sre and zoe.
+	inProd = Object{Repository: "infra-live", CatalogItem: "linux-vm", Entitlement: Entitlement{Visibility: []string{"group:dev*"},
+		Requesters: []string{"group:developers", "user:zoe"}, Environment: "prod", EnvironmentRequesters: []string{"group:sre", "user:zoe"}}}
+	// widening is an item whose prod list names a group its requesters do not.
+	widening = Object{Repository: "infra-live", CatalogItem: "database", Entitlement: Entitlement{Requesters: []string{"group:developers"},
+		Environment: "prod", EnvironmentRequesters: []string{"group:ops"}}}
+	// patterned is open to the data-* groups and to no team.
+	patterned = Object{Repository: "infra-live", CatalogItem: "warehouse", Entitlement: Entitlement{Requesters: []string{"group:data-*", "team:shop"}}}
+	// throughType is a blueprint's request that creates a database in prod.
+	throughType = Object{Repository: "infra-live", CatalogItem: "app-servers", Entitlement: Entitlement{Requesters: []string{"group:developers"},
+		Environment: "prod", EnvironmentRequesters: []string{"group:shop"}, Item: "type database"}}
 )
 
 // who is a person whose teams are their groups, as without auth.teams.
@@ -62,6 +73,21 @@ func TestAuthorize(t *testing.T) {
 		{"requester not entitled", who("dan", []string{"devops"}, at(Requester, ScopeGlobal, "")), CreateRequest, item, false, "not open"},
 		{"entitled but no role", who("dan", []string{"developers"}, at(Viewer, ScopeGlobal, "")), CreateRequest, item, false, "requester role"},
 		{"requester reads the catalog", who("dan", []string{"developers"}, at(Requester, ScopeGlobal, "")), ReadCatalog, item, true, ""},
+		{"named, but outside the visibility", who("zoe", []string{"ops"}, at(Requester, ScopeGlobal, "")), CreateRequest, item, false, "this catalog item is not visible to your groups"},
+		{"requester in prod's list", who("dan", []string{"developers", "sre"}, at(Requester, ScopeGlobal, "")), CreateRequest, inProd, true, ""},
+		{"named in prod's list", who("zoe", []string{"dev"}, at(Requester, ScopeGlobal, "")), CreateRequest, inProd, true, ""},
+		{"requester outside prod's list", who("dan", []string{"developers"}, at(Requester, ScopeGlobal, "")), CreateRequest, inProd, false, "this catalog item is not open to your groups in prod"},
+		{"an environment's list does not widen the item's", who("olga", []string{"ops"}, at(Requester, ScopeGlobal, "")), CreateRequest, widening, false, "this catalog item is not open to your groups"},
+		{"in the item's list, not prod's", who("dan", []string{"developers"}, at(Requester, ScopeGlobal, "")), CreateRequest, widening, false, "not open to your groups in prod"},
+		{"an empty environment list opens nothing", who("dan", []string{"developers"}, at(Requester, ScopeGlobal, "")), CreateRequest,
+			Object{CatalogItem: "x", Entitlement: Entitlement{Environment: "prod"}}, false, "not open to your groups in prod"},
+		{"a group pattern", who("dan", []string{"data-eng"}, at(Requester, ScopeGlobal, "")), CreateRequest, patterned, true, ""},
+		{"a group the pattern does not match", who("dan", []string{"data"}, at(Requester, ScopeGlobal, "")), CreateRequest, patterned, false, "not open"},
+		{"a team is not a group", mapped("tina", []string{"web"}, []string{"shop"}, at(Requester, ScopeGlobal, "")), CreateRequest, patterned, false, "not open"},
+		{"a pattern does not match a name", who("data-eng", nil, at(Requester, ScopeGlobal, "")), CreateRequest, patterned, false, "not open"},
+		{"a type through a blueprint", who("fiona", []string{"developers"}, at(Requester, ScopeGlobal, "")), CreateRequest, throughType, false, "type database is not open to your groups in prod"},
+		{"a platform admin requests anything", who("alice", nil, at(PlatformAdmin, ScopeGlobal, "")), CreateRequest, inProd, true, ""},
+		{"a token for someone outside prod's list", Principal{Name: "dan", Groups: []string{"developers"}, Grants: []Grant{at(Requester, ScopeGlobal, "")}, Scopes: []string{"requests:write"}}, CreateRequest, inProd, false, "in prod"},
 		{"a requester cancels their request", who("bob", nil), CancelRequest, request, true, ""},
 		{"another person cannot cancel it", who("eve", nil, at(Operator, ScopeGlobal, "")), CancelRequest, request, false, "only the requester"},
 		{"the requester retries", who("bob", nil), RetryRequest, request, true, ""},
@@ -137,6 +163,10 @@ func TestAuthorize(t *testing.T) {
 		if d.Allowed != tt.want || !strings.Contains(d.Reason, tt.reason) || d.Allowed && d.Reason != "" {
 			t.Errorf("%s: %+v, want allowed=%v with a reason containing %q", tt.name, d, tt.want, tt.reason)
 		}
+	}
+	// Someone only on prod's list is refused for the item's list: prod's never widens it.
+	if d, _ := Authorize(context.Background(), who("olga", []string{"ops"}, at(Requester, ScopeGlobal, "")), CreateRequest, widening); d.Reason != "this catalog item is not open to your groups" {
+		t.Errorf("only on prod's list: %+v", d)
 	}
 	if _, err := Authorize(context.Background(), who("x", nil), "fly", Object{}); err == nil {
 		t.Error("an unknown action was decided")

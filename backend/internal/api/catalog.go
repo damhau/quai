@@ -83,6 +83,25 @@ type CatalogItem struct {
 	Tags        []string `json:"tags"`
 	Trust       []string `json:"trust,omitempty" doc:"Why the item's definitions may change without review, shown as a warning: its repository's trust problems"`
 	Pins        []string `json:"pins,omitempty" doc:"For a blueprint: the resources that pin a range of their type's versions the type has left, a major version; its requests are refused until it is updated"`
+	// Entitlements, when the item restricts who sees or requests it.
+	Entitlements *EntitlementsView `json:"entitlements,omitempty" doc:"Who the item lets see it and request it (spec.entitlements), when it restricts them"`
+}
+
+// EntitlementsView is who a catalog item lets see it and request it, and what the caller may
+// request (docs/design/08-identity-access-tenancy.md#entitlements).
+type EntitlementsView struct {
+	Visibility   []string                     `json:"visibility" doc:"Who sees the item in the catalog: group:<name or pattern> or user:<name>; empty: everyone with a catalog role"`
+	Requesters   []string                     `json:"requesters" doc:"Who may request it, among those who see it; empty: everyone who sees it"`
+	Environments []EnvironmentEntitlementView `json:"environments" doc:"Narrower requesters for some values of the env param (types) or input (blueprints)"`
+	CanRequest   *bool                        `json:"canRequest,omitempty" doc:"Whether the caller may request the item in an environment it does not narrow; absent in a preview"`
+	Reason       string                       `json:"reason,omitempty" doc:"Why the caller may not request it"`
+}
+
+// EnvironmentEntitlementView is who may request a catalog item in one environment.
+type EnvironmentEntitlementView struct {
+	Environment string   `json:"environment"`
+	Requesters  []string `json:"requesters" doc:"Who may request the item there, among its requesters: it narrows them, never widens them"`
+	CanRequest  *bool    `json:"canRequest,omitempty" doc:"Whether the caller may request the item there; absent in a preview"`
 }
 
 // ParamView is a locator param, with the values found in the repository for discovered ones.
@@ -237,9 +256,16 @@ type repositoryInput struct {
 	Repository string `path:"repository"`
 }
 
-type itemInput struct {
+type typeInput struct {
 	Repository string `path:"repository"`
 	Name       string `path:"name"`
+	Resource   string `query:"resource" doc:"The key of one of the type's resources the caller may read: the type is described for that resource's page and its day-2 forms, whether or not the caller sees the type in the catalog"`
+}
+
+type blueprintInput struct {
+	Repository string `path:"repository"`
+	Name       string `path:"name"`
+	Instance   string `query:"instance" doc:"The name of one of the blueprint's instances the caller may read: the blueprint is described for that instance's page and its day-2 forms, whether or not the caller sees the blueprint in the catalog"`
 }
 
 type inventoryInput struct {
@@ -320,29 +346,34 @@ func registerCatalog(a huma.API, reg *repositories.Registry, s *store.Store) {
 					// A field type creates nothing: its resources are reached from the inventory.
 					continue
 				}
-				if _, err := authorize(ctx, authz.ReadCatalog, authz.Object{Repository: repo.Name, CatalogItem: name}); err != nil {
+				// An item its visibility hides is left out (docs/design/08, entitlements).
+				if _, err := authorize(ctx, authz.ReadCatalog, catalogObject(repo.Name, name, t.Spec.Entitlements)); err != nil {
 					denied++
 					continue
 				}
 				it := item("type", repo.Name, t.Metadata)
 				it.Trust = warn
+				it.Entitlements = entitlementsView(ctx, repo.Name, name, t.Spec.Entitlements, true)
 				items = append(items, it)
 			}
 			for _, name := range slices.Sorted(maps.Keys(snap.Definitions.Blueprints)) {
 				b := snap.Definitions.Blueprints[name]
-				if _, err := authorize(ctx, authz.ReadCatalog, authz.Object{Repository: repo.Name, CatalogItem: name}); err != nil {
+				if _, err := authorize(ctx, authz.ReadCatalog, catalogObject(repo.Name, name, b.Spec.Entitlements)); err != nil {
 					denied++
 					continue
 				}
 				it := item("blueprint", repo.Name, b.Metadata)
 				it.Trust = warn
 				it.Pins = b.Pins(snap.Definitions)
+				it.Entitlements = entitlementsView(ctx, repo.Name, name, b.Spec.Entitlements, true)
 				items = append(items, it)
 			}
 		}
 		if len(items) == 0 && denied > 0 {
-			_, err := authorize(ctx, authz.ReadCatalog, authz.Object{})
-			return nil, err
+			// Without a catalog role, the answer is that; with one, every item is hidden from them.
+			if _, err := authorize(ctx, authz.ReadCatalog, authz.Object{}); err != nil {
+				return nil, err
+			}
 		}
 		return &out[[]CatalogItem]{Body: items}, nil
 	})
@@ -350,7 +381,7 @@ func registerCatalog(a huma.API, reg *repositories.Registry, s *store.Store) {
 	huma.Register(a, huma.Operation{
 		OperationID: "get-type", Method: http.MethodGet, Path: Prefix + "/repositories/{repository}/types/{name}",
 		Summary: "Describe a resource type", Tags: []string{"Catalog"},
-	}, func(ctx context.Context, in *itemInput) (*out[TypeView], error) {
+	}, func(ctx context.Context, in *typeInput) (*out[TypeView], error) {
 		snap, err := snapshot(ctx, reg, in.Repository)
 		if err != nil {
 			return nil, err
@@ -362,15 +393,32 @@ func registerCatalog(a huma.API, reg *repositories.Registry, s *store.Store) {
 		if t == nil {
 			return nil, huma.Error404NotFound("no type " + in.Name + " in " + in.Repository)
 		}
+		if in.Resource != "" {
+			// A resource's page and its day-2 forms describe its type to whoever may read the
+			// resource: entitlements are about requesting new ones.
+			r, err := inventory.Get(snap, t.Metadata.Name, in.Resource)
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil, huma.Error404NotFound("no resource " + locate.ID(in.Repository, t.Metadata.Name, in.Resource))
+			}
+			if err != nil {
+				return nil, err
+			}
+			if _, err := authorize(ctx, authz.ReadInventory, resourceObject(r)); err != nil {
+				return nil, err
+			}
+		} else if err := describable(ctx, in.Repository, in.Name, t.Spec.Entitlements); err != nil {
+			return nil, err
+		}
 		v := typeView(snap, t)
 		v.Trust = trustOf(ctx, s, in.Repository).Problems
+		v.Entitlements = entitlementsView(ctx, in.Repository, in.Name, t.Spec.Entitlements, true)
 		return &out[TypeView]{Body: v}, nil
 	})
 
 	huma.Register(a, huma.Operation{
 		OperationID: "get-blueprint", Method: http.MethodGet, Path: Prefix + "/repositories/{repository}/blueprints/{name}",
 		Summary: "Describe a blueprint", Tags: []string{"Catalog"},
-	}, func(ctx context.Context, in *itemInput) (*out[BlueprintView], error) {
+	}, func(ctx context.Context, in *blueprintInput) (*out[BlueprintView], error) {
 		snap, err := snapshot(ctx, reg, in.Repository)
 		if err != nil {
 			return nil, err
@@ -382,8 +430,23 @@ func registerCatalog(a huma.API, reg *repositories.Registry, s *store.Store) {
 		if b == nil {
 			return nil, huma.Error404NotFound("no blueprint " + in.Name + " in " + in.Repository)
 		}
+		if in.Instance != "" {
+			// An instance's page and its actions describe its blueprint to whoever may read the
+			// instance, as get-instance decides.
+			all := instances(snap)
+			i := slices.IndexFunc(all, func(v InstanceView) bool { return v.Blueprint == in.Name && v.Name == in.Instance })
+			if i < 0 {
+				return nil, huma.Error404NotFound("no instance " + in.Name + "/" + in.Instance)
+			}
+			if _, err := authorize(ctx, authz.ReadInventory, authz.Object{Repository: in.Repository, Owner: all[i].Owner}); err != nil {
+				return nil, err
+			}
+		} else if err := describable(ctx, in.Repository, in.Name, b.Spec.Entitlements); err != nil {
+			return nil, err
+		}
 		v := blueprintDetail(snap, b)
 		v.Trust = trustOf(ctx, s, in.Repository).Problems
+		v.Entitlements = entitlementsView(ctx, in.Repository, in.Name, b.Spec.Entitlements, true)
 		return &out[BlueprintView]{Body: v}, nil
 	})
 
@@ -568,6 +631,55 @@ func item(kind, repo string, m definitions.Metadata) CatalogItem {
 	}
 	return CatalogItem{Kind: kind, Repository: repo, Name: m.Name, Title: m.Title, Description: m.Description,
 		Icon: m.Icon, Category: m.Category, Version: m.Version, Tags: tags}
+}
+
+// catalogObject is a catalog item with who it lets see it, for ReadCatalog.
+func catalogObject(repository, name string, e *definitions.Entitlements) authz.Object {
+	return authz.Object{Repository: repository, CatalogItem: name, Entitlement: requests.EntitlementOf(e, "")}
+}
+
+// describable checks that the caller may read a catalog item's description for its request
+// form: it is visible to them, or they may preview the repository's definitions (catalog authors
+// describe every item, in the designer as in previews).
+func describable(ctx context.Context, repository, name string, e *definitions.Entitlements) error {
+	if allowed(ctx, authz.PreviewDefinitions, authz.Object{Repository: repository}) {
+		return nil
+	}
+	_, err := authorize(ctx, authz.ReadCatalog, catalogObject(repository, name, e))
+	return err
+}
+
+// entitlementsView describes an item's entitlements; nil when they restrict no one. With caller,
+// it says what the caller may request: in an environment the item does not narrow, and in each it
+// does.
+func entitlementsView(ctx context.Context, repository, name string, e *definitions.Entitlements, caller bool) *EntitlementsView {
+	if e == nil || len(e.Visibility) == 0 && len(e.Requesters) == 0 && len(e.Environments) == 0 {
+		return nil
+	}
+	v := &EntitlementsView{Visibility: nonNilStrings(e.Visibility), Requesters: nonNilStrings(e.Requesters), Environments: []EnvironmentEntitlementView{}}
+	obj := catalogObject(repository, name, e)
+	if caller {
+		d := decide(ctx, authz.CreateRequest, obj)
+		v.CanRequest, v.Reason = &d.Allowed, d.Reason
+	}
+	for _, env := range slices.Sorted(maps.Keys(e.Environments)) {
+		ev := EnvironmentEntitlementView{Environment: env, Requesters: nonNilStrings(e.Environments[env])}
+		if caller {
+			o := obj
+			o.Entitlement = requests.EntitlementOf(e, env)
+			ok := decide(ctx, authz.CreateRequest, o).Allowed
+			ev.CanRequest = &ok
+		}
+		v.Environments = append(v.Environments, ev)
+	}
+	return v
+}
+
+func nonNilStrings(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return s
 }
 
 func uiView(ui definitions.UI) UIView {

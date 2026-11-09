@@ -6,8 +6,10 @@ import { listCatalogOptions } from "@/api/generated/@tanstack/react-query.gen"
 import type { CatalogItem } from "@/api/generated/types.gen"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
-import { buttonVariants } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 import { Card, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { EntitlementsBadge } from "@/components/entitlements"
+import { closedEnvironments } from "@/lib/entitlements"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
@@ -73,6 +75,7 @@ function Catalog() {
                       <ShieldAlert aria-hidden /> Unreviewed definitions
                     </Badge>
                   )}
+                  <EntitlementsBadge entitlements={item.entitlements} />
                   {(item.pins ?? []).length > 0 && (
                     <Badge variant="destructive" title={(item.pins ?? []).join("\n")}>
                       <History aria-hidden /> Needs an update
@@ -85,17 +88,25 @@ function Catalog() {
                 </div>
                 <CardTitle>{item.title}</CardTitle>
                 {item.description && <CardDescription>{item.description}</CardDescription>}
+                <Access item={item} />
               </CardHeader>
               <CardFooter className="justify-between gap-2">
                 <span className="text-muted-foreground truncate text-xs">{item.repository}</span>
-                <Link
-                  to={item.kind === "type" ? "/request/$repository/types/$name" : "/request/$repository/blueprints/$name"}
-                  params={{ repository: item.repository, name: item.name }}
-                  className={buttonVariants({ size: "sm" })}
-                  aria-label={`Request ${item.title}`}
-                >
-                  Request
-                </Link>
+                {item.entitlements?.canRequest === false ? (
+                  // The server refuses its plans and requests; the button only says so first.
+                  <Button size="sm" disabled aria-label={`Request ${item.title}`} title={item.entitlements.reason}>
+                    Request
+                  </Button>
+                ) : (
+                  <Link
+                    to={item.kind === "type" ? "/request/$repository/types/$name" : "/request/$repository/blueprints/$name"}
+                    params={{ repository: item.repository, name: item.name }}
+                    className={buttonVariants({ size: "sm" })}
+                    aria-label={`Request ${item.title}`}
+                  >
+                    Request
+                  </Link>
+                )}
               </CardFooter>
             </Card>
           </li>
@@ -103,4 +114,14 @@ function Catalog() {
       </ul>
     </section>
   )
+}
+
+/** Access says, on a restricted item's card, what the caller may not request. */
+function Access({ item }: { item: CatalogItem }) {
+  const e = item.entitlements
+  if (!e) return null
+  if (e.canRequest === false) return <p className="text-muted-foreground text-xs">You cannot request this: {e.reason}</p>
+  const closed = closedEnvironments(e)
+  if (!closed.length) return null
+  return <p className="text-muted-foreground text-xs">Not open to your groups in {closed.join(", ")}</p>
 }

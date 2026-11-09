@@ -154,6 +154,7 @@ regenerates the cases after a cel-go upgrade, and the frontend CI checks they ar
 | Inventory table | Server-side filtering, sorting and pagination (TanStack Table); saved views. |
 | Designer | React Flow canvas whose palette lists types from connected repositories; saves as a pull request to the catalog repository (for now, a direct commit: design 04). |
 | Command palette | `⌘K` for catalog items, resources and requests. |
+| Entitlements | A restricted catalog item's card is marked, says the environments closed to the caller and disables Request when the item is; its form lists who may request it and warns when the chosen environment is closed; previews list who it would let in. The server decides (design 08, entitlements): the pages only show its answer. A resource's page and a deployment's load their type or blueprint with `?resource=` or `?instance=`, so entitlements never hide what one already has. |
 | Admin | Repository registration wizard with live access checks and health pages; executors; roles; audit log viewer; the access report (`/admin/access`: every person's groups, teams, roles and API tokens, filtered in the page, and its CSV download), for auditors and platform admins. |
 
 ## Quality gates

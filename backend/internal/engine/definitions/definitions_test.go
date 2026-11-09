@@ -433,6 +433,76 @@ func TestBlueprintStructureProblems(t *testing.T) {
 	)
 }
 
+func TestEntitlements(t *testing.T) {
+	ty := func(name, params, ent string) string {
+		loc := ""
+		if strings.Contains(params, "name: env") {
+			loc = "/{env}"
+		}
+		return "apiVersion: quai.dev/v1beta1\nkind: ResourceType\nmetadata: { name: " + name + ", title: T }\nspec:\n" +
+			"  locate: { strategy: file, path: \"" + name + loc + "/{name}.yaml\" }\n  params: " + params + "\n  schema: catalog/vm.schema.json\n  entitlements: " + ent + "\n"
+	}
+	bp := func(name, inputs, ent string) string {
+		return "apiVersion: quai.dev/v1beta1\nkind: Blueprint\nmetadata: { name: " + name + ", title: B }\nspec:\n  inputs: " + inputs +
+			"\n  resources: [{ id: a, type: { name: good } }]\n  entitlements: " + ent + "\n"
+	}
+	envParams := "[{ name: env, options: [dev, prod] }, { name: name }]"
+	repo, problems := load(t, map[string]string{
+		".quai/types/good.yaml": ty("good", envParams,
+			"{ visibility: [\"group:dev*\", \"user:zoe\"], requesters: [group:developers], environments: { prod: [group:sre, user:zoe] } }"),
+		".quai/types/open.yaml":      ty("open", "[{ name: name }]", "{ visibility: [], requesters: [\"group:data-?\"] }"),
+		"blueprints/good-bp.yaml":    bp("good-bp", "{ type: object, properties: { env: { enum: [dev, prod] } } }", "{ environments: { prod: [group:sre] } }"),
+		"blueprints/any-env-bp.yaml": bp("any-env-bp", "{ type: object, properties: { env: { type: string } } }", "{ environments: { staging: [group:qa] } }"),
+
+		".quai/types/no-env.yaml": ty("no-env", "[{ name: name }]", "{ environments: { prod: [group:sre] } }"),
+		".quai/types/entries.yaml": ty("entries", envParams,
+			"{ visibility: [\"team:shop\", developers, \"group:\", \"group:data-[\"], requesters: [\"user:z*\", \"group:a b\"], environments: { staging: [group:qa], dev: [] } }"),
+		".quai/types/cases.yaml": ty("cases", "[{ name: env, discover: true }, { name: name }]",
+			"{ environments: { Prod: [group:sre], prod: [group:sre], \" dev\": [group:dev] } }"),
+		"blueprints/no-env-bp.yaml":  bp("no-env-bp", "{ type: object, properties: { size: { type: string } } }", "{ environments: { prod: [group:sre] } }"),
+		"blueprints/bad-env-bp.yaml": bp("bad-env-bp", "{ type: object, properties: { env: { enum: [dev, prod] } } }", "{ environments: { qa: [group:qa] } }"),
+	})
+	wantProblems(t, problems,
+		"no-env.yaml: spec.entitlements.environments: are keyed by the value of the env param, and this type has none",
+		`entries.yaml: spec.entitlements.visibility: "team:shop" is not an entitlement: use group:<name or pattern> or user:<name>`,
+		`entries.yaml: spec.entitlements.visibility: "developers" is not an entitlement`,
+		`entries.yaml: spec.entitlements.visibility: "group:" is not an entitlement`,
+		`entries.yaml: spec.entitlements.visibility: "group:data-[" is not a valid group pattern`,
+		`entries.yaml: spec.entitlements.requesters: "user:z*": a user entry names one person; patterns are for groups`,
+		`entries.yaml: spec.entitlements.requesters: "group:a b" is not an entitlement`,
+		"entries.yaml: spec.entitlements.environments.staging: staging is not one of the env param's options (dev, prod)",
+		"entries.yaml: spec.entitlements.environments.dev: is empty",
+		"cases.yaml: spec.entitlements.environments.prod: names the same environment as Prod",
+		"cases.yaml: spec.entitlements.environments. dev: must be the name of an environment, without surrounding spaces",
+		"no-env-bp.yaml: spec.entitlements.environments: are keyed by the value of the env input, and this blueprint's inputs have none",
+		"bad-env-bp.yaml: spec.entitlements.environments.qa: qa is not one of the env input's values (dev, prod)",
+	)
+	for _, bad := range []string{"no-env", "entries", "cases"} {
+		if repo.Types[bad] != nil {
+			t.Errorf("type %s loaded despite its problems", bad)
+		}
+	}
+	for _, p := range problems {
+		if strings.Contains(p.Path, "good") || strings.Contains(p.Path, "open") || strings.Contains(p.Path, "any-env") {
+			t.Errorf("unexpected problem: %v", p)
+		}
+	}
+	good := repo.Types["good"]
+	if good == nil || repo.Blueprints["good-bp"] == nil || repo.Blueprints["any-env-bp"] == nil || repo.Types["open"] == nil {
+		t.Fatalf("not loaded: %+v", repo)
+	}
+	for value, want := range map[string]string{"prod": "prod", " PROD ": "prod", "Prod": "prod", "dev": "", "": "", "production": ""} {
+		key, list, ok := good.Spec.Entitlements.Environment(value)
+		if key != want || ok != (want != "") || ok && !reflect.DeepEqual(list, []string{"group:sre", "user:zoe"}) {
+			t.Errorf("Environment(%q) = %q, %v, %v; want %q", value, key, list, ok, want)
+		}
+	}
+	var none *Entitlements
+	if _, _, ok := none.Environment("prod"); ok {
+		t.Error("nil entitlements narrow prod")
+	}
+}
+
 func TestNumbers(t *testing.T) {
 	repo, problems := load(t, map[string]string{
 		".quai/types/vm.yaml": strings.NewReplacer(

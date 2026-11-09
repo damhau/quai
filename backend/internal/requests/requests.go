@@ -163,11 +163,14 @@ func (s *Service) PlanType(ctx context.Context, who auth.Identity, in TypeInput)
 		return nil, fmt.Errorf("%w: type %s writes fields of something it does not own: it has no %s", ErrConflict, t.Metadata.Name, in.Kind)
 	}
 	if in.Kind == generate.Create {
-		p.Authorize, p.Object = authz.CreateRequest, authz.Object{Repository: repo.Name, CatalogItem: t.Metadata.Name}
+		// The environment's list applies as the env param will be written: checkParams trims it.
+		p.Authorize, p.Object = authz.CreateRequest, authz.Object{Repository: repo.Name, CatalogItem: t.Metadata.Name,
+			Entitlement: EntitlementOf(t.Spec.Entitlements, in.Params[definitions.EnvParam])}
 		params, err := checkParams(snap, t, in.Params)
 		if err != nil {
 			return p, err
 		}
+		p.Object.Entitlement = EntitlementOf(t.Spec.Entitlements, params[definitions.EnvParam])
 		req.Params, req.Values = params, in.Values
 		p.Owners = []string{who.Principal.Name}
 		if o := t.Spec.Ownership; o != nil && o.Codeowners {
@@ -312,18 +315,36 @@ func (s *Service) PlanBlueprint(ctx context.Context, who auth.Identity, in Bluep
 	if b == nil {
 		return nil, fmt.Errorf("%w: blueprint %s in %s", ErrNotFound, in.Blueprint, in.Repository)
 	}
-	if !locate.SafeSegment(in.Name) {
-		return nil, &schema.ValidationError{Fields: map[string]string{"name": "use 1 to 63 letters, digits, '.', '_' or '-'"}}
-	}
-	cs, err := plan.Blueprint(snap.FS, snap.Definitions, b, plan.BlueprintRequest{Name: in.Name, Inputs: in.Inputs, Owner: who.Principal.Name, Repository: repo.Name})
-	if err != nil {
-		return nil, err
-	}
 	inputs := map[string]any{}
 	if d, ok := b.InputSchema.Defaults().(map[string]any); ok {
 		inputs = d
 	}
 	maps.Copy(inputs, in.Inputs)
+	// Like PlanType, the plan carries its access question even when planning fails: the
+	// blueprint's entitlements for the env input as the form gives it, or its default.
+	p := &Plan{
+		Kind: generate.Create, Target: b.Metadata.Name + "/" + in.Name, Repository: repo.Name, Blueprint: b.Metadata.Name,
+		Commit: snap.Commit, Owners: []string{who.Principal.Name}, Inputs: inputs,
+		Authorize: authz.CreateRequest, Object: authz.Object{Repository: repo.Name, CatalogItem: b.Metadata.Name,
+			Entitlement: EntitlementOf(b.Spec.Entitlements, EnvValue(inputs[definitions.EnvParam]))},
+	}
+	if !locate.SafeSegment(in.Name) {
+		return p, &schema.ValidationError{Fields: map[string]string{"name": "use 1 to 63 letters, digits, '.', '_' or '-'"}}
+	}
+	cs, err := plan.Blueprint(snap.FS, snap.Definitions, b, plan.BlueprintRequest{Name: in.Name, Inputs: in.Inputs, Owner: who.Principal.Name, Repository: repo.Name})
+	if err != nil {
+		return p, err
+	}
+	// Creating a resource through a blueprint needs what requesting its type needs, for the
+	// resource's environment (open question 47): a blueprint does not open a type to more people.
+	for _, r := range cs.Resources {
+		if t := snap.Definitions.Types[r.Type]; t != nil && t.Spec.Entitlements != nil {
+			e := EntitlementOf(t.Spec.Entitlements, r.Params[definitions.EnvParam])
+			e.Item = "type " + t.Metadata.Name
+			p.Also = append(p.Also, authz.Object{Repository: repo.Name, CatalogItem: b.Metadata.Name, Entitlement: e})
+		}
+	}
+	p.ChangeSet, p.Stacks = cs, stacksOf(snap, cs.Resources)
 	user := expr.User{Name: who.Principal.Name, Groups: who.Principal.Groups}
 	request := expr.Request{Kind: generate.Create}
 	var sets []policy.RuleSet
@@ -334,19 +355,39 @@ func (s *Service) PlanBlueprint(ctx context.Context, who auth.Identity, in Bluep
 			policy.RuleSet{Source: policy.SourceType, Rules: t.Spec.Approval.Rules, Vars: vars})
 	}
 	sets = append(sets, policy.RuleSet{Source: policy.SourceBlueprint, Rules: b.Spec.Approval.Rules, Vars: expr.Vars{Inputs: inputs, User: user, Request: request}})
-	rules, err := policy.Match(sets...)
-	if err != nil {
-		return nil, err
-	}
-	p := &Plan{
-		Kind: generate.Create, Target: b.Metadata.Name + "/" + in.Name, Repository: repo.Name, Blueprint: b.Metadata.Name,
-		Stacks: stacksOf(snap, cs.Resources), Commit: snap.Commit, ChangeSet: cs, Rules: rules, Owners: []string{who.Principal.Name}, Inputs: inputs,
-		Authorize: authz.CreateRequest, Object: authz.Object{Repository: repo.Name, CatalogItem: b.Metadata.Name},
+	if p.Rules, err = policy.Match(sets...); err != nil {
+		return p, err
 	}
 	if err := s.withCodeowners(ctx, repo, snap, p); err != nil {
-		return nil, err
+		return p, err
 	}
 	return p, s.deliverable(ctx, repo)
+}
+
+// EntitlementOf is the access question of a request for a catalog item with the entitlements e,
+// for the environment env (the value of the env param or input; "" for none): the item's lists,
+// and the environment's narrower list when e narrows it.
+func EntitlementOf(e *definitions.Entitlements, env string) authz.Entitlement {
+	if e == nil {
+		return authz.Entitlement{}
+	}
+	out := authz.Entitlement{Visibility: e.Visibility, Requesters: e.Requesters}
+	if key, list, ok := e.Environment(env); ok {
+		out.Environment, out.EnvironmentRequesters = key, list
+	}
+	return out
+}
+
+// EnvValue is the environment a blueprint's env input names: a string, or a number or a boolean
+// as written; "" for none.
+func EnvValue(v any) string {
+	switch v := v.(type) {
+	case string:
+		return v
+	case float64, int, int64, bool:
+		return fmt.Sprint(v)
+	}
+	return ""
 }
 
 // Migratable reports whether a resource does not conform to its type's schema and the type's

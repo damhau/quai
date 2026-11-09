@@ -220,7 +220,15 @@ func tokenView(t db.ApiToken) TokenView {
 // allowed reports whether the caller may do action on obj, for a view to offer it; the handler
 // that does it still checks.
 func allowed(ctx context.Context, action authz.Action, obj authz.Object) bool {
+	return decide(ctx, action, obj).Allowed
+}
+
+// decide is Authorize's answer for the caller, with its reason; a failure to decide is a denial.
+func decide(ctx context.Context, action authz.Action, obj authz.Object) authz.Decision {
 	id, _ := auth.FromContext(ctx)
 	d, err := authz.Authorize(ctx, id.Principal, action, obj)
-	return err == nil && d.Allowed
+	if err != nil {
+		return authz.Decision{Reason: err.Error()}
+	}
+	return d
 }

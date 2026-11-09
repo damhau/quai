@@ -13,6 +13,7 @@ import { SchemaForm } from "@/components/schema-form/schema-form"
 import { defaults, hiddenFields, localErrors, type JsonSchema, type Values } from "@/components/schema-form/schema"
 import { PinsWarning } from "@/components/pins-warning"
 import { TrustWarning } from "@/components/trust-warning"
+import { EntitlementsNote } from "@/components/entitlements"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { fieldErrors, hasFieldErrors, problemMessage } from "@/lib/problems"
@@ -67,6 +68,7 @@ export function BlueprintRequest({ repository, name, b, preview }: { repository:
       {preview && <PreviewBanner preview={preview} />}
       <TrustWarning problems={b.trust} />
       <PinsWarning pins={b.pins} />
+      <EntitlementsNote entitlements={b.entitlements} env={typeof inputs.env === "string" ? inputs.env : undefined} />
       <div className="grid items-start gap-6 lg:grid-cols-2">
         <form
           className="grid gap-6"

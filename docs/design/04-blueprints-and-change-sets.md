@@ -46,6 +46,9 @@ spec:
   approval:
     rules:
       - { name: production, when: "inputs.env == 'prod'", approvers: [group:platform-admins] }
+  entitlements:                       # who sees and requests it; environments keyed by inputs.env
+    requesters: [group:developers]
+    environments: { prod: [group:prod-requesters] }
   actions:
     - name: scale
       title: Change size
@@ -61,6 +64,7 @@ Rules:
 - `values` are validated against each type's input schema at catalog load (`quai lint`) and again at plan time.
 - A blueprint's approval rules add to each type's rules and each repository's floor rules; they never replace them. The approval shown to users is the union, de-duplicated by approver group.
 - `when` includes or excludes a resource. Changing an input that flips `when` on day-2 adds or removes that resource.
+- `entitlements` say who sees the blueprint and who may request it, as on a type; its `environments` are keyed by the `env` input. Requesting it also needs, for each resource it creates, what requesting that resource's type needs ([entitlements](08-identity-access-tenancy.md#entitlements)).
 - `type.version`, optional, pins a range of the type's `metadata.version` (`"^1.2"`, `">=1.2 <2"`). A blueprint whose pin the type has left is flagged and cannot create instances until it is updated ([schema evolution](02-resource-types-and-generators.md#schema-evolution)).
 
 ### What the designer becomes

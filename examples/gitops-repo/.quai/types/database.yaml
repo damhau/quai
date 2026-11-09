@@ -37,6 +37,13 @@ spec:
     read:
       # The engine is read back from where the template binds it; the size from the vCPUs.
       size: "${{ doc.vcpu <= 2 ? 'small' : doc.vcpu <= 4 ? 'medium' : 'large' }}"
+  # Developers and FinOps see databases in the catalog; developers request them, and only the
+  # shop team in prod. Owners keep operating their databases whatever these lists say.
+  entitlements:
+    visibility: [group:developers, group:finops]
+    requesters: [group:developers]
+    environments:
+      prod: [group:shop]
   ownership: { field: owner }
   stack: databases/{env}
   address: module.database["{name}"]

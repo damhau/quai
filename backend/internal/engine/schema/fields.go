@@ -378,6 +378,25 @@ func (s *Schema) Properties() []string {
 	return slices.Sorted(maps.Keys(props))
 }
 
+// Enum returns the values a top-level property may take, from its enum or const, following
+// $refs; ok is false when the property is not declared or does not list its values.
+func (s *Schema) Enum(property string) (values []any, ok bool) {
+	root := s.rootNode()
+	props, _ := root.m["properties"].(map[string]any)
+	sub, declared := props[property]
+	if !declared {
+		return nil, false
+	}
+	n := s.child(root, sub, "properties/"+escape(property))
+	if e, isList := n.m["enum"].([]any); isList {
+		return e, true
+	}
+	if c, isConst := n.m["const"]; isConst {
+		return []any{c}, true
+	}
+	return nil, false
+}
+
 // Document returns the schema as written, for clients that render forms from it. With
 // PropertyOrder, they can show fields in the order the schema declares them.
 func (s *Schema) Document() any { return s.doc }

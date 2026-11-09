@@ -2,6 +2,9 @@ package definitions
 
 import (
 	"fmt"
+	"maps"
+	"slices"
+	"strings"
 
 	"github.com/Masterminds/semver/v3"
 
@@ -58,9 +61,11 @@ type TypeSpec struct {
 	Address     string            `json:"address,omitempty"`
 	Deletion    string            `json:"deletion,omitempty"`
 	Catalog     string            `json:"catalog,omitempty"`
-	UI          UI                `json:"ui"`
-	Approval    Approval          `json:"approval"`
-	Actions     []Action          `json:"actions,omitempty"`
+	// Entitlements say who sees the type in the catalog and who may request it.
+	Entitlements *Entitlements `json:"entitlements,omitempty"`
+	UI           UI            `json:"ui"`
+	Approval     Approval      `json:"approval"`
+	Actions      []Action      `json:"actions,omitempty"`
 	// Migrate is a CEL binding that sees a resource's values as doc and its params, and gives a
 	// JSON merge patch of the values (docs/design/02, schema evolution): a migrate request applies
 	// it to every non-conforming resource of the type that it makes conform.
@@ -134,6 +139,39 @@ type Generate struct {
 	// Bindings are the inputs the template binds directly (`path: ${{ inputs.os }}`), each with
 	// the dotted path it is written to: they are read back from there.
 	Bindings map[string]string `json:"-"`
+}
+
+// EnvParam is the param of a type, and the input of a blueprint, whose value is the environment
+// a request is for: Entitlements.Environments is keyed by it.
+const EnvParam = "env"
+
+// Entitlements say who may see a catalog item and who may request it
+// (docs/design/08-identity-access-tenancy.md#entitlements). Each entry is a group, or a group
+// pattern, as group:developers or group:data-*, or a person, as user:zoe; an empty list does not
+// restrict. Requesting needs to be in Visibility and in Requesters.
+type Entitlements struct {
+	Visibility []string `json:"visibility,omitempty"`
+	Requesters []string `json:"requesters,omitempty"`
+	// Environments narrow Requesters for some values of the env param (types) or input
+	// (blueprints): a request for prod needs to be in Requesters and in Environments["prod"]. They
+	// never widen Requesters.
+	Environments map[string][]string `json:"environments,omitempty"`
+}
+
+// Environment returns the environment an env value names among Environments, matched without
+// regard to case or surrounding spaces (a request for " Prod" is narrowed as one for prod), and
+// its list; ok is false when the entitlements do not narrow it.
+func (e *Entitlements) Environment(value string) (key string, list []string, ok bool) {
+	v := strings.TrimSpace(value)
+	if e == nil || v == "" {
+		return "", nil, false
+	}
+	for _, k := range slices.Sorted(maps.Keys(e.Environments)) {
+		if strings.EqualFold(k, v) {
+			return k, e.Environments[k], true
+		}
+	}
+	return "", nil, false
 }
 
 // Ownership says who owns each resource: a field of the file, CODEOWNERS, or a fixed team.
@@ -250,6 +288,9 @@ type BlueprintSpec struct {
 	Resources []BlueprintResource `json:"resources"`
 	Approval  Approval            `json:"approval"`
 	Actions   []BlueprintAction   `json:"actions,omitempty"`
+	// Entitlements say who sees the blueprint in the catalog and who may request it; creating
+	// its resources also needs their types' entitlements.
+	Entitlements *Entitlements `json:"entitlements,omitempty"`
 }
 
 // BlueprintResource is one resource a blueprint creates.

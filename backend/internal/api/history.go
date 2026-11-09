@@ -227,8 +227,8 @@ func registerHistory(a huma.API, reg *repositories.Registry, s *store.Store) {
 
 // blueprintKeys orders a published blueprint's keys as hand-written ones are.
 var blueprintKeys = []string{"apiVersion", "kind", "metadata", "spec", "name", "title", "description", "icon", "category", "version",
-	"owners", "tags", "inputs", "ui", "resources", "approval", "actions", "id", "type", "repository", "params", "values", "when",
-	"dependsOn", "rules", "approvers", "min", "apply", "set"}
+	"owners", "tags", "inputs", "ui", "resources", "approval", "actions", "entitlements", "id", "type", "repository", "params", "values", "when",
+	"dependsOn", "rules", "approvers", "min", "apply", "set", "visibility", "requesters", "environments"}
 
 // publish validates a blueprint against the repository's types and commits it.
 func publish(ctx context.Context, repo *repositories.Repo, s *store.Store, me auth.Identity, name string, doc map[string]any) (*out[BlueprintView], error) {

@@ -12,6 +12,7 @@ import { ReasonField, RequestHeader, SubmitButton, TextField } from "@/component
 import { SchemaForm, EnumControl } from "@/components/schema-form/schema-form"
 import { defaults, hiddenFields, localErrors, setPath, type JsonSchema, type Values } from "@/components/schema-form/schema"
 import { TrustWarning } from "@/components/trust-warning"
+import { EntitlementsNote } from "@/components/entitlements"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
@@ -92,6 +93,7 @@ export function TypeRequest({ repository, name, t, preview }: { repository: stri
       </RequestHeader>
       {preview && <PreviewBanner preview={preview} />}
       <TrustWarning problems={t.trust} />
+      <EntitlementsNote entitlements={t.entitlements} env={params.env} />
       <div className="grid items-start gap-6 lg:grid-cols-2">
         <form
           className="grid gap-6"

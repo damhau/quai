@@ -83,6 +83,10 @@ spec:
   address: module.vm["{name}"]           # Terraform address prefix, for plan and drift mapping
   deletion: approval                     # allowed | approval | forbidden
   catalog: visible                       # visible | hidden (only usable from blueprints)
+  entitlements:                          # who sees and requests it (docs/design/08, entitlements)
+    visibility: [group:developers, group:finops]
+    requesters: [group:developers]
+    environments: { prod: [group:shop] }  # keyed by the env param's value; narrows requesters
 
   ui:
     order: [os, size, disks, vlan]

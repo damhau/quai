@@ -612,6 +612,10 @@
           "description": {
             "type": "string"
           },
+          "entitlements": {
+            "$ref": "#/components/schemas/EntitlementsView",
+            "description": "Who the item lets see it and request it (spec.entitlements), when it restricts them"
+          },
           "icon": {
             "type": "string"
           },
@@ -712,6 +716,10 @@
           },
           "description": {
             "type": "string"
+          },
+          "entitlements": {
+            "$ref": "#/components/schemas/EntitlementsView",
+            "description": "Who the item lets see it and request it (spec.entitlements), when it restricts them"
           },
           "icon": {
             "type": "string"
@@ -1382,6 +1390,82 @@
           "required",
           "checked",
           "problems"
+        ],
+        "type": "object"
+      },
+      "EntitlementsView": {
+        "additionalProperties": false,
+        "properties": {
+          "canRequest": {
+            "description": "Whether the caller may request the item in an environment it does not narrow; absent in a preview",
+            "type": "boolean"
+          },
+          "environments": {
+            "description": "Narrower requesters for some values of the env param (types) or input (blueprints)",
+            "items": {
+              "$ref": "#/components/schemas/EnvironmentEntitlementView"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "reason": {
+            "description": "Why the caller may not request it",
+            "type": "string"
+          },
+          "requesters": {
+            "description": "Who may request it, among those who see it; empty: everyone who sees it",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "visibility": {
+            "description": "Who sees the item in the catalog: group:\u003cname or pattern\u003e or user:\u003cname\u003e; empty: everyone with a catalog role",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "visibility",
+          "requesters",
+          "environments"
+        ],
+        "type": "object"
+      },
+      "EnvironmentEntitlementView": {
+        "additionalProperties": false,
+        "properties": {
+          "canRequest": {
+            "description": "Whether the caller may request the item there; absent in a preview",
+            "type": "boolean"
+          },
+          "environment": {
+            "type": "string"
+          },
+          "requesters": {
+            "description": "Who may request the item there, among its requesters: it narrows them, never widens them",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "environment",
+          "requesters"
         ],
         "type": "object"
       },
@@ -3733,6 +3817,10 @@
           "description": {
             "type": "string"
           },
+          "entitlements": {
+            "$ref": "#/components/schemas/EntitlementsView",
+            "description": "Who the item lets see it and request it (spec.entitlements), when it restricts them"
+          },
           "icon": {
             "type": "string"
           },
@@ -4950,6 +5038,16 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "The name of one of the blueprint's instances the caller may read: the blueprint is described for that instance's page and its day-2 forms, whether or not the caller sees the blueprint in the catalog",
+            "explode": false,
+            "in": "query",
+            "name": "instance",
+            "schema": {
+              "description": "The name of one of the blueprint's instances the caller may read: the blueprint is described for that instance's page and its day-2 forms, whether or not the caller sees the blueprint in the catalog",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -5495,6 +5593,16 @@
             "name": "name",
             "required": true,
             "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The key of one of the type's resources the caller may read: the type is described for that resource's page and its day-2 forms, whether or not the caller sees the type in the catalog",
+            "explode": false,
+            "in": "query",
+            "name": "resource",
+            "schema": {
+              "description": "The key of one of the type's resources the caller may read: the type is described for that resource's page and its day-2 forms, whether or not the caller sees the type in the catalog",
               "type": "string"
             }
           }

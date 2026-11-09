@@ -55,11 +55,18 @@ func registerPreview(a huma.API, reg *repositories.Registry) {
 		}
 		v := PreviewView{Repository: snap.Repository, Branch: in.Branch, PullRequest: in.PullRequest, Commit: snap.Commit,
 			Items: []CatalogItem{}, Problems: []ProblemView{}}
+		// A preview shows who each item would let see and request it, not what the author may do.
 		for _, name := range slices.Sorted(maps.Keys(snap.Definitions.Types)) {
-			v.Items = append(v.Items, item("type", snap.Repository, snap.Definitions.Types[name].Metadata))
+			t := snap.Definitions.Types[name]
+			it := item("type", snap.Repository, t.Metadata)
+			it.Entitlements = entitlementsView(ctx, snap.Repository, name, t.Spec.Entitlements, false)
+			v.Items = append(v.Items, it)
 		}
 		for _, name := range slices.Sorted(maps.Keys(snap.Definitions.Blueprints)) {
-			v.Items = append(v.Items, item("blueprint", snap.Repository, snap.Definitions.Blueprints[name].Metadata))
+			b := snap.Definitions.Blueprints[name]
+			it := item("blueprint", snap.Repository, b.Metadata)
+			it.Entitlements = entitlementsView(ctx, snap.Repository, name, b.Spec.Entitlements, false)
+			v.Items = append(v.Items, it)
 		}
 		for _, p := range snap.Problems {
 			v.Problems = append(v.Problems, ProblemView{Path: p.Path, Field: p.Field, Message: p.Message})
@@ -79,7 +86,9 @@ func registerPreview(a huma.API, reg *repositories.Registry) {
 		if t == nil {
 			return nil, huma.Error404NotFound("no type " + in.Name + " at " + snap.Commit)
 		}
-		return &out[TypeView]{Body: typeView(snap, t)}, nil
+		v := typeView(snap, t)
+		v.Entitlements = entitlementsView(ctx, snap.Repository, in.Name, t.Spec.Entitlements, false)
+		return &out[TypeView]{Body: v}, nil
 	})
 
 	huma.Register(a, huma.Operation{
@@ -94,7 +103,9 @@ func registerPreview(a huma.API, reg *repositories.Registry) {
 		if b == nil {
 			return nil, huma.Error404NotFound("no blueprint " + in.Name + " at " + snap.Commit)
 		}
-		return &out[BlueprintView]{Body: blueprintDetail(snap, b)}, nil
+		v := blueprintDetail(snap, b)
+		v.Entitlements = entitlementsView(ctx, snap.Repository, in.Name, b.Spec.Entitlements, false)
+		return &out[BlueprintView]{Body: v}, nil
 	})
 }
 
