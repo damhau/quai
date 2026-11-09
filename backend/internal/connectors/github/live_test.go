@@ -144,16 +144,25 @@ func liveMirror(t *testing.T, s *githubtest.Sandbox, name string, c *Connector) 
 	return m
 }
 
-// push commits content to path on branch, on top of main.
+// push commits content to path on branch, on top of main. A repository just created may refuse
+// the app's pushes for a while ("Permission to <org>/<name>.git denied to <app>[bot]") until GitHub
+// has given the installation access to it, as on 2026-11-09 during an incident on GitHub's side:
+// that refusal is retried for a minute. Each attempt commits afresh on the branch's head.
 func (r *liveRepo) push(t *testing.T, branch, path, content string) string {
 	t.Helper()
-	sha, err := r.mirror.CommitAndPush(t.Context(), gitx.Commit{Branch: branch, Base: githubtest.Branch, Message: "Change " + path + "\n",
-		Author:  gitx.Signature{Name: "Bob", Email: "bob@example.com"},
-		Changes: []plan.Change{{Op: plan.OpCreate, Path: path, After: []byte(content)}}})
-	if err != nil {
-		t.Fatal(err)
+	deadline := time.Now().Add(time.Minute)
+	for {
+		sha, err := r.mirror.CommitAndPush(t.Context(), gitx.Commit{Branch: branch, Base: githubtest.Branch, Message: "Change " + path + "\n",
+			Author:  gitx.Signature{Name: "Bob", Email: "bob@example.com"},
+			Changes: []plan.Change{{Op: plan.OpCreate, Path: path, After: []byte(content)}}})
+		if err == nil {
+			return sha
+		}
+		if !strings.Contains(err.Error(), "Permission to "+r.s.Org+"/"+r.name+".git denied to") || time.Now().After(deadline) {
+			t.Fatal(err)
+		}
+		time.Sleep(2 * time.Second)
 	}
-	return sha
 }
 
 // open pushes a new branch with a file of its own and opens its pull request, without waiting for
