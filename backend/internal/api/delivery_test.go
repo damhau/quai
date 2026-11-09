@@ -40,7 +40,8 @@ func pushExample(t *testing.T, url string, auth func(context.Context) (gitx.Cred
 // A repository GitHub has just created may answer 404 to a clone, or refuse the app's push
 // ("Permission to <org>/<name>.git denied to <app>[bot]"), for a while after the API shows it, as
 // on 2026-11-09 (TestGitHubCodeowners; liveMirror and liveRepo.push in connectors/github do the
-// same): on GitHub, those two answers are retried for a minute, each attempt in a mirror of its own.
+// same), or refuse the pack itself after letting it read the refs ("RPC failed; HTTP 403"): on
+// GitHub, those answers are retried for a minute, each attempt in a mirror of its own.
 func pushEdited(t *testing.T, url string, auth func(context.Context) (gitx.Credentials, error), proxy func(*url.URL) (*url.URL, error), edit func(path string, b []byte) []byte, extra map[string]string) {
 	t.Helper()
 	changes := exampleChanges(edit, extra)
@@ -52,7 +53,8 @@ func pushEdited(t *testing.T, url string, auth func(context.Context) (gitx.Crede
 		}
 		msg := err.Error()
 		refusedWhileNew := strings.Contains(msg, "The requested URL returned error: 404") ||
-			strings.Contains(msg, "Permission to ") && strings.Contains(msg, ".git denied to ")
+			strings.Contains(msg, "Permission to ") && strings.Contains(msg, ".git denied to ") ||
+			strings.Contains(msg, "RPC failed; HTTP 403")
 		if !strings.HasPrefix(url, "https://github.com/") || !refusedWhileNew || time.Now().After(deadline) {
 			t.Fatal(err)
 		}
