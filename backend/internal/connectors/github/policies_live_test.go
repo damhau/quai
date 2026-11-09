@@ -58,6 +58,18 @@ func (r *liveRepo) approval(t *testing.T, pr connectors.PullRequest) connectors.
 	return connectors.Status{}
 }
 
+// approvalShows waits until List reads the state last set of quai/approval and returns it. GitHub
+// may list a status a moment after accepting it: the one set before it was read (live, 2026-11-09).
+func (r *liveRepo) approvalShows(t *testing.T, pr connectors.PullRequest, want connectors.StatusState) connectors.Status {
+	t.Helper()
+	for deadline := time.Now().Add(conformance.Timeout); ; time.Sleep(2 * time.Second) {
+		st := r.approval(t, pr)
+		if st.State == want || time.Now().After(deadline) {
+			return st
+		}
+	}
+}
+
 // TestLiveRuleset: a ruleset requiring quai/approval from the app enforces it, for the app too.
 // The latest check run counts: a stale approval after a success blocks the merge again. Verify
 // finds the ruleset made to accept any source, bypassed by the app, disabled, restored, removed
@@ -84,14 +96,14 @@ func TestLiveRuleset(t *testing.T) {
 	}
 	r.set(t, pr, connectors.StatusSuccess)
 	r.set(t, pr, connectors.StatusNotApplicable)
-	if st := r.approval(t, pr); st.State != connectors.StatusNotApplicable || st.Description != "Quai says not-applicable" || st.URL != "https://quai.example.com/requests/1" {
+	if st := r.approvalShows(t, pr, connectors.StatusNotApplicable); st.State != connectors.StatusNotApplicable || st.Description != "Quai says not-applicable" || st.URL != "https://quai.example.com/requests/1" {
 		t.Errorf("after success then not-applicable, read %+v", st)
 	}
 	if err := merge(); !errors.Is(err, connectors.ErrBlocked) {
 		t.Errorf("merging a stale approval: %v", err)
 	}
 	r.set(t, pr, connectors.StatusPending)
-	if st := r.approval(t, pr); st.State != connectors.StatusPending {
+	if st := r.approvalShows(t, pr, connectors.StatusPending); st.State != connectors.StatusPending {
 		t.Errorf("pending, read %+v", st)
 	}
 	if err := merge(); !errors.Is(err, connectors.ErrBlocked) {
