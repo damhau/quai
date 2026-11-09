@@ -134,14 +134,23 @@ func newLiveRepo(t *testing.T, s *githubtest.Sandbox) *liveRepo {
 	return &liveRepo{s: s, name: name, c: c, prs: c.PullRequests(), mirror: liveMirror(t, s, name, c)}
 }
 
+// liveMirror clones a repository of the sandbox. Git may answer 404 for a private repository just
+// created, for a few seconds after the API shows it (TestLiveAuthenticationPrivate on 2026-11-09):
+// that answer is retried for a minute, each attempt in a directory of its own.
 func liveMirror(t *testing.T, s *githubtest.Sandbox, name string, c *Connector) *gitx.Mirror {
 	t.Helper()
-	m, err := gitx.OpenMirror(t.Context(), s.URL(name), filepath.Join(t.TempDir(), "mirror.git"),
-		gitx.Options{Committer: gitx.Signature{Name: "Quai", Email: "quai@example.com"}, Auth: c.GitAuth, Proxy: s.Network.Proxy})
-	if err != nil {
-		t.Fatal(err)
+	deadline := time.Now().Add(time.Minute)
+	for {
+		m, err := gitx.OpenMirror(t.Context(), s.URL(name), filepath.Join(t.TempDir(), "mirror.git"),
+			gitx.Options{Committer: gitx.Signature{Name: "Quai", Email: "quai@example.com"}, Auth: c.GitAuth, Proxy: s.Network.Proxy})
+		if err == nil {
+			return m
+		}
+		if !strings.Contains(err.Error(), "The requested URL returned error: 404") || time.Now().After(deadline) {
+			t.Fatal(err)
+		}
+		time.Sleep(2 * time.Second)
 	}
-	return m
 }
 
 // push commits content to path on branch, on top of main. A repository just created may refuse
