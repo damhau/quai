@@ -78,11 +78,19 @@ func (s *Service) PlanReported(ctx context.Context, id uuid.UUID) error {
 		if err := s.event(ctx, tx, r, "plan_decided", "", map[string]any{"decisions": said}); err != nil {
 			return err
 		}
+		// A plan that makes an external: servicenow rule apply opens its change request.
+		if err := s.openChangeRequest(ctx, tx, q, r, decided, sets[0].Repository, sets[0].Hash); err != nil {
+			return err
+		}
 		all, err := q.ListReviews(ctx, r.ID)
 		if err != nil {
 			return err
 		}
-		outcome := policy.Evaluate(decided, toReviews(counted(r, all, sets[0].Hash), s.dir), contextOf(r))
+		pc, err := s.contextFor(ctx, q, r, sets[0].Hash)
+		if err != nil {
+			return err
+		}
+		outcome := policy.Evaluate(decided, toReviews(counted(r, all, sets[0].Hash), s.dir), pc)
 		switch {
 		case r.State == PendingApproval && outcome.State == policy.Approved:
 			if _, err := q.TransitionRequest(ctx, db.TransitionRequestParams{ID: r.ID, FromState: PendingApproval, ToState: Approved}); err != nil {

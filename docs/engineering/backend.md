@@ -39,7 +39,8 @@ quai/
 │   │   ├── mailtest/                   # tests: Mailpit, checksum-verified, started per test
 │   │   ├── teamstest/                  # tests: fakes of Entra ID's token endpoint, the Bot Connector, Workflows webhooks
 │   │   ├── slacktest/                  # tests: a fake of Slack's Web API, and a signer of its interaction requests
-│   │   ├── itsm/                       # ServiceNow, JSM
+│   │   ├── servicenow/                 # ServiceNow's change requests: the client (Change Management and Table APIs, OAuth)
+│   │   ├── servicenowtest/             # tests: a fake ServiceNow instance (change requests, states, OAuth, outages)
 │   │   ├── gitx/                       # mirror cache, worktrees, git CLI wrapper
 │   │   ├── ingest/                     # webhooks and polling: deliveries verified, re-read as jobs
 │   │   ├── netx/                       # CA bundle and proxy shared by git and every HTTP client

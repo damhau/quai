@@ -116,6 +116,9 @@ func serve(ctx context.Context, cfg *config.Config, log *slog.Logger, ln net.Lis
 				return err
 			}
 			opts.Requests.UseChangeWindows(windows)
+			if _, err := useServiceNow(cfg, opts.Requests, network); err != nil {
+				return err
+			}
 			n, err := notifications(cfg, s, reg, opts.Requests, network, log)
 			if err != nil {
 				return err

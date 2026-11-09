@@ -636,6 +636,125 @@ Management):
 - On apply, Quai moves the change request to implemented and closes it, attaching the evidence bundle (see [security and compliance](09-security-and-compliance.md#evidence-bundle)): the JSON and its PDF summary without the proof, the request's own events with their hashes, as an API token downloads it, since the change request's readers are not all auditors of the whole platform ([open question 102](../plan/open-questions.md#still-open)).
 - If the change request is rejected or cancelled, the Quai request is rejected.
 
+Built in P4-19 for ServiceNow (`internal/servicenow`, the client; `internal/requests/servicenow.go`,
+the change requests; `itsm.servicenow` in the configuration; [open questions 28 and 107 to
+114](../plan/open-questions.md#still-open)). It follows ServiceNow's documentation, read on
+2026-11-09, and is tested against a fake built from it (`internal/servicenowtest`): it is **not
+verified against a real instance** yet.
+
+- **When a change request is opened.** For a request that a rule with `external: servicenow`
+  applies to, once that rule is decided: at submission, or when a plan makes a rule on the plan
+  apply ([rules on the plan](#rules-on-the-plan)). A request no such rule applies to gets none.
+  Such rules are type and blueprint rules: floor rules have no `external` ([open question
+  113](../plan/open-questions.md#still-open)). Without `itsm.servicenow`, the rule is never
+  satisfied: the request waits, says why on its page, and expires or is broken.
+- **Standard or normal.** `itsm.servicenow.standardChanges` maps a catalog item (a repository's
+  type or blueprint, optionally some request kinds and actions) to a standard change template, by
+  its sys_id: a request for it gets a standard change from that template (`POST
+  /api/sn_chg_rest/change/standard/{template}`), the others a normal change (`POST
+  /api/sn_chg_rest/change/normal`), through the Change Management API. Pre-approval stays with
+  Quai's admins and ServiceNow's change board, who own the templates.
+- **What it carries.** The short description (`Quai #<number>: <title>`); the description (who
+  asks for what, the type or blueprint, the request's number, ID and link); the justification (the
+  reason); the implementation plan (the change set's hash, then each file with its operation and
+  the lines it adds and removes, at most 50 files: never their content); the risk and impact
+  analysis (`risk_impact_analysis`: the approval rules that apply, and those a plan may make
+  apply); the planned window from the change windows (`start_date`, `end_date`: from now to their
+  close when open, their next opening to its close otherwise, in UTC; none without windows);
+  `correlation_display` (`Quai #<number>`); and the fields of `itsm.servicenow.fields` (such as
+  `assignment_group`, written as configured). A standard change keeps its template's description
+  and implementation plan: Quai's go into a work note. The risk and impact choice fields are left
+  to ServiceNow's risk assessment. When a plan reports, a work note says its stack, outcome, what
+  it adds, changes and destroys, its cost and its policies: never a value. Never secrets, plan
+  values, a break-glass's reason or another request's data ([open question
+  110](../plan/open-questions.md#still-open)).
+- **Neutral text, within limits.** Every text Quai writes is made neutral first
+  (`servicenow.Text`): `[code]` and `[/code]`, in any case and with spaces, which a journal field
+  renders as HTML, become `(code)`; `&`, `<` and `>` are escaped; control characters (but line
+  breaks and tabs), line and paragraph separators and bidirectional controls are dropped. Each is
+  cut to its field's length in the dictionary's defaults: 160 characters for
+  `short_description`, 100 for `correlation_display`, 4,000 for the others, an ellipsis saying so.
+- **Which change request.** Quai trusts only the change request it created. Each has a
+  correlation ID, `quai:<request>:<generation>:<16 random hex digits>`, set as `correlation_id`
+  when it is created: a creation whose answer was lost is found again by it (the Table API,
+  `correlation_id=<it>`), so a retry never makes a second one, and no one can make one beforehand
+  that Quai would take for its own. Once ServiceNow answers, Quai keeps the change request's
+  sys_id and number with the request and the change set's hash, and from then on reads that
+  sys_id only (`GET /api/sn_chg_rest/change/{sys_id}`): never by number or a text a person could
+  set. Two change requests with its correlation ID are ambiguous and nothing is taken; a reading
+  whose correlation ID is not Quai's stays pending and is logged; a creation that does not keep it
+  is a problem shown on the request, whose approval Quai never takes ([open question
+  108](../plan/open-questions.md#still-open)).
+- **Bound to the content.** A change request is for the change set it was created for. When the
+  content changes (a push to the request's branch within its regions), the change request is
+  superseded: a work note says it no longer counts and why, and a new one, the next generation, is
+  opened for the new content. Its approval never counts for other content, and Quai never cancels
+  the old one in ServiceNow: its readers decide ([open question 107](../plan/open-questions.md#still-open)).
+- **Taken for approval.** Once its long fields are written, Quai moves a normal change from New
+  to Assess and a standard one from New to Scheduled, as ServiceNow's state model allows (`PATCH
+  /api/sn_chg_rest/change/{sys_id}`, `state`). Quai never writes `approval`. A move ServiceNow
+  refuses is a problem on the request page ("Someone must act in ServiceNow"), and the request
+  waits for someone to move it there.
+- **What approves.** Quai maps the documented states (New -5, Assess -4, Authorize -3, Scheduled
+  -2, Implement -1, Review 0, Closed 3, Canceled 4) and `approval` values (`not requested`,
+  `requested`, `approved`, `rejected`) exactly: `approval` rejected rejects the request; Canceled
+  rejects it as cancelled; Closed, before the request merged, rejects it as closed; `approval`
+  approved **and** the state Scheduled or Implement satisfies the rule, for a standard change as
+  for a normal one (as ServiceNow reports it, never on creation). Anything else is pending: Review
+  with an approval, New, Assess, Authorize, and every value ServiceNow does not document, which is
+  logged (fail closed) ([open question 109](../plan/open-questions.md#still-open)). Quai's own
+  rules still apply: the change request is one rule among the request's.
+- **Decided under the lock.** A reading is applied in one transaction under the request's row
+  lock, to the change request still current for the request's content: one superseded meanwhile,
+  of another sys_id, or of other content changes nothing. The decision is the request's policy,
+  evaluated with the change request's outcome and its reviews: when it is the last rule waited
+  for, the request turns *Approved* as by a review, and merges through the gate, its change
+  windows and the one delivery ([change windows and freezes](#change-windows-and-freezes)). A
+  rejection, cancellation or closure rejects the request, as a denial does, with ServiceNow as the
+  actor: the event's actor is `ServiceNow (CHG…)`, the audit event's the system `servicenow`, with
+  the change request's number, sys_id, state and approval, and the requester is notified as for a
+  rejection. An approval ServiceNow withdraws before the merge starts takes the request back to
+  *pending approval* (`request.approval_withdrawn`). Once merging, Quai reads it no more.
+- **Polling.** Quai reads the change requests it waits on: pending approval, or approved and not
+  merging yet, without break-glass. Every `itsm.servicenow.pollInterval` (5 minutes by default),
+  and when the request's page opens (from a job, at most every 30 seconds). The sweep runs every
+  minute, takes at most 50 change requests due, the most overdue first, 4 at once, and stops when
+  ServiceNow is unreachable; one change request is synced at a time (an advisory lock), whoever
+  asked. ServiceNow needs no access to Quai.
+- **When ServiceNow cannot be reached.** Nothing is lost and nothing is approved by default. The
+  change request is a row recorded with the submission (or the plan), its job tries at once, and
+  each step (created, fields written and taken for approval, read) is recorded when done, so a
+  crash or a failure takes it again, and only it. A failed call is recorded on the change request
+  with when to try again: a backoff from a minute (opening) or the poll interval (reading),
+  doubling, at most an hour. The request page shows why and since when; the worker logs each
+  failure, as an error after an hour (`ServiceNow has been failing for over an hour`); the metric
+  `quai.servicenow.calls` counts the calls by operation and outcome (`ok`, `refused`,
+  `unreachable`) ([open question 111](../plan/open-questions.md#still-open)).
+- **Outgoing calls.** Only to `itsm.servicenow.instanceURL` (https, the instance's root, checked at
+  start), through `network` with TLS verified (its CAs and proxy); 30 seconds per call; answers of
+  at most 1 MiB; no redirect followed, and nothing an answer holds is called: the change request's
+  link on the request page is made from the configured root and a sys_id checked as 32 hex
+  digits. A throttled call (429, 503) is tried again twice, after `Retry-After` or a backoff with
+  jitter, within 10 seconds; other failures wait for the next try. OAuth client credentials
+  (`/oauth_token.do`), the token cached until two minutes before it expires and fetched again
+  after a 401, or basic authentication of a service account; the secret, password and token are
+  secret references read when needed, never logged or in an error.
+- **Break-glass** lifts the `external: servicenow` rule as it lifts the others: Quai stops reading
+  the change request and adds a work note with the time, who broke glass and the incident, never
+  the reason ([open questions 97 and 112](../plan/open-questions.md#still-open)). P4-20 checks the
+  incident against ServiceNow's incidents and links it to the change request
+  (`noteBroken`, the seam).
+- **Requests that end without merging** (rejected in Quai, cancelled, expired, stale) leave their
+  change request as it is: ServiceNow's readers see the work notes and the request's link
+  ([open question 114](../plan/open-questions.md#still-open)). P4-20 moves a change request to
+  implemented and closes it on apply, or closes it unsuccessful when the apply fails.
+- **The request page** shows the change request in the approval card: its number, linked to its
+  form, normal or standard, its state and approval as last read and when, what it means for the
+  request, why ServiceNow cannot be reached, a problem, and how many change requests of earlier
+  content no longer count. The timeline records `change_request_opened` and
+  `change_request_superseded`; the audit log `request.change_request_opened`,
+  `request.change_request_superseded` and `request.approval_withdrawn`.
+
 ## Notifications
 
 Events: request submitted, approval needed (and its reminder), approved,

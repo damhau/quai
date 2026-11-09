@@ -71,8 +71,21 @@ nothing else (`notifications.links.key`), compared in constant time.
 ## ITSM
 
 - **ServiceNow:** change requests through the Table API or Change Management API. Standard change templates map to catalog items marked as pre-approved. Fields mapped: short description, justification (the reason), implementation plan (the diff summary), risk and impact (from rules), planned window (from change windows). See [delivery and approvals](05-delivery-and-approvals.md#itsm).
+  Built in P4-19 (`internal/servicenow`, `itsm.servicenow`): change requests are created with the
+  Change Management API (`/api/sn_chg_rest/change/normal`, `/standard/{template}`) and read and
+  updated by their sys_id with it; the Table API (`/api/now/table/change_request`) only finds the
+  one Quai created by its correlation ID after a lost answer. The standard change templates are
+  mapped to catalog items in Quai's configuration (`standardChanges`, [open question
+  28](../plan/open-questions.md#still-open)); the fields as [delivery and
+  approvals](05-delivery-and-approvals.md#itsm) lists them, `risk_impact_analysis` for risk and
+  impact, `start_date` and `end_date` for the planned window. Quai polls; ServiceNow calls nothing
+  in Quai. Built from ServiceNow's documentation (the Change Management API, the Table API, the
+  change state model and the client credentials grant, read on 2026-11-09) and tested on a fake
+  of it (`internal/servicenowtest`): not verified against a real instance yet.
 - **Jira Service Management:** same model through its REST API (later).
 - Incident links: the break-glass flow requires an incident reference and can validate it against ServiceNow.
+  Since P4-19, a break-glass adds a work note to the request's change request (the time, who
+  broke glass, the incident); validating the incident and linking it is P4-20.
 
 ## Developer portals
 

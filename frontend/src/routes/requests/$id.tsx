@@ -19,6 +19,7 @@ import { Manager } from "@/components/approval/manager"
 import { Separation } from "@/components/approval/separation"
 import { ChangesView } from "@/components/diff/changes-view"
 import { BreakGlassAction, BreakGlassCard } from "@/components/requests/break-glass"
+import { ChangeRequestPanel } from "@/components/requests/change-request"
 import { Plans } from "@/components/requests/plans"
 import { StateBadge } from "@/components/requests/state-badge"
 import { StepUpPrompt } from "@/components/step-up-prompt"
@@ -129,6 +130,7 @@ function RequestPage() {
             <CardContent className="grid gap-5">
               {r.breakGlass && <BreakGlassCard request={r} breakGlass={r.breakGlass} />}
               <ApprovalChain rules={r.rules ?? []} />
+              {r.changeRequest && <ChangeRequestPanel request={r} change={r.changeRequest} />}
               {r.codeowners && <Codeowners codeowners={r.codeowners} />}
               {r.manager && <Manager manager={r.manager} submitted />}
               {r.separation && <Separation separation={r.separation} submitted />}

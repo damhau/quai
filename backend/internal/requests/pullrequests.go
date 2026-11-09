@@ -42,6 +42,9 @@ func (s *Service) Workers(w *river.Workers) {
 	river.AddWorker(w, &deleteBranchWorker{s: s})
 	river.AddWorker(w, &sweepWorker{s: s})
 	river.AddWorker(w, &windowSweepWorker{s: s})
+	river.AddWorker(w, &changeRequestWorker{s: s})
+	river.AddWorker(w, &noteWorker{s: s})
+	river.AddWorker(w, &serviceNowSweepWorker{s: s})
 }
 
 var slugRe = regexp.MustCompile(`[^a-z0-9]+`)

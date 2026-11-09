@@ -1070,6 +1070,73 @@
         ],
         "type": "object"
       },
+      "ChangeRequestView": {
+        "additionalProperties": false,
+        "properties": {
+          "approval": {
+            "description": "Its approval in ServiceNow, as Quai last read it",
+            "type": "string"
+          },
+          "failingSince": {
+            "description": "Since when Quai fails to reach ServiceNow about it",
+            "format": "date-time",
+            "type": "string"
+          },
+          "failure": {
+            "description": "Why Quai could not open or read it lately: it tries again, and the request waits, never approved by default",
+            "type": "string"
+          },
+          "kind": {
+            "description": "A normal change, or a standard one from the template of the request's catalog item",
+            "enum": [
+              "normal",
+              "standard"
+            ],
+            "type": "string"
+          },
+          "number": {
+            "description": "Its number in ServiceNow; absent until ServiceNow answered its creation",
+            "type": "string"
+          },
+          "outcome": {
+            "description": "What it says of the request: only an approval of a scheduled or implementing change approves",
+            "enum": [
+              "pending",
+              "approved",
+              "rejected",
+              "cancelled",
+              "closed"
+            ],
+            "type": "string"
+          },
+          "polledAt": {
+            "description": "When Quai last read it",
+            "format": "date-time",
+            "type": "string"
+          },
+          "problem": {
+            "description": "What ServiceNow refused that Quai does not try again, such as taking it for approval: someone acts in ServiceNow",
+            "type": "string"
+          },
+          "state": {
+            "description": "Its state in ServiceNow, as Quai last read it",
+            "type": "string"
+          },
+          "superseded": {
+            "description": "Change requests of earlier content of the request: their approvals do not count for its content now",
+            "format": "int64",
+            "type": "integer"
+          },
+          "url": {
+            "description": "Its form in ServiceNow",
+            "type": "string"
+          }
+        },
+        "required": [
+          "outcome"
+        ],
+        "type": "object"
+      },
       "ChangeView": {
         "additionalProperties": false,
         "properties": {
@@ -3468,6 +3535,10 @@
           "cannotReview": {
             "description": "Why you cannot review this request pending approval although a rule names you: you requested it, or you changed its definitions in the separation of duties' period before it",
             "type": "string"
+          },
+          "changeRequest": {
+            "$ref": "#/components/schemas/ChangeRequestView",
+            "description": "Its change request in ServiceNow, when an external: servicenow rule applies to it"
           },
           "changeSet": {
             "description": "The hash of the change set it holds now",

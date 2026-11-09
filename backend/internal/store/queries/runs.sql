@@ -8,6 +8,9 @@ UPDATE runs SET status = $2, summary = $3, finished_at = now()
 WHERE id = $1 AND status = 'running'
 RETURNING *;
 
+-- name: GetRun :one
+SELECT * FROM runs WHERE id = $1;
+
 -- name: LatestRun :one
 SELECT * FROM runs
 WHERE repository = $1 AND stack = $2 AND kind = $3

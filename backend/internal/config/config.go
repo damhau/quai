@@ -22,6 +22,7 @@ import (
 	"strings"
 	"time"
 	_ "time/tzdata" // time zones even where the system has no database of them (TimeZone)
+	"unicode"
 
 	"github.com/google/uuid"
 	"go.yaml.in/yaml/v3"
@@ -56,8 +57,161 @@ type Config struct {
 	// merges only when each that applies to it is open. A repository document adds its own,
 	// which narrow these and never lift them (open question 89).
 	ChangeWindows []window.ChangeWindow `yaml:"changeWindows"`
-	Log           Log                   `yaml:"log"`
-	Telemetry     Telemetry             `yaml:"telemetry"`
+	// ITSM is the IT service management tool Quai records changes in.
+	ITSM      ITSM      `yaml:"itsm"`
+	Log       Log       `yaml:"log"`
+	Telemetry Telemetry `yaml:"telemetry"`
+}
+
+// ITSM configures the IT service management tools Quai records changes in
+// (docs/design/05-delivery-and-approvals.md#itsm).
+type ITSM struct {
+	// ServiceNow: a change request for each request an external: servicenow rule applies to,
+	// which satisfies the rule once ServiceNow approves it.
+	ServiceNow *ServiceNow `yaml:"servicenow"`
+}
+
+// ServiceNow is a ServiceNow instance Quai creates change requests in, as a service account
+// (open question 28).
+type ServiceNow struct {
+	// InstanceURL is the instance's root, https://<instance>.service-now.com: the only address
+	// Quai calls, to be allowed as an outgoing endpoint. Nothing a ServiceNow answer holds is
+	// called or followed.
+	InstanceURL string `yaml:"instanceURL"`
+	// OAuth or Basic, exactly one: how Quai authenticates.
+	OAuth *ServiceNowOAuth `yaml:"oauth"`
+	Basic *ServiceNowBasic `yaml:"basic"`
+	// StandardChanges map catalog items to standard change templates: a request for one gets a
+	// standard change from its template, the others a normal change. The first that matches
+	// counts.
+	StandardChanges []StandardChange `yaml:"standardChanges"`
+	// Fields are set on every change request Quai creates, such as assignment_group or category:
+	// the fields an instance makes mandatory. Quai's own fields cannot be set here.
+	Fields map[string]string `yaml:"fields"`
+	// PollInterval is how often Quai reads the state of a change request it waits on; 5m by
+	// default. Opening the request's page reads it too.
+	PollInterval time.Duration `yaml:"pollInterval"`
+}
+
+// ServiceNowOAuth is an OAuth application of the instance, with the client credentials grant.
+type ServiceNowOAuth struct {
+	ClientID     string    `yaml:"clientId"`
+	ClientSecret SecretRef `yaml:"clientSecret"`
+}
+
+// ServiceNowBasic is a service account's user name and password, for basic authentication.
+type ServiceNowBasic struct {
+	Username string    `yaml:"username"`
+	Password SecretRef `yaml:"password"`
+}
+
+// StandardChange maps a catalog item, a type or a blueprint of a repository (and, optionally,
+// some of its request kinds and actions), to a standard change template.
+type StandardChange struct {
+	Repository string `yaml:"repository"`
+	// Type or Blueprint, exactly one: the catalog item.
+	Type      string `yaml:"type"`
+	Blueprint string `yaml:"blueprint"`
+	// Kinds are the request kinds it covers (create, update, delete, action, migrate); none: all.
+	Kinds []string `yaml:"kinds"`
+	// Actions are the actions it covers, for the kind action; none: all.
+	Actions []string `yaml:"actions"`
+	// Template is the sys_id of the standard change template (std_change_record_producer).
+	Template string `yaml:"template"`
+}
+
+// Template returns the standard change template a request maps to, "" for a normal change.
+func (s *ServiceNow) Template(repository, typeName, blueprint, kind, action string) string {
+	for _, sc := range s.StandardChanges {
+		switch {
+		case sc.Repository != repository,
+			sc.Type != "" && sc.Type != typeName,
+			sc.Blueprint != "" && sc.Blueprint != blueprint,
+			len(sc.Kinds) > 0 && !slices.Contains(sc.Kinds, kind),
+			len(sc.Actions) > 0 && (kind != "action" || !slices.Contains(sc.Actions, action)):
+			continue
+		}
+		return sc.Template
+	}
+	return ""
+}
+
+// DefaultServiceNowPoll is how often Quai reads a change request it waits on by default.
+const DefaultServiceNowPoll = 5 * time.Minute
+
+// RequestKinds are the kinds of requests (the catalog's operations).
+var RequestKinds = []string{"create", "update", "delete", "action", "migrate"}
+
+// ServiceNowFields are the change request's fields Quai writes or reads itself, which
+// itsm.servicenow.fields cannot set.
+var ServiceNowFields = []string{"short_description", "description", "justification", "implementation_plan", "risk_impact_analysis",
+	"correlation_id", "correlation_display", "start_date", "end_date", "work_notes", "comments", "state", "approval", "type",
+	"number", "chg_model", "std_change_producer_version", "close_code", "close_notes", "on_hold", "on_hold_reason"}
+
+var (
+	sysIDRe        = regexp.MustCompile(`^[0-9a-f]{32}$`)
+	serviceFieldRe = regexp.MustCompile(`^[a-z][a-z0-9_]{0,79}$`)
+)
+
+func (s *ServiceNow) validate() error {
+	var errs []error
+	const key = "itsm.servicenow"
+	if u, err := url.Parse(s.InstanceURL); err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.Path != "" ||
+		u.RawQuery != "" || u.Fragment != "" || u.Opaque != "" || u.ForceQuery {
+		errs = append(errs, fmt.Errorf("%s.instanceURL must be the instance's https root, such as https://example.service-now.com, not %q", key, s.InstanceURL))
+	}
+	switch {
+	case (s.OAuth == nil) == (s.Basic == nil):
+		errs = append(errs, fmt.Errorf("%s needs exactly one of oauth and basic", key))
+	case s.OAuth != nil:
+		if s.OAuth.ClientID == "" {
+			errs = append(errs, fmt.Errorf("%s.oauth.clientId is required", key))
+		}
+		if !signingRefRe.MatchString(s.OAuth.ClientSecret.Ref) {
+			errs = append(errs, fmt.Errorf("%s.oauth.clientSecret.ref must be a secret reference such as k8s:namespace/name#key or env:NAME, not %q", key, s.OAuth.ClientSecret.Ref))
+		}
+	default:
+		if s.Basic.Username == "" || strings.ContainsAny(s.Basic.Username, ":\r\n") {
+			errs = append(errs, fmt.Errorf("%s.basic.username is required, without a colon", key))
+		}
+		if !signingRefRe.MatchString(s.Basic.Password.Ref) {
+			errs = append(errs, fmt.Errorf("%s.basic.password.ref must be a secret reference such as k8s:namespace/name#key or env:NAME, not %q", key, s.Basic.Password.Ref))
+		}
+	}
+	for i, sc := range s.StandardChanges {
+		at := fmt.Sprintf("%s.standardChanges[%d]", key, i)
+		if sc.Repository == "" {
+			errs = append(errs, fmt.Errorf("%s.repository is required", at))
+		}
+		if (sc.Type == "") == (sc.Blueprint == "") {
+			errs = append(errs, fmt.Errorf("%s needs exactly one of type and blueprint", at))
+		}
+		for _, k := range sc.Kinds {
+			if !slices.Contains(RequestKinds, k) {
+				errs = append(errs, fmt.Errorf("%s.kinds: %q is not a request kind (%s)", at, k, strings.Join(RequestKinds, ", ")))
+			}
+		}
+		if len(sc.Actions) > 0 && len(sc.Kinds) > 0 && !slices.Contains(sc.Kinds, "action") {
+			errs = append(errs, fmt.Errorf("%s.actions needs the kind action in kinds", at))
+		}
+		if !sysIDRe.MatchString(sc.Template) {
+			errs = append(errs, fmt.Errorf("%s.template must be the sys_id of a standard change template, 32 lowercase hexadecimal digits, not %q", at, sc.Template))
+		}
+	}
+	for _, name := range slices.Sorted(maps.Keys(s.Fields)) {
+		switch v := s.Fields[name]; {
+		case !serviceFieldRe.MatchString(name) || strings.HasPrefix(name, "sys_"):
+			errs = append(errs, fmt.Errorf("%s.fields: %q is not a field name Quai may set", key, name))
+		case slices.Contains(ServiceNowFields, name):
+			errs = append(errs, fmt.Errorf("%s.fields.%s: Quai sets or reads this field itself", key, name))
+		case len(v) > 4000 || strings.ContainsFunc(v, unicode.IsControl):
+			errs = append(errs, fmt.Errorf("%s.fields.%s must be at most 4000 bytes, without control characters", key, name))
+		}
+	}
+	if s.PollInterval < time.Minute || s.PollInterval > time.Hour {
+		errs = append(errs, fmt.Errorf("%s.pollInterval must be between 1m and 1h, not %s", key, s.PollInterval))
+	}
+	return errors.Join(errs...)
 }
 
 // Windows compiles the change windows (changeWindows), their times in the zones TimeZone knows.
@@ -865,6 +1019,12 @@ func (c *Config) defaults() {
 	if s := c.Notifications.Slack; s != nil && s.APIURL == "" {
 		s.APIURL = DefaultSlackAPIURL
 	}
+	if s := c.ITSM.ServiceNow; s != nil {
+		s.InstanceURL = strings.TrimSuffix(s.InstanceURL, "/")
+		if s.PollInterval == 0 {
+			s.PollInterval = DefaultServiceNowPoll
+		}
+	}
 	if c.Git.Committer.Name == "" {
 		c.Git.Committer = Committer{Name: "Quai", Email: "quai@localhost"}
 	}
@@ -945,6 +1105,9 @@ func (c *Config) validate() error {
 	errs = append(errs, c.Auth.validate(c.Env))
 	errs = append(errs, c.Notifications.validate(c.Server.PublicURL))
 	errs = append(errs, c.Approvals.validate())
+	if s := c.ITSM.ServiceNow; s != nil {
+		errs = append(errs, s.validate())
+	}
 	if _, err := c.Windows(); err != nil {
 		errs = append(errs, err)
 	}

@@ -100,6 +100,34 @@ func (q *Queries) FinishRun(ctx context.Context, arg FinishRunParams) (Run, erro
 	return i, err
 }
 
+const getRun = `-- name: GetRun :one
+SELECT id, org_id, repository, stack, commit, kind, status, url, summary, started_at, finished_at, pull_request, request_id, policies, cost, plan FROM runs WHERE id = $1
+`
+
+func (q *Queries) GetRun(ctx context.Context, id uuid.UUID) (Run, error) {
+	row := q.db.QueryRow(ctx, getRun, id)
+	var i Run
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Repository,
+		&i.Stack,
+		&i.Commit,
+		&i.Kind,
+		&i.Status,
+		&i.Url,
+		&i.Summary,
+		&i.StartedAt,
+		&i.FinishedAt,
+		&i.PullRequest,
+		&i.RequestID,
+		&i.Policies,
+		&i.Cost,
+		&i.Plan,
+	)
+	return i, err
+}
+
 const insertRun = `-- name: InsertRun :one
 INSERT INTO runs (id, repository, stack, commit, kind, status, url, pull_request, request_id, summary, policies, cost, plan,
                   started_at, finished_at)

@@ -113,6 +113,11 @@ func work(ctx context.Context, cfg *config.Config, log *slog.Logger, s *store.St
 			return err
 		}
 		svc.UseChangeWindows(windows)
+		if ok, err := useServiceNow(cfg, svc, network); err != nil {
+			return err
+		} else if ok {
+			opts.Periodic = append(opts.Periodic, requests.ServiceNowPeriodic())
+		}
 		hooks = ingest.New(s, reg, log)
 		hooks.UseHandler(svc)
 		workers = append(workers, svc.Workers, hooks.Workers)

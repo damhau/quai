@@ -15,6 +15,7 @@ import (
 	"github.com/damhau/quai/backend/internal/connectors"
 	"github.com/damhau/quai/backend/internal/engine/locate"
 	"github.com/damhau/quai/backend/internal/engine/plan"
+	"github.com/damhau/quai/backend/internal/engine/policy"
 	"github.com/damhau/quai/backend/internal/gitx"
 	"github.com/damhau/quai/backend/internal/jobs"
 	"github.com/damhau/quai/backend/internal/repositories"
@@ -251,6 +252,15 @@ func (s *Service) outsidePush(ctx context.Context, repo *repositories.Repo, r db
 			}
 		}
 		if err := q.SetChangeSetHash(ctx, db.SetChangeSetHashParams{ID: cs.ID, Hash: hash}); err != nil {
+			return err
+		}
+		// Its change request was for the old content: superseded, and a new one for the new.
+		if err := s.supersede(ctx, tx, q, r); err != nil {
+			return err
+		}
+		var rules []policy.Rule
+		_ = json.Unmarshal(r.Rules, &rules)
+		if err := s.openChangeRequest(ctx, tx, q, r, rules, cs.Repository, hash); err != nil {
 			return err
 		}
 		if r.State != PendingApproval {

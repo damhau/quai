@@ -21,6 +21,7 @@ type instruments struct {
 	auditExp   metric.Int64Counter
 	notified   metric.Int64Counter
 	graph      metric.Int64Counter
+	servicenow metric.Int64Counter
 }
 
 var current atomic.Pointer[instruments]
@@ -79,6 +80,10 @@ func use(mp metric.MeterProvider) error {
 	}
 	if in.graph, err = m.Int64Counter("quai.graph.lookups",
 		metric.WithDescription("Microsoft Graph lookups at sign-ins, by lookup (groups, manager) and outcome: ok, none (no manager), skipped (the tenant does not match), error")); err != nil {
+		return err
+	}
+	if in.servicenow, err = m.Int64Counter("quai.servicenow.calls",
+		metric.WithDescription("Calls to ServiceNow about change requests, by operation (open, poll, note) and outcome: ok, refused (ServiceNow answered an error), unreachable")); err != nil {
 		return err
 	}
 	lag, err := m.Float64ObservableGauge("quai.audit.export.lag", metric.WithUnit("s"),
@@ -180,5 +185,13 @@ func Notified(ctx context.Context, channel, result string) {
 func GraphLookup(ctx context.Context, lookup, result string) {
 	if in := current.Load(); in != nil {
 		in.graph.Add(ctx, 1, metric.WithAttributes(attribute.String("lookup", lookup), attribute.String("outcome", result)))
+	}
+}
+
+// ServiceNowCalled records a call to ServiceNow about a change request: its operation (open,
+// poll, note) and outcome (ok, refused, unreachable).
+func ServiceNowCalled(ctx context.Context, operation, result string) {
+	if in := current.Load(); in != nil {
+		in.servicenow.Add(ctx, 1, metric.WithAttributes(attribute.String("operation", operation), attribute.String("outcome", result)))
 	}
 }

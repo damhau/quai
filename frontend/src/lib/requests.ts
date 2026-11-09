@@ -1,4 +1,5 @@
 import type { EventView, RequestView, RuleView } from "@/api/generated/types.gen"
+import { outcomeVerb } from "@/lib/change-request"
 import { onBehalf } from "@/lib/delegations"
 import { shortSha, webURL } from "@/lib/format"
 import { localTime } from "@/lib/windows"
@@ -96,13 +97,19 @@ export function eventText(e: EventView): string {
     case "submitted":
       return "submitted the request"
     case "approved":
+      if (str(d, "system") === "servicenow") return `all approvals are in: ServiceNow approved change request ${str(d, "changeRequest") ?? ""}`
       return str(d, "reason") ? `approved: ${str(d, "reason")}` : "all approvals are in"
     case "approve":
       return `approved${onBehalf(str(d, "onBehalfOf"))}`
     case "deny":
       return `denied${onBehalf(str(d, "onBehalfOf"))}${str(d, "comment") ? `: ${str(d, "comment")}` : ""}`
     case "rejected":
+      if (str(d, "system") === "servicenow") return `rejected the request: its change request was ${outcomeVerb(str(d, "outcome"))} in ServiceNow`
       return `denied the request${onBehalf(str(d, "onBehalfOf"))}`
+    case "change_request_opened":
+      return `opened change request ${str(d, "changeRequest") ?? ""} in ServiceNow${str(d, "kind") === "standard" ? ", a standard change" : ""}`
+    case "change_request_superseded":
+      return `change request ${str(d, "changeRequest") || "(not opened yet)"} no longer counts: the content changed, and a new one is opened for it`
     case "stale":
       if (str(d, "separation")) return `${str(d, "separation")}; plan the request again`
       if (str(d, "definitions")) return `${str(d, "definitions")} since the plan; plan the request again`

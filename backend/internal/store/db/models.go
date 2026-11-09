@@ -102,6 +102,33 @@ type Change struct {
 	Entries     []byte
 }
 
+type ChangeRequest struct {
+	ID            uuid.UUID
+	RequestID     uuid.UUID
+	OrgID         string
+	Generation    int32
+	CorrelationID string
+	ChangeSetHash string
+	Kind          string
+	Template      string
+	SysID         pgtype.Text
+	Number        string
+	State         string
+	StateLabel    string
+	Approval      string
+	Outcome       string
+	CreatedAt     pgtype.Timestamptz
+	OpenedAt      pgtype.Timestamptz
+	PreparedAt    pgtype.Timestamptz
+	PolledAt      pgtype.Timestamptz
+	NextPollAt    pgtype.Timestamptz
+	Failures      int32
+	Failure       string
+	FailingSince  pgtype.Timestamptz
+	Problem       string
+	SupersededAt  pgtype.Timestamptz
+}
+
 type ChangeSet struct {
 	ID           uuid.UUID
 	RequestID    uuid.UUID

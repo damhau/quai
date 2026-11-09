@@ -296,6 +296,10 @@ func (s *Service) BreakGlass(ctx context.Context, who auth.Identity, id uuid.UUI
 		if err := s.alert(ctx, tx, sets[0].Repository, "break_glass", alert); err != nil {
 			return err
 		}
+		// Recorded in ServiceNow too, on its change request (P4-20 links the incident to it).
+		if err := s.noteBroken(ctx, tx, q, next); err != nil {
+			return err
+		}
 		if err := s.statusJob(ctx, tx, q, next); err != nil {
 			return err
 		}

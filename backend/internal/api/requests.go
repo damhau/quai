@@ -243,6 +243,48 @@ type RequestView struct {
 	CannotBreakGlass string          `json:"cannotBreakGlass,omitempty" doc:"Why you cannot break glass for it, although you hold the break-glass role and its state would let you"`
 	BreakGlassStepUp bool            `json:"breakGlassStepUp" doc:"Break-glass and its review's sign-offs need a recent sign-in (auth.stepUp is configured)"`
 	BreakGlass       *BreakGlassView `json:"breakGlass,omitempty" doc:"Its break-glass and the post-incident review, once glass was broken for it"`
+	// ChangeRequest is its change request in ServiceNow, when a rule waits on ServiceNow.
+	ChangeRequest *ChangeRequestView `json:"changeRequest,omitempty" doc:"Its change request in ServiceNow, when an external: servicenow rule applies to it"`
+}
+
+// ChangeRequestView is a request's change request in ServiceNow, for the content it holds now
+// (docs/design/05-delivery-and-approvals.md#itsm).
+type ChangeRequestView struct {
+	Number       string     `json:"number,omitempty" doc:"Its number in ServiceNow; absent until ServiceNow answered its creation"`
+	Kind         string     `json:"kind,omitempty" enum:"normal,standard" doc:"A normal change, or a standard one from the template of the request's catalog item"`
+	State        string     `json:"state,omitempty" doc:"Its state in ServiceNow, as Quai last read it"`
+	Approval     string     `json:"approval,omitempty" doc:"Its approval in ServiceNow, as Quai last read it"`
+	Outcome      string     `json:"outcome" enum:"pending,approved,rejected,cancelled,closed" doc:"What it says of the request: only an approval of a scheduled or implementing change approves"`
+	URL          string     `json:"url,omitempty" doc:"Its form in ServiceNow"`
+	PolledAt     *time.Time `json:"polledAt,omitempty" doc:"When Quai last read it"`
+	Failure      string     `json:"failure,omitempty" doc:"Why Quai could not open or read it lately: it tries again, and the request waits, never approved by default"`
+	FailingSince *time.Time `json:"failingSince,omitempty" doc:"Since when Quai fails to reach ServiceNow about it"`
+	Problem      string     `json:"problem,omitempty" doc:"What ServiceNow refused that Quai does not try again, such as taking it for approval: someone acts in ServiceNow"`
+	Superseded   int        `json:"superseded,omitempty" doc:"Change requests of earlier content of the request: their approvals do not count for its content now"`
+}
+
+// changeRequestView is a request's change request; nil when no rule waits on ServiceNow.
+func changeRequestView(ctx context.Context, svc *requests.Service, r db.Request) *ChangeRequestView {
+	c, ok, err := svc.ChangeRequestOf(ctx, r)
+	if err != nil {
+		return nil
+	}
+	if !ok {
+		if svc.ServiceNowMissing(r) {
+			return &ChangeRequestView{Outcome: "pending",
+				Problem: "A rule waits on ServiceNow, and Quai is not configured to reach it (itsm.servicenow): the rule is never satisfied"}
+		}
+		return nil
+	}
+	v := &ChangeRequestView{Number: c.Number, Kind: c.Kind, State: c.StateLabel, Approval: c.Approval, Outcome: c.Outcome, URL: c.URL,
+		Failure: c.Failure, Problem: c.Problem, Superseded: c.Superseded}
+	if c.PolledAt.Valid {
+		v.PolledAt = &c.PolledAt.Time
+	}
+	if c.FailingSince.Valid {
+		v.FailingSince = &c.FailingSince.Time
+	}
+	return v
 }
 
 // ChangeWindowView is what the change windows say of a request not merged yet, now
@@ -526,6 +568,7 @@ func registerRequests(a huma.API, svc *requests.Service, s *store.Store, log *sl
 			return nil, err
 		}
 		svc.Refresh(ctx, r)
+		svc.PollServiceNowSoon(ctx, r)
 		return &out[RequestView]{Body: requestView(ctx, svc, s, r, me, true)}, nil
 	})
 	huma.Register(a, huma.Operation{
@@ -697,6 +740,7 @@ func requestView(ctx context.Context, svc *requests.Service, s *store.Store, r d
 		return v
 	}
 	v.ChangeWindow = changeWindowView(ctx, svc, r)
+	v.ChangeRequest = changeRequestView(ctx, svc, r)
 	v.CanDownloadEvidence = allowed(ctx, authz.ReadEvidence, svc.BreakGlassObject(ctx, r))
 	// Who notifications do not reach (docs/design/05-delivery-and-approvals.md#notifications).
 	if requester, rules, ok, err := svc.Unnotified(ctx, r); err == nil && ok {

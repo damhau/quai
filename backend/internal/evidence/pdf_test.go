@@ -119,6 +119,20 @@ func TestPDF(t *testing.T) {
 	}
 }
 
+// TestPDFServiceNow: a decision of a change request in ServiceNow is ServiceNow's, not Quai's.
+func TestPDFServiceNow(t *testing.T) {
+	b := broken()
+	b.Events = append(b.Events, audit.Record{Seq: 8, At: "2026-11-02T09:06:00.000Z", Actor: json.RawMessage(`{"type":"system","id":"servicenow"}`),
+		Action: "request.rejected", Object: json.RawMessage(`{}`), Details: json.RawMessage(`{}`), Hash: strings.Repeat("f", 64)})
+	data, err := evidence.PDF(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := squash(text(t, data)); !strings.Contains(got, "ServiceNow") {
+		t.Error("the PDF does not name ServiceNow as the actor of its decision")
+	}
+}
+
 // TestPDFBounds: a bundle of many events and a long diff still makes a PDF of bounded pages.
 func TestPDFBounds(t *testing.T) {
 	b := broken()

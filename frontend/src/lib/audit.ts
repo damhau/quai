@@ -47,6 +47,9 @@ const labels: Record<string, string> = {
   "request.applied": "Request applied",
   "request.failed": "Request failed",
   "request.reviews_voided": "Approvals voided: approver deactivated",
+  "request.change_request_opened": "Change request opened in ServiceNow",
+  "request.change_request_superseded": "Change request superseded: the content changed",
+  "request.approval_withdrawn": "Approval withdrawn in ServiceNow",
   "repository.created": "Repository connected",
   "repository.updated": "Repository changed",
   "repository.deleted": "Repository disconnected",
@@ -93,7 +96,7 @@ export const actionGroups = [
 export function actorLabel(a: AuditActorView, personal: Personal): string {
   switch (a.type) {
     case "system":
-      return "Quai"
+      return a.id === "servicenow" ? "ServiceNow" : "Quai"
     case "runner":
       return `Runner of ${a.id}`
     case "scim":

@@ -78,6 +78,12 @@ single pod with both roles.
   | `approvals.reminders.after` | | none: no reminder. How long after its submission a request still waiting for approval reminds the people it waits for, once: a Go duration (`48h`) ([reminders, escalation and expiry](#reminders-escalation-and-expiry)) |
   | `approvals.escalation.after`, `.to` | | none: no escalation. How long after its submission a request still waiting for approval is escalated, once, after the reminder, and to whom: `group:<name>` and `user:<name>` entries; one needs the other |
   | `changeWindows` | | none: requests merge whenever approved. Windows and freezes for every repository, each a `name`, an optional `when` (CEL on `params` and `request`), `allow` entries (`Mon-Thu 08:00-16:00 Europe/Zurich`) and `deny` entries (`2026-12-18T00:00 to 2027-01-05T00:00 Europe/Zurich`); zones are IANA names, checked at start; a repository document's own windows only narrow these ([change windows and freezes](#change-windows-and-freezes)) |
+  | `itsm.servicenow.instanceURL` | | none: no change requests, and a rule with `external: servicenow` is never satisfied ([ServiceNow change requests](#servicenow-change-requests)). The instance's root, `https://<instance>.service-now.com`: https, without a path, a query or credentials; the only address Quai calls for it |
+  | `itsm.servicenow.oauth.clientId`, `.clientSecret.ref` | | one of `oauth` and `basic` is required. An OAuth application of the instance with the client credentials grant: its client ID, and a secret reference to its client secret (`k8s:quai/quai-servicenow#client-secret`), read when a token is fetched |
+  | `itsm.servicenow.basic.username`, `.password.ref` | | the service account's user name (no colon) and a secret reference to its password, for basic authentication when OAuth is not set up |
+  | `itsm.servicenow.standardChanges` | | none: every change request is a normal change. A list of catalog items mapped to standard change templates, the first that matches counting: `repository`, one of `type` and `blueprint`, optional `kinds` (`create`, `update`, `delete`, `action`, `migrate`) and `actions`, and `template`, the template's sys_id (32 lowercase hex digits) |
+  | `itsm.servicenow.fields` | | none. Fields set on every change request Quai creates, as written (`assignment_group`, `category`): the ones the instance makes mandatory. Names of lowercase letters, digits and `_`, not `sys_*`, nor a field Quai sets or reads itself (`short_description`, `description`, `justification`, `implementation_plan`, `risk_impact_analysis`, `correlation_id`, `correlation_display`, `start_date`, `end_date`, `work_notes`, `state`, `approval`, …); values at most 4,000 bytes, no control characters |
+  | `itsm.servicenow.pollInterval` | | `5m`, between `1m` and `1h`: how often Quai reads a change request it waits on. Opening the request's page reads it too |
   | `notifications.email.host`, `.port`, `.transport` | | none: no email is sent ([notifications](#notifications)). The SMTP server's host name or address; `587` with `starttls`, `465` with `tls`; `starttls` (the default), which the server must offer, or `tls` from the first byte. There is no plaintext transport, and the certificate is verified against the system's CAs and `network.caFile` |
   | `notifications.email.from` | | required: the sender, an address with or without a display name (`Quai <quai@example.com>`) |
   | `notifications.email.username`, `.password.ref` | | none: no authentication. PLAIN, or LOGIN when the server offers only that, over TLS only; the password is a secret reference (`k8s:quai/quai-smtp#password`), read at each send |
@@ -970,6 +976,85 @@ If no one may sign off a review (the request has no owners and the installation 
 admin or auditor), grant the auditor role to a second person: the review stays open, and
 reminded, until two people do.
 
+### ServiceNow change requests
+
+With `itsm.servicenow`, a request that a rule with `external: servicenow` applies to gets a change
+request in ServiceNow, and the rule is satisfied when ServiceNow approves it ([ITSM](../design/05-delivery-and-approvals.md#itsm)).
+This was built from ServiceNow's documentation and tested on a fake of it: **it is not verified
+against a real instance yet**. Try it on a sub-production instance first.
+
+```yaml
+itsm:
+  servicenow:
+    instanceURL: https://example.service-now.com
+    oauth:
+      clientId: 0123456789abcdef0123456789abcdef
+      clientSecret: { ref: k8s:quai/quai-servicenow#client-secret }
+    fields:
+      assignment_group: Platform Engineering   # what your instance makes mandatory
+    standardChanges:
+      - repository: infra-live
+        type: vm
+        kinds: [update]
+        template: 0123456789abcdef0123456789abcdef   # the sys_id of a standard change template
+    pollInterval: 5m
+```
+
+```yaml
+# .quai/types/vm.yaml: a production change needs a change request approved in ServiceNow
+approval:
+  rules:
+    - name: change-ticket
+      when: "params.env == 'prod'"
+      external: servicenow
+```
+
+1. **A service account.** Create a user for Quai (*Web service access only*), with the roles that
+   create, read and update change requests: `itil` (or `sn_change_write`), `sn_change_read`, and
+   whatever your instance requires to move a change to Assess or Scheduled. Quai never approves
+   (it never writes `approval`), so the account needs no approver role, and should not be one.
+2. **OAuth (recommended).** In *System OAuth > Application Registry*, create an OAuth API
+   endpoint for external clients with the client credentials grant, bound to that user (the
+   `glide.oauth.inbound.client.credential.grant_type.enabled` system property must be `true`).
+   Put its client secret in the secret store, its client ID in `oauth.clientId`. Quai gets tokens
+   from `/oauth_token.do` and keeps each until two minutes before it expires. Without OAuth,
+   `basic` takes the account's user name and a secret reference to its password.
+3. **Standard changes.** For each catalog item that is pre-approved, publish a standard change
+   template in ServiceNow and map it in `standardChanges` by its sys_id. A request for it gets a
+   standard change from the template, which keeps the template's description and implementation
+   plan (Quai's go in a work note) and needs no CAB. The others get normal changes.
+4. **Mandatory fields.** Set in `fields` what your instance requires on a change request
+   (`assignment_group`, `category`, a configuration item). The values are sent as written.
+5. **Egress.** Allow the instance's host as an outgoing endpoint, through the proxy, with its CA
+   trusted (`network.caFile` when it is internal). ServiceNow calls nothing in Quai: Quai polls.
+
+What happens then:
+
+- **Opening.** Quai creates the change request with the request's number and title, who asks and
+  why, the files it changes, the rules that apply, the planned window from the change windows,
+  and a correlation ID (`quai:…`); then it moves a normal change to Assess, a standard one to
+  Scheduled. When a plan reports, a work note gives its result (counts, cost, policies; never a
+  value). The request page shows the change request, linked to its form.
+- **Approval.** The rule is satisfied when ServiceNow reports `approval` approved with the state
+  Scheduled or Implement. A rejection, a cancellation or a closure before the merge rejects the
+  request, with ServiceNow as the actor, and the requester is told. Quai's other rules still need
+  their approvals, and change windows still hold the merge.
+- **Content changes.** A push to the request's branch makes a new change set: the change request
+  gets a work note saying it no longer counts, and Quai opens a new one, to approve again. Quai
+  leaves the old one for you to cancel.
+- **When ServiceNow is down.** Requests wait, and nothing is approved meanwhile. Quai tries again
+  with a backoff up to an hour; the request page says why and since when; the worker logs a
+  warning for each failure and an error once it has failed for over an hour; the metric
+  `quai.servicenow.calls` counts calls by `operation` (`open`, `poll`, `note`) and `outcome`
+  (`ok`, `refused`, `unreachable`). A move ServiceNow refuses (to Assess or Scheduled, a template
+  that does not allow it, a mandatory field missing) is shown on the request page as a problem:
+  someone moves the change in ServiceNow, and Quai reads it on its next poll.
+- **Break-glass** lets the request through without the change request's approval, and adds a
+  work note to it with the time, who broke glass and the incident (never the reason).
+- **Audit**: `request.change_request_opened`, `request.change_request_superseded`,
+  `request.approval_withdrawn`, and `request.approved` and `request.rejected` with the system
+  `servicenow` as the actor when a change request decides.
+
 ### Notifications
 
 With `notifications.email`, Quai tells people what happens by email ([what is sent to
@@ -1374,7 +1459,7 @@ Egress needed, all configurable through an HTTP proxy (`HTTPS_PROXY`, `NO_PROXY`
 | SMTP server (`notifications.email`) | Notifications by email, over TLS (port 465) or STARTTLS (587), straight to the server, never through the proxy |
 | Microsoft Teams (`notifications.teams`) | HTTPS, through the proxy: the bot's tokens from Entra ID (`login.microsoftonline.com`), its messages through the Bot Connector service (`smba.trafficmanager.net`), channel posts to each workflow's trigger (`*.logic.azure.com`, or the host of its URL). Nothing comes in from Teams |
 | Slack (`notifications.slack`) | HTTPS, through the proxy, to the Web API (`slack.com`, or `apiURL`'s host) |
-| ITSM | Optional integrations |
+| ServiceNow (`itsm.servicenow`) | HTTPS, through the proxy, to `instanceURL`'s host only: the Change Management and Table APIs, and `/oauth_token.do` with OAuth. Nothing comes in from ServiceNow |
 | Executors (Kubernetes API, AWX, vCenter) | Imperative actions |
 
 Ingress: users and CLI (HTTPS), Git platform webhooks (Azure DevOps service hooks; on Server this needs a firewall path from the Server to Quai, otherwise Quai runs in polling mode), runner reports, Slack's interactions (`/slack/interactions`, from Slack over the internet, when `notifications.slack.signingSecret` is set). Webhook,
@@ -1424,7 +1509,10 @@ snoozed and retried. Different repositories proceed in parallel.
     ([when mail does not arrive](#when-mail-does-not-arrive));
   - Microsoft Graph lookups at sign-in (`quai.graph.lookups`, by `lookup`, `groups` or `manager`,
     and `outcome`: `ok`, `none`, `error`, `skipped`); a rising `error` is people refused at sign-in
-    (groups) or left without a manager ([managers and Microsoft Graph](#managers-and-microsoft-graph)).
+    (groups) or left without a manager ([managers and Microsoft Graph](#managers-and-microsoft-graph));
+  - calls to ServiceNow about change requests (`quai.servicenow.calls`, by `operation`, `open`,
+    `poll` or `note`, and `outcome`: `ok`, `refused`, `unreachable`); a rising `unreachable` is
+    requests waiting on their change requests ([ServiceNow change requests](#servicenow-change-requests)).
 - **Dashboards and alerts** shipped with the chart: no webhook from a repository for 1 h while pushes happen, enforcement missing, credential expiring within 14 days, job failure rate above threshold, audit export lagging.
   Today the chart ships `QuaiAuditExportLagging` (`max by (destination) (quai_audit_export_lag_seconds)`
   above `prometheusRule.auditExportLag.seconds`, 600, for `.for`, 5m) in a PrometheusRule of the

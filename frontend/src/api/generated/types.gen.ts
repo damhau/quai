@@ -412,6 +412,53 @@ export type CatalogItem = {
     version?: string;
 };
 
+export type ChangeRequestView = {
+    /**
+     * Its approval in ServiceNow, as Quai last read it
+     */
+    approval?: string;
+    /**
+     * Since when Quai fails to reach ServiceNow about it
+     */
+    failingSince?: string;
+    /**
+     * Why Quai could not open or read it lately: it tries again, and the request waits, never approved by default
+     */
+    failure?: string;
+    /**
+     * A normal change, or a standard one from the template of the request's catalog item
+     */
+    kind?: 'normal' | 'standard';
+    /**
+     * Its number in ServiceNow; absent until ServiceNow answered its creation
+     */
+    number?: string;
+    /**
+     * What it says of the request: only an approval of a scheduled or implementing change approves
+     */
+    outcome: 'pending' | 'approved' | 'rejected' | 'cancelled' | 'closed';
+    /**
+     * When Quai last read it
+     */
+    polledAt?: string;
+    /**
+     * What ServiceNow refused that Quai does not try again, such as taking it for approval: someone acts in ServiceNow
+     */
+    problem?: string;
+    /**
+     * Its state in ServiceNow, as Quai last read it
+     */
+    state?: string;
+    /**
+     * Change requests of earlier content of the request: their approvals do not count for its content now
+     */
+    superseded?: number;
+    /**
+     * Its form in ServiceNow
+     */
+    url?: string;
+};
+
 export type ChangeView = {
     diff: Array<DiffLine> | null;
     op: 'create' | 'update' | 'delete';
@@ -1338,6 +1385,10 @@ export type RequestView = {
      * Why you cannot review this request pending approval although a rule names you: you requested it, or you changed its definitions in the separation of duties' period before it
      */
     cannotReview?: string;
+    /**
+     * Its change request in ServiceNow, when an external: servicenow rule applies to it
+     */
+    changeRequest?: ChangeRequestView;
     /**
      * The hash of the change set it holds now
      */
@@ -2538,6 +2589,10 @@ export type RequestViewWritable = {
      * Why you cannot review this request pending approval although a rule names you: you requested it, or you changed its definitions in the separation of duties' period before it
      */
     cannotReview?: string;
+    /**
+     * Its change request in ServiceNow, when an external: servicenow rule applies to it
+     */
+    changeRequest?: ChangeRequestView;
     /**
      * The hash of the change set it holds now
      */

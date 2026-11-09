@@ -32,6 +32,7 @@ import (
 	"github.com/damhau/quai/backend/internal/requests"
 	"github.com/damhau/quai/backend/internal/scim"
 	"github.com/damhau/quai/backend/internal/secrets"
+	"github.com/damhau/quai/backend/internal/servicenow"
 	"github.com/damhau/quai/backend/internal/store"
 )
 
@@ -194,6 +195,18 @@ func startRepo(t *testing.T, dir, metadata, spec string, opts repositories.Optio
 	var n *notify.Service
 	clk := &testClock{}
 	svc.UseClock(clk.now)
+	if sn := cfg.ITSM.ServiceNow; sn != nil {
+		network, err := netx.New(cfg.Network.CAFile)
+		if err != nil {
+			t.Fatal(err)
+		}
+		c, err := servicenow.New(*sn, network, opts.Secrets)
+		if err != nil {
+			t.Fatal(err)
+		}
+		c.UseClock(clk.now)
+		svc.UseServiceNow(sn, c)
+	}
 	if cfg.Notifications.Email != nil || cfg.Notifications.Teams != nil || cfg.Notifications.Slack != nil {
 		network, err := netx.New(cfg.Network.CAFile)
 		if err != nil {

@@ -676,3 +676,67 @@ func TestApprovals(t *testing.T) {
 		}
 	}
 }
+
+func TestServiceNow(t *testing.T) {
+	c, err := Load(write(t, `itsm:
+  servicenow:
+    instanceURL: https://example.service-now.com/
+    oauth: { clientId: quai, clientSecret: { ref: "k8s:quai/servicenow#client-secret" } }
+    standardChanges:
+      - { repository: infra-live, type: vm, kinds: [action], actions: [restart], template: 0123456789abcdef0123456789abcdef }
+      - { repository: infra-live, blueprint: app-environment, template: fedcba9876543210fedcba9876543210 }
+    fields: { assignment_group: 8a4dde73c6112278017a6a4baf547aa7 }
+`), env(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := c.ITSM.ServiceNow
+	if s.InstanceURL != "https://example.service-now.com" || s.PollInterval != DefaultServiceNowPoll || s.OAuth.ClientSecret.Ref != "k8s:quai/servicenow#client-secret" {
+		t.Errorf("servicenow = %+v", s)
+	}
+	for _, tt := range []struct{ repository, typeName, blueprint, kind, action, want string }{
+		{"infra-live", "vm", "", "action", "restart", "0123456789abcdef0123456789abcdef"},
+		{"infra-live", "vm", "", "action", "resize", ""},
+		{"infra-live", "vm", "", "create", "", ""},
+		{"other", "vm", "", "action", "restart", ""},
+		{"infra-live", "", "app-environment", "create", "", "fedcba9876543210fedcba9876543210"},
+		{"infra-live", "", "app-environment", "action", "scale", "fedcba9876543210fedcba9876543210"},
+	} {
+		if got := s.Template(tt.repository, tt.typeName, tt.blueprint, tt.kind, tt.action); got != tt.want {
+			t.Errorf("Template(%s, %s, %s, %s, %s) = %q, want %q", tt.repository, tt.typeName, tt.blueprint, tt.kind, tt.action, got, tt.want)
+		}
+	}
+	if _, err := Load(write(t, "itsm:\n  servicenow: { instanceURL: https://example.service-now.com, basic: { username: quai, password: { ref: env:SN_PASSWORD } }, pollInterval: 10m }\n"), env(nil)); err != nil {
+		t.Errorf("basic: %v", err)
+	}
+	const oauth = `oauth: { clientId: quai, clientSecret: { ref: env:SN_SECRET } }`
+	sn := func(extra string) string {
+		return "  servicenow: { instanceURL: https://example.service-now.com, " + oauth + extra + " }"
+	}
+	for name, tt := range map[string]struct{ file, want string }{
+		"http":          {"  servicenow: { instanceURL: http://example.service-now.com, " + oauth + " }", "itsm.servicenow.instanceURL must be the instance's https root"},
+		"userinfo":      {"  servicenow: { instanceURL: \"https://quai:pw@example.service-now.com\", " + oauth + " }", "itsm.servicenow.instanceURL must be the instance's https root"},
+		"path":          {"  servicenow: { instanceURL: \"https://example.service-now.com/api/now\", " + oauth + " }", "itsm.servicenow.instanceURL must be the instance's https root"},
+		"query":         {"  servicenow: { instanceURL: \"https://example.service-now.com?x=1\", " + oauth + " }", "itsm.servicenow.instanceURL must be the instance's https root"},
+		"no auth":       {"  servicenow: { instanceURL: https://example.service-now.com }", "itsm.servicenow needs exactly one of oauth and basic"},
+		"both":          {sn(", basic: { username: quai, password: { ref: env:PW } }"), "itsm.servicenow needs exactly one of oauth and basic"},
+		"secret value":  {"  servicenow: { instanceURL: https://example.service-now.com, oauth: { clientId: quai, clientSecret: { ref: s3cr3t } } }", "itsm.servicenow.oauth.clientSecret.ref must be a secret reference"},
+		"no client":     {"  servicenow: { instanceURL: https://example.service-now.com, oauth: { clientSecret: { ref: env:X } } }", "itsm.servicenow.oauth.clientId is required"},
+		"password":      {"  servicenow: { instanceURL: https://example.service-now.com, basic: { username: quai, password: { ref: hunter2 } } }", "itsm.servicenow.basic.password.ref must be a secret reference"},
+		"user colon":    {"  servicenow: { instanceURL: https://example.service-now.com, basic: { username: \"a:b\", password: { ref: env:PW } } }", "itsm.servicenow.basic.username is required, without a colon"},
+		"template":      {sn(", standardChanges: [{ repository: infra-live, type: vm, template: CHG-TEMPLATE }]"), "itsm.servicenow.standardChanges[0].template must be the sys_id of a standard change template"},
+		"item":          {sn(", standardChanges: [{ repository: infra-live, template: 0123456789abcdef0123456789abcdef }]"), "itsm.servicenow.standardChanges[0] needs exactly one of type and blueprint"},
+		"repository":    {sn(", standardChanges: [{ type: vm, template: 0123456789abcdef0123456789abcdef }]"), "itsm.servicenow.standardChanges[0].repository is required"},
+		"kind":          {sn(", standardChanges: [{ repository: r, type: vm, kinds: [restart], template: 0123456789abcdef0123456789abcdef }]"), `itsm.servicenow.standardChanges[0].kinds: "restart" is not a request kind`},
+		"actions":       {sn(", standardChanges: [{ repository: r, type: vm, kinds: [create], actions: [restart], template: 0123456789abcdef0123456789abcdef }]"), "itsm.servicenow.standardChanges[0].actions needs the kind action"},
+		"quai's field":  {sn(", fields: { approval: approved }"), "itsm.servicenow.fields.approval: Quai sets or reads this field itself"},
+		"system field":  {sn(", fields: { sys_updated_by: admin }"), `itsm.servicenow.fields: "sys_updated_by" is not a field name Quai may set`},
+		"field name":    {sn(", fields: { \"Assignment Group\": x }"), `itsm.servicenow.fields: "Assignment Group" is not a field name Quai may set`},
+		"field control": {sn(", fields: { category: \"a\\u0007b\" }"), "itsm.servicenow.fields.category must be at most 4000 bytes, without control characters"},
+		"poll":          {sn(", pollInterval: 10s"), "itsm.servicenow.pollInterval must be between 1m and 1h"},
+	} {
+		if _, err := Load(write(t, "itsm:\n"+tt.file+"\n"), env(nil)); err == nil || !strings.Contains(err.Error(), tt.want) {
+			t.Errorf("%s: error = %v, want %q", name, err, tt.want)
+		}
+	}
+}

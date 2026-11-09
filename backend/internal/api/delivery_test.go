@@ -117,6 +117,12 @@ func giteaHarnessFiles(t *testing.T, merge, spec string, edit func(path string, 
 // configuration changed by configure.
 func giteaHarnessOver(t *testing.T, merge, spec string, edit func(path string, b []byte) []byte, extra map[string]string, factory connectors.Factory, configure ...func(*config.Config)) (*harness, *giteatest.Repo) {
 	t.Helper()
+	return giteaHarnessEnv(t, merge, spec, edit, extra, factory, nil, configure...)
+}
+
+// giteaHarnessEnv is giteaHarnessOver with more secrets: env, by the name env:<name> refers to.
+func giteaHarnessEnv(t *testing.T, merge, spec string, edit func(path string, b []byte) []byte, extra map[string]string, factory connectors.Factory, env map[string]string, configure ...func(*config.Config)) (*harness, *giteatest.Repo) {
+	t.Helper()
 	g := giteatest.Get(t)
 	r := g.Repo(t, "infra")
 	pushEdited(t, r.CloneURL, func(context.Context) (gitx.Credentials, error) { return gitx.Credentials{Header: g.GitHeader()}, nil }, nil, edit, extra)
@@ -129,6 +135,9 @@ func giteaHarnessOver(t *testing.T, merge, spec string, edit func(path string, b
   delivery: { mode: pull-request, merge: `+merge+`, mergeMethod: squash }
   sync: { minInterval: 1ns }`+spec, repositories.Options{
 		Secrets: secrets.New(map[string]secrets.Backend{"env": secrets.Env{Lookup: func(n string) (string, bool) {
+			if v, ok := env[n]; ok {
+				return v, true
+			}
 			if n == "INFRA_LIVE_RUN_TOKEN" {
 				sum := sha256.Sum256([]byte(runToken))
 				return hex.EncodeToString(sum[:]), true

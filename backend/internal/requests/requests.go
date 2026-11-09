@@ -40,6 +40,7 @@ import (
 	"github.com/damhau/quai/backend/internal/inventory"
 	"github.com/damhau/quai/backend/internal/jobs"
 	"github.com/damhau/quai/backend/internal/repositories"
+	"github.com/damhau/quai/backend/internal/servicenow"
 	"github.com/damhau/quai/backend/internal/store"
 	"github.com/damhau/quai/backend/internal/store/db"
 	"github.com/damhau/quai/backend/internal/telemetry"
@@ -83,6 +84,8 @@ type Service struct {
 	waiting   config.Approvals                                                // reminders and escalation
 	now       func() time.Time                                                // delegations are judged by it (UseClock)
 	windows   []*window.Window                                                // Quai's configuration's change windows
+	snCfg     *config.ServiceNow                                              // itsm.servicenow; nil: no change requests
+	sn        *servicenow.Client                                              // calls ServiceNow; nil where nothing does
 }
 
 // New returns the request service. jobsClient inserts the delivery jobs.
@@ -704,6 +707,9 @@ func (s *Service) Submit(ctx context.Context, who auth.Identity, p *Plan, reason
 		if err := s.event(ctx, tx, r, "submitted", who.Principal.Name, nil); err != nil {
 			return err
 		}
+		if err := s.openChangeRequest(ctx, tx, q, r, p.Rules, p.Repository, p.ChangeSet.Hash); err != nil {
+			return err
+		}
 		details := map[string]any{"kind": p.Kind, "action": p.Action, "type": p.Type, "blueprint": p.Blueprint,
 			"repository": p.Repository, "changeSet": p.ChangeSet.Hash, "definitionsCommit": p.Commit, "reason": audit.Personal(reason)}
 		if p.Expiry != "" && state == PendingApproval {
@@ -779,7 +785,17 @@ func (s *Service) Reviews(ctx context.Context, r db.Request) ([]db.Review, polic
 	}
 	var rules []policy.Rule
 	_ = json.Unmarshal(r.Rules, &rules)
-	return reviews, policy.Evaluate(rules, toReviews(reviews, s.dir), contextOf(r)), nil
+	hash := ""
+	if sets, err := s.store.ListChangeSets(ctx, r.ID); err != nil {
+		return nil, policy.Outcome{}, err
+	} else if len(sets) > 0 {
+		hash = sets[0].Hash
+	}
+	pc, err := s.contextFor(ctx, s.store.Queries, r, hash)
+	if err != nil {
+		return nil, policy.Outcome{}, err
+	}
+	return reviews, policy.Evaluate(rules, toReviews(reviews, s.dir), pc), nil
 }
 
 // contextOf is what the policy needs to know of a request to decide it.
@@ -956,7 +972,11 @@ func (s *Service) ReviewLink(ctx context.Context, who auth.Identity, id uuid.UUI
 		var rules []policy.Rule
 		_ = json.Unmarshal(r.Rules, &rules)
 		next = r
-		switch policy.Evaluate(rules, toReviews(reviews, s.dir), contextOf(r)).State {
+		pc, err := s.contextFor(ctx, q, r, sets[0].Hash)
+		if err != nil {
+			return err
+		}
+		switch policy.Evaluate(rules, toReviews(reviews, s.dir), pc).State {
 		case policy.Approved:
 			if next, err = q.TransitionRequest(ctx, db.TransitionRequestParams{ID: r.ID, FromState: PendingApproval, ToState: Approved}); err != nil {
 				return err

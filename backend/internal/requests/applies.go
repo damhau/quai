@@ -36,7 +36,11 @@ func (s *Service) RunReported(ctx context.Context, run db.Run) error {
 			return err
 		}
 		// A failed plan decides nothing, except requireTwo: what it destroys is unknown again.
-		return s.PlanReported(ctx, id)
+		err = s.PlanReported(ctx, id)
+		// After the decision: a plan that makes an external: servicenow rule apply opens the
+		// change request its result is noted on.
+		s.notePlanReported(ctx, r, run)
+		return err
 	case "apply":
 		applying, err := s.store.ApplyingRequests(ctx, db.ApplyingRequestsParams{Repository: run.Repository, Stack: run.Stack})
 		if err != nil {

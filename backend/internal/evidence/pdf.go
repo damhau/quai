@@ -429,6 +429,9 @@ func actorOf(b *Bundle, e audit.Record) string {
 	}
 	switch a.Type {
 	case audit.System:
+		if a.ID == "servicenow" {
+			return "ServiceNow" // a change request decided (P4-19)
+		}
 		return "Quai"
 	case audit.Runner:
 		return "runner of " + id

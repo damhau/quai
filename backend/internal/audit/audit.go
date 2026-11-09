@@ -34,7 +34,7 @@ const (
 	User   = "user"   // a person, signed in
 	Token  = "token"  // a person's API token
 	Runner = "runner" // a repository's runner, reporting with its run token
-	System = "system" // Quai itself: jobs, webhooks, its configuration
+	System = "system" // Quai itself (quai): jobs, webhooks, its configuration; or ServiceNow (servicenow), deciding by a change request
 	// Provisioning is the identity provider's provisioning, with a SCIM token: its ID is the
 	// token's name (auth.scim.tokens), never a person.
 	Provisioning = "scim"
