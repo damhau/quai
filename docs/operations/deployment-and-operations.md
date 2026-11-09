@@ -564,6 +564,50 @@ when the policy was satisfied. This round trip is tested against a fake identity
 answers as Microsoft documents it, not yet against a real tenant ([open question
 49](../plan/open-questions.md#still-open)).
 
+### Separation of duties
+
+Besides the rules every repository has (no one approves their own request, one person counts once),
+a repository document can ask for more, under `spec.enforcement`
+([design 05](../design/05-delivery-and-approvals.md#separation-of-duties)):
+
+```yaml
+spec:
+  enforcement:
+    separationOfDuties:
+      definitionAuthors: 7d   # Nd or a duration such as 36h; positive, at most 90d
+      destroys: requireTwo
+```
+
+- **`definitionAuthors`**: who changed the files of a request's type or blueprint in that period
+  before it is planned cannot approve it. Quai reads the commits' authors, committers and
+  `Co-authored-by` trailers, and matches them by email to people whose email the identity provider
+  verified, so people must sign in with a verified email (`email_verified`, or Entra ID's
+  `xms_edov`, [people and teams](#people-and-teams)) for their commits to exclude them. The plan
+  and the request list who is excluded, with their commits, and the identities that match no one:
+  a bot, a personal address, a former colleague. An identity that matches no one excludes no one
+  until someone signs in with its email, verified; protect `.quai/` with CODEOWNERS so that
+  definition changes are reviewed whoever writes them. The period counts from the definitions
+  Quai recorded, never from commit dates: on a connection newer than the period, the whole
+  history counts, and its authors cannot approve until Quai has recorded the definitions for that
+  long.
+- **`destroys: requireTwo`**: a request needs two different approvers until a plan shows that it
+  destroys nothing. Without a runner (`spec.runner`) or with direct delivery, no plan comes, so
+  every request needs two; make sure the rules name at least two people besides the requester.
+- **Changing them.** A request keeps the options it was planned with. Stricter options make a
+  request still pending approval stale at its next review (the requester plans it again);
+  approved ones are left as decided. Looser options leave requests planned before as they are.
+
+Troubleshooting:
+
+- **"You changed the definitions this request was planned with"**: the reviewer's verified email
+  is in a commit of the period. Someone else approves; to clear it, wait until the period has
+  passed and plan the request again.
+- **An author is not excluded**: the commit's email is not their verified email in Quai; the
+  request lists it among the identities that match no one.
+- **Every request needs two approvers**: no plan reports for the request (no runner, direct
+  delivery, or the pipeline does not report the pull request's plan), or its latest plan failed;
+  the rule on the request says which.
+
 ### Notifications
 
 With `notifications.email`, Quai tells people what happens by email ([what is sent to

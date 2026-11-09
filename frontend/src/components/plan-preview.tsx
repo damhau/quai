@@ -4,6 +4,7 @@ import type { PlanView } from "@/api/generated/types.gen"
 import { Codeowners } from "@/components/approval/codeowners"
 import { Manager } from "@/components/approval/manager"
 import { RulesPreview } from "@/components/approval/rules-preview"
+import { Separation } from "@/components/approval/separation"
 import { ChangesView } from "@/components/diff/changes-view"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -49,6 +50,7 @@ export function PlanPreview({ ready, hint, plan }: { ready: boolean; hint: strin
               <RulesPreview rules={plan.data.rules ?? []} />
               {plan.data.codeowners && <Codeowners codeowners={plan.data.codeowners} />}
               {plan.data.manager && <Manager manager={plan.data.manager} />}
+              {plan.data.separation && <Separation separation={plan.data.separation} />}
             </section>
             <section className="grid gap-2" aria-label="Changes">
               <h3 className="text-sm font-medium">Changes</h3>

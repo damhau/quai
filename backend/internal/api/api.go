@@ -127,8 +127,9 @@ func build(opts Options, all bool) (*chi.Mux, huma.API) {
 	cfg.OpenAPIPath = Prefix + "/openapi"
 	cfg.SchemasPath = Prefix + "/schemas"
 	cfg.DocsPath = "" // the docs page loads scripts from a CDN; the OpenAPI document is enough
-	// A repository document's durations are written as text ("5m").
+	// A repository document's durations and periods are written as text ("5m", "7d").
 	cfg.Components.Schemas.RegisterTypeAlias(reflect.TypeFor[repositories.Duration](), reflect.TypeFor[string]())
+	cfg.Components.Schemas.RegisterTypeAlias(reflect.TypeFor[repositories.Period](), reflect.TypeFor[string]())
 	a := humachi.New(r, cfg)
 	registerMeta(a, opts)
 	if all || opts.Store != nil {

@@ -13,7 +13,7 @@ import (
 )
 
 const applyingRequests = `-- name: ApplyingRequests :many
-SELECT r.id, r.org_id, r.kind, r.action, r.target, r.type_name, r.blueprint, r.requester, r.reason, r.inputs, r.state, r.definitions_commit, r.base_commit, r.created_at, r.updated_at, r.number, r.requester_email, r.stack, r.rules, r.owners, r.stacks, r.codeowners, r.codeowners_unmatched, r.step_up, r.manager, r.manager_reason FROM requests r
+SELECT r.id, r.org_id, r.kind, r.action, r.target, r.type_name, r.blueprint, r.requester, r.reason, r.inputs, r.state, r.definitions_commit, r.base_commit, r.created_at, r.updated_at, r.number, r.requester_email, r.stack, r.rules, r.owners, r.stacks, r.codeowners, r.codeowners_unmatched, r.step_up, r.manager, r.manager_reason, r.separation FROM requests r
 JOIN change_sets cs ON cs.request_id = r.id
 WHERE r.state = 'applying' AND cs.repository = $1 AND $2::text = ANY(r.stacks)
 `
@@ -60,6 +60,7 @@ func (q *Queries) ApplyingRequests(ctx context.Context, arg ApplyingRequestsPara
 			&i.StepUp,
 			&i.Manager,
 			&i.ManagerReason,
+			&i.Separation,
 		); err != nil {
 			return nil, err
 		}
@@ -74,11 +75,11 @@ func (q *Queries) ApplyingRequests(ctx context.Context, arg ApplyingRequestsPara
 const createRequest = `-- name: CreateRequest :one
 INSERT INTO requests (id, kind, action, target, type_name, blueprint, requester, requester_email, reason, inputs, state,
                       definitions_commit, base_commit, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up,
-                      manager, manager_reason)
+                      manager, manager_reason, separation)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, COALESCE($17::text[], '{}'),
         COALESCE($18::text[], '{}'), COALESCE($19::text[], '{}'), $20,
-        $21, $22)
-RETURNING id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up, manager, manager_reason
+        $21, $22, COALESCE($23::jsonb, '{}'))
+RETURNING id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up, manager, manager_reason, separation
 `
 
 type CreateRequestParams struct {
@@ -104,6 +105,7 @@ type CreateRequestParams struct {
 	StepUp              bool
 	Manager             string
 	ManagerReason       string
+	Separation          []byte
 }
 
 func (q *Queries) CreateRequest(ctx context.Context, arg CreateRequestParams) (Request, error) {
@@ -130,6 +132,7 @@ func (q *Queries) CreateRequest(ctx context.Context, arg CreateRequestParams) (R
 		arg.StepUp,
 		arg.Manager,
 		arg.ManagerReason,
+		arg.Separation,
 	)
 	var i Request
 	err := row.Scan(
@@ -159,12 +162,13 @@ func (q *Queries) CreateRequest(ctx context.Context, arg CreateRequestParams) (R
 		&i.StepUp,
 		&i.Manager,
 		&i.ManagerReason,
+		&i.Separation,
 	)
 	return i, err
 }
 
 const getRequest = `-- name: GetRequest :one
-SELECT id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up, manager, manager_reason FROM requests WHERE id = $1
+SELECT id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up, manager, manager_reason, separation FROM requests WHERE id = $1
 `
 
 func (q *Queries) GetRequest(ctx context.Context, id uuid.UUID) (Request, error) {
@@ -197,12 +201,13 @@ func (q *Queries) GetRequest(ctx context.Context, id uuid.UUID) (Request, error)
 		&i.StepUp,
 		&i.Manager,
 		&i.ManagerReason,
+		&i.Separation,
 	)
 	return i, err
 }
 
 const listRequests = `-- name: ListRequests :many
-SELECT id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up, manager, manager_reason FROM requests
+SELECT id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up, manager, manager_reason, separation FROM requests
 WHERE (cardinality($1::text[]) = 0 OR state = ANY ($1::text[]))
   AND ($2::text = '' OR requester = $2::text)
   AND ($3::text = '' OR target = $3::text)
@@ -259,6 +264,7 @@ func (q *Queries) ListRequests(ctx context.Context, arg ListRequestsParams) ([]R
 			&i.StepUp,
 			&i.Manager,
 			&i.ManagerReason,
+			&i.Separation,
 		); err != nil {
 			return nil, err
 		}
@@ -288,7 +294,7 @@ func (q *Queries) SetRequestRules(ctx context.Context, arg SetRequestRulesParams
 const transitionRequest = `-- name: TransitionRequest :one
 UPDATE requests SET state = $1, updated_at = now()
 WHERE id = $2 AND state = $3
-RETURNING id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up, manager, manager_reason
+RETURNING id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up, manager, manager_reason, separation
 `
 
 type TransitionRequestParams struct {
@@ -329,6 +335,7 @@ func (q *Queries) TransitionRequest(ctx context.Context, arg TransitionRequestPa
 		&i.StepUp,
 		&i.Manager,
 		&i.ManagerReason,
+		&i.Separation,
 	)
 	return i, err
 }

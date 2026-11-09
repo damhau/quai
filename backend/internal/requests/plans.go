@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"slices"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -18,7 +19,10 @@ import (
 // of each stack, and moves the request on when that decides it
 // (docs/design/05-delivery-and-approvals.md#rules-on-the-plan): approved when the last rule it
 // waited for does not apply, back to pending approval when a new plan makes a rule apply that
-// the approvals do not satisfy.
+// the approvals do not satisfy. The requireTwo rule applies while a stack of the request has no
+// plan yet or its latest plan failed (docs/design/05-delivery-and-approvals.md#separation-of-duties).
+// A request pending approval whose repository's separation of duties became stricter goes stale
+// instead.
 func (s *Service) PlanReported(ctx context.Context, id uuid.UUID) error {
 	r, err := s.get(ctx, id)
 	if err != nil {
@@ -36,13 +40,25 @@ func (s *Service) PlanReported(ctx context.Context, id uuid.UUID) error {
 	if err != nil || len(runs) == 0 {
 		return err
 	}
-	decided, changed, err := policy.Decide(rules, PlanVars(runs))
-	if err != nil || !changed {
+	sets, err := s.store.ListChangeSets(ctx, r.ID)
+	if err != nil || len(sets) == 0 {
 		return err
 	}
-	sets, err := s.store.ListChangeSets(ctx, r.ID)
+	if why := s.separationTightened(r, sets[0].Repository); why != "" && r.State == PendingApproval {
+		_, err := s.transition(ctx, r, PendingApproval, Stale, "stale", map[string]any{"separation": why})
+		return err
+	}
+	decided, _, err := policy.Decide(rules, PlanVars(runs))
 	if err != nil {
 		return err
+	}
+	failed, err := s.store.LatestRequestRuns(ctx, db.LatestRequestRunsParams{RequestID: pgtype.UUID{Bytes: id, Valid: true}, Kind: "plan", Status: "failed"})
+	if err != nil {
+		return err
+	}
+	decided = undecidedPlans(decided, r.Stacks, runs, failed)
+	if !planChanged(rules, decided) {
+		return nil
 	}
 	b, _ := json.Marshal(decided)
 	return s.store.Tx(ctx, func(tx pgx.Tx, q *db.Queries) error {
@@ -92,6 +108,51 @@ func (s *Service) PlanReported(ctx context.Context, id uuid.UUID) error {
 		}
 		return s.statusJob(ctx, tx, q, r)
 	})
+}
+
+// undecidedPlans makes the requireTwo rule apply while what the request destroys is unknown, as
+// before any plan (open question 73): a stack of the request has no succeeded plan yet, or its
+// latest finished plan failed (one started no earlier than its latest succeeded one).
+func undecidedPlans(rules []policy.Rule, stacks []string, succeeded, failed []db.Run) []policy.Rule {
+	var why []string
+	for _, st := range stacks {
+		if !slices.ContainsFunc(succeeded, func(r db.Run) bool { return r.Stack == st }) &&
+			!slices.ContainsFunc(failed, func(r db.Run) bool { return r.Stack == st }) {
+			why = append(why, "no plan of "+st+" yet")
+		}
+	}
+	for _, f := range failed {
+		i := slices.IndexFunc(succeeded, func(r db.Run) bool { return r.Stack == f.Stack })
+		if i < 0 || !f.StartedAt.Time.Before(succeeded[i].StartedAt.Time) {
+			why = append(why, "the latest plan of "+f.Stack+" failed")
+		}
+	}
+	if len(why) == 0 {
+		return rules
+	}
+	slices.Sort(why)
+	for i, r := range rules {
+		if r.Overall && r.Plan != nil {
+			pc, applies := *r.Plan, true
+			pc.Applies, pc.Error = &applies, strings.Join(why, "; ")+": two approvers until a plan shows that nothing is destroyed"
+			rules[i].Plan = &pc
+		}
+	}
+	return rules
+}
+
+// planChanged reports whether a decision of the rules that read the plan differs.
+func planChanged(before, after []policy.Rule) bool {
+	for i, a := range after {
+		b := before[i]
+		if a.Plan == nil || b.Plan == nil {
+			continue
+		}
+		if (a.Plan.Applies == nil) != (b.Plan.Applies == nil) || a.Plan.Applies != nil && *a.Plan.Applies != *b.Plan.Applies || a.Plan.Error != b.Plan.Error {
+			return true
+		}
+	}
+	return false
 }
 
 // PlanVars is what the plan variable of approval rules holds for a request's latest plans, one

@@ -156,6 +156,27 @@ spec:
 	if err := json.Unmarshal(b, &back); err != nil || !strings.Contains(string(b), `"pollInterval":"1m0s"`) || back.Spec.Sync != s.Sync {
 		t.Errorf("JSON = %s, %v", b, err)
 	}
+	if strings.Contains(string(b), "separationOfDuties") || s.Enforcement.SeparationOfDuties != (SeparationOfDuties{}) {
+		t.Errorf("separation of duties without options = %+v, JSON %s", s.Enforcement.SeparationOfDuties, b)
+	}
+
+	// Separation of duties: a period in days or as a duration, kept as written.
+	for src, want := range map[string]SeparationOfDuties{
+		"{ definitionAuthors: 7d, destroys: requireTwo }": {DefinitionAuthors: Period(7 * 24 * time.Hour), Destroys: RequireTwo},
+		"{ definitionAuthors: 36h }":                      {DefinitionAuthors: Period(36 * time.Hour)},
+		"{ definitionAuthors: 90d }":                      {DefinitionAuthors: MaxDefinitionAuthors},
+	} {
+		d := doc(t, "apiVersion: quai.dev/v1beta1\nkind: Repository\nmetadata: { name: a }\nspec: { connector: gitea, url: x, enforcement: { separationOfDuties: "+src+" } }\n")
+		got := d.Spec.Enforcement.SeparationOfDuties
+		b, _ := json.Marshal(got)
+		var back SeparationOfDuties
+		if err := json.Unmarshal(b, &back); got != want || err != nil || back != want {
+			t.Errorf("%s = %+v, JSON %s read back as %+v (%v)", src, got, b, back, err)
+		}
+	}
+	if b, _ := json.Marshal(SeparationOfDuties{DefinitionAuthors: Period(7 * 24 * time.Hour)}); string(b) != `{"definitionAuthors":"7d"}` {
+		t.Errorf("JSON = %s", b)
+	}
 
 	for name, tt := range map[string]struct{ src, want string }{
 		"known hosts":   {"apiVersion: quai.dev/v1beta1\nkind: Repository\nmetadata: { name: a }\nspec: { connector: generic, url: 'git@h:r', credentials: { ref: env:KEY, knownHosts: 'h not-a-key' } }\n", "spec.credentials.knownHosts"},
@@ -171,6 +192,12 @@ spec:
 		"floor":         {"apiVersion: quai.dev/v1beta1\nkind: Repository\nmetadata: { name: a }\nspec: { connector: gitea, url: x, enforcement: { floorRules: [{ name: f, when: \"params.env ==\", approvers: [owners] }] } }\n", "floorRules[0].when"},
 		"run token":     {"apiVersion: quai.dev/v1beta1\nkind: Repository\nmetadata: { name: a }\nspec: { connector: gitea, url: x, runner: { reportToken: { ref: token123 } } }\n", "spec.runner.reportToken.ref must be a secret reference"},
 		"duration":      {"apiVersion: quai.dev/v1beta1\nkind: Repository\nmetadata: { name: a }\nspec: { connector: gitea, url: x, sync: { pollInterval: often } }\n", "is not a duration"},
+		"sod period":    {"apiVersion: quai.dev/v1beta1\nkind: Repository\nmetadata: { name: a }\nspec: { connector: gitea, url: x, enforcement: { separationOfDuties: { definitionAuthors: a week } } }\n", "is not a period"},
+		"sod zero":      {"apiVersion: quai.dev/v1beta1\nkind: Repository\nmetadata: { name: a }\nspec: { connector: gitea, url: x, enforcement: { separationOfDuties: { definitionAuthors: 0d } } }\n", "not a positive period"},
+		"sod negative":  {"apiVersion: quai.dev/v1beta1\nkind: Repository\nmetadata: { name: a }\nspec: { connector: gitea, url: x, enforcement: { separationOfDuties: { definitionAuthors: -2h } } }\n", "not a positive period"},
+		"sod too long":  {"apiVersion: quai.dev/v1beta1\nkind: Repository\nmetadata: { name: a }\nspec: { connector: gitea, url: x, enforcement: { separationOfDuties: { definitionAuthors: 91d } } }\n", "at most 90d"},
+		"sod destroys":  {"apiVersion: quai.dev/v1beta1\nkind: Repository\nmetadata: { name: a }\nspec: { connector: gitea, url: x, enforcement: { separationOfDuties: { destroys: requireThree } } }\n", "destroys must be requireTwo"},
+		"sod unknown":   {"apiVersion: quai.dev/v1beta1\nkind: Repository\nmetadata: { name: a }\nspec: { connector: gitea, url: x, enforcement: { separationOfDuties: { definitionAuthor: 7d } } }\n", "field definitionAuthor not found"},
 	} {
 		if _, err := Parse([]byte(tt.src)); err == nil || !strings.Contains(err.Error(), tt.want) {
 			t.Errorf("%s: %v, want %q", name, err, tt.want)

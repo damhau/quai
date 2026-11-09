@@ -31,3 +31,9 @@ LIMIT 2;
 
 -- name: ListUsers :many
 SELECT * FROM users ORDER BY name COLLATE "C";
+
+-- name: UsersByEmail :many
+-- The people whose email, which the directory keeps only verified, is one of emails, in any case.
+SELECT * FROM users
+WHERE email <> '' AND lower(email) = ANY(COALESCE(sqlc.narg(emails)::text[], '{}'))
+ORDER BY name COLLATE "C";

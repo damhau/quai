@@ -333,6 +333,79 @@ func TestAncestryAndChanges(t *testing.T) {
 	}
 }
 
+// TestAuthors: the commits of a range that change some paths, with every identity they carry:
+// author, committer, Co-authored-by trailers, and the committer of a merge that brings a change.
+func TestAuthors(t *testing.T) {
+	bare, _ := remote(t)
+	work := filepath.Join(t.TempDir(), "work")
+	mustRun(t, "", "clone", "--quiet", bare, work)
+	commit := func(env []string, args ...string) {
+		t.Helper()
+		if _, err := run(ctx, work, env, args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	as := func(author, committer string) []string {
+		a, ae := splitAddress(author)
+		c, ce := splitAddress(committer)
+		return []string{"GIT_AUTHOR_NAME=" + a, "GIT_AUTHOR_EMAIL=" + ae, "GIT_COMMITTER_NAME=" + c, "GIT_COMMITTER_EMAIL=" + ce}
+	}
+	m := mirror(t, bare)
+	first, _ := m.Head(ctx, "main")
+
+	// A change to the type on a side branch, with co-authors; one to another file on main; the
+	// side branch merged by Mia.
+	mustRun(t, work, "checkout", "--quiet", "-b", "side")
+	write(t, filepath.Join(work, ".quai/types/vm.yaml"), "kind: ResourceType\n")
+	mustRun(t, work, "add", "--all")
+	commit(as("Dora <dora@example.com>", "Cy <cy@example.com>"), "commit", "--quiet", "-m",
+		"Change the type\n\nCo-authored-by: Carol <Carol@Example.com>\nCo-authored-by: eve@example.com")
+	mustRun(t, work, "checkout", "--quiet", "main")
+	write(t, filepath.Join(work, "README.md"), "# other\n")
+	mustRun(t, work, "add", "--all")
+	commit(as("Ann <ann@example.com>", "Ann <ann@example.com>"), "commit", "--quiet", "-m", "Not the type")
+	commit(as("Ann <ann@example.com>", "Mia <mia@example.com>"), "merge", "--quiet", "--no-ff", "side", "-m", "Merge side")
+	mustRun(t, work, "push", "--quiet", "origin", "HEAD:main")
+	if err := m.Fetch(ctx); err != nil {
+		t.Fatal(err)
+	}
+	last, _ := m.Head(ctx, "main")
+
+	got, err := m.Authors(ctx, first, last, []string{".quai/types/vm.yaml", ".quai/schemas/vm.json"})
+	if err != nil || len(got) != 2 || got[0].SHA != last {
+		t.Fatalf("authors = %+v, %v", got, err)
+	}
+	if want := []Identity{{RoleAuthor, "Ann", "ann@example.com"}, {RoleCommitter, "Mia", "mia@example.com"}}; !slices.Equal(got[0].Identities, want) {
+		t.Errorf("the merge = %+v", got[0].Identities)
+	}
+	if want := []Identity{{RoleAuthor, "Dora", "dora@example.com"}, {RoleCommitter, "Cy", "cy@example.com"},
+		{RoleCoAuthor, "Carol", "Carol@Example.com"}, {RoleCoAuthor, "", "eve@example.com"}}; !slices.Equal(got[1].Identities, want) {
+		t.Errorf("the change = %+v", got[1].Identities)
+	}
+	// The whole history: the first commit did not touch the type either.
+	if all, err := m.Authors(ctx, "", last, []string{".quai/types/vm.yaml"}); err != nil || len(all) != 2 {
+		t.Errorf("all authors = %+v, %v", all, err)
+	}
+	// None in an empty range, nor without paths; a pattern is a literal path.
+	if none, err := m.Authors(ctx, last, last, []string{".quai/types/vm.yaml"}); err != nil || len(none) != 0 {
+		t.Errorf("an empty range = %+v, %v", none, err)
+	}
+	if none, err := m.Authors(ctx, first, last, nil); err != nil || len(none) != 0 {
+		t.Errorf("no paths = %+v, %v", none, err)
+	}
+	if none, err := m.Authors(ctx, first, last, []string{".quai/types/*"}); err != nil || len(none) != 0 {
+		t.Errorf("a pattern = %+v, %v", none, err)
+	}
+	for _, bad := range [][]string{{"../x"}, {"-p"}, {".git/config"}} {
+		if _, err := m.Authors(ctx, first, last, bad); err == nil {
+			t.Errorf("%v was accepted", bad)
+		}
+	}
+	if _, err := m.Authors(ctx, strings.Repeat("0", 40), last, []string{".quai/types/vm.yaml"}); err == nil {
+		t.Error("a commit the mirror does not have was accepted")
+	}
+}
+
 // Merges: a branch merges onto a base that changed other lines, not onto one that changed the
 // same lines.
 func TestMerges(t *testing.T) {

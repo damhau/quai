@@ -430,6 +430,11 @@ export type CredentialsHealth = {
     ref?: string;
 };
 
+export type DefinitionAuthorView = {
+    commits: Array<string> | null;
+    name: string;
+};
+
 export type Definitions = {
     branch?: string;
     path?: string;
@@ -507,6 +512,7 @@ export type DriftInputBody = {
 export type Enforcement = {
     floorRules?: Array<FloorRule> | null;
     requiredCheck?: string;
+    separationOfDuties?: SeparationOfDuties;
 };
 
 export type EnforcementView = {
@@ -904,6 +910,10 @@ export type PlanView = {
     manager?: ManagerView;
     repository: string;
     rules: Array<RuleView> | null;
+    /**
+     * The repository's separation of duties, as the request would be planned with it
+     */
+    separation?: SeparationView;
     stack?: string;
     /**
      * The approvers must have signed in recently (step-up) to review it
@@ -1030,6 +1040,10 @@ export type RequestView = {
     canCancel: boolean;
     canRetry: boolean;
     canReview: boolean;
+    /**
+     * Why you cannot review this request pending approval although a rule names you: you requested it, or you changed its definitions in the separation of duties' period before it
+     */
+    cannotReview?: string;
     changes?: Array<ChangeView> | null;
     /**
      * When a rule's approvers include codeowners: the owners the Git platform named for the changed paths when the request was submitted
@@ -1064,6 +1078,10 @@ export type RequestView = {
     requesterNotNotified?: boolean;
     reviews?: Array<ReviewView> | null;
     rules: Array<RuleView> | null;
+    /**
+     * The repository's separation of duties when the request was planned: a later change of the options does not change it
+     */
+    separation?: SeparationView;
     stack?: string;
     state: string;
     /**
@@ -1240,6 +1258,10 @@ export type RuleView = {
      */
     notApplicable?: boolean;
     /**
+     * The rule counts different people among the approvers of the request's other rules (separation of duties' requireTwo); its approvers count only when no other rule takes approvals from people
+     */
+    overall?: boolean;
+    /**
      * Why the condition could not be evaluated on the plan: the rule applies
      */
     planError?: string;
@@ -1383,6 +1405,48 @@ export type ScanView = {
 
 export type SecretRef = {
     ref?: string;
+};
+
+export type SeparationOfDuties = {
+    /**
+     * A period such as 7d (days) or 36h, at most 90d: who changed a request's definitions in that period before it was planned cannot review it
+     */
+    definitionAuthors?: string;
+    /**
+     * requireTwo: a request whose plan destroys something, or that has no plan yet, needs two different approvers
+     */
+    destroys?: 'requireTwo';
+};
+
+export type SeparationView = {
+    /**
+     * The people who cannot review, each with the commits that name them
+     */
+    authors: Array<DefinitionAuthorView> | null;
+    /**
+     * The request's definitions commit, where the period ends
+     */
+    commit?: string;
+    /**
+     * The period, such as 7d: who changed the request's definitions in it before the request was planned cannot review it
+     */
+    definitionAuthors?: string;
+    /**
+     * requireTwo: a plan that destroys something, or no plan yet, needs two different approvers
+     */
+    destroys?: 'requireTwo';
+    /**
+     * The definitions commit Quai had recorded when the period began; absent: it had none, and the whole history counted
+     */
+    from?: string;
+    /**
+     * When the period began
+     */
+    since?: string;
+    /**
+     * The identities of those commits (author, committer, co-authors) that matched no one in Quai's directory by a verified email when the request was planned: whoever signs in with one of their emails, verified, cannot review it either
+     */
+    unmatched: Array<string> | null;
 };
 
 export type Spec = {
@@ -1908,6 +1972,10 @@ export type PlanViewWritable = {
     manager?: ManagerView;
     repository: string;
     rules: Array<RuleView> | null;
+    /**
+     * The repository's separation of duties, as the request would be planned with it
+     */
+    separation?: SeparationView;
     stack?: string;
     /**
      * The approvers must have signed in recently (step-up) to review it
@@ -1989,6 +2057,10 @@ export type RequestViewWritable = {
     canCancel: boolean;
     canRetry: boolean;
     canReview: boolean;
+    /**
+     * Why you cannot review this request pending approval although a rule names you: you requested it, or you changed its definitions in the separation of duties' period before it
+     */
+    cannotReview?: string;
     changes?: Array<ChangeView> | null;
     /**
      * When a rule's approvers include codeowners: the owners the Git platform named for the changed paths when the request was submitted
@@ -2023,6 +2095,10 @@ export type RequestViewWritable = {
     requesterNotNotified?: boolean;
     reviews?: Array<ReviewView> | null;
     rules: Array<RuleView> | null;
+    /**
+     * The repository's separation of duties when the request was planned: a later change of the options does not change it
+     */
+    separation?: SeparationView;
     stack?: string;
     state: string;
     /**

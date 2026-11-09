@@ -261,8 +261,61 @@ same currency) and `policies` (each `name` and `result`). As decided
 
 - A requester never approves their own request, even as an admin.
 - One person counts once, even when they qualify for several rules, unless a rule sets `distinct: false`.
-- Optional: authors of a definition change cannot approve requests planned with that definition for N days (`separationOfDuties.definitionAuthors: 7d`).
-- Approving a request that includes a plan with destroys can require a second approver (`destroys: requireTwo`).
+- Optional, in the repository document (`spec.enforcement.separationOfDuties`, admin-owned like
+  floor rules; types and blueprints cannot set it, [open question
+  23](../plan/open-questions.md#still-open)):
+
+```yaml
+spec:
+  enforcement:
+    separationOfDuties:
+      definitionAuthors: 7d   # Nd or a duration such as 36h; positive, at most 90d
+      destroys: requireTwo    # the only value
+```
+
+As built (P4-12):
+
+- **`definitionAuthors`: who changed the definitions cannot approve.** The people who changed the
+  files of the request's type or blueprint (its schemas included) in the period before it is
+  planned cannot approve or deny it, like the requester, whatever rule names them.
+  - *Which changes.* The period is measured on what Quai recorded, never on the commits' dates,
+    which their authors write: the commits after the definitions commit Quai had recorded when
+    the period began (by the database's clock), up to the request's definitions commit, that
+    touch those files (a merge that brings such a commit in included). When Quai had recorded
+    none that early (a new connection), or that commit left the history, the whole history
+    counts ([open question 72](../plan/open-questions.md#still-open)).
+  - *Who.* Every identity a commit carries: its author, its committer and its `Co-authored-by`
+    trailers. An identity names the people whose verified email is its email ([open question
+    30](../plan/open-questions.md#still-open)), in any case, and Quai's own
+    `<name>@users.quai` the person of that name. An identity that matches no one excludes no one
+    when the request is planned, and the request lists it; whoever has one of its emails as a
+    verified email when they review is excluded too. Quai does not read the platform's records
+    (who pushed, who opened or merged the pull request) yet ([open question
+    71](../plan/open-questions.md#still-open)).
+  - *Kept.* The period, when it began, the commits, the people and the identities are computed
+    when the request is planned and kept with it: the plan and the request page show them, and
+    `request.submitted` records them (people as pseudonyms). A later commit does not change them.
+- **`destroys: requireTwo`: two different approvers when something is destroyed.** The request
+  gets the rule `separationOfDuties/destroys`: two different people, by name, never the requester
+  or a definition author, among the people whose approval counts for the request's other rules
+  that apply (`distinct: false` on those rules never lets one person count twice here, and an
+  external approval is no person). Without such a rule, its own approvers count: the resources'
+  owners and the floor rules' approvers. A denial from one of them rejects the request, as for
+  any rule ([open question 73](../plan/open-questions.md#still-open)).
+  - *Decided by each plan*, as [rules on the plan](#rules-on-the-plan) are, on `plan.destroys > 0`
+    (a replace destroys), except that it **applies until a plan says otherwise**: before any plan,
+    while a stack of the request has no plan yet, when the latest plan of a stack failed, and with
+    direct delivery, where no plan comes. A plan that destroys nothing makes it not apply; a new
+    plan that destroys, or fails, makes it apply again, and an approved request not merged yet
+    goes back to *pending approval*. Approvals given under an earlier plan stand.
+- **A later change of the options.** A request keeps the options it was planned with. When the
+  repository's become stricter (a longer `definitionAuthors` period, or `requireTwo` where it had
+  none), a request still pending approval goes stale instead of taking its next review or being
+  approved by a plan, and is planned again under the new options; one already approved is left as
+  decided. Looser options change nothing for requests planned before ([open question
+  74](../plan/open-questions.md#still-open)).
+- The request page says why someone a rule names cannot review it: they requested it, or which
+  of their commits changed its definitions in the period.
 
 ### Delegation, reminders, escalation
 

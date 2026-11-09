@@ -48,7 +48,7 @@ func transitionAudit(to, kind string) []string {
 
 // auditData are the keys of a transition's timeline data that its audit event keeps: what Quai
 // observed, never what a person wrote.
-var auditData = []string{"commit", "pullRequest", "run", "stack", "status", "error", "region", "definitions", "path", "reason", "note"}
+var auditData = []string{"commit", "pullRequest", "run", "stack", "status", "error", "region", "definitions", "separation", "path", "reason", "note"}
 
 // transitionDetails are the audit details of a transition.
 func transitionDetails(from, kind string, data map[string]any) map[string]any {

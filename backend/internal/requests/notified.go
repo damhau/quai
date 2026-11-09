@@ -16,7 +16,8 @@ type Awaiting struct {
 	Index int // the rule's position among the request's rules
 	Rule  policy.Rule
 	// People are the directory's people who may approve or deny for the rule: not deactivated,
-	// not the requester, and without a review of the current content.
+	// not the requester nor a definition author the separation of duties excludes, and without a
+	// review of the current content.
 	People []db.User
 }
 
@@ -50,13 +51,17 @@ func (s *Service) Awaiting(ctx context.Context, r db.Request) ([]Awaiting, error
 		return nil, err
 	}
 	pc := contextOf(r)
+	rules := make([]policy.Rule, len(outcome.Rules))
+	for i, st := range outcome.Rules {
+		rules[i] = st.Rule
+	}
 	for _, u := range users {
 		if u.DeactivatedAt.Valid || reviewed[u.Name] {
 			continue
 		}
 		p := policy.Person{Name: u.Name, Email: u.Email, Groups: u.Groups, Teams: s.dir.Teams(u.Groups)}
 		for i := range awaiting {
-			if policy.CanReview(awaiting[i].Rule, p, pc) {
+			if policy.Eligible(rules, awaiting[i].Index, p, pc) {
 				awaiting[i].People = append(awaiting[i].People, u)
 			}
 		}

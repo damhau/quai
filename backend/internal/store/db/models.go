@@ -217,6 +217,7 @@ type Request struct {
 	StepUp              bool
 	Manager             string
 	ManagerReason       string
+	Separation          json.RawMessage
 }
 
 type Review struct {

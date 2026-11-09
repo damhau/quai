@@ -2,9 +2,11 @@
 // Rules come from the repository's floor rules, the type (or the action's own rules, which
 // replace the type's) and the blueprint; Match keeps those whose condition holds and merges
 // those with the same approvers. Evaluate decides from the reviews: each rule needs `min`
-// approvals from its eligible approvers, a requester never approves their own request, one
-// person counts for one rule only unless a rule sets `distinct: false`, and one denial from an
-// eligible reviewer rejects the request.
+// approvals from its eligible approvers, a requester never approves their own request, nor does
+// a definition author the separation of duties excludes, one person counts for one rule only
+// unless a rule sets `distinct: false`, and one denial from an eligible reviewer rejects the
+// request. An overall rule (the repository's destroys: requireTwo) counts different people
+// across the request's rules.
 //
 // Who belongs to a group, owns a resource or manages the requester is resolved by the caller and
 // passed in; the package only decides.
@@ -43,6 +45,12 @@ type Rule struct {
 	// Plan is the condition of a rule that reads the plan, decided when a plan has reported. Such
 	// a rule is never merged with another.
 	Plan *PlanCondition `json:",omitempty"`
+	// Overall makes the rule count the different people whose approvals count for the request's
+	// other rules (those that apply, not an external system's), whatever rule each counts for, and
+	// distinct or not: Min of them. When no other rule takes approvals from people, its own
+	// approvers count. It takes no place in the other rules' matching
+	// (docs/design/05-delivery-and-approvals.md#separation-of-duties).
+	Overall bool `json:",omitempty"`
 }
 
 // PlanCondition is the condition of a rule that reads the plan (plan.*): undecided until a plan
@@ -53,6 +61,23 @@ type PlanCondition struct {
 	Vars    expr.Vars // what the condition sees besides the plan
 	Applies *bool     // nil until a plan has reported
 	Error   string    // why the condition could not be evaluated; the rule then applies
+}
+
+// The destroys: requireTwo rule's name, and why it applies before a plan says otherwise.
+const (
+	RequireTwoName = "separationOfDuties/destroys"
+	NoPlanYet      = "no plan yet: two approvers until a plan shows that nothing is destroyed"
+)
+
+// RequireTwo is the rule of the repository's separationOfDuties.destroys: requireTwo
+// (docs/design/05-delivery-and-approvals.md#separation-of-duties): two different people among
+// the request's approvers when its plan destroys something. Without a plan it applies, unlike a
+// rule waiting for the plan: Decide decides it again with each plan. Its approvers count when no
+// other rule takes approvals from people.
+func RequireTwo(approvers []string) Rule {
+	applies := true
+	return Rule{Names: []string{RequireTwoName}, Approvers: approvers, Min: 2, Distinct: true, Overall: true,
+		Plan: &PlanCondition{When: "plan.destroys > 0", Applies: &applies, Error: NoPlanYet}}
 }
 
 // Undecided reports whether a rule waits for a plan to say whether it applies.
@@ -152,11 +177,12 @@ func Decide(rules []Rule, plan map[string]any) ([]Rule, bool, error) {
 }
 
 // WithoutPlan makes the rules that wait for a plan apply, for why: where no plan can come before
-// the decision, such as in direct delivery.
+// the decision, such as in direct delivery. The requireTwo rule, which applies until a plan says
+// otherwise, says why too.
 func WithoutPlan(rules []Rule, why string) []Rule {
 	out := slices.Clone(rules)
 	for i, r := range out {
-		if r.Undecided() {
+		if r.Undecided() || r.Overall && r.Plan != nil && r.Plan.Error == NoPlanYet {
 			pc, applies := *r.Plan, true
 			pc.Applies, pc.Error = &applies, why
 			out[i].Plan = &pc
@@ -194,6 +220,18 @@ type Context struct {
 	Codeowners []string          // the platform's owners of the changed paths, as matched: user:, group: or email: entries
 	Manager    string            // the requester's manager, as submission resolved them; empty: none
 	External   map[string]string // per external system: approved, rejected, or pending when absent
+	// DefinitionAuthors are the people who changed the request's definitions in the period
+	// before it (separationOfDuties.definitionAuthors), and DefinitionAuthorEmails every email
+	// those changes carry: like the requester, none of them reviews it, including someone who
+	// gets one of the emails as a verified email later.
+	DefinitionAuthors      []string
+	DefinitionAuthorEmails []string
+}
+
+// definitionAuthor reports whether the separation of duties keeps a person from reviewing.
+func (c Context) definitionAuthor(who Person) bool {
+	return slices.Contains(c.DefinitionAuthors, who.Name) ||
+		who.Email != "" && slices.ContainsFunc(c.DefinitionAuthorEmails, func(e string) bool { return strings.EqualFold(e, who.Email) })
 }
 
 // States of an outcome.
@@ -216,10 +254,11 @@ type Outcome struct {
 	Rules []Status
 }
 
-// CanReview reports whether a person may approve or deny for a rule. Owner entries match them by
-// name (user:), group (group:), team (team:) or email (email:).
+// CanReview reports whether a person may approve or deny for a rule by its approvers: never the
+// requester, nor one of the request's definition authors. Owner entries match them by name
+// (user:), group (group:), team (team:) or email (email:). For an overall rule, use Eligible.
 func CanReview(r Rule, who Person, ctx Context) bool {
-	if who.Name == "" || who.Name == ctx.Requester {
+	if who.Name == "" || who.Name == ctx.Requester || ctx.definitionAuthor(who) {
 		return false
 	}
 	member := func(entries []string) bool {
@@ -250,6 +289,26 @@ func CanReview(r Rule, who Person, ctx Context) bool {
 	return false
 }
 
+// Eligible reports whether a person may approve or deny for the i-th of a request's rules:
+// CanReview, and for an overall rule, CanReview for one of the other rules that take approvals
+// from people and apply (one waiting for the plan does), or by its own approvers when there is none.
+func Eligible(rules []Rule, i int, who Person, ctx Context) bool {
+	if !rules[i].Overall {
+		return CanReview(rules[i], who, ctx)
+	}
+	others := false
+	for j, o := range rules {
+		if j == i || o.Overall || o.External != "" || o.NotApplicable() {
+			continue
+		}
+		others = true
+		if CanReview(o, who, ctx) {
+			return true
+		}
+	}
+	return !others && CanReview(rules[i], who, ctx)
+}
+
 // Evaluate decides a request from its reviews. With no rules, a request is approved.
 func Evaluate(rules []Rule, reviews []Review, ctx Context) Outcome {
 	// The latest decision of each reviewer counts; the requester's never does.
@@ -264,8 +323,8 @@ func Evaluate(rules []Rule, reviews []Review, ctx Context) Outcome {
 		}
 		latest[rv.Reviewer] = rv
 	}
-	eligible := func(r Rule, rv Review) bool {
-		return CanReview(r, Person{Name: rv.Reviewer, Email: rv.Email, Groups: rv.Groups, Teams: rv.Teams}, ctx)
+	eligible := func(i int, rv Review) bool {
+		return Eligible(rules, i, Person{Name: rv.Reviewer, Email: rv.Email, Groups: rv.Groups, Teams: rv.Teams}, ctx)
 	}
 
 	statuses := make([]Status, len(rules))
@@ -273,7 +332,7 @@ func Evaluate(rules []Rule, reviews []Review, ctx Context) Outcome {
 		statuses[i].Rule = r
 	}
 	denied := false
-	for _, r := range rules {
+	for i, r := range rules {
 		if r.NotApplicable() {
 			continue
 		}
@@ -281,7 +340,7 @@ func Evaluate(rules []Rule, reviews []Review, ctx Context) Outcome {
 			denied = true
 		}
 		for _, name := range order {
-			if rv := latest[name]; rv.Decision == Deny && eligible(r, rv) {
+			if rv := latest[name]; rv.Decision == Deny && eligible(i, rv) {
 				denied = true
 			}
 		}
@@ -292,10 +351,11 @@ func Evaluate(rules []Rule, reviews []Review, ctx Context) Outcome {
 
 	// Rules with distinct approvers share the pool of approvals: each person fills one slot of
 	// one rule. A maximum matching decides who counts where, so the order of reviews or rules
-	// cannot leave a rule unsatisfied when an assignment exists.
+	// cannot leave a rule unsatisfied when an assignment exists. An overall rule counts people
+	// apart.
 	var slots []int // the rule each slot belongs to
 	for i, r := range rules {
-		if r.Distinct && r.External == "" && !r.NotApplicable() {
+		if r.Distinct && r.External == "" && !r.Overall && !r.NotApplicable() {
 			for range r.Min {
 				slots = append(slots, i)
 			}
@@ -318,7 +378,7 @@ func Evaluate(rules []Rule, reviews []Review, ctx Context) Outcome {
 	var augment func(a int, seen []bool) bool
 	augment = func(a int, seen []bool) bool {
 		for s := range slots {
-			if seen[s] || !eligible(rules[slots[s]], approvers[a]) {
+			if seen[s] || !eligible(slots[s], approvers[a]) {
 				continue
 			}
 			seen[s] = true
@@ -347,9 +407,10 @@ func Evaluate(rules []Rule, reviews []Review, ctx Context) Outcome {
 			st.Satisfied = true
 		case r.External != "":
 			st.Satisfied = ctx.External[r.External] == "approved"
-		case !r.Distinct:
+		case !r.Distinct || r.Overall:
+			// Each person once: approvers holds one review per reviewer.
 			for _, a := range approvers {
-				if eligible(r, a) {
+				if eligible(i, a) {
 					st.Approvals = append(st.Approvals, a.Reviewer)
 				}
 			}

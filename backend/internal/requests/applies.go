@@ -16,8 +16,8 @@ const runsToSettle = 50
 
 // RunReported moves requests on after a run report (docs/design/06-runs-status-and-drift.md#runs-and-requests):
 // a finished plan of a request's pull request goes on its timeline and decides its rules that
-// read the plan; a finished apply settles the requests of the repository that wait for an apply
-// of its stack.
+// read the plan (a failed one only requireTwo's); a finished apply settles the requests of the
+// repository that wait for an apply of its stack.
 func (s *Service) RunReported(ctx context.Context, run db.Run) error {
 	if run.Status == "running" {
 		return nil
@@ -35,9 +35,8 @@ func (s *Service) RunReported(ctx context.Context, run db.Run) error {
 		if _, err := s.store.AddEvent(ctx, eventParams(r, "plan_reported", "", runData(run))); err != nil {
 			return err
 		}
-		if run.Status == "succeeded" {
-			return s.PlanReported(ctx, id)
-		}
+		// A failed plan decides nothing, except requireTwo: what it destroys is unknown again.
+		return s.PlanReported(ctx, id)
 	case "apply":
 		applying, err := s.store.ApplyingRequests(ctx, db.ApplyingRequestsParams{Repository: run.Repository, Stack: run.Stack})
 		if err != nil {

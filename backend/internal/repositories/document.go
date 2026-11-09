@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -91,6 +92,72 @@ type Delivery struct {
 type Enforcement struct {
 	RequiredCheck string      `json:"requiredCheck,omitempty" yaml:"requiredCheck"`
 	FloorRules    []FloorRule `json:"floorRules,omitempty" yaml:"floorRules"`
+	// SeparationOfDuties are the repository's separation-of-duties options, which no type can set
+	// (docs/design/05-delivery-and-approvals.md#separation-of-duties).
+	SeparationOfDuties SeparationOfDuties `json:"separationOfDuties,omitzero" yaml:"separationOfDuties"`
+}
+
+// SeparationOfDuties are the options of docs/design/05-delivery-and-approvals.md#separation-of-duties,
+// on top of the rules that always hold (no self-approval, one person counts once).
+type SeparationOfDuties struct {
+	// DefinitionAuthors is a period: who changed the definitions a request is planned with, in
+	// that period before it is planned, cannot review it. Zero for none.
+	DefinitionAuthors Period `json:"definitionAuthors,omitzero" yaml:"definitionAuthors" doc:"A period such as 7d (days) or 36h, at most 90d: who changed a request's definitions in that period before it was planned cannot review it"`
+	// Destroys is requireTwo: a request whose plan destroys something, or has no plan yet, needs
+	// two different approvers.
+	Destroys string `json:"destroys,omitempty" yaml:"destroys" enum:"requireTwo" doc:"requireTwo: a request whose plan destroys something, or that has no plan yet, needs two different approvers"`
+}
+
+// RequireTwo is the destroys option: two different approvers for a plan that destroys something.
+const RequireTwo = "requireTwo"
+
+// MaxDefinitionAuthors bounds the definitionAuthors period (open question 72).
+const MaxDefinitionAuthors = Period(90 * 24 * time.Hour)
+
+// Period is a positive time.Duration written in whole days ("7d") or as Go writes durations
+// ("36h", "90m").
+type Period time.Duration
+
+func (p Period) String() string {
+	d := time.Duration(p)
+	if d > 0 && d%(24*time.Hour) == 0 {
+		return strconv.FormatInt(int64(d/(24*time.Hour)), 10) + "d"
+	}
+	return d.String()
+}
+
+func (p Period) MarshalJSON() ([]byte, error) { return json.Marshal(p.String()) }
+
+func (p *Period) UnmarshalJSON(b []byte) error {
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil {
+		return err
+	}
+	return p.parse(s)
+}
+
+func (p *Period) UnmarshalYAML(n *yaml.Node) error { return p.parse(n.Value) }
+
+func (p *Period) parse(s string) error {
+	var d time.Duration
+	if days, ok := strings.CutSuffix(s, "d"); ok {
+		n, err := strconv.ParseInt(days, 10, 32)
+		if err != nil {
+			return fmt.Errorf("%q is not a period such as 7d or 36h", s)
+		}
+		d = time.Duration(n) * 24 * time.Hour
+	} else {
+		v, err := time.ParseDuration(s)
+		if err != nil {
+			return fmt.Errorf("%q is not a period such as 7d or 36h", s)
+		}
+		d = v
+	}
+	if d <= 0 {
+		return fmt.Errorf("%q is not a positive period", s)
+	}
+	*p = Period(d)
+	return nil
 }
 
 // FloorRule is an approval rule every type of the repository inherits and cannot remove.
@@ -328,6 +395,12 @@ func (d *Document) Validate() error {
 				add("spec.enforcement.floorRules[%d].when: %v", i, err)
 			}
 		}
+	}
+	if sod := s.Enforcement.SeparationOfDuties; sod.DefinitionAuthors < 0 || sod.DefinitionAuthors > MaxDefinitionAuthors {
+		add("spec.enforcement.separationOfDuties.definitionAuthors must be a positive period of at most %s", MaxDefinitionAuthors)
+	}
+	if d := s.Enforcement.SeparationOfDuties.Destroys; d != "" && d != RequireTwo {
+		add("spec.enforcement.separationOfDuties.destroys must be %s", RequireTwo)
 	}
 	if len(errs) > 0 {
 		return &InvalidError{Name: d.Metadata.Name, Problems: errs}

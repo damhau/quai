@@ -144,6 +144,10 @@ type Plan struct {
 	Inputs                 map[string]any
 	// Unmigrated are the non-conforming resources a migrate request leaves as they are, and why.
 	Unmigrated []plan.Unmigrated
+	// Separation is the repository's separation of duties as the plan applies it: its options,
+	// and who changed the definitions in the period before (docs/design/05-delivery-and-approvals.md
+	// #separation-of-duties). Submitting keeps it with the request.
+	Separation Separation
 	// StepUp says that the approvals must be made with a step-up: the stepUp condition of an
 	// approval block that applies held (docs/design/05-delivery-and-approvals.md#step-up-authentication).
 	StepUp bool
@@ -310,12 +314,10 @@ func (s *Service) PlanType(ctx context.Context, who auth.Identity, in TypeInput)
 	if in.Kind == generate.Delete && t.Spec.Deletion != "allowed" && len(p.Rules) == 0 {
 		// Deleting always needs an approval (docs/design/02, deletion): from the owners, or from
 		// whoever the repository's floor rules name, unless the type allows deletion outright.
-		approvers := []string{"owners"}
-		for _, f := range repo.FloorRules {
-			approvers = append(approvers, f.Approvers...)
-		}
-		slices.Sort(approvers)
-		p.Rules = []policy.Rule{{Names: []string{"type/deletion"}, Approvers: slices.Compact(approvers), Min: 1, Distinct: true}}
+		p.Rules = []policy.Rule{{Names: []string{"type/deletion"}, Approvers: fallbackApprovers(repo), Min: 1, Distinct: true}}
+	}
+	if err := s.withSeparation(ctx, repo, p, t.Files); err != nil {
+		return p, err
 	}
 	if err := s.withCodeowners(ctx, repo, snap, p); err != nil {
 		return p, err
@@ -380,6 +382,9 @@ func (s *Service) PlanBlueprint(ctx context.Context, who auth.Identity, in Bluep
 	sets = append(sets, policy.RuleSet{Source: policy.SourceBlueprint, Rules: b.Spec.Approval.Rules, Vars: bvars})
 	p.StepUp = p.StepUp || needsStepUp(b.Spec.Approval, bvars)
 	if p.Rules, err = policy.Match(sets...); err != nil {
+		return p, err
+	}
+	if err := s.withSeparation(ctx, repo, p, b.Files); err != nil {
 		return p, err
 	}
 	if err := s.withCodeowners(ctx, repo, snap, p); err != nil {
@@ -496,6 +501,9 @@ func (s *Service) planMigrate(ctx context.Context, who auth.Identity, repo *repo
 	if p.Rules, err = policy.Match(sets...); err != nil {
 		return p, err
 	}
+	if err := s.withSeparation(ctx, repo, p, t.Files); err != nil {
+		return p, err
+	}
 	if err := s.withCodeowners(ctx, repo, snap, p); err != nil {
 		return p, err
 	}
@@ -575,6 +583,9 @@ func (s *Service) PlanInstanceAction(ctx context.Context, who auth.Identity, in 
 	if p.Rules, err = policy.Match(sets...); err != nil {
 		return p, err
 	}
+	if err := s.withSeparation(ctx, repo, p, b.Files); err != nil {
+		return p, err
+	}
 	if err := s.withCodeowners(ctx, repo, snap, p); err != nil {
 		return p, err
 	}
@@ -608,19 +619,24 @@ func (s *Service) Submit(ctx context.Context, who auth.Identity, p *Plan, reason
 		p.Rules = policy.WithoutPlan(p.Rules, "no plan comes before a direct commit")
 		rules, _ = json.Marshal(p.Rules)
 	}
-	outcome := policy.Evaluate(p.Rules, nil, policy.Context{Requester: who.Principal.Name, Owners: owners, Codeowners: p.Codeowners.Entries, Manager: p.Manager})
+	outcome := policy.Evaluate(p.Rules, nil, policy.Context{Requester: who.Principal.Name, Owners: owners, Codeowners: p.Codeowners.Entries, Manager: p.Manager,
+		DefinitionAuthors: p.Separation.Excluded(), DefinitionAuthorEmails: p.Separation.Emails})
+	separation, err := json.Marshal(p.Separation)
+	if err != nil {
+		return db.Request{}, err
+	}
 	state := PendingApproval
 	if outcome.State == policy.Approved {
 		state = Approved
 	}
 	var created db.Request
-	err := s.store.Tx(ctx, func(tx pgx.Tx, q *db.Queries) error {
+	err = s.store.Tx(ctx, func(tx pgx.Tx, q *db.Queries) error {
 		r, err := q.CreateRequest(ctx, db.CreateRequestParams{
 			ID: uuid.New(), Kind: p.Kind, Action: p.Action, Target: p.Target, TypeName: p.Type, Blueprint: p.Blueprint,
 			Requester: who.Principal.Name, RequesterEmail: who.Email, Reason: reason, Inputs: inputs, State: state,
 			DefinitionsCommit: p.Commit, BaseCommit: p.Commit, Stack: p.Stack, Rules: rules, Owners: owners, Stacks: nonNil(p.Stacks),
 			Codeowners: nonNil(p.Codeowners.Entries), CodeownersUnmatched: nonNil(p.Codeowners.Unmatched), StepUp: p.StepUp,
-			Manager: p.Manager, ManagerReason: p.ManagerReason,
+			Manager: p.Manager, ManagerReason: p.ManagerReason, Separation: separation,
 		})
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
@@ -648,8 +664,12 @@ func (s *Service) Submit(ctx context.Context, who auth.Identity, p *Plan, reason
 		if err := s.event(ctx, tx, r, "submitted", who.Principal.Name, nil); err != nil {
 			return err
 		}
-		if err := recordRequest(ctx, tx, r, "submitted", map[string]any{"kind": p.Kind, "action": p.Action, "type": p.Type, "blueprint": p.Blueprint,
-			"repository": p.Repository, "changeSet": p.ChangeSet.Hash, "definitionsCommit": p.Commit, "reason": audit.Personal(reason)}); err != nil {
+		details := map[string]any{"kind": p.Kind, "action": p.Action, "type": p.Type, "blueprint": p.Blueprint,
+			"repository": p.Repository, "changeSet": p.ChangeSet.Hash, "definitionsCommit": p.Commit, "reason": audit.Personal(reason)}
+		if sod := separationDetails(p.Separation); sod != nil {
+			details["separationOfDuties"] = sod
+		}
+		if err := recordRequest(ctx, tx, r, "submitted", details); err != nil {
 			return err
 		}
 		if state == Approved {
@@ -721,19 +741,27 @@ func (s *Service) Reviews(ctx context.Context, r db.Request) ([]db.Review, polic
 
 // contextOf is what the policy needs to know of a request to decide it.
 func contextOf(r db.Request) policy.Context {
-	return policy.Context{Requester: r.Requester, Owners: r.Owners, Codeowners: r.Codeowners, Manager: r.Manager}
+	sep := SeparationOf(r)
+	return policy.Context{Requester: r.Requester, Owners: r.Owners, Codeowners: r.Codeowners, Manager: r.Manager,
+		DefinitionAuthors: sep.Excluded(), DefinitionAuthorEmails: sep.Emails}
 }
 
 // CanReview reports whether someone may approve or deny a request.
 func CanReview(r db.Request, p authzPrincipal) bool {
-	if r.State != PendingApproval {
-		return false
-	}
+	return r.State == PendingApproval && eligible(r, p, contextOf(r))
+}
+
+// eligible reports whether a rule of a request takes someone's review in ctx.
+func eligible(r db.Request, p authzPrincipal, ctx policy.Context) bool {
 	var rules []policy.Rule
 	_ = json.Unmarshal(r.Rules, &rules)
-	ctx := contextOf(r)
 	who := policy.Person{Name: p.Name, Email: p.Email, Groups: p.Groups, Teams: p.Teams}
-	return slices.ContainsFunc(rules, func(rule policy.Rule) bool { return policy.CanReview(rule, who, ctx) })
+	for i := range rules {
+		if policy.Eligible(rules, i, who, ctx) {
+			return true
+		}
+	}
+	return false
 }
 
 type authzPrincipal = authz.Principal
@@ -800,6 +828,9 @@ func (s *Service) ReviewLink(ctx context.Context, who auth.Identity, id uuid.UUI
 		return r, err
 	} else if changed != "" {
 		return s.transition(ctx, r, PendingApproval, Stale, "stale", map[string]any{"definitions": changed})
+	}
+	if why := s.separationTightened(r, sets[0].Repository); why != "" {
+		return s.transition(ctx, r, PendingApproval, Stale, "stale", map[string]any{"separation": why})
 	}
 	var next db.Request
 	err = s.store.Tx(ctx, func(tx pgx.Tx, q *db.Queries) error {

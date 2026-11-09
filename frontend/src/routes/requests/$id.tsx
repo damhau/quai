@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import { createFileRoute, Link } from "@tanstack/react-router"
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query"
-import { AlertCircle, BellOff, Check, GitPullRequest, KeyRound, MessageSquare, RotateCcw, X } from "lucide-react"
+import { AlertCircle, BellOff, Check, GitPullRequest, KeyRound, MessageSquare, RotateCcw, UserX, X } from "lucide-react"
 import {
   cancelRequestMutation,
   getMeOptions,
@@ -16,6 +16,7 @@ import type { DeliveryView, RequestView } from "@/api/generated/types.gen"
 import { ApprovalChain } from "@/components/approval/approval-chain"
 import { Codeowners } from "@/components/approval/codeowners"
 import { Manager } from "@/components/approval/manager"
+import { Separation } from "@/components/approval/separation"
 import { ChangesView } from "@/components/diff/changes-view"
 import { Plans } from "@/components/requests/plans"
 import { StateBadge } from "@/components/requests/state-badge"
@@ -122,6 +123,7 @@ function RequestPage() {
               <ApprovalChain rules={r.rules ?? []} />
               {r.codeowners && <Codeowners codeowners={r.codeowners} />}
               {r.manager && <Manager manager={r.manager} submitted />}
+              {r.separation && <Separation separation={r.separation} submitted />}
               {(r.reviews ?? []).length > 0 && (
                 <ul className="grid gap-3" aria-label="Reviews">
                   {(r.reviews ?? []).map((v) => (
@@ -139,7 +141,13 @@ function RequestPage() {
                   ))}
                 </ul>
               )}
-              {r.canReview ? <ReviewBox request={r} link={link} /> : link && <ChatLinkNotice request={r} link={link} />}
+              {r.canReview ? (
+                <ReviewBox request={r} link={link} />
+              ) : link ? (
+                <ChatLinkNotice request={r} link={link} />
+              ) : (
+                r.cannotReview && <CannotReview reason={r.cannotReview} />
+              )}
               <Actions request={r} />
             </CardContent>
           </Card>
@@ -340,9 +348,22 @@ function ChatLinkNotice({ request, link }: { request: RequestView; link: string 
         <Alert role="status">
           <MessageSquare />
           <AlertTitle>This link from chat cannot be used</AlertTitle>
-          <AlertDescription>You are not among the approvers of this request now.</AlertDescription>
+          <AlertDescription>{request.cannotReview || "You are not among the approvers of this request now."}</AlertDescription>
         </Alert>
       )}
+    </div>
+  )
+}
+
+/** CannotReview says why someone a rule names cannot review the request: they requested it, or changed its definitions. */
+function CannotReview({ reason }: { reason: string }) {
+  return (
+    <div className="grid gap-3 border-t pt-4">
+      <Alert role="status">
+        <UserX />
+        <AlertTitle>You cannot review this request</AlertTitle>
+        <AlertDescription>{reason}</AlertDescription>
+      </Alert>
     </div>
   )
 }

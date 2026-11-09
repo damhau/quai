@@ -593,6 +593,86 @@ func (m *Mirror) Changes(ctx context.Context, from, to string) ([]CommitFiles, e
 	return commits, nil
 }
 
+// Identity is a name and an email a commit carries, in a role: author, committer or co-author
+// (a Co-authored-by trailer). Git does not verify them.
+type Identity struct {
+	Role  string `json:"role"`
+	Name  string `json:"name"`
+	Email string `json:"email"`
+}
+
+// Identity roles.
+const (
+	RoleAuthor    = "author"
+	RoleCommitter = "committer"
+	RoleCoAuthor  = "co-author"
+)
+
+// Authored is a commit and the identities it carries.
+type Authored struct {
+	SHA        string
+	Identities []Identity
+}
+
+// Authors returns the commits reachable from to and not from from (all of to's history when from
+// is empty) that change one of paths, newest first, with the identities each carries. Every
+// parent of a merge is followed, and a merge that brings a change to the paths is one of them:
+// its committer merged it. Paths are literal, never patterns.
+func (m *Mirror) Authors(ctx context.Context, from, to string, paths []string) ([]Authored, error) {
+	if err := checkCommit(to); err != nil {
+		return nil, err
+	}
+	rng := to
+	if from != "" {
+		if err := checkCommit(from); err != nil {
+			return nil, err
+		}
+		rng = from + ".." + to
+	}
+	if len(paths) == 0 {
+		return nil, nil
+	}
+	for _, p := range paths {
+		if err := checkPath(p); err != nil {
+			return nil, err
+		}
+	}
+	args := append([]string{"--literal-pathspecs", "log", "--full-history",
+		"--format=%x1e%H%x1f%an%x1f%ae%x1f%cn%x1f%ce%x1f%(trailers:key=Co-authored-by,valueonly,unfold,separator=%x1d)", rng, "--"}, paths...)
+	out, err := m.git(ctx, "", args...)
+	if err != nil {
+		return nil, fmt.Errorf("authors in %s: %w", rng, err)
+	}
+	var commits []Authored
+	for _, rec := range strings.Split(out, "\x1e") {
+		f := strings.SplitN(strings.TrimRight(rec, "\n"), "\x1f", 6)
+		if len(f) < 6 || f[0] == "" {
+			continue
+		}
+		c := Authored{SHA: f[0], Identities: []Identity{{Role: RoleAuthor, Name: f[1], Email: f[2]}, {Role: RoleCommitter, Name: f[3], Email: f[4]}}}
+		for _, v := range strings.Split(f[5], "\x1d") {
+			if v = strings.TrimSpace(v); v != "" {
+				name, email := splitAddress(v)
+				c.Identities = append(c.Identities, Identity{Role: RoleCoAuthor, Name: name, Email: email})
+			}
+		}
+		commits = append(commits, c)
+	}
+	return commits, nil
+}
+
+// splitAddress splits "Name <email>"; a value without <> is an email when it has an @, a name
+// otherwise.
+func splitAddress(v string) (string, string) {
+	if i := strings.LastIndex(v, "<"); i >= 0 && strings.HasSuffix(v, ">") {
+		return strings.TrimSpace(v[:i]), strings.TrimSpace(v[i+1 : len(v)-1])
+	}
+	if strings.Contains(v, "@") {
+		return "", v
+	}
+	return v, ""
+}
+
 // FileChange is a file a diff touches: Status is A (added), M (modified) or D (deleted).
 type FileChange struct {
 	Path   string

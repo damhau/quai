@@ -8,7 +8,39 @@ package db
 import (
 	"context"
 	"encoding/json"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
+
+const definitionsSince = `-- name: DefinitionsSince :one
+SELECT w.since::timestamptz AS since, COALESCE(d.commit, '')::text AS commit
+FROM (SELECT now() - make_interval(secs => $1::float8) AS since) w
+LEFT JOIN LATERAL (
+    SELECT commit FROM definition_sets
+    WHERE repository = $2 AND created_at <= w.since
+    ORDER BY created_at DESC LIMIT 1
+) d ON true
+`
+
+type DefinitionsSinceParams struct {
+	Seconds    float64
+	Repository string
+}
+
+type DefinitionsSinceRow struct {
+	Since  pgtype.Timestamptz
+	Commit string
+}
+
+// When a period of seconds ending now began, by the database's clock, which stamped the sets, and
+// the commit of the set stored last for the repository by then: the head Quai had then, "" when it
+// had none (separation of duties, docs/design/05-delivery-and-approvals.md#separation-of-duties).
+func (q *Queries) DefinitionsSince(ctx context.Context, arg DefinitionsSinceParams) (DefinitionsSinceRow, error) {
+	row := q.db.QueryRow(ctx, definitionsSince, arg.Seconds, arg.Repository)
+	var i DefinitionsSinceRow
+	err := row.Scan(&i.Since, &i.Commit)
+	return i, err
+}
 
 const getDefinitionSet = `-- name: GetDefinitionSet :one
 SELECT org_id, repository, commit, active, problems, created_at FROM definition_sets WHERE repository = $1 AND commit = $2

@@ -1226,6 +1226,28 @@
         ],
         "type": "object"
       },
+      "DefinitionAuthorView": {
+        "additionalProperties": false,
+        "properties": {
+          "commits": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "commits"
+        ],
+        "type": "object"
+      },
       "Definitions": {
         "additionalProperties": false,
         "properties": {
@@ -1450,6 +1472,9 @@
           },
           "requiredCheck": {
             "type": "string"
+          },
+          "separationOfDuties": {
+            "$ref": "#/components/schemas/SeparationOfDuties"
           }
         },
         "type": "object"
@@ -2488,6 +2513,10 @@
               "null"
             ]
           },
+          "separation": {
+            "$ref": "#/components/schemas/SeparationView",
+            "description": "The repository's separation of duties, as the request would be planned with it"
+          },
           "stack": {
             "type": "string"
           },
@@ -2836,6 +2865,10 @@
           "canReview": {
             "type": "boolean"
           },
+          "cannotReview": {
+            "description": "Why you cannot review this request pending approval although a rule names you: you requested it, or you changed its definitions in the separation of duties' period before it",
+            "type": "string"
+          },
           "changes": {
             "items": {
               "$ref": "#/components/schemas/ChangeView"
@@ -2924,6 +2957,10 @@
               "array",
               "null"
             ]
+          },
+          "separation": {
+            "$ref": "#/components/schemas/SeparationView",
+            "description": "The repository's separation of duties when the request was planned: a later change of the options does not change it"
           },
           "stack": {
             "type": "string"
@@ -3384,6 +3421,10 @@
             "description": "The plan says the rule does not apply",
             "type": "boolean"
           },
+          "overall": {
+            "description": "The rule counts different people among the approvers of the request's other rules (separation of duties' requireTwo); its approvers count only when no other rule takes approvals from people",
+            "type": "boolean"
+          },
           "planError": {
             "description": "Why the condition could not be evaluated on the plan: the rule applies",
             "type": "string"
@@ -3802,6 +3843,77 @@
             "type": "string"
           }
         },
+        "type": "object"
+      },
+      "SeparationOfDuties": {
+        "additionalProperties": false,
+        "properties": {
+          "definitionAuthors": {
+            "description": "A period such as 7d (days) or 36h, at most 90d: who changed a request's definitions in that period before it was planned cannot review it",
+            "type": "string"
+          },
+          "destroys": {
+            "description": "requireTwo: a request whose plan destroys something, or that has no plan yet, needs two different approvers",
+            "enum": [
+              "requireTwo"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "SeparationView": {
+        "additionalProperties": false,
+        "properties": {
+          "authors": {
+            "description": "The people who cannot review, each with the commits that name them",
+            "items": {
+              "$ref": "#/components/schemas/DefinitionAuthorView"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "commit": {
+            "description": "The request's definitions commit, where the period ends",
+            "type": "string"
+          },
+          "definitionAuthors": {
+            "description": "The period, such as 7d: who changed the request's definitions in it before the request was planned cannot review it",
+            "type": "string"
+          },
+          "destroys": {
+            "description": "requireTwo: a plan that destroys something, or no plan yet, needs two different approvers",
+            "enum": [
+              "requireTwo"
+            ],
+            "type": "string"
+          },
+          "from": {
+            "description": "The definitions commit Quai had recorded when the period began; absent: it had none, and the whole history counted",
+            "type": "string"
+          },
+          "since": {
+            "description": "When the period began",
+            "format": "date-time",
+            "type": "string"
+          },
+          "unmatched": {
+            "description": "The identities of those commits (author, committer, co-authors) that matched no one in Quai's directory by a verified email when the request was planned: whoever signs in with one of their emails, verified, cannot review it either",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "authors",
+          "unmatched"
+        ],
         "type": "object"
       },
       "Spec": {

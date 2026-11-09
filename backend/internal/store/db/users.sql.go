@@ -126,6 +126,48 @@ func (q *Queries) RecordUserLogin(ctx context.Context, arg RecordUserLoginParams
 	return result.RowsAffected(), nil
 }
 
+const usersByEmail = `-- name: UsersByEmail :many
+SELECT org_id, name, email, groups, subject, object_id, last_login, auth_time, deactivated_at, created_at, updated_at, manager_id, manager_source, manager_reason FROM users
+WHERE email <> '' AND lower(email) = ANY(COALESCE($1::text[], '{}'))
+ORDER BY name COLLATE "C"
+`
+
+// The people whose email, which the directory keeps only verified, is one of emails, in any case.
+func (q *Queries) UsersByEmail(ctx context.Context, emails []string) ([]User, error) {
+	rows, err := q.db.Query(ctx, usersByEmail, emails)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []User{}
+	for rows.Next() {
+		var i User
+		if err := rows.Scan(
+			&i.OrgID,
+			&i.Name,
+			&i.Email,
+			&i.Groups,
+			&i.Subject,
+			&i.ObjectID,
+			&i.LastLogin,
+			&i.AuthTime,
+			&i.DeactivatedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.ManagerID,
+			&i.ManagerSource,
+			&i.ManagerReason,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const usersByIdentifier = `-- name: UsersByIdentifier :many
 SELECT org_id, name, email, groups, subject, object_id, last_login, auth_time, deactivated_at, created_at, updated_at, manager_id, manager_source, manager_reason FROM users
 WHERE $1::text <> ''

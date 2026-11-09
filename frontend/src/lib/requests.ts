@@ -1,4 +1,4 @@
-import type { EventView, RequestView } from "@/api/generated/types.gen"
+import type { EventView, RequestView, RuleView } from "@/api/generated/types.gen"
 import { shortSha, webURL } from "@/lib/format"
 
 // How requests read in the UI. States and event kinds are those of backend/internal/requests.
@@ -63,8 +63,17 @@ export function runURL(e: EventView): string | undefined {
 
 /** planDecisions says which rules a plan made apply, from a plan_decided event. */
 function planDecisions(d: unknown): string {
-  const decisions = (d as { decisions?: { rules?: string[]; applies?: boolean }[] } | null)?.decisions ?? []
-  return decisions.map((x) => `${(x.rules ?? []).join(", ")} ${x.applies ? "applies" : "does not apply"}`).join("; ") || "none"
+  const decisions = (d as { decisions?: { rules?: string[]; applies?: boolean; error?: string }[] } | null)?.decisions ?? []
+  return decisions.map((x) => `${(x.rules ?? []).join(", ")} ${x.applies ? "applies" : "does not apply"}${x.error ? ` (${x.error})` : ""}`).join("; ") || "none"
+}
+
+/**
+ * amongOthers says whether an overall rule (separation of duties' requireTwo) counts the approvers
+ * of the request's other rules: those that take approvals from people and apply. Without such a
+ * rule, its own approvers count.
+ */
+export function amongOthers(rules: RuleView[], rule: RuleView): boolean {
+  return rules.some((o) => o !== rule && !o.overall && !o.external && !o.notApplicable)
 }
 
 export function eventText(e: EventView): string {
@@ -81,6 +90,7 @@ export function eventText(e: EventView): string {
     case "rejected":
       return "denied the request"
     case "stale":
+      if (str(d, "separation")) return `${str(d, "separation")}; plan the request again`
       if (str(d, "definitions")) return `${str(d, "definitions")} since the plan; plan the request again`
       if (str(d, "region")) return `${str(d, "region")} changed on the base branch; plan the request again`
       return `the files changed since the plan${str(d, "error") ? `: ${str(d, "error")}` : ""}; plan the request again`
