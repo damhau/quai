@@ -686,7 +686,7 @@ export type ErrorModel = {
 
 export type EventPreferenceInput = {
     channel: 'email' | 'teams' | 'slack';
-    kind: 'approval_needed' | 'submitted' | 'approved' | 'rejected' | 'stale' | 'merged' | 'applied' | 'failed' | 'expiring_soon';
+    kind: 'approval_needed' | 'submitted' | 'approved' | 'rejected' | 'stale' | 'merged' | 'applied' | 'failed' | 'expiring_soon' | 'expired';
     mode: 'immediate' | 'digest' | 'off';
 };
 
@@ -696,7 +696,7 @@ export type EventPreferenceView = {
      * The mode until one is chosen (notifications.defaults)
      */
     default: 'immediate' | 'digest' | 'off';
-    kind: 'approval_needed' | 'submitted' | 'approved' | 'rejected' | 'stale' | 'merged' | 'applied' | 'failed' | 'expiring_soon';
+    kind: 'approval_needed' | 'submitted' | 'approved' | 'rejected' | 'stale' | 'merged' | 'applied' | 'failed' | 'expiring_soon' | 'expired';
     /**
      * At once, in the daily digest, or not at all
      */
@@ -1014,7 +1014,7 @@ export type PreferencesOutputBody = {
     defaultDigest: DigestView;
     digest: DigestView;
     /**
-     * For each kind one chooses and channel configured. Alerts are not among them: they always go at once
+     * For each kind one chooses and channel configured. Alerts and escalations are not among them: they always go at once
      */
     events: Array<EventPreferenceView> | null;
 };
@@ -1130,6 +1130,14 @@ export type RequestView = {
      */
     delivery?: DeliveryView;
     events?: Array<EventView> | null;
+    /**
+     * When it expires if it still waits for approval: its submission and its expiry
+     */
+    expiresAt?: string;
+    /**
+     * The approval expiry its definitions set when it was planned, as written (7d): a request still pending approval then expires
+     */
+    expiry?: string;
     id: string;
     inputs: {
         [key: string]: unknown;
@@ -1333,6 +1341,10 @@ export type ReviewView = {
      * The reviewer's authentication satisfied the step-up when they reviewed
      */
     stepUp?: boolean;
+    /**
+     * The request expired: the review is void and never counts again
+     */
+    voided?: boolean;
 };
 
 export type RoleView = {
@@ -2166,7 +2178,7 @@ export type PreferencesOutputBodyWritable = {
     defaultDigest: DigestView;
     digest: DigestView;
     /**
-     * For each kind one chooses and channel configured. Alerts are not among them: they always go at once
+     * For each kind one chooses and channel configured. Alerts and escalations are not among them: they always go at once
      */
     events: Array<EventPreferenceView> | null;
 };
@@ -2241,6 +2253,14 @@ export type RequestViewWritable = {
      */
     delivery?: DeliveryView;
     events?: Array<EventView> | null;
+    /**
+     * When it expires if it still waits for approval: its submission and its expiry
+     */
+    expiresAt?: string;
+    /**
+     * The approval expiry its definitions set when it was planned, as written (7d): a request still pending approval then expires
+     */
+    expiry?: string;
     id: string;
     inputs: {
         [key: string]: unknown;

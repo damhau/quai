@@ -22,7 +22,7 @@ import (
 // config.NotificationKinds, config.NotificationChannels and config.NotificationModes (a test keeps
 // them equal).
 type EventPreferenceView struct {
-	Kind    string   `json:"kind" enum:"approval_needed,submitted,approved,rejected,stale,merged,applied,failed,expiring_soon"`
+	Kind    string   `json:"kind" enum:"approval_needed,submitted,approved,rejected,stale,merged,applied,failed,expiring_soon,expired"`
 	Channel string   `json:"channel" enum:"email,teams,slack"`
 	Mode    string   `json:"mode" enum:"immediate,digest,off" doc:"At once, in the daily digest, or not at all"`
 	Default string   `json:"default" enum:"immediate,digest,off" doc:"The mode until one is chosen (notifications.defaults)"`
@@ -39,7 +39,7 @@ type DigestView struct {
 type PreferencesOutput struct {
 	Body struct {
 		Channels      []string              `json:"channels" doc:"The channels configured; none: Quai sends no notifications"`
-		Events        []EventPreferenceView `json:"events" doc:"For each kind one chooses and channel configured. Alerts are not among them: they always go at once"`
+		Events        []EventPreferenceView `json:"events" doc:"For each kind one chooses and channel configured. Alerts and escalations are not among them: they always go at once"`
 		Digest        DigestView            `json:"digest"`
 		DefaultDigest DigestView            `json:"defaultDigest" doc:"When the digest goes until one chooses (notifications.defaults.digest)"`
 		Customized    bool                  `json:"customized" doc:"Whether anything differs from the defaults"`
@@ -48,7 +48,7 @@ type PreferencesOutput struct {
 
 // EventPreferenceInput is how the caller wants a kind of notification on a channel.
 type EventPreferenceInput struct {
-	Kind    string `json:"kind" enum:"approval_needed,submitted,approved,rejected,stale,merged,applied,failed,expiring_soon"`
+	Kind    string `json:"kind" enum:"approval_needed,submitted,approved,rejected,stale,merged,applied,failed,expiring_soon,expired"`
 	Channel string `json:"channel" enum:"email,teams,slack"`
 	Mode    string `json:"mode" enum:"immediate,digest,off"`
 }
@@ -90,8 +90,8 @@ func registerPreferences(a huma.API, s *store.Store, settings notify.Settings) {
 	huma.Register(a, huma.Operation{
 		OperationID: "update-preferences", Method: http.MethodPut, Path: Prefix + "/me/preferences",
 		Summary: "Set your notification preferences", Tags: []string{"Identity"},
-		Description: "Each kind and channel left out, or chosen as its default, follows the default. Alerts are not a kind one " +
-			"chooses: they always go at once. Approval needed cannot be off on every channel.",
+		Description: "Each kind and channel left out, or chosen as its default, follows the default. Alerts and escalations are not " +
+			"kinds one chooses: they always go at once. Approval needed (reminders included) cannot be off on every channel.",
 	}, func(ctx context.Context, in *UpdatePreferencesInput) (*PreferencesOutput, error) {
 		id, err := authorize(ctx, authz.ManageOwnPreferences, authz.Object{})
 		if err != nil {

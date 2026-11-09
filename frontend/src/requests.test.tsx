@@ -69,6 +69,37 @@ test("the requester can cancel a request that is not delivered", async () => {
   expect(screen.queryByRole("button", { name: "Cancel request" })).not.toBeInTheDocument()
 })
 
+test("a request says when it expires; expired, its approvals show as void and the timeline says why", async () => {
+  requests.current = { ...pendingVM(), expiry: "7d", expiresAt: "2026-11-03T10:00:00Z" }
+  const pending = renderApp(`/requests/${id}`)
+  expect(await screen.findByText(/^Expires on .* unless it is approved by then \(expiry 7d\)\.$/)).toBeInTheDocument()
+  pending.unmount()
+
+  const at = "2026-11-03T10:00:30Z"
+  requests.current = {
+    ...requests.current,
+    state: "expired",
+    reviews: [{ reviewer: "alice", decision: "approve", at: "2026-10-28T09:00:00Z", stepUp: false, voided: true }],
+    events: [
+      ...(requests.current.events ?? []),
+      { kind: "reminded", actor: "", data: { after: "48h0m0s" }, at: "2026-10-29T10:00:00Z" },
+      { kind: "expired", actor: "", data: { expiry: "7d", expiresAt: "2026-11-03T10:00:00.000Z" }, at },
+      { kind: "expiry_commented", actor: "", data: { pullRequest: "12" }, at },
+      { kind: "pull_request_closed", actor: "", data: { pullRequest: "12", reason: "expired" }, at },
+    ],
+  }
+  renderApp(`/requests/${id}`)
+  expect(await screen.findByText("Expired", { selector: "[data-slot=badge]" })).toBeInTheDocument()
+  expect(screen.getByText(/Expired: it waited for approval longer than its expiry \(7d\), so its approvals are void/)).toBeInTheDocument()
+  expect(within(screen.getByRole("list", { name: "Reviews" })).getByText(/void: the request expired/)).toBeInTheDocument()
+  const timeline = within(screen.getByRole("list", { name: "Timeline" }))
+  expect(timeline.getByText("reminded its approvers, 48h0m0s after it was submitted")).toBeInTheDocument()
+  expect(timeline.getByText("expired: it waited for approval longer than its expiry (7d); its approvals are void")).toBeInTheDocument()
+  expect(timeline.getByText("closed pull request #12")).toBeInTheDocument()
+  expect(screen.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument()
+  expect(screen.queryByRole("button", { name: "Cancel request" })).not.toBeInTheDocument()
+})
+
 test("a request that does not exist says so", async () => {
   renderApp("/requests/22222222-2222-4222-8222-222222222222")
   expect(await screen.findByText("This page cannot be shown")).toBeInTheDocument()

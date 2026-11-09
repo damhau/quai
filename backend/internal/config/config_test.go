@@ -572,3 +572,34 @@ func TestRepositories(t *testing.T) {
 		t.Errorf("QUAI_GIT_CACHE_DIR = %+v, %v", c.Git, err)
 	}
 }
+
+// TestApprovals: approvals.reminders and approvals.escalation (open question 25): off by default;
+// an escalation needs both when and whom, comes after the reminder, and names groups or users.
+func TestApprovals(t *testing.T) {
+	c, err := Load("", env(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Approvals.Reminders.After != 0 || c.Approvals.Escalation.After != 0 || len(c.Approvals.Escalation.To) != 0 {
+		t.Errorf("default approvals = %+v", c.Approvals)
+	}
+	p := write(t, "approvals: { reminders: { after: 24h }, escalation: { after: 72h, to: [group:platform-leads, user:dana.smith@example.com] } }\n")
+	if c, err = Load(p, env(nil)); err != nil {
+		t.Fatal(err)
+	}
+	if a := c.Approvals; a.Reminders.After != 24*time.Hour || a.Escalation.After != 72*time.Hour || !slices.Equal(a.Escalation.To, []string{"group:platform-leads", "user:dana.smith@example.com"}) {
+		t.Errorf("approvals = %+v", a)
+	}
+	for yaml, want := range map[string]string{
+		"approvals: { reminders: { after: -1h } }":                                           "approvals.reminders.after must not be negative",
+		"approvals: { escalation: { after: 48h } }":                                          "approvals.escalation.after needs approvals.escalation.to",
+		"approvals: { escalation: { to: [group:leads] } }":                                   "approvals.escalation.to needs approvals.escalation.after",
+		"approvals: { reminders: { after: 48h }, escalation: { after: 48h, to: [user:x] } }": "must come after approvals.reminders.after",
+		"approvals: { escalation: { after: 48h, to: [leads] } }":                             `approvals.escalation.to[0] must be group:<name> or user:<name>, not "leads"`,
+		"approvals: { escalation: { after: 48h, to: [\"group:\"] } }":                        "approvals.escalation.to[0] must be",
+	} {
+		if _, err := Load(write(t, yaml+"\n"), env(nil)); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%s: %v, want %q", yaml, err, want)
+		}
+	}
+}

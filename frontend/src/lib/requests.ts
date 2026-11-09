@@ -16,6 +16,7 @@ export const states: Record<string, { label: string; tone: Tone }> = {
   failed: { label: "Failed", tone: "bad" },
   stale: { label: "Stale", tone: "waiting" },
   cancelled: { label: "Cancelled", tone: "neutral" },
+  expired: { label: "Expired", tone: "bad" },
   // Runs' statuses, shown with the same badges.
   running: { label: "Running", tone: "waiting" },
   succeeded: { label: "Succeeded", tone: "good" },
@@ -128,6 +129,20 @@ export function eventText(e: EventView): string {
       return `the plan decided the rules that read it: ${planDecisions(d)}`
     case "approval_needed":
       return `needs approval again: ${str(d, "reason") ?? "the rules changed"}`
+    case "reminded":
+      return `reminded its approvers${str(d, "after") ? `, ${str(d, "after")} after it was submitted` : ""}`
+    case "escalated":
+      return `notified the escalation contacts${str(d, "after") ? `, ${str(d, "after")} after it was submitted` : ""}`
+    case "expiring_soon":
+      return "told the requester it expires soon"
+    case "expired":
+      return `expired: it waited for approval longer than its expiry${str(d, "expiry") ? ` (${str(d, "expiry")})` : ""}; its approvals are void`
+    case "expiry_commented":
+      return "said on the pull request why it closes"
+    case "pull_request_closed":
+      return `closed pull request #${str(d, "pullRequest") ?? ""}`
+    case "pull_request_left":
+      return `left pull request #${str(d, "pullRequest") ?? ""} as it is: ${str(d, "reason") ?? "it was closed"}`
   }
   return e.kind
 }

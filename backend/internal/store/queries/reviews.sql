@@ -11,3 +11,7 @@ RETURNING *;
 
 -- name: ListReviews :many
 SELECT * FROM reviews WHERE request_id = $1 ORDER BY created_at, id;
+
+-- name: VoidReviews :execrows
+-- The reviews of a request that expired: they never count again.
+UPDATE reviews SET voided_at = sqlc.arg(at) WHERE request_id = sqlc.arg(request_id) AND voided_at IS NULL;

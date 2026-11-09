@@ -40,6 +40,7 @@ func (s *Service) Workers(w *river.Workers) {
 	river.AddWorker(w, &openWorker{s: s})
 	river.AddWorker(w, &statusWorker{s: s})
 	river.AddWorker(w, &deleteBranchWorker{s: s})
+	river.AddWorker(w, &sweepWorker{s: s})
 }
 
 var slugRe = regexp.MustCompile(`[^a-z0-9]+`)
@@ -326,7 +327,8 @@ func (s *Service) publishLatest(ctx context.Context, repo *repositories.Repo, id
 }
 
 // publish sets quai/approval for the request's state, with description if given; a rejected or
-// cancelled request's pull request is closed and its branch deleted.
+// cancelled request's pull request is closed and its branch deleted, an expired one's as
+// closeExpired says.
 func (s *Service) publish(ctx context.Context, repo *repositories.Repo, r db.Request, d db.Delivery, description string) error {
 	st := connectors.Status{Name: repo.Document.Spec.Enforcement.RequiredCheck, URL: s.link(r)}
 	closePR := false
@@ -341,6 +343,8 @@ func (s *Service) publish(ctx context.Context, repo *repositories.Repo, r db.Req
 		st.State, st.Description, closePR = connectors.StatusFailure, "Cancelled in Quai", true
 	case Stale:
 		st.State, st.Description = connectors.StatusNotApplicable, "Stale: plan the request again in Quai"
+	case Expired:
+		return s.closeExpired(ctx, repo, r, d, st)
 	default:
 		return nil
 	}

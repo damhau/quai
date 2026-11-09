@@ -26,7 +26,7 @@ var (
 	approverRe   = regexp.MustCompile(`^(group|user):[^\s:]+$`)
 	entitledRe   = regexp.MustCompile(`^(group|user):[^\s:]+$`)
 	digestRe     = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
-	durationRe   = regexp.MustCompile(`^[0-9]+[mhd]$`)
+	durationRe   = regexp.MustCompile(`^([0-9]+)([mhd])$`)
 	dataFileRe   = regexp.MustCompile(`\.(ya?ml|json|tfvars|hcl|tf)$`)
 	reservedDirs = []string{".git", ".quai", BlueprintsDir}
 
@@ -514,8 +514,10 @@ func (c *check) approval(at string, a *Approval) {
 			r.Condition = c.ruleCondition(rat+".when", r.When)
 		}
 	}
-	if a.Expiry != "" && !durationRe.MatchString(a.Expiry) {
-		c.add(at+".expiry", "must be a duration such as 30m, 12h or 7d")
+	if a.Expiry != "" {
+		if _, err := ParseExpiry(a.Expiry); err != nil {
+			c.add(at+".expiry", "%s", err.Error())
+		}
 	}
 	if a.StepUp != "" {
 		a.StepUpCondition = c.condition(at+".stepUp", a.StepUp)

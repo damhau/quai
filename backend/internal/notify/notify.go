@@ -59,8 +59,12 @@ const (
 	Merged         = "merged"
 	Applied        = "applied"
 	Failed         = "failed"
-	ExpiringSoon   = "expiring_soon" // P4-14's expiring resources: no event triggers it yet
-	Alert          = "alert"
+	ExpiringSoon   = "expiring_soon" // the requester's request expires soon if not approved
+	Expired        = "expired"       // the requester's request expired
+	// Escalation tells the people of approvals.escalation.to that a request still waits for
+	// approval. Like an alert, it is not a kind one chooses: it always goes at once.
+	Escalation = "escalation"
+	Alert      = "alert"
 )
 
 // DigestKind is the kind of a digest's message.
@@ -278,9 +282,10 @@ func (s *Service) EventRecorded(ctx context.Context, tx pgx.Tx, e db.Event) erro
 // audience is who hears of an event: the message the requester gets, the one the approvers the
 // request waits for get, and whether it is an alert for the repository's administrators.
 type audience struct {
-	requester string
-	approvers string
-	admins    bool
+	requester  string
+	approvers  string
+	admins     bool
+	escalation bool // the people of approvals.escalation.to
 }
 
 func (a audience) none() bool { return a == audience{} }
@@ -291,8 +296,11 @@ func audienceOf(e db.Event) audience {
 	switch e.Kind {
 	case "submitted":
 		return audience{requester: Submitted, approvers: ApprovalNeeded}
-	case "approval_needed", "plan_decided":
+	case "approval_needed", "plan_decided", "reminded":
+		// A reminder is an approval needed again: the same recipients, preferences and checks.
 		return audience{approvers: ApprovalNeeded}
+	case "escalated":
+		return audience{escalation: true}
 	case "modified_outside_quai":
 		// Back to pending approval with new content (the event names its hash); otherwise the
 		// request was cancelled.
@@ -314,6 +322,8 @@ func audienceOf(e db.Event) audience {
 		return audience{requester: Failed}
 	case "expiring_soon":
 		return audience{requester: ExpiringSoon}
+	case "expired":
+		return audience{requester: Expired}
 	case "alert_bypass", "alert_enforcement", "alert_break_glass":
 		return audience{admins: true}
 	}
@@ -379,7 +389,7 @@ func (s *Service) fanOut(ctx context.Context, id int64) error {
 	}
 	prefs := map[string]Preferences{}
 	for _, r := range rs {
-		if r.user != nil && r.kind != Alert {
+		if r.user != nil && r.kind != Alert && r.kind != Escalation {
 			if prefs[r.id], err = s.preferences(ctx, r.user.Name); err != nil {
 				return err
 			}
@@ -454,7 +464,7 @@ func (s *Service) recipients(ctx context.Context, e db.Event) ([]recipient, erro
 			out = append(out, r)
 		}
 	}
-	if e.RequestID.Valid && (a.requester != "" || a.approvers != "") {
+	if e.RequestID.Valid && (a.requester != "" || a.approvers != "" || a.escalation) {
 		r, err := s.opts.Requests.Get(ctx, uuid.UUID(e.RequestID.Bytes))
 		if errors.Is(err, requests.ErrNotFound) {
 			return nil, nil
@@ -494,6 +504,17 @@ func (s *Service) recipients(ctx context.Context, e db.Event) ([]recipient, erro
 				for _, p := range aw.People {
 					add(recipient{id: "user:" + p.Name, user: &p, kind: a.approvers})
 				}
+			}
+		}
+		if a.escalation {
+			// The people approvals.escalation.to names, never the requester: what each reads is
+			// decided when it is sent (compose).
+			people, err := s.opts.Requests.Escalation(ctx, r)
+			if err != nil {
+				return nil, err
+			}
+			for _, p := range people {
+				add(recipient{id: "user:" + p.Name, user: &p, kind: Escalation})
 			}
 		}
 		for _, p := range s.posts(posts, s.opts.Requests.Repository(ctx, r), r.Owners) {
@@ -635,7 +656,7 @@ func (s *Service) send(ctx context.Context, id int64, last bool) error {
 	if why != "" {
 		return skip(why)
 	}
-	if n.Kind != Alert && strings.HasPrefix(n.Recipient, "user:") {
+	if n.Kind != Alert && n.Kind != Escalation && strings.HasPrefix(n.Recipient, "user:") {
 		m.Preferences = s.link("/profile")
 	}
 	card := s.card(n, c, m)

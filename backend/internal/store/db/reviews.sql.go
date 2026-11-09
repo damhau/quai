@@ -21,7 +21,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8::text, ''), $9, $10::text[],
         COALESCE($14::text, ''), $15,
         COALESCE($16::text, ''), COALESCE($17::text[], '{}'),
         COALESCE($18::text[], '{}'))
-RETURNING id, request_id, reviewer, groups, decision, comment, change_set_hash, created_at, reviewer_email, reviewer_auth_time, teams, reviewer_acr, reviewer_acrs, step_up, on_behalf_of, delegation_id, on_behalf_email, on_behalf_groups, on_behalf_teams
+RETURNING id, request_id, reviewer, groups, decision, comment, change_set_hash, created_at, reviewer_email, reviewer_auth_time, teams, reviewer_acr, reviewer_acrs, step_up, on_behalf_of, delegation_id, on_behalf_email, on_behalf_groups, on_behalf_teams, voided_at
 `
 
 type CreateReviewParams struct {
@@ -87,12 +87,13 @@ func (q *Queries) CreateReview(ctx context.Context, arg CreateReviewParams) (Rev
 		&i.OnBehalfEmail,
 		&i.OnBehalfGroups,
 		&i.OnBehalfTeams,
+		&i.VoidedAt,
 	)
 	return i, err
 }
 
 const listReviews = `-- name: ListReviews :many
-SELECT id, request_id, reviewer, groups, decision, comment, change_set_hash, created_at, reviewer_email, reviewer_auth_time, teams, reviewer_acr, reviewer_acrs, step_up, on_behalf_of, delegation_id, on_behalf_email, on_behalf_groups, on_behalf_teams FROM reviews WHERE request_id = $1 ORDER BY created_at, id
+SELECT id, request_id, reviewer, groups, decision, comment, change_set_hash, created_at, reviewer_email, reviewer_auth_time, teams, reviewer_acr, reviewer_acrs, step_up, on_behalf_of, delegation_id, on_behalf_email, on_behalf_groups, on_behalf_teams, voided_at FROM reviews WHERE request_id = $1 ORDER BY created_at, id
 `
 
 func (q *Queries) ListReviews(ctx context.Context, requestID uuid.UUID) ([]Review, error) {
@@ -124,6 +125,7 @@ func (q *Queries) ListReviews(ctx context.Context, requestID uuid.UUID) ([]Revie
 			&i.OnBehalfEmail,
 			&i.OnBehalfGroups,
 			&i.OnBehalfTeams,
+			&i.VoidedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -133,4 +135,22 @@ func (q *Queries) ListReviews(ctx context.Context, requestID uuid.UUID) ([]Revie
 		return nil, err
 	}
 	return items, nil
+}
+
+const voidReviews = `-- name: VoidReviews :execrows
+UPDATE reviews SET voided_at = $1 WHERE request_id = $2 AND voided_at IS NULL
+`
+
+type VoidReviewsParams struct {
+	At        pgtype.Timestamptz
+	RequestID uuid.UUID
+}
+
+// The reviews of a request that expired: they never count again.
+func (q *Queries) VoidReviews(ctx context.Context, arg VoidReviewsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, voidReviews, arg.At, arg.RequestID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

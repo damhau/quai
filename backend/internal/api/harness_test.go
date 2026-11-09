@@ -54,6 +54,8 @@ type harness struct {
 	// clock is the notifications' and the delegations' clock: the time it is set to, the real
 	// time until it is.
 	clock *testClock
+	// requests is the requests' service: its sweep takes reminders, escalation and expiry by clock.
+	requests *requests.Service
 }
 
 func git(t *testing.T, dir string, args ...string) string {
@@ -164,6 +166,7 @@ func startRepo(t *testing.T, dir, metadata, spec string, opts repositories.Optio
 	svc := requests.New(s, reg, nil, log)
 	svc.UsePublicURL(public)
 	svc.UseDirectory(auth.NewDirectory(cfg.Auth))
+	svc.UseApprovals(cfg.Approvals)
 	srv := httptest.NewUnstartedServer(nil)
 	var idp *http.Client // reaches the identity provider, and Microsoft Graph, through network.caFile
 	if cfg.Auth.Mode == config.AuthOIDC {
@@ -256,7 +259,7 @@ func startRepo(t *testing.T, dir, metadata, spec string, opts repositories.Optio
 	srv.Config.Handler = New(apiOpts)
 	srv.Start()
 	t.Cleanup(srv.Close)
-	return &harness{t: t, srv: srv, store: s, reg: reg, ingest: hooks, auth: authn, log: &logs, jobs: worker, notify: n, clock: clk}
+	return &harness{t: t, srv: srv, store: s, reg: reg, ingest: hooks, auth: authn, log: &logs, jobs: worker, notify: n, clock: clk, requests: svc}
 }
 
 // push commits a change to the repository as a person would.

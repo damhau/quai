@@ -67,7 +67,8 @@ function Notifications({ email }: { email?: string }) {
         </CardTitle>
         <CardDescription>
           For each kind of notification, whether Quai sends it at once, in a daily digest, or not at all. Alerts to the
-          administrators of a repository always go at once.
+          administrators of a repository always go at once, and so do escalations of requests that wait too long for approval.
+          Reminders follow your choice for Approval needed.
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-6">

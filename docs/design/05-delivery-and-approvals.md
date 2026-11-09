@@ -378,10 +378,61 @@ approval is recorded as "by X on behalf of Y". As built (P4-13, [open questions 
   since they may review it. The delegator keeps everything else, their requests' notifications and
   alerts included ([notifications](#notifications)).
 
-### Reminders, escalation
+### Reminders, escalation, expiry
 
-- Reminders go to eligible approvers after a configurable delay; after a second delay, escalation goes to a fallback group.
-- Requests expire after `expiry`; the PR is closed with a comment.
+A request that waits for approval reminds its approvers after a while, then tells an escalation
+group, and expires after its `expiry`. As built (P4-14, [open questions 25 and 78 to
+82](../plan/open-questions.md#still-open)):
+
+- **Where they are set.** Reminders and escalation are Quai's configuration, the same for every
+  repository: `approvals.reminders.after`, `approvals.escalation.after` and
+  `approvals.escalation.to` (`group:<name>` or `user:<name>` entries), off by default
+  ([configuration](../operations/deployment-and-operations.md#reminders-escalation-and-expiry)).
+  The repository document does not override them (yet). The expiry is the definitions':
+  `expiry` in an approval block, whole minutes, hours or days (`30m`, `12h`, `7d`) from `1m` to
+  `365d`.
+- **Which expiry.** The shortest `expiry` of the approval blocks a request's definitions apply:
+  its type's, its action's, its blueprint's, each of its resource types' and its blueprint
+  action's. It is fixed when the request is submitted and kept with it (`expiry`, and
+  `expiresAt`: the submission, by Quai's clock, plus the expiry). A later change of the
+  definitions neither expires a waiting request sooner nor spares it; a request submitted before
+  P4-14 has none.
+- **When.** The worker's `approval_sweep` job runs every minute (once a minute, whatever the
+  replicas) and takes the steps due by Quai's clock, from instants kept with the request: its
+  submission and its expiry, never a commit's date. Reminders, escalation and the warning count
+  from the submission; a new plan does not start them again. Each step is taken once: under the
+  request's row lock, on its state read again, and marked in the transaction that records its
+  event. A review takes the same lock, so an expiry and a final approval (or a denial, a
+  cancellation, a new plan) at the same moment are decided one after the other: whichever commits
+  first wins, and the other finds the request decided and does nothing (a review gets 409).
+- **Reminder**, at the submission plus `approvals.reminders.after`: an "approval needed" again,
+  to the people the request waits for then, as the first one: a delegate in their delegator's
+  place, saying on whose behalf; never its requester or an excluded definition author. It
+  follows each person's preferences for approval needed (at once, or in their digest), with
+  their Teams or Slack card. Its subject says "Reminder".
+- **Escalation**, at the submission plus `approvals.escalation.after`: the people
+  `approvals.escalation.to` names, who signed in to Quai and are not deactivated, never the
+  requester, are told the request still waits. Escalation notifies; it makes no one an approver.
+  A contact the request waits for reads its content; the others get its identifiers only (the
+  repository, its number and state, how long it waited and its link), as alerts. Like an alert,
+  it goes at once, on every channel that reaches the person, whatever their preferences; Teams and
+  Slack channel posts do not get it.
+- **Expiring soon**: its requester hears a day before it expires (half its expiry before, when
+  the expiry is under two days).
+- **Expiry**, at `expiresAt`: the request becomes **Expired**, which is final: it cannot be
+  reviewed, cancelled or retried. Its approvals are void: marked so on the request, they never
+  count again. Its requester hears of it, and asks again with a new request, which is planned
+  and approved afresh. `quai/approval` fails ("Expired in Quai"). On its pull request, the one
+  Quai opened and recorded, never one found by its branch's name, Quai comments once (the
+  request's number, its expiry and its link, which the pull request's readers already see, and a
+  marker by which a retry finds the comment), closes it and deletes its branch. A pull request
+  merged meanwhile is a merge without approval (the bypass alert; the request is applied as
+  merged); one someone else closed is left as it is (`pull_request_left`), and the request stays
+  expired.
+- **Audit.** `request.reminded` (the people reminded, as pseudonyms), `request.escalated` (the
+  groups, and the users as pseudonyms), `request.expired` (the expiry, the submission, the expiry
+  instant and how many reviews it voided) and `request.pull_request_closed`
+  ([audit log](09-security-and-compliance.md#audit-log)).
 
 ### Step-up authentication
 
@@ -439,8 +490,9 @@ Management):
 
 ## Notifications
 
-Events: request submitted, approval needed, approved, rejected, stale, merged,
-applied, failed, expiring soon; and alerts: a bypass (`alert_bypass`),
+Events: request submitted, approval needed (and its reminder), approved,
+rejected, stale, merged, applied, failed, expiring soon, expired; an
+escalation; and alerts: a bypass (`alert_bypass`),
 enforcement lost (`alert_enforcement`), break-glass. Channels: email (Phase 4,
 P4-07), Microsoft Teams (P4-09) and Slack (P4-10), outgoing webhooks.
 Approvers can start an approval from a Teams or Slack message: its buttons open
@@ -459,9 +511,12 @@ Built (`internal/notify`):
   `modified_outside_quai` with a new content hash (the approvers);
   `approved`, `rejected`, `stale` (the requester); `merged`,
   `merged_without_approval` and `committed` (the requester, as merged);
-  `applied`; `failed` and `apply_failed`; `expiring_soon` (P4-14 records it);
-  `alert_bypass`, `alert_enforcement`, `alert_break_glass` (P4-17 records
-  it), to admins. A cancelled request and reviews notify no one.
+  `applied`; `failed` and `apply_failed`; `expiring_soon` and `expired` (the
+  requester); `reminded` (the approvers, as approval needed); `escalated` (the
+  escalation contacts, as `escalation`: [reminders, escalation,
+  expiry](#reminders-escalation-expiry)); `alert_bypass`, `alert_enforcement`,
+  `alert_break_glass` (P4-17 records it), to admins. A cancelled request and
+  reviews notify no one.
 - **Recipients**, resolved when the job runs, from the directory (people who
   signed in): the requester, and the people who may give each approval the
   request still waits for (`policy.CanReview`: users, owners, members of a
@@ -481,7 +536,9 @@ Built (`internal/notify`):
   never an attribute's value: less than the request page shows. Alerts carry
   identifiers only (the repository, the request's number and state, the pull
   request, the merge commit, the branch, the problems), since their
-  recipients may not read the request. Links start with `server.publicURL`,
+  recipients may not read the request; so does an escalation, to a contact
+  the request does not wait for (checked when it is sent: an escalation of a
+  request no longer pending is skipped). Links start with `server.publicURL`,
   never with a request's `Host`
   ([open questions 53 to 55](../plan/open-questions.md#still-open)).
 - **Delivery.** One `notifications` row per event, recipient and channel
@@ -510,14 +567,14 @@ Built (`internal/notify`):
   67](../plan/open-questions.md#still-open)).
 - **Preferences** (P4-08). Each person chooses, per channel and kind of
   notification (approval needed, submitted, approved, rejected, stale, merged,
-  applied, failed, expiring soon), whether it goes at once (`immediate`), in
+  applied, failed, expiring soon, expired), whether it goes at once (`immediate`), in
   their daily digest (`digest`) or not at all (`off`), and when their digest
   goes: an hour of the day (0 to 23) in an IANA time zone. Until they choose,
   `notifications.defaults` applies (every kind at once, the digest at 08:00
   UTC, unless configured). Only the choices that differ from the defaults are
   kept, so a choice equal to a default follows it when the configuration
-  changes. Alerts are not a kind one chooses: they always go at once, on every
-  channel, whatever is stored. Approval needed is never off on every channel
+  changes. Alerts and escalations are not kinds one chooses: they always go at
+  once, on every channel, whatever is stored. Approval needed is never off on every channel
   (with email alone: at once or in the digest), so a request never waits for
   someone who hears nothing of it; a stored preference that would turn it off
   everywhere (a channel removed since) counts as at once. The profile page

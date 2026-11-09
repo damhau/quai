@@ -283,6 +283,30 @@ func (p *pullRequests) Comment(ctx context.Context, id, body string) error {
 	return check(resp, err)
 }
 
+// Comments returns the bodies of the comments on the pull request's issue, oldest first.
+func (p *pullRequests) Comments(ctx context.Context, id string) ([]string, error) {
+	c := (*Connector)(p)
+	n, err := number(id)
+	if err != nil {
+		return nil, err
+	}
+	opts := &gh.IssueListCommentsOptions{ListOptions: gh.ListOptions{PerPage: 100}}
+	var out []string
+	for {
+		comments, resp, err := c.client.Issues.ListComments(ctx, c.owner, c.repo, n, opts)
+		if err := check(resp, err); err != nil {
+			return nil, err
+		}
+		for _, cm := range comments {
+			out = append(out, cm.GetBody())
+		}
+		if resp.NextPage == 0 {
+			return out, nil
+		}
+		opts.Page = resp.NextPage
+	}
+}
+
 func sleep(ctx context.Context, d time.Duration) error {
 	t := time.NewTimer(d)
 	defer t.Stop()

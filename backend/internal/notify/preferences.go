@@ -42,7 +42,7 @@ func (s Settings) Channels() []string { return slices.Clone(s.channels) }
 
 // DefaultMode is how a kind of notification reaches someone on a channel until they choose.
 func (s Settings) DefaultMode(channel, kind string) string {
-	if m := s.defaults[channel][kind]; m != "" && kind != Alert {
+	if m := s.defaults[channel][kind]; m != "" && kind != Alert && kind != Escalation {
 		return m
 	}
 	return config.ModeImmediate
@@ -61,7 +61,7 @@ func (s Settings) DefaultDigest() (int, string) {
 // is immediate or in the digest.
 func (s Settings) Modes(kind string) []string {
 	switch kind {
-	case Alert:
+	case Alert, Escalation:
 		return []string{config.ModeImmediate}
 	case ApprovalNeeded:
 		if len(s.channels) < 2 {
@@ -95,7 +95,7 @@ func PreferencesOf(row db.NotificationPreference) Preferences {
 // everywhere when it would otherwise be off on every channel (a channel removed since).
 func (s Settings) Mode(p Preferences, channel, kind string) string {
 	switch kind {
-	case Alert:
+	case Alert, Escalation:
 		return config.ModeImmediate
 	case ApprovalNeeded:
 		if !slices.ContainsFunc(s.channels, func(c string) bool { return s.chosen(p, c, kind) != config.ModeOff }) {

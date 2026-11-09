@@ -14,7 +14,7 @@ test("people choose how each notification reaches them, and when their digest go
   const table = await screen.findByRole("table", { name: "Notification preferences" }, slow)
   expect(screen.getByRole("heading", { name: "Profile" })).toBeInTheDocument()
   expect(screen.getByText("bob · bob@acme.ch")).toBeInTheDocument()
-  expect(within(table).getAllByRole("combobox")).toHaveLength(9)
+  expect(within(table).getAllByRole("combobox")).toHaveLength(10)
   expect(screen.getByText(/Alerts to the administrators of a repository always go at once/)).toBeInTheDocument()
 
   // The default is marked; approvals are never off with one channel.
@@ -36,7 +36,7 @@ test("people choose how each notification reaches them, and when their digest go
   expect(csrf).toBe("csrf-bob")
   // Every kind and channel, nothing that names a person: the server takes them from the session.
   expect(Object.keys(body).sort()).toEqual(["digest", "events"])
-  expect(body.events).toHaveLength(9)
+  expect(body.events).toHaveLength(10)
   expect(body.events).toContainEqual({ kind: "approved", channel: "email", mode: "digest" })
   expect(body.events).toContainEqual({ kind: "merged", channel: "email", mode: "off" })
   expect(body.events).toContainEqual({ kind: "stale", channel: "email", mode: "off" })
@@ -81,7 +81,7 @@ test("Slack is a channel of its own, which finds people by their email too", asy
   renderApp("/profile")
   const table = await screen.findByRole("table", { name: "Notification preferences" }, slow)
   expect(within(table).getByRole("columnheader", { name: "Slack" })).toBeInTheDocument()
-  expect(within(table).getAllByRole("combobox")).toHaveLength(18)
+  expect(within(table).getAllByRole("combobox")).toHaveLength(20)
   // With two channels, approvals may be off on one.
   expect(options(screen.getByRole("combobox", { name: "Approval needed by Slack" }))).toEqual(["At once (default)", "In the daily digest", "Off"])
   expect(screen.getByText(/no email or Slack message reaches you/)).toBeInTheDocument()

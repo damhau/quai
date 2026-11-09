@@ -381,7 +381,7 @@ export const getPreferencesOptions = (options?: Options<GetPreferencesData>) => 
 /**
  * Set your notification preferences
  *
- * Each kind and channel left out, or chosen as its default, follows the default. Alerts are not a kind one chooses: they always go at once. Approval needed cannot be off on every channel.
+ * Each kind and channel left out, or chosen as its default, follows the default. Alerts and escalations are not kinds one chooses: they always go at once. Approval needed (reminders included) cannot be off on every channel.
  */
 export const updatePreferencesMutation = (options?: Partial<Options<UpdatePreferencesData>>): UseMutationOptions<UpdatePreferencesResponse, UpdatePreferencesError, Options<UpdatePreferencesData>> => {
     const mutationOptions: UseMutationOptions<UpdatePreferencesResponse, UpdatePreferencesError, Options<UpdatePreferencesData>> = {

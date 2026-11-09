@@ -18,7 +18,8 @@ export const kinds: Record<Kind, { label: string; description: string }> = {
   merged: { label: "Merged", description: "Your request's change was merged or committed" },
   applied: { label: "Applied", description: "Your request was applied" },
   failed: { label: "Failed", description: "Delivering or applying your request failed" },
-  expiring_soon: { label: "Expiring soon", description: "What your request created expires soon" },
+  expiring_soon: { label: "Expiring soon", description: "Your request still waits for approvals a day before it expires" },
+  expired: { label: "Expired", description: "Your request waited for approval longer than its expiry" },
 }
 
 export const modes: Record<Mode, string> = {

@@ -425,6 +425,32 @@ func (p *pullRequests) Comment(ctx context.Context, id, body string) error {
 	return check(resp, err)
 }
 
+// Comments returns the bodies of the comments on the pull request's issue, oldest first.
+func (p *pullRequests) Comments(ctx context.Context, id string) ([]string, error) {
+	c := (*Connector)(p)
+	n, err := index(id)
+	if err != nil {
+		return nil, err
+	}
+	cl, err := c.client(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for page := 1; ; page++ {
+		comments, resp, err := cl.ListIssueComments(c.owner, c.repo, n, sdk.ListIssueCommentOptions{ListOptions: sdk.ListOptions{Page: page, PageSize: 50}})
+		if err := check(resp, err); err != nil {
+			return nil, err
+		}
+		for _, cm := range comments {
+			out = append(out, cm.Body)
+		}
+		if len(comments) < 50 {
+			return out, nil
+		}
+	}
+}
+
 func convert(pr *sdk.PullRequest) connectors.PullRequest {
 	out := connectors.PullRequest{ID: strconv.FormatInt(pr.Index, 10), URL: pr.HTMLURL, Title: pr.Title, Description: pr.Body,
 		Draft: pr.Draft, State: connectors.PROpen}

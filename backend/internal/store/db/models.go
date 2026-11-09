@@ -230,6 +230,12 @@ type Request struct {
 	Manager             string
 	ManagerReason       string
 	Separation          json.RawMessage
+	SubmittedAt         pgtype.Timestamptz
+	Expiry              string
+	ExpiresAt           pgtype.Timestamptz
+	RemindedAt          pgtype.Timestamptz
+	EscalatedAt         pgtype.Timestamptz
+	ExpiryWarnedAt      pgtype.Timestamptz
 }
 
 type Review struct {
@@ -252,6 +258,7 @@ type Review struct {
 	OnBehalfEmail    string
 	OnBehalfGroups   []string
 	OnBehalfTeams    []string
+	VoidedAt         pgtype.Timestamptz
 }
 
 type Run struct {

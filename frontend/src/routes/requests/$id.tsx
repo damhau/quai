@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import { createFileRoute, Link } from "@tanstack/react-router"
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query"
-import { AlertCircle, BellOff, Check, GitPullRequest, KeyRound, MessageSquare, RotateCcw, UserX, X } from "lucide-react"
+import { AlertCircle, BellOff, Check, GitPullRequest, Hourglass, KeyRound, MessageSquare, RotateCcw, UserX, X } from "lucide-react"
 import {
   cancelRequestMutation,
   getMeOptions,
@@ -88,6 +88,7 @@ function RequestPage() {
             verified email; an Entra ID object ID for Microsoft Teams).
           </p>
         )}
+        <ExpiryLine request={r} />
       </header>
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <div className="grid gap-6">
@@ -143,6 +144,7 @@ function RequestPage() {
                           {ago(v.at)}
                           {v.stepUp && " · signed in recently"}
                           {v.onBehalfOf && " · through a delegation"}
+                          {v.voided && " · void: the request expired"}
                         </span>
                         {v.comment && <p className="whitespace-pre-wrap">{v.comment}</p>}
                       </div>
@@ -453,6 +455,28 @@ function Actions({ request }: { request: RequestView }) {
         )}
       </div>
     </div>
+  )
+}
+
+/**
+ * ExpiryLine says when a request pending approval expires, or that it expired: its definitions'
+ * approval expiry, counted from its submission (docs/design/05-delivery-and-approvals.md#reminders-escalation-expiry).
+ */
+function ExpiryLine({ request: r }: { request: RequestView }) {
+  if (r.state === "expired")
+    return (
+      <p className="text-muted-foreground flex items-center gap-1 text-sm">
+        <Hourglass className="size-4 shrink-0" aria-hidden />
+        Expired: it waited for approval longer than its expiry{r.expiry ? ` (${r.expiry})` : ""}, so its approvals are void and its pull request, if it had one, is
+        closed. Request the change again if it is still needed.
+      </p>
+    )
+  if (r.state !== "pending_approval" || !r.expiresAt) return null
+  return (
+    <p className="text-muted-foreground flex items-center gap-1 text-sm">
+      <Hourglass className="size-4 shrink-0" aria-hidden />
+      Expires on {new Date(r.expiresAt).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })} unless it is approved by then (expiry {r.expiry}).
+    </p>
   )
 }
 

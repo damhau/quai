@@ -48,8 +48,59 @@ type Config struct {
 	Webhooks      Webhooks      `yaml:"webhooks"`
 	Audit         Audit         `yaml:"audit"`
 	Notifications Notifications `yaml:"notifications"`
+	Approvals     Approvals     `yaml:"approvals"`
 	Log           Log           `yaml:"log"`
 	Telemetry     Telemetry     `yaml:"telemetry"`
+}
+
+// Approvals configures what Quai does about requests that wait for approval: it reminds their
+// approvers, then notifies an escalation group
+// (docs/design/05-delivery-and-approvals.md#reminders-escalation-expiry, open question 25).
+// Each counts from the request's submission and happens once; zero turns it off.
+type Approvals struct {
+	Reminders  Reminders  `yaml:"reminders"`
+	Escalation Escalation `yaml:"escalation"`
+}
+
+// Reminders: the approvers a request still waits for are reminded After its submission.
+type Reminders struct {
+	After time.Duration `yaml:"after"`
+}
+
+// Escalation: After a request's submission, the people To names hear that it still waits. It
+// notifies them; it makes no one an approver.
+type Escalation struct {
+	After time.Duration `yaml:"after"`
+	// To are group:<name> (the people of the directory in that group) and user:<name> entries.
+	To []string `yaml:"to"`
+}
+
+// escalationRe is an entry of approvals.escalation.to.
+var escalationRe = regexp.MustCompile(`^(group|user):[A-Za-z0-9][A-Za-z0-9._@-]*$`)
+
+func (a Approvals) validate() error {
+	var errs []error
+	if a.Reminders.After < 0 {
+		errs = append(errs, errors.New("approvals.reminders.after must not be negative"))
+	}
+	if a.Escalation.After < 0 {
+		errs = append(errs, errors.New("approvals.escalation.after must not be negative"))
+	}
+	if a.Escalation.After > 0 && len(a.Escalation.To) == 0 {
+		errs = append(errs, errors.New("approvals.escalation.after needs approvals.escalation.to: whom to notify"))
+	}
+	if len(a.Escalation.To) > 0 && a.Escalation.After == 0 {
+		errs = append(errs, errors.New("approvals.escalation.to needs approvals.escalation.after: when to notify them"))
+	}
+	if a.Reminders.After > 0 && a.Escalation.After > 0 && a.Escalation.After <= a.Reminders.After {
+		errs = append(errs, fmt.Errorf("approvals.escalation.after (%s) must come after approvals.reminders.after (%s)", a.Escalation.After, a.Reminders.After))
+	}
+	for i, to := range a.Escalation.To {
+		if !escalationRe.MatchString(to) {
+			errs = append(errs, fmt.Errorf("approvals.escalation.to[%d] must be group:<name> or user:<name>, not %q", i, to))
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // Notifications configures how Quai tells people what happens to requests, and whom it alerts
@@ -79,8 +130,9 @@ type Notifications struct {
 // goes.
 type NotificationDefaults struct {
 	// Channels map a channel (email) to kinds (approval_needed, submitted, approved, rejected,
-	// stale, merged, applied, failed, expiring_soon) and their mode (immediate, digest, off). A
-	// kind not listed is immediate. Alerts are not a kind one chooses: they always go at once.
+	// stale, merged, applied, failed, expiring_soon, expired) and their mode (immediate, digest, off). A
+	// kind not listed is immediate. Alerts and escalations are not kinds one chooses: they always
+	// go at once.
 	Channels map[string]map[string]string `yaml:"channels"`
 	Digest   DigestDefaults               `yaml:"digest"`
 }
@@ -100,7 +152,7 @@ var (
 	NotificationChannels = []string{"email", "teams", "slack"}
 	// NotificationKinds are the kinds of notification people choose how they receive, in the
 	// order the profile page lists them. Alerts are not among them.
-	NotificationKinds = []string{"approval_needed", "submitted", "approved", "rejected", "stale", "merged", "applied", "failed", "expiring_soon"}
+	NotificationKinds = []string{"approval_needed", "submitted", "approved", "rejected", "stale", "merged", "applied", "failed", "expiring_soon", "expired"}
 	// NotificationModes are how a kind reaches someone on a channel: at once, in their daily
 	// digest, or not at all.
 	NotificationModes = []string{ModeImmediate, ModeDigest, ModeOff}
@@ -183,7 +235,7 @@ type TeamsChannel struct {
 	Repositories []string `yaml:"repositories"`
 	Teams        []string `yaml:"teams"`
 	// Events are the events posted: kinds of notification (submitted, approval_needed, approved,
-	// rejected, stale, merged, applied, failed, expiring_soon) and alert.
+	// rejected, stale, merged, applied, failed, expiring_soon, expired) and alert.
 	Events []string `yaml:"events"`
 }
 
@@ -810,6 +862,7 @@ func (c *Config) validate() error {
 	}
 	errs = append(errs, c.Auth.validate(c.Env))
 	errs = append(errs, c.Notifications.validate(c.Server.PublicURL))
+	errs = append(errs, c.Approvals.validate())
 	if _, err := c.Log.SlogLevel(); err != nil {
 		errs = append(errs, err)
 	}

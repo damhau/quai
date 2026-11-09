@@ -173,6 +173,7 @@ type ReviewView struct {
 	// OnBehalfOf and Delegation: a review made with the approvals someone delegated.
 	OnBehalfOf string `json:"onBehalfOf,omitempty" doc:"The person on whose behalf the reviewer reviewed, with the approvals they delegated: the review counts for them and the reviewer, once"`
 	Delegation string `json:"delegation,omitempty" doc:"The delegation the review used"`
+	Voided     bool   `json:"voided,omitempty" doc:"The request expired: the review is void and never counts again"`
 }
 
 // ReviewForView is someone the caller may review a request for now, with the approvals they
@@ -219,6 +220,8 @@ type RequestView struct {
 	CanCancel    bool            `json:"canCancel"`
 	CanRetry     bool            `json:"canRetry"`
 	StepUp       bool            `json:"stepUp" doc:"Reviews count only from people who signed in recently (step-up): the request page asks for it before approve works"`
+	Expiry       string          `json:"expiry,omitempty" doc:"The approval expiry its definitions set when it was planned, as written (7d): a request still pending approval then expires"`
+	ExpiresAt    *time.Time      `json:"expiresAt,omitempty" doc:"When it expires if it still waits for approval: its submission and its expiry"`
 	Rules        []RuleView      `json:"rules"`
 	Codeowners   *CodeownersView `json:"codeowners,omitempty" doc:"When a rule's approvers include codeowners: the owners the Git platform named for the changed paths when the request was submitted"`
 	Manager      *ManagerView    `json:"manager,omitempty" doc:"When a rule's approvers include manager: the requester's manager when the request was submitted, or why there was none"`
@@ -589,7 +592,11 @@ func planView(p *requests.Plan) PlanView {
 func requestView(ctx context.Context, svc *requests.Service, s *store.Store, r db.Request, me auth.Identity, detail bool) RequestView {
 	v := RequestView{ID: r.ID.String(), Number: r.Number, Kind: r.Kind, Action: r.Action, Target: r.Target, Repository: svc.Repository(ctx, r),
 		Type: r.TypeName, Blueprint: r.Blueprint, Requester: r.Requester, Reason: r.Reason, State: r.State, Stack: r.Stack,
-		CreatedAt: r.CreatedAt.Time, UpdatedAt: r.UpdatedAt.Time, CanReviewOwn: requests.CanReview(r, me.Principal), StepUp: r.StepUp}
+		CreatedAt: r.CreatedAt.Time, UpdatedAt: r.UpdatedAt.Time, CanReviewOwn: requests.CanReview(r, me.Principal), StepUp: r.StepUp,
+		Expiry: r.Expiry}
+	if r.ExpiresAt.Valid {
+		v.ExpiresAt = &r.ExpiresAt.Time
+	}
 	if r.State == requests.PendingApproval {
 		if delegators, err := svc.Delegators(ctx, me.Principal); err == nil {
 			for _, d := range svc.CapacityOf(ctx, r, me.Principal, delegators).For {
@@ -610,6 +617,12 @@ func requestView(ctx context.Context, svc *requests.Service, s *store.Store, r d
 	reviews, outcome, err := svc.Reviews(ctx, r)
 	if err != nil {
 		reviews = nil
+	}
+	if r.State == requests.Expired {
+		// Its approvals are void: shown as its history, marked so (they count no longer).
+		if voided, err := svc.Voided(ctx, r); err == nil {
+			reviews = append(reviews, voided...)
+		}
 	}
 	v.Rules = ruleViews(rules, outcome.Rules)
 	v.Codeowners = codeownersView(rules, r.Codeowners, r.CodeownersUnmatched)
@@ -637,7 +650,7 @@ func requestView(ctx context.Context, svc *requests.Service, s *store.Store, r d
 	}
 	for _, rv := range reviews {
 		rview := ReviewView{Reviewer: rv.Reviewer, Decision: rv.Decision, Comment: rv.Comment, At: rv.CreatedAt.Time, ACR: rv.ReviewerAcr, StepUp: rv.StepUp,
-			OnBehalfOf: rv.OnBehalfOf}
+			OnBehalfOf: rv.OnBehalfOf, Voided: rv.VoidedAt.Valid}
 		if rv.DelegationID.Valid {
 			rview.Delegation = uuid.UUID(rv.DelegationID.Bytes).String()
 		}

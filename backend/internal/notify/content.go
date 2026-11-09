@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -142,7 +143,7 @@ func (s *Service) compose(ctx context.Context, n db.Notification, c Channel) (Re
 		return to, Message{}, "", err
 	}
 	var awaiting []requests.Awaiting
-	if n.Kind == ApprovalNeeded || n.Kind == Submitted {
+	if n.Kind == ApprovalNeeded || n.Kind == Submitted || n.Kind == Escalation {
 		if awaiting, err = s.opts.Requests.Awaiting(ctx, r); err != nil {
 			return to, Message{}, "", err
 		}
@@ -165,8 +166,37 @@ func (s *Service) compose(ctx context.Context, n db.Notification, c Channel) (Re
 		}
 		return to, m, "", err
 	}
+	if n.Kind == Escalation {
+		if r.State != requests.PendingApproval {
+			return to, Message{}, "the request no longer waits for approval", nil
+		}
+		// The content only to someone the request waits for, who may read it; the others get its
+		// identifiers, as a group channel does (open question 82).
+		if _, waits := requests.WaitsFor(awaiting, strings.TrimPrefix(n.Recipient, "user:")); !waits {
+			return s.escalationMessage(ctx, e, r, to)
+		}
+	}
 	m, err := s.requestMessage(ctx, n.Kind, e, r, awaiting)
 	return to, m, "", err
+}
+
+// escalationMessage is an escalation to someone who may not read the request: its identifiers,
+// its state and its link, never its title, reason, files or plan.
+func (s *Service) escalationMessage(ctx context.Context, e db.Event, r db.Request, to Recipient) (Recipient, Message, string, error) {
+	rc := &RequestContent{ID: r.ID, State: r.State, Number: r.Number, Repository: s.opts.Requests.Repository(ctx, r)}
+	m := Message{Kind: Escalation, Subject: fmt.Sprintf("[Quai] %s: #%d", subjects[Escalation], r.Number), Request: rc,
+		Link: s.link("/requests/" + url.PathEscape(r.ID.String()))}
+	m.Headline = fmt.Sprintf("Request #%d of %s still waits for approval%s: you are told as its escalation contact.", r.Number, rc.Repository, after(e))
+	return to, m, "", nil
+}
+
+// after is ", <duration> after it was submitted" for a reminder's or an escalation's event.
+func after(e db.Event) string {
+	var d struct{ After string }
+	if json.Unmarshal(e.Data, &d) != nil || d.After == "" {
+		return ""
+	}
+	return ", " + d.After + " after it was submitted"
 }
 
 // title is a request's title, as its page shows it.
@@ -198,7 +228,7 @@ func (s *Service) link(path string) string {
 // subjects are the beginnings of the messages' subjects.
 var subjects = map[string]string{
 	Submitted: "Submitted", ApprovalNeeded: "Approval needed", Approved: "Approved", Rejected: "Rejected", Stale: "Stale",
-	Merged: "Merged", Applied: "Applied", Failed: "Failed", ExpiringSoon: "Expiring soon",
+	Merged: "Merged", Applied: "Applied", Failed: "Failed", ExpiringSoon: "Expiring soon", Expired: "Expired", Escalation: "Escalation",
 }
 
 func (s *Service) requestMessage(ctx context.Context, kind string, e db.Event, r db.Request, awaiting []requests.Awaiting) (Message, error) {
@@ -215,7 +245,11 @@ func (s *Service) requestMessage(ctx context.Context, kind string, e db.Event, r
 			rc.Waiting = append(rc.Waiting, w)
 		}
 	}
-	m := Message{Kind: kind, Subject: fmt.Sprintf("[Quai] %s: #%d %s", subjects[kind], r.Number, rc.Title), Request: rc,
+	subject := subjects[kind]
+	if e.Kind == "reminded" {
+		subject = "Reminder"
+	}
+	m := Message{Kind: kind, Subject: fmt.Sprintf("[Quai] %s: #%d %s", subject, r.Number, rc.Title), Request: rc,
 		Link: s.link("/requests/" + url.PathEscape(r.ID.String()))}
 	num := fmt.Sprintf("#%d", r.Number)
 	var d map[string]any
@@ -230,6 +264,8 @@ func (s *Service) requestMessage(ctx context.Context, kind string, e db.Event, r
 			m.Headline = r.Requester + " asks for your approval of request " + num + "."
 		case "modified_outside_quai":
 			m.Headline = "Request " + num + " was changed outside Quai: its approvals are void, and it needs yours for the new content."
+		case "reminded":
+			m.Headline = "Reminder: " + r.Requester + "'s request " + num + " still waits for your approval" + after(e) + "."
 		default:
 			m.Headline = "Request " + num + " needs your approval: its plan makes a rule apply."
 		}
@@ -268,7 +304,21 @@ func (s *Service) requestMessage(ctx context.Context, kind string, e db.Event, r
 			m.Headline = "Delivering your request " + num + " failed: its page says why."
 		}
 	case ExpiringSoon:
-		m.Headline = "What your request " + num + " created expires soon."
+		m.Headline = "Your request " + num + " still waits for approvals: it expires"
+		if at, err := time.Parse(time.RFC3339Nano, str("expiresAt")); err == nil {
+			m.Headline += " on " + at.UTC().Format("2 January 2006 at 15:04 UTC")
+		} else {
+			m.Headline += " soon"
+		}
+		m.Headline += " unless it is approved by then."
+	case Expired:
+		m.Headline = "Your request " + num + " expired: it waited for approval longer than its expiry"
+		if x := str("expiry"); x != "" {
+			m.Headline += " (" + x + ")"
+		}
+		m.Headline += ". Its approvals are void; request the change again if it is still needed."
+	case Escalation:
+		m.Headline = r.Requester + "'s request " + num + " still waits for approval" + after(e) + ": you are told as its escalation contact, and it waits for yours."
 	}
 	if err := s.changes(ctx, r, rc); err != nil {
 		return m, err
@@ -436,8 +486,11 @@ func (s *Service) channelMessage(ctx context.Context, n db.Notification, e db.Ev
 		m.Headline = "Request " + num + " was submitted."
 	case ApprovalNeeded:
 		m.Headline = "Request " + num + " waits for approval."
-		if e.Kind == "modified_outside_quai" {
+		switch e.Kind {
+		case "modified_outside_quai":
 			m.Headline = "Request " + num + " was changed outside Quai: it waits for approval of its new content."
+		case "reminded":
+			m.Headline = "Request " + num + " still waits for approval" + after(e) + "."
 		}
 	case Approved:
 		m.Headline = "Request " + num + " was approved."
@@ -457,6 +510,8 @@ func (s *Service) channelMessage(ctx context.Context, n db.Notification, e db.Ev
 		m.Headline = "Request " + num + " was applied."
 	case Failed:
 		m.Headline = "Delivering request " + num + " failed."
+	case Expired:
+		m.Headline = "Request " + num + " expired."
 	default:
 		m.Headline = "Request " + num + ": " + strings.ReplaceAll(n.Kind, "_", " ") + "."
 	}

@@ -115,7 +115,7 @@ export const getPreferences = <ThrowOnError extends boolean = false>(options?: O
 /**
  * Set your notification preferences
  *
- * Each kind and channel left out, or chosen as its default, follows the default. Alerts are not a kind one chooses: they always go at once. Approval needed cannot be off on every channel.
+ * Each kind and channel left out, or chosen as its default, follows the default. Alerts and escalations are not kinds one chooses: they always go at once. Approval needed (reminders included) cannot be off on every channel.
  */
 export const updatePreferences = <ThrowOnError extends boolean = false>(options: Options<UpdatePreferencesData, ThrowOnError>): RequestResult<UpdatePreferencesResponses, UpdatePreferencesErrors, ThrowOnError> => (options.client ?? client).put<UpdatePreferencesResponses, UpdatePreferencesErrors, ThrowOnError>({
     url: '/api/v1/me/preferences',

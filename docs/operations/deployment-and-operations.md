@@ -75,11 +75,13 @@ single pod with both roles.
   | `audit.export[].syslog.address`, `.transport`, `.facility` | | required `host:port` (RFC 5425's port is 6514); `tls`, or `tcp`, unencrypted, which production refuses except to a loopback address; `13` (log audit) |
   | `audit.export[].otlp.endpoint`, `.headers` | | required: the collector's URL, `https`, its logs at `/v1/logs` unless it names a path; `http` only to a loopback address in production. Headers by name, each a secret reference (`{ ref: env:OTLP_TOKEN }`) |
   | `audit.export[].splunk.url`, `.token.ref`, `.index`, `.sourcetype` | | required: the HTTP Event Collector's base URL (`https://splunk.example.com:8088`), `http` only to a loopback address in production; required: a secret reference to the HEC token, a token without indexer acknowledgment; the token's default index; none |
+  | `approvals.reminders.after` | | none: no reminder. How long after its submission a request still waiting for approval reminds the people it waits for, once: a Go duration (`48h`) ([reminders, escalation and expiry](#reminders-escalation-and-expiry)) |
+  | `approvals.escalation.after`, `.to` | | none: no escalation. How long after its submission a request still waiting for approval is escalated, once, after the reminder, and to whom: `group:<name>` and `user:<name>` entries; one needs the other |
   | `notifications.email.host`, `.port`, `.transport` | | none: no email is sent ([notifications](#notifications)). The SMTP server's host name or address; `587` with `starttls`, `465` with `tls`; `starttls` (the default), which the server must offer, or `tls` from the first byte. There is no plaintext transport, and the certificate is verified against the system's CAs and `network.caFile` |
   | `notifications.email.from` | | required: the sender, an address with or without a display name (`Quai <quai@example.com>`) |
   | `notifications.email.username`, `.password.ref` | | none: no authentication. PLAIN, or LOGIN when the server offers only that, over TLS only; the password is a secret reference (`k8s:quai/quai-smtp#password`), read at each send |
   | `notifications.alerts` | | none: email addresses that get every alert (a pull request merged without Quai's approval, approvals no longer enforced), besides the repository's admins; alerts only, never a request's content. Needs `notifications.email` |
-  | `notifications.defaults.channels` | | none: every kind at once. What people get until they choose on their profile page: per channel (`email`, `teams` with its bot, or `slack`, which must be configured) and kind (`approval_needed`, `submitted`, `approved`, `rejected`, `stale`, `merged`, `applied`, `failed`, `expiring_soon`), `immediate`, `digest` or `off` ([preferences](#preferences-and-digests)). Not `alert`: alerts always go at once; `approval_needed` is never `off` on every channel |
+  | `notifications.defaults.channels` | | none: every kind at once. What people get until they choose on their profile page: per channel (`email`, `teams` with its bot, or `slack`, which must be configured) and kind (`approval_needed`, `submitted`, `approved`, `rejected`, `stale`, `merged`, `applied`, `failed`, `expiring_soon`, `expired`), `immediate`, `digest` or `off` ([preferences](#preferences-and-digests)). Not `alert` or `escalation`: they always go at once; `approval_needed` (reminders included) is never `off` on every channel |
   | `notifications.defaults.digest.hour`, `.timeZone` | | `8`, `UTC`: when a digest goes until people choose: an hour (0 to 23) in an IANA time zone (`Europe/Zurich`) |
   | `notifications.teams.bot.appId`, `.tenantId`, `.clientSecret.ref` | | none: no personal cards in Teams ([Microsoft Teams](#microsoft-teams)). The bot's Entra ID application (client) ID and directory (tenant) ID, GUIDs; a secret reference to its client secret (`k8s:quai/quai-teams#client-secret`), read when a token is fetched. Needs `notifications.links` |
   | `notifications.teams.bot.tokenURL`, `.scope`, `.serviceURL` | | `https://login.microsoftonline.com/<tenantId>/oauth2/v2.0/token`, `https://api.botframework.com/.default`, `https://smba.trafficmanager.net/teams/`: Microsoft's public cloud. Another cloud's (GCC, DoD) endpoints; https, without credentials or a query |
@@ -647,6 +649,48 @@ Troubleshooting:
   the delegation has not started, ended or was revoked.
 - **The delegator still gets "approval needed"**: the delegate cannot review that request for
   them, or has reviewed it already.
+
+### Reminders, escalation and expiry
+
+A request that waits for approval can remind its approvers, then tell an escalation group, and
+expires after the `expiry` its definitions set ([design
+05](../design/05-delivery-and-approvals.md#reminders-escalation-expiry)). Reminders and
+escalation are configured here, for every repository; the expiry is an approval block's
+`expiry` in the definitions (`7d`), the shortest of those that apply to a request:
+
+```yaml
+approvals:
+  reminders:
+    after: 48h            # the people it waits for are reminded once
+  escalation:
+    after: 120h           # after the reminder
+    to: [group:platform-leads, user:dana]
+```
+
+- **The worker** takes the steps: its `approval_sweep` job runs every minute. Without a worker
+  running, nothing is reminded and nothing expires.
+- **Reminders** are "approval needed" messages again, with each person's preferences (their
+  digest, their Teams or Slack card) and delegations; the subject says "Reminder".
+- **Escalation** goes at once to the people `to` names who signed in to Quai (not the requester,
+  nobody deactivated), on every channel that reaches them. It does not let them approve. Those
+  who may not review the request get its number, repository and link, not its content.
+- **Expiry.** The requester hears a day before (`expiring_soon`) and when it expires
+  (`expired`). An expired request's approvals no longer count; `quai/approval` fails ("Expired in
+  Quai") and Quai comments on its pull request and closes it. The requester asks again with a new
+  request. The expiry is the one the definitions set when the request was submitted: changing a
+  type's `expiry` changes new requests only.
+- **Audit**: `request.reminded`, `request.escalated`, `request.expired`,
+  `request.pull_request_closed`.
+
+Troubleshooting:
+
+- **A pull request of an expired request is still open**: the worker could not reach the
+  platform; the request's status job tries again (the worker's log says why). Quai closes only
+  the pull request it opened; one someone else closed stays closed, one merged meanwhile raises
+  the bypass alert.
+- **Someone got no reminder**: they were not among those the request waits for then (they
+  reviewed it, their rule was satisfied, they delegated), their preferences put it in their
+  digest, or Quai has no address of theirs.
 
 ### Notifications
 

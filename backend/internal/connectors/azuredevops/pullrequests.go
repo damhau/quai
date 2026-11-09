@@ -330,6 +330,36 @@ func (p *pullRequests) Comment(ctx context.Context, id, body string) error {
 	return c.client.Do(ctx, http.MethodPost, at, APIVersion, nil, thread, nil)
 }
 
+// Comments returns the contents of the comments of the pull request's threads, oldest first. Azure
+// DevOps returns every thread at once.
+func (p *pullRequests) Comments(ctx context.Context, id string) ([]string, error) {
+	c := (*Connector)(p)
+	if _, err := strconv.Atoi(id); err != nil {
+		return nil, fmt.Errorf("%w: pull request %q", connectors.ErrNotFound, id)
+	}
+	at, _, err := c.api(ctx, "pullRequests", id, "threads")
+	if err != nil {
+		return nil, err
+	}
+	var list struct {
+		Value []struct {
+			Comments []struct {
+				Content string `json:"content"`
+			} `json:"comments"`
+		} `json:"value"`
+	}
+	if err := c.client.Do(ctx, http.MethodGet, at, APIVersion, nil, nil, &list); err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, t := range list.Value {
+		for _, cm := range t.Comments {
+			out = append(out, cm.Content)
+		}
+	}
+	return out, nil
+}
+
 func sleep(ctx context.Context, d time.Duration) error {
 	t := time.NewTimer(d)
 	defer t.Stop()

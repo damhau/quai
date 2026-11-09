@@ -66,7 +66,7 @@ func TestPreferences(t *testing.T) {
 		t.Fatalf("get = %d %s", status, raw)
 	}
 	want := []string{"approval_needed=immediate", "submitted=immediate", "approved=immediate", "rejected=immediate", "stale=immediate", "merged=immediate",
-		"applied=immediate", "failed=immediate", "expiring_soon=immediate"}
+		"applied=immediate", "failed=immediate", "expiring_soon=immediate", "expired=immediate"}
 	if !slices.Equal(modes(v), want) || !slices.Equal(v.Body.Channels, []string{"email"}) || v.Body.Customized ||
 		v.Body.Digest != (DigestView{8, "UTC"}) || v.Body.DefaultDigest != (DigestView{8, "UTC"}) {
 		t.Errorf("defaults = %+v", v.Body)

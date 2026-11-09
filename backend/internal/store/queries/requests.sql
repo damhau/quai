@@ -1,10 +1,11 @@
 -- name: CreateRequest :one
 INSERT INTO requests (id, kind, action, target, type_name, blueprint, requester, requester_email, reason, inputs, state,
                       definitions_commit, base_commit, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up,
-                      manager, manager_reason, separation)
+                      manager, manager_reason, separation, submitted_at, expiry, expires_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, COALESCE(sqlc.narg(stacks)::text[], '{}'),
         COALESCE(sqlc.narg(codeowners)::text[], '{}'), COALESCE(sqlc.narg(codeowners_unmatched)::text[], '{}'), sqlc.arg(step_up),
-        sqlc.arg(manager), sqlc.arg(manager_reason), COALESCE(sqlc.narg(separation)::jsonb, '{}'))
+        sqlc.arg(manager), sqlc.arg(manager_reason), COALESCE(sqlc.narg(separation)::jsonb, '{}'),
+        COALESCE(sqlc.narg(submitted_at)::timestamptz, now()), sqlc.arg(expiry), sqlc.narg(expires_at))
 RETURNING *;
 
 -- name: GetRequest :one
@@ -35,3 +36,22 @@ UPDATE requests SET rules = $2, updated_at = now() WHERE id = $1;
 SELECT r.* FROM requests r
 JOIN change_sets cs ON cs.request_id = r.id
 WHERE r.state = 'applying' AND cs.repository = sqlc.arg(repository) AND sqlc.arg(stack)::text = ANY(r.stacks);
+
+-- name: LockRequest :one
+-- The request, its row locked until the transaction ends: what decides on a request that waits
+-- for approval (a review, its expiry, a reminder) reads its state under the lock.
+SELECT * FROM requests WHERE id = $1 FOR UPDATE;
+
+-- name: ListPendingApproval :many
+-- The requests that wait for approval, the longest waiting first: those reminders, escalation
+-- and expiry may be due for.
+SELECT * FROM requests WHERE state = 'pending_approval' ORDER BY submitted_at, id;
+
+-- name: SetRequestReminded :exec
+UPDATE requests SET reminded_at = sqlc.arg(at) WHERE id = sqlc.arg(id);
+
+-- name: SetRequestEscalated :exec
+UPDATE requests SET escalated_at = sqlc.arg(at) WHERE id = sqlc.arg(id);
+
+-- name: SetRequestExpiryWarned :exec
+UPDATE requests SET expiry_warned_at = sqlc.arg(at) WHERE id = sqlc.arg(id);

@@ -107,6 +107,7 @@ func work(ctx context.Context, cfg *config.Config, log *slog.Logger, s *store.St
 		svc.UsePublicURL(cfg.Server.PublicURL)
 		svc.UseDirectory(auth.NewDirectory(cfg.Auth))
 		svc.UseStepUp(auth.NewStepUp(cfg.Auth, s))
+		svc.UseApprovals(cfg.Approvals)
 		hooks = ingest.New(s, reg, log)
 		hooks.UseHandler(svc)
 		workers = append(workers, svc.Workers, hooks.Workers)
@@ -117,7 +118,7 @@ func work(ctx context.Context, cfg *config.Config, log *slog.Logger, s *store.St
 			workers = append(workers, n.Workers)
 			opts.Periodic = append(opts.Periodic, notify.Periodic())
 		}
-		opts.Periodic = append(opts.Periodic, ingest.Periodic())
+		opts.Periodic = append(opts.Periodic, ingest.Periodic(), requests.Periodic())
 	}
 	opts.Workers = func(w *river.Workers) {
 		for _, add := range workers {

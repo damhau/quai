@@ -72,18 +72,17 @@ the Go backend and the new frontend, on the VM-first examples.
 | SQLite, one process | PostgreSQL, server and worker processes | ADR 0006 |
 | Designer: YAML view | Definition as JSON; the file is written in the repository's key order on publish | Fewer dependencies; publish writes YAML |
 | `docker compose up` ran the prototype | It runs the Go stack | P0-25 |
+| Pending requests expired after `requestTtlHours`, shown with the request | Each request's `expiry` from its definitions' approval blocks, fixed at submission; the request page says when it expires; its pull request is closed with a comment | Design 05, P4-14 |
 
 **Not there yet.** Prototype features with no equivalent, for the owner to schedule or drop:
 
-1. **Request expiry.** The prototype expired pending requests after `requestTtlHours` and showed
-   when. Design 05 has `expiry: 7d`; nothing expires requests yet.
-2. **Deleting a deployment.** The prototype deleted a deployment's directory. Deleting a blueprint
+1. **Deleting a deployment.** The prototype deleted a deployment's directory. Deleting a blueprint
    instance (its resources and its record) has no endpoint; each resource can be deleted on its
    own. Design 04 also plans re-creating or detaching a resource deleted by hand, which the
    deployment page only flags as missing.
-3. **A demo runner.** Without the prototype's simulated sync, the local stack shows no apply until
+2. **A demo runner.** Without the prototype's simulated sync, the local stack shows no apply until
    a pipeline reports one; the fake runner of the testing strategy is not built.
-4. **Small things:** the designer has no preview of the blueprint's form and plan, and catalog
+3. **Small things:** the designer has no preview of the blueprint's form and plan, and catalog
    cards do not count a type's resources.
 
 None of these blocks the pilot's walkthroughs. Removing the prototype (P0-29) loses nothing else.

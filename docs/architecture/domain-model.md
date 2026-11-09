@@ -73,7 +73,7 @@ stateDiagram-v2
   PendingApproval --> Approved: all rules satisfied
   PendingApproval --> Rejected: any denial
   PendingApproval --> Cancelled: requester cancels
-  PendingApproval --> Expired: TTL reached
+  PendingApproval --> Expired: its expiry passed (final, approvals void)
   PendingApproval --> Stale: owned region changed in Git
   Approved --> Stale: owned region changed before merge
   Approved --> PendingApproval: a new plan makes a rule apply

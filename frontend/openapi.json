@@ -1830,7 +1830,8 @@
               "merged",
               "applied",
               "failed",
-              "expiring_soon"
+              "expiring_soon",
+              "expired"
             ],
             "type": "string"
           },
@@ -1880,7 +1881,8 @@
               "merged",
               "applied",
               "failed",
-              "expiring_soon"
+              "expiring_soon",
+              "expired"
             ],
             "type": "string"
           },
@@ -2717,7 +2719,7 @@
             "$ref": "#/components/schemas/DigestView"
           },
           "events": {
-            "description": "For each kind one chooses and channel configured. Alerts are not among them: they always go at once",
+            "description": "For each kind one chooses and channel configured. Alerts and escalations are not among them: they always go at once",
             "items": {
               "$ref": "#/components/schemas/EventPreferenceView"
             },
@@ -3034,6 +3036,15 @@
               "array",
               "null"
             ]
+          },
+          "expiresAt": {
+            "description": "When it expires if it still waits for approval: its submission and its expiry",
+            "format": "date-time",
+            "type": "string"
+          },
+          "expiry": {
+            "description": "The approval expiry its definitions set when it was planned, as written (7d): a request still pending approval then expires",
+            "type": "string"
           },
           "id": {
             "type": "string"
@@ -3530,6 +3541,10 @@
           },
           "stepUp": {
             "description": "The reviewer's authentication satisfied the step-up when they reviewed",
+            "type": "boolean"
+          },
+          "voided": {
+            "description": "The request expired: the review is void and never counts again",
             "type": "boolean"
           }
         },
@@ -5375,7 +5390,7 @@
         ]
       },
       "put": {
-        "description": "Each kind and channel left out, or chosen as its default, follows the default. Alerts are not a kind one chooses: they always go at once. Approval needed cannot be off on every channel.",
+        "description": "Each kind and channel left out, or chosen as its default, follows the default. Alerts and escalations are not kinds one chooses: they always go at once. Approval needed (reminders included) cannot be off on every channel.",
         "operationId": "update-preferences",
         "requestBody": {
           "content": {

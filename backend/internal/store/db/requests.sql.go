@@ -10,10 +10,11 @@ import (
 	"encoding/json"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const applyingRequests = `-- name: ApplyingRequests :many
-SELECT r.id, r.org_id, r.kind, r.action, r.target, r.type_name, r.blueprint, r.requester, r.reason, r.inputs, r.state, r.definitions_commit, r.base_commit, r.created_at, r.updated_at, r.number, r.requester_email, r.stack, r.rules, r.owners, r.stacks, r.codeowners, r.codeowners_unmatched, r.step_up, r.manager, r.manager_reason, r.separation FROM requests r
+SELECT r.id, r.org_id, r.kind, r.action, r.target, r.type_name, r.blueprint, r.requester, r.reason, r.inputs, r.state, r.definitions_commit, r.base_commit, r.created_at, r.updated_at, r.number, r.requester_email, r.stack, r.rules, r.owners, r.stacks, r.codeowners, r.codeowners_unmatched, r.step_up, r.manager, r.manager_reason, r.separation, r.submitted_at, r.expiry, r.expires_at, r.reminded_at, r.escalated_at, r.expiry_warned_at FROM requests r
 JOIN change_sets cs ON cs.request_id = r.id
 WHERE r.state = 'applying' AND cs.repository = $1 AND $2::text = ANY(r.stacks)
 `
@@ -61,6 +62,12 @@ func (q *Queries) ApplyingRequests(ctx context.Context, arg ApplyingRequestsPara
 			&i.Manager,
 			&i.ManagerReason,
 			&i.Separation,
+			&i.SubmittedAt,
+			&i.Expiry,
+			&i.ExpiresAt,
+			&i.RemindedAt,
+			&i.EscalatedAt,
+			&i.ExpiryWarnedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -75,11 +82,12 @@ func (q *Queries) ApplyingRequests(ctx context.Context, arg ApplyingRequestsPara
 const createRequest = `-- name: CreateRequest :one
 INSERT INTO requests (id, kind, action, target, type_name, blueprint, requester, requester_email, reason, inputs, state,
                       definitions_commit, base_commit, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up,
-                      manager, manager_reason, separation)
+                      manager, manager_reason, separation, submitted_at, expiry, expires_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, COALESCE($17::text[], '{}'),
         COALESCE($18::text[], '{}'), COALESCE($19::text[], '{}'), $20,
-        $21, $22, COALESCE($23::jsonb, '{}'))
-RETURNING id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up, manager, manager_reason, separation
+        $21, $22, COALESCE($23::jsonb, '{}'),
+        COALESCE($24::timestamptz, now()), $25, $26)
+RETURNING id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up, manager, manager_reason, separation, submitted_at, expiry, expires_at, reminded_at, escalated_at, expiry_warned_at
 `
 
 type CreateRequestParams struct {
@@ -106,6 +114,9 @@ type CreateRequestParams struct {
 	Manager             string
 	ManagerReason       string
 	Separation          []byte
+	SubmittedAt         pgtype.Timestamptz
+	Expiry              string
+	ExpiresAt           pgtype.Timestamptz
 }
 
 func (q *Queries) CreateRequest(ctx context.Context, arg CreateRequestParams) (Request, error) {
@@ -133,6 +144,9 @@ func (q *Queries) CreateRequest(ctx context.Context, arg CreateRequestParams) (R
 		arg.Manager,
 		arg.ManagerReason,
 		arg.Separation,
+		arg.SubmittedAt,
+		arg.Expiry,
+		arg.ExpiresAt,
 	)
 	var i Request
 	err := row.Scan(
@@ -163,12 +177,18 @@ func (q *Queries) CreateRequest(ctx context.Context, arg CreateRequestParams) (R
 		&i.Manager,
 		&i.ManagerReason,
 		&i.Separation,
+		&i.SubmittedAt,
+		&i.Expiry,
+		&i.ExpiresAt,
+		&i.RemindedAt,
+		&i.EscalatedAt,
+		&i.ExpiryWarnedAt,
 	)
 	return i, err
 }
 
 const getRequest = `-- name: GetRequest :one
-SELECT id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up, manager, manager_reason, separation FROM requests WHERE id = $1
+SELECT id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up, manager, manager_reason, separation, submitted_at, expiry, expires_at, reminded_at, escalated_at, expiry_warned_at FROM requests WHERE id = $1
 `
 
 func (q *Queries) GetRequest(ctx context.Context, id uuid.UUID) (Request, error) {
@@ -202,12 +222,78 @@ func (q *Queries) GetRequest(ctx context.Context, id uuid.UUID) (Request, error)
 		&i.Manager,
 		&i.ManagerReason,
 		&i.Separation,
+		&i.SubmittedAt,
+		&i.Expiry,
+		&i.ExpiresAt,
+		&i.RemindedAt,
+		&i.EscalatedAt,
+		&i.ExpiryWarnedAt,
 	)
 	return i, err
 }
 
+const listPendingApproval = `-- name: ListPendingApproval :many
+SELECT id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up, manager, manager_reason, separation, submitted_at, expiry, expires_at, reminded_at, escalated_at, expiry_warned_at FROM requests WHERE state = 'pending_approval' ORDER BY submitted_at, id
+`
+
+// The requests that wait for approval, the longest waiting first: those reminders, escalation
+// and expiry may be due for.
+func (q *Queries) ListPendingApproval(ctx context.Context) ([]Request, error) {
+	rows, err := q.db.Query(ctx, listPendingApproval)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Request{}
+	for rows.Next() {
+		var i Request
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.Kind,
+			&i.Action,
+			&i.Target,
+			&i.TypeName,
+			&i.Blueprint,
+			&i.Requester,
+			&i.Reason,
+			&i.Inputs,
+			&i.State,
+			&i.DefinitionsCommit,
+			&i.BaseCommit,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Number,
+			&i.RequesterEmail,
+			&i.Stack,
+			&i.Rules,
+			&i.Owners,
+			&i.Stacks,
+			&i.Codeowners,
+			&i.CodeownersUnmatched,
+			&i.StepUp,
+			&i.Manager,
+			&i.ManagerReason,
+			&i.Separation,
+			&i.SubmittedAt,
+			&i.Expiry,
+			&i.ExpiresAt,
+			&i.RemindedAt,
+			&i.EscalatedAt,
+			&i.ExpiryWarnedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listRequests = `-- name: ListRequests :many
-SELECT id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up, manager, manager_reason, separation FROM requests
+SELECT id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up, manager, manager_reason, separation, submitted_at, expiry, expires_at, reminded_at, escalated_at, expiry_warned_at FROM requests
 WHERE (cardinality($1::text[]) = 0 OR state = ANY ($1::text[]))
   AND ($2::text = '' OR requester = $2::text)
   AND ($3::text = '' OR target = $3::text)
@@ -265,6 +351,12 @@ func (q *Queries) ListRequests(ctx context.Context, arg ListRequestsParams) ([]R
 			&i.Manager,
 			&i.ManagerReason,
 			&i.Separation,
+			&i.SubmittedAt,
+			&i.Expiry,
+			&i.ExpiresAt,
+			&i.RemindedAt,
+			&i.EscalatedAt,
+			&i.ExpiryWarnedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -274,6 +366,95 @@ func (q *Queries) ListRequests(ctx context.Context, arg ListRequestsParams) ([]R
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockRequest = `-- name: LockRequest :one
+SELECT id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up, manager, manager_reason, separation, submitted_at, expiry, expires_at, reminded_at, escalated_at, expiry_warned_at FROM requests WHERE id = $1 FOR UPDATE
+`
+
+// The request, its row locked until the transaction ends: what decides on a request that waits
+// for approval (a review, its expiry, a reminder) reads its state under the lock.
+func (q *Queries) LockRequest(ctx context.Context, id uuid.UUID) (Request, error) {
+	row := q.db.QueryRow(ctx, lockRequest, id)
+	var i Request
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Kind,
+		&i.Action,
+		&i.Target,
+		&i.TypeName,
+		&i.Blueprint,
+		&i.Requester,
+		&i.Reason,
+		&i.Inputs,
+		&i.State,
+		&i.DefinitionsCommit,
+		&i.BaseCommit,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Number,
+		&i.RequesterEmail,
+		&i.Stack,
+		&i.Rules,
+		&i.Owners,
+		&i.Stacks,
+		&i.Codeowners,
+		&i.CodeownersUnmatched,
+		&i.StepUp,
+		&i.Manager,
+		&i.ManagerReason,
+		&i.Separation,
+		&i.SubmittedAt,
+		&i.Expiry,
+		&i.ExpiresAt,
+		&i.RemindedAt,
+		&i.EscalatedAt,
+		&i.ExpiryWarnedAt,
+	)
+	return i, err
+}
+
+const setRequestEscalated = `-- name: SetRequestEscalated :exec
+UPDATE requests SET escalated_at = $1 WHERE id = $2
+`
+
+type SetRequestEscalatedParams struct {
+	At pgtype.Timestamptz
+	ID uuid.UUID
+}
+
+func (q *Queries) SetRequestEscalated(ctx context.Context, arg SetRequestEscalatedParams) error {
+	_, err := q.db.Exec(ctx, setRequestEscalated, arg.At, arg.ID)
+	return err
+}
+
+const setRequestExpiryWarned = `-- name: SetRequestExpiryWarned :exec
+UPDATE requests SET expiry_warned_at = $1 WHERE id = $2
+`
+
+type SetRequestExpiryWarnedParams struct {
+	At pgtype.Timestamptz
+	ID uuid.UUID
+}
+
+func (q *Queries) SetRequestExpiryWarned(ctx context.Context, arg SetRequestExpiryWarnedParams) error {
+	_, err := q.db.Exec(ctx, setRequestExpiryWarned, arg.At, arg.ID)
+	return err
+}
+
+const setRequestReminded = `-- name: SetRequestReminded :exec
+UPDATE requests SET reminded_at = $1 WHERE id = $2
+`
+
+type SetRequestRemindedParams struct {
+	At pgtype.Timestamptz
+	ID uuid.UUID
+}
+
+func (q *Queries) SetRequestReminded(ctx context.Context, arg SetRequestRemindedParams) error {
+	_, err := q.db.Exec(ctx, setRequestReminded, arg.At, arg.ID)
+	return err
 }
 
 const setRequestRules = `-- name: SetRequestRules :exec
@@ -294,7 +475,7 @@ func (q *Queries) SetRequestRules(ctx context.Context, arg SetRequestRulesParams
 const transitionRequest = `-- name: TransitionRequest :one
 UPDATE requests SET state = $1, updated_at = now()
 WHERE id = $2 AND state = $3
-RETURNING id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up, manager, manager_reason, separation
+RETURNING id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up, manager, manager_reason, separation, submitted_at, expiry, expires_at, reminded_at, escalated_at, expiry_warned_at
 `
 
 type TransitionRequestParams struct {
@@ -336,6 +517,12 @@ func (q *Queries) TransitionRequest(ctx context.Context, arg TransitionRequestPa
 		&i.Manager,
 		&i.ManagerReason,
 		&i.Separation,
+		&i.SubmittedAt,
+		&i.Expiry,
+		&i.ExpiresAt,
+		&i.RemindedAt,
+		&i.EscalatedAt,
+		&i.ExpiryWarnedAt,
 	)
 	return i, err
 }

@@ -153,6 +153,9 @@ type PullRequests interface {
 	Abandon(ctx context.Context, id string) error
 	// Comment adds a comment to the pull request (markdown).
 	Comment(ctx context.Context, id, body string) error
+	// Comments returns the bodies of the pull request's comments, oldest first: by which Quai
+	// finds a comment of its own already there before adding it again.
+	Comments(ctx context.Context, id string) ([]string, error)
 }
 
 // StatusState is the state of a status or check.

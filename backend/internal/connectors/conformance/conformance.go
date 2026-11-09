@@ -124,6 +124,15 @@ func Run(t *testing.T, h Harness) {
 		if err != nil || !slices.ContainsFunc(open, func(p connectors.PullRequest) bool { return p.ID == pr.ID }) {
 			t.Errorf("List(quai/) = %v, %v", open, err)
 		}
+		// A comment reads back, its hidden marker kept: how Quai finds its own before adding it again.
+		comment := "Conformance " + s.run + " comment.\n\n<!-- quai:conformance=" + s.run + " -->\n"
+		if err := prs.Comment(ctx, pr.ID, comment); err != nil {
+			t.Errorf("comment: %v", err)
+		}
+		s.eventually(t, "the comment reads back", func() bool {
+			comments, err := prs.Comments(ctx, pr.ID)
+			return err == nil && slices.ContainsFunc(comments, func(c string) bool { return strings.Contains(c, "<!-- quai:conformance="+s.run+" -->") })
+		})
 		first = s.waitHead(t, pr.ID, head2)
 	})
 

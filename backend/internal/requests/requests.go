@@ -55,6 +55,7 @@ const (
 	Applying        = "applying" // merged, waiting for the apply that includes it (with a runner)
 	Applied         = "applied"
 	Failed          = "failed"
+	Expired         = "expired" // waited for approval longer than its expiry: final, its reviews void
 )
 
 var (
@@ -78,6 +79,7 @@ type Service struct {
 	stepUp    *auth.StepUp
 	reach     func(ctx context.Context, u db.User, kind string) (bool, error) // whether notifications reach a person; nil without a channel
 	links     *chatlink.Signer                                                // opens the links of chat cards; nil: none are
+	waiting   config.Approvals                                                // reminders and escalation
 	now       func() time.Time                                                // delegations are judged by it (UseClock)
 }
 
@@ -152,6 +154,11 @@ type Plan struct {
 	// StepUp says that the approvals must be made with a step-up: the stepUp condition of an
 	// approval block that applies held (docs/design/05-delivery-and-approvals.md#step-up-authentication).
 	StepUp bool
+	// Expiry is the shortest approval expiry among the approval blocks of the definitions that
+	// apply (the type's and its action's, each resource type's and the blueprint's, its action's),
+	// as written; "" for none. Submitting keeps it with the request, and when the request expires
+	// (open question 78).
+	Expiry string
 	// Authorize is the access question the caller must answer yes before showing or submitting:
 	// on Object, and on each of Also (a migrate request operates every resource it covers).
 	Authorize authz.Action
@@ -308,6 +315,7 @@ func (s *Service) PlanType(ctx context.Context, who auth.Identity, in TypeInput)
 	}
 	// An action's approval replaces the type's rules, not its step-up (open question 50).
 	p.StepUp = needsStepUp(t.Spec.Approval, vars) || needsStepUp(approval, vars)
+	p.expires(t.Spec.Approval, approval)
 	sets := []policy.RuleSet{{Source: policy.SourceFloor, Rules: repo.FloorRules, Vars: vars}, {Source: policy.SourceType, Rules: approval.Rules, Vars: vars}}
 	if p.Rules, err = policy.Match(sets...); err != nil {
 		return p, err
@@ -378,10 +386,12 @@ func (s *Service) PlanBlueprint(ctx context.Context, who auth.Identity, in Bluep
 		sets = append(sets, policy.RuleSet{Source: policy.SourceFloor, Rules: repo.FloorRules, Vars: vars},
 			policy.RuleSet{Source: policy.SourceType, Rules: t.Spec.Approval.Rules, Vars: vars})
 		p.StepUp = p.StepUp || needsStepUp(t.Spec.Approval, vars)
+		p.expires(t.Spec.Approval)
 	}
 	bvars := expr.Vars{Inputs: inputs, User: user, Request: request}
 	sets = append(sets, policy.RuleSet{Source: policy.SourceBlueprint, Rules: b.Spec.Approval.Rules, Vars: bvars})
 	p.StepUp = p.StepUp || needsStepUp(b.Spec.Approval, bvars)
+	p.expires(b.Spec.Approval)
 	if p.Rules, err = policy.Match(sets...); err != nil {
 		return p, err
 	}
@@ -493,6 +503,7 @@ func (s *Service) planMigrate(ctx context.Context, who auth.Identity, repo *repo
 		sets = append(sets, policy.RuleSet{Source: policy.SourceFloor, Rules: repo.FloorRules, Vars: vars},
 			policy.RuleSet{Source: policy.SourceType, Rules: t.Spec.Approval.Rules, Vars: vars})
 		p.StepUp = p.StepUp || needsStepUp(t.Spec.Approval, vars)
+		p.expires(t.Spec.Approval)
 	}
 	slices.Sort(owners)
 	p.Owners = slices.Compact(owners)
@@ -573,6 +584,7 @@ func (s *Service) PlanInstanceAction(ctx context.Context, who auth.Identity, in 
 		sets = append(sets, policy.RuleSet{Source: policy.SourceFloor, Rules: repo.FloorRules, Vars: vars},
 			policy.RuleSet{Source: policy.SourceType, Rules: t.Spec.Approval.Rules, Vars: vars})
 		p.StepUp = p.StepUp || needsStepUp(t.Spec.Approval, vars)
+		p.expires(t.Spec.Approval)
 	}
 	approval := b.Spec.Approval
 	if i := slices.IndexFunc(b.Spec.Actions, func(a definitions.BlueprintAction) bool { return a.Name == in.Action }); i >= 0 && b.Spec.Actions[i].Approval != nil {
@@ -581,6 +593,7 @@ func (s *Service) PlanInstanceAction(ctx context.Context, who auth.Identity, in 
 	bvars := expr.Vars{Inputs: inst.Inputs, Action: inputs, User: user, Request: request}
 	sets = append(sets, policy.RuleSet{Source: policy.SourceBlueprint, Rules: approval.Rules, Vars: bvars})
 	p.StepUp = p.StepUp || needsStepUp(b.Spec.Approval, bvars) || needsStepUp(approval, bvars)
+	p.expires(b.Spec.Approval, approval)
 	if p.Rules, err = policy.Match(sets...); err != nil {
 		return p, err
 	}
@@ -630,6 +643,12 @@ func (s *Service) Submit(ctx context.Context, who auth.Identity, p *Plan, reason
 	if outcome.State == policy.Approved {
 		state = Approved
 	}
+	// Reminders, escalation and expiry count from the submission, by the service's clock.
+	submitted := s.now()
+	expiresAt := pgtype.Timestamptz{}
+	if _, d := definitions.Expiry(definitions.Approval{Expiry: p.Expiry}); d > 0 {
+		expiresAt = pgtype.Timestamptz{Time: submitted.Add(d), Valid: true}
+	}
 	var created db.Request
 	err = s.store.Tx(ctx, func(tx pgx.Tx, q *db.Queries) error {
 		r, err := q.CreateRequest(ctx, db.CreateRequestParams{
@@ -638,6 +657,7 @@ func (s *Service) Submit(ctx context.Context, who auth.Identity, p *Plan, reason
 			DefinitionsCommit: p.Commit, BaseCommit: p.Commit, Stack: p.Stack, Rules: rules, Owners: owners, Stacks: nonNil(p.Stacks),
 			Codeowners: nonNil(p.Codeowners.Entries), CodeownersUnmatched: nonNil(p.Codeowners.Unmatched), StepUp: p.StepUp,
 			Manager: p.Manager, ManagerReason: p.ManagerReason, Separation: separation,
+			SubmittedAt: pgtype.Timestamptz{Time: submitted, Valid: true}, Expiry: p.Expiry, ExpiresAt: expiresAt,
 		})
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
@@ -667,6 +687,9 @@ func (s *Service) Submit(ctx context.Context, who auth.Identity, p *Plan, reason
 		}
 		details := map[string]any{"kind": p.Kind, "action": p.Action, "type": p.Type, "blueprint": p.Blueprint,
 			"repository": p.Repository, "changeSet": p.ChangeSet.Hash, "definitionsCommit": p.Commit, "reason": audit.Personal(reason)}
+		if p.Expiry != "" && state == PendingApproval {
+			details["expiry"], details["expiresAt"] = p.Expiry, audit.Time(expiresAt.Time)
+		}
 		if sod := separationDetails(p.Separation); sod != nil {
 			details["separationOfDuties"] = sod
 		}
@@ -854,6 +877,17 @@ func (s *Service) ReviewLink(ctx context.Context, who auth.Identity, id uuid.UUI
 	}
 	var next db.Request
 	err = s.store.Tx(ctx, func(tx pgx.Tx, q *db.Queries) error {
+		// Decided under the request's row lock, on its state read again: a review and the
+		// request's expiry, a cancellation or another review deciding it at the same moment are
+		// taken one after the other, and the later one sees what the earlier one did.
+		locked, err := q.LockRequest(ctx, r.ID)
+		if err != nil {
+			return err
+		}
+		if locked.State != PendingApproval {
+			return fmt.Errorf("%w: the request is %s", ErrConflict, locked.State)
+		}
+		r = locked
 		params := db.CreateReviewParams{
 			ID: uuid.New(), RequestID: r.ID, Reviewer: who.Principal.Name, Groups: nonNil(who.Principal.Groups),
 			Teams: nonNil(who.Principal.Teams), Decision: decision, Comment: comment, ChangeSetHash: sets[0].Hash,
@@ -1053,7 +1087,7 @@ func (s *Service) transition(ctx context.Context, r db.Request, from, to, kind s
 				return err
 			}
 		}
-		if to == Stale || to == Cancelled || to == Rejected || to == Failed {
+		if to == Stale || to == Cancelled || to == Rejected || to == Failed || to == Expired {
 			return s.statusJob(ctx, tx, q, r)
 		}
 		return nil
@@ -1397,7 +1431,8 @@ func (s *Service) reviews(ctx context.Context, r db.Request) ([]db.Review, error
 func counted(r db.Request, all []db.Review, hash string) []db.Review {
 	var out []db.Review
 	for _, v := range all {
-		if (hash == "" || v.ChangeSetHash == hash) && (!r.StepUp || v.StepUp) {
+		// A voided review (the request expired) never counts again.
+		if (hash == "" || v.ChangeSetHash == hash) && (!r.StepUp || v.StepUp) && !v.VoidedAt.Valid {
 			out = append(out, v)
 		}
 	}
