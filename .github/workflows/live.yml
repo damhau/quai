@@ -57,7 +57,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/quai
-          key: test-binaries-${{ runner.os }}-${{ hashFiles('backend/internal/pgtest/*.go', 'backend/internal/k8stest/*.go', 'backend/internal/giteatest/*.go', 'backend/go.sum') }}
+          key: test-binaries-${{ runner.os }}-${{ hashFiles('backend/internal/pgtest/*.go', 'backend/internal/k8stest/*.go', 'backend/internal/giteatest/*.go', 'backend/internal/mailtest/*.go', 'backend/go.sum') }}
           restore-keys: test-binaries-${{ runner.os }}-
       # The tests read the PAT from a file only; it is never on a command line.
       - if: env.HAS_PAT == 'true'
@@ -101,7 +101,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/quai
-          key: test-binaries-${{ runner.os }}-${{ hashFiles('backend/internal/pgtest/*.go', 'backend/internal/k8stest/*.go', 'backend/internal/giteatest/*.go', 'backend/go.sum') }}
+          key: test-binaries-${{ runner.os }}-${{ hashFiles('backend/internal/pgtest/*.go', 'backend/internal/k8stest/*.go', 'backend/internal/giteatest/*.go', 'backend/internal/mailtest/*.go', 'backend/go.sum') }}
           restore-keys: test-binaries-${{ runner.os }}-
       # The tests read the key and the secret from files only; they are never on a command line.
       - if: env.HAS_KEY == 'true'
