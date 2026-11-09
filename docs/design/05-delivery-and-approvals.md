@@ -272,10 +272,23 @@ same currency) and `policies` (each `name` and `result`). As decided
 
 ### Step-up authentication
 
-For rules with `stepUp`, an approval is accepted only if the approver
-authenticated with the IdP within the last N minutes, using OIDC `max_age` (and
-`acr_values` when the IdP supports MFA levels). The UI triggers a
-re-authentication before the approve button works.
+An approval block's `stepUp` is a condition, with the variables of `when`: when it holds for a
+request, the request's reviews count only from people who authenticated with the IdP within
+`auth.stepUp.maxAge` (five minutes by default), with `auth.stepUp.acrValues` and Entra ID's
+authentication context when set ([design 08](08-identity-access-tenancy.md#step-up)). As built
+(P4-06, [open question 50](../plan/open-questions.md#still-open)):
+
+- It is decided once, at submission, for the whole request, with its rules: the request needs a
+  step-up when the `stepUp` of any approval block that applies to it holds (its type's, its
+  blueprint's, each of its resource types'; an action's `approval` replaces the rules, not the
+  type's `stepUp`). A condition that cannot be evaluated counts as holding. The plan and the
+  request say so (`stepUp`).
+- Approving and denying alike need it, checked on the server when the review is made; a review
+  refused is audited (`auth.step_up_refused`) and not recorded. An API token never steps up.
+- A review keeps whether its reviewer had stepped up, with their `auth_time`, `acr` and `acrs`. On
+  a step-up request only those reviews count, however old the reviewer's session grows after.
+- The request page asks for a new sign-in before the approve and deny buttons appear, says until
+  when a sign-in counts, and comes back to the request after it.
 
 ### Change windows and freezes
 

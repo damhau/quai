@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react"
 import { createFileRoute, Link } from "@tanstack/react-router"
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query"
-import { AlertCircle, Check, GitPullRequest, RotateCcw, X } from "lucide-react"
+import { AlertCircle, Check, GitPullRequest, KeyRound, RotateCcw, X } from "lucide-react"
 import {
   cancelRequestMutation,
   getMeOptions,
+  getMeQueryKey,
   getRequestOptions,
   getRequestQueryKey,
   listRequestsQueryKey,
@@ -17,13 +18,14 @@ import { Codeowners } from "@/components/approval/codeowners"
 import { ChangesView } from "@/components/diff/changes-view"
 import { Plans } from "@/components/requests/plans"
 import { StateBadge } from "@/components/requests/state-badge"
+import { StepUpPrompt } from "@/components/step-up-prompt"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { ago } from "@/lib/format"
-import { fieldErrors, hasFieldErrors, problemMessage } from "@/lib/problems"
+import { fieldErrors, hasFieldErrors, isStepUpRequired, problemMessage } from "@/lib/problems"
 import { eventText, inProgress, requestTitle, runURL } from "@/lib/requests"
 
 export const Route = createFileRoute("/requests/$id")({
@@ -112,7 +114,10 @@ function RequestPage() {
                       {v.decision === "approve" ? <Check className="mt-0.5 size-4 text-emerald-600" aria-hidden /> : <X className="text-destructive mt-0.5 size-4" aria-hidden />}
                       <div>
                         <span className="font-medium">{v.reviewer}</span> {v.decision === "approve" ? "approved" : "denied"}{" "}
-                        <span className="text-muted-foreground text-xs">{ago(v.at)}</span>
+                        <span className="text-muted-foreground text-xs">
+                          {ago(v.at)}
+                          {v.stepUp && " · signed in recently"}
+                        </span>
                         {v.comment && <p className="whitespace-pre-wrap">{v.comment}</p>}
                       </div>
                     </li>
@@ -166,18 +171,41 @@ function useRequestUpdate() {
 
 /**
  * ReviewBox lets an approver decide. Each reviewer's latest decision counts (design 05), so once
- * you have approved, the request waiting for others, you can still deny it.
+ * you have approved, the request waiting for others, you can still deny it. A request whose
+ * approval asks for a step-up takes reviews only from people who signed in recently: until then
+ * the box asks them to sign in again, and comes back here (the server checks it either way).
  */
 function ReviewBox({ request }: { request: RequestView }) {
   const [comment, setComment] = useState("")
+  const queryClient = useQueryClient()
   const { data: me } = useQuery(getMeOptions())
   const update = useRequestUpdate()
-  const review = useMutation({ ...reviewRequestMutation(), onSuccess: update })
+  const review = useMutation({
+    ...reviewRequestMutation(),
+    onSuccess: update,
+    // Refused for want of a recent sign-in: how recently the person signed in is read again, and
+    // the box asks them to sign in again.
+    onError: (e) => {
+      if (isStepUpRequired(e)) void queryClient.invalidateQueries({ queryKey: getMeQueryKey() })
+    },
+  })
   const send = (decision: "approve" | "deny") => review.mutate({ path: { id: request.id }, body: { decision, comment: comment || undefined } })
   const error = fieldErrors(review.error, "body").comment
   const approved = (request.reviews ?? []).filter((v) => v.reviewer === me?.name).at(-1)?.decision === "approve"
+  if (request.stepUp && me && !me.stepUp.satisfied)
+    return (
+      <div className="grid gap-3 border-t pt-4">
+        <StepUpPrompt title="Reviewing this request needs a recent sign-in" reason={me.stepUp.reason} onSignedIn={() => review.reset()} />
+      </div>
+    )
   return (
     <div className="grid gap-3 border-t pt-4">
+      {request.stepUp && me?.stepUp.until && (
+        <p className="text-muted-foreground flex items-center gap-1.5 text-xs">
+          <KeyRound className="size-3.5" aria-hidden />
+          This request needs a recent sign-in: yours counts until {new Date(me.stepUp.until).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.
+        </p>
+      )}
       {approved && <p className="text-sm">You approved this request; it waits for the other approvals. You can still deny it.</p>}
       <Label htmlFor="review-comment">{approved ? "Change your decision" : "Your review"}</Label>
       <Textarea

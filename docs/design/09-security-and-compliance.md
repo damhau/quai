@@ -28,6 +28,7 @@ Status: Draft · 2026-11-09
 | Webhook spoofing | Per-repository secrets, constant-time comparison, delivery IDs de-duplicated, replay window. Platforms that do not sign payloads (Azure DevOps service hooks) are accepted only on the dedicated webhook host with a secret header, and every event is treated as a notification: Quai re-reads the object from the platform API before acting. |
 | Privilege escalation through day-2 actions | Ownership and role checks in one authorization function; executors limited by their own RBAC. |
 | Session theft, CSRF, XSS | HttpOnly cookies, CSRF tokens, strict Content Security Policy, React escaping, no `dangerouslySetInnerHTML`, no third-party scripts or CDNs. |
+| A stolen or unattended session approves a production change | Step-up: approval rules with `stepUp`, break-glass and (with `auth.stepUp.admin`) repository changes take only a recent, strong enough authentication, from the ID token's `auth_time`, `acr` and `acrs`, checked on the server when the action is made; an API token never steps up; refusals audited ([design 08](08-identity-access-tenancy.md#step-up)). |
 | Tampering with the audit log | Append-only table, insert-only database role, hash chain, signed checkpoints, export to SIEM. |
 | Supply chain | Small dependency set, `go.sum` and the Go checksum database, `govulncheck`, SBOM, signed images and provenance (see below). |
 
@@ -120,17 +121,18 @@ changes, executor calls, configuration changes.
   can see a gap and verify the chain ([export to a SIEM](#export-to-a-siem)). A webhook comes in
   Phase 7.
 
-What is recorded, by action (P4-01, P4-02; break-glass, executor calls and configuration changes
-come with their features):
+What is recorded, by action (P4-01, P4-02, P4-06; break-glass, executor calls and configuration
+changes come with their features):
 
 | Action | Actor | When |
 | --- | --- | --- |
-| `auth.login`, `auth.logout` | the person | a sign-in (with the method and the grants it gave), a sign-out |
+| `auth.login`, `auth.logout` | the person | a sign-in (with the method and the grants it gave; for a step-up login `stepUp`, and the ID token's `acr` and `acrs` when it has them), a sign-out |
+| `auth.step_up_refused` | the person, or their token | an action refused for want of a recent sign-in ([step-up](08-identity-access-tenancy.md#step-up)): what was attempted (`request.review`, `repository.create`, `repository.update`, `repository.delete`, `repository.install_webhook`, `run_token.create`) on which object, and why |
 | `auth.grants_changed` | the person | a sign-in whose grants differ from the person's previous sign-in (`before`, `after`): a role change, from the IdP's groups or from `auth.roles` |
 | `token.created`, `token.revoked` | the person | an API token made or revoked (its ID, name, scopes, expiry; never the token) |
 | `run_token.created` | the person | a run token generated for a repository (its SHA-256; Quai keeps neither, so revoking it is changing the secret it names, outside Quai's view: [open question 33](../plan/open-questions.md#still-open)) |
 | `request.submitted`, `request.cancelled`, `request.retried` | the person, or their token | as named; submitted carries the change set and definitions commit, the reason as a pseudonym |
-| `request.reviewed` | the reviewer | every review: the decision, the comment as a pseudonym, the change set |
+| `request.reviewed` | the reviewer | every review: the decision, the comment as a pseudonym, the change set, whether the reviewer's authentication satisfied the step-up (`stepUp`) and its `acr` and `acrs` |
 | `request.approved`, `request.rejected` | the reviewer, or Quai | the request's state changes; approved names who approved (pseudonyms); Quai when no rule needs approvals or a plan settles them |
 | `request.stale`, `request.merged`, `request.applied`, `request.failed` | whoever's action made Quai see it: Quai, a repository's runner, or a person | the request's state changes, with what Quai observed (commit, pull request, run, error); never what a person wrote |
 | `request.merged_without_approval` | Quai | a bypass: the pull request merged without Quai's approval |

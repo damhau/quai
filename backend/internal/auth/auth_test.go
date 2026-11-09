@@ -3,12 +3,7 @@ package auth_test
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
-	"crypto/rsa"
-	"crypto/sha256"
-	"encoding/base64"
 	"encoding/json"
-	"encoding/pem"
 	"io"
 	"log/slog"
 	"net/http"
@@ -16,114 +11,24 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
-	"path/filepath"
 	"slices"
 	"strings"
-	"sync"
 	"testing"
 	"time"
-
-	"github.com/go-jose/go-jose/v4"
-	"github.com/go-jose/go-jose/v4/jwt"
 
 	"github.com/damhau/quai/backend/internal/api"
 	"github.com/damhau/quai/backend/internal/auth"
 	"github.com/damhau/quai/backend/internal/config"
 	"github.com/damhau/quai/backend/internal/netx"
+	"github.com/damhau/quai/backend/internal/oidctest"
 	"github.com/damhau/quai/backend/internal/pgtest"
 	"github.com/damhau/quai/backend/internal/store"
 )
 
 func TestMain(m *testing.M) { os.Exit(pgtest.Main(m)) }
 
-// idp is a mock OpenID Connect provider: discovery, keys, authorize and token endpoints, with
-// PKCE (S256) and nonces checked as a real provider does.
-type idp struct {
-	srv    *httptest.Server
-	key    *rsa.PrivateKey
-	mu     sync.Mutex
-	codes  map[string]grant
-	claims map[string]any // claims of the next login
-	// tamper changes what the token endpoint returns, for failure tests.
-	tamper func(claims map[string]any)
-}
-
-type grant struct {
-	nonce, challenge string
-	claims           map[string]any
-}
-
-func newIDP(t *testing.T) *idp {
-	t.Helper()
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		t.Fatal(err)
-	}
-	p := &idp{key: key, codes: map[string]grant{}}
-	mux := http.NewServeMux()
-	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, _ *http.Request) {
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"issuer": p.srv.URL, "authorization_endpoint": p.srv.URL + "/authorize", "token_endpoint": p.srv.URL + "/token",
-			"jwks_uri": p.srv.URL + "/keys", "id_token_signing_alg_values_supported": []string{"RS256"},
-		})
-	})
-	mux.HandleFunc("/keys", func(w http.ResponseWriter, _ *http.Request) {
-		_ = json.NewEncoder(w).Encode(jose.JSONWebKeySet{Keys: []jose.JSONWebKey{{Key: &key.PublicKey, KeyID: "k1", Algorithm: "RS256", Use: "sig"}}})
-	})
-	mux.HandleFunc("/authorize", func(w http.ResponseWriter, r *http.Request) {
-		q := r.URL.Query()
-		if q.Get("code_challenge_method") != "S256" || q.Get("code_challenge") == "" {
-			http.Error(w, "PKCE required", http.StatusBadRequest)
-			return
-		}
-		code := base64.RawURLEncoding.EncodeToString([]byte(time.Now().String()))
-		p.mu.Lock()
-		p.codes[code] = grant{nonce: q.Get("nonce"), challenge: q.Get("code_challenge"), claims: p.claims}
-		p.mu.Unlock()
-		u, _ := url.Parse(q.Get("redirect_uri"))
-		v := u.Query()
-		v.Set("code", code)
-		v.Set("state", q.Get("state"))
-		u.RawQuery = v.Encode()
-		http.Redirect(w, r, u.String(), http.StatusFound)
-	})
-	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
-		_ = r.ParseForm()
-		p.mu.Lock()
-		g, ok := p.codes[r.Form.Get("code")]
-		delete(p.codes, r.Form.Get("code"))
-		p.mu.Unlock()
-		sum := sha256.Sum256([]byte(r.Form.Get("code_verifier")))
-		if !ok || base64.RawURLEncoding.EncodeToString(sum[:]) != g.challenge {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			_, _ = w.Write([]byte(`{"error": "invalid_grant"}`))
-			return
-		}
-		claims := map[string]any{
-			"iss": p.srv.URL, "aud": "quai", "sub": "user-1", "nonce": g.nonce,
-			"iat": time.Now().Unix(), "exp": time.Now().Add(time.Hour).Unix(), "auth_time": time.Now().Unix(),
-		}
-		for k, v := range g.claims {
-			claims[k] = v
-		}
-		if p.tamper != nil {
-			p.tamper(claims)
-		}
-		signer, _ := jose.NewSigner(jose.SigningKey{Algorithm: jose.RS256, Key: key}, (&jose.SignerOptions{}).WithType("JWT").WithHeader("kid", "k1"))
-		idToken, _ := jwt.Signed(signer).Claims(claims).Serialize()
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "at", "token_type": "Bearer", "expires_in": 3600, "id_token": idToken})
-	})
-	// Over HTTPS with a CA of its own, which Quai trusts through network.caFile, as an
-	// internal identity provider would be.
-	p.srv = httptest.NewTLSServer(mux)
-	t.Cleanup(p.srv.Close)
-	return p
-}
-
 // quai starts the API with OIDC login against p, or the dev switcher when p is nil.
-func quai(t *testing.T, p *idp) (*httptest.Server, *http.Client) {
+func quai(t *testing.T, p *oidctest.Provider) (*httptest.Server, *http.Client) {
 	t.Helper()
 	srv, c, _ := quaiWith(t, p, nil)
 	return srv, c
@@ -131,13 +36,27 @@ func quai(t *testing.T, p *idp) (*httptest.Server, *http.Client) {
 
 // quaiWith is quai with a change to its configuration, when change is not nil; it returns the
 // store too.
-func quaiWith(t *testing.T, p *idp, change func(*config.Config)) (*httptest.Server, *http.Client, *store.Store) {
+func quaiWith(t *testing.T, p *oidctest.Provider, change func(*config.Config)) (*httptest.Server, *http.Client, *store.Store) {
+	t.Helper()
+	e := quaiEnv(t, p, change)
+	return e.srv, e.c, e.s
+}
+
+// env is Quai's test server, a browser signed in to nobody, the store and the authenticator.
+type env struct {
+	srv *httptest.Server
+	c   *http.Client
+	s   *store.Store
+	a   *auth.Authenticator
+}
+
+func quaiEnv(t *testing.T, p *oidctest.Provider, change func(*config.Config)) env {
 	t.Helper()
 	cfg := &config.Config{Env: config.Development}
 	srv := httptest.NewUnstartedServer(nil)
 	if p != nil {
 		cfg.Auth = config.Auth{Mode: config.AuthOIDC, OIDC: config.OIDC{
-			Issuer: p.srv.URL, ClientID: "quai", ClientSecret: "s", RedirectURL: "http://" + srv.Listener.Addr().String() + "/auth/callback",
+			Issuer: p.Issuer(), ClientID: oidctest.ClientID, ClientSecret: "s", RedirectURL: "http://" + srv.Listener.Addr().String() + "/auth/callback",
 			Scopes: []string{"openid"}, NameClaim: "preferred_username", GroupsClaim: "groups",
 		}}
 	} else {
@@ -153,21 +72,20 @@ func quaiWith(t *testing.T, p *idp, change func(*config.Config)) (*httptest.Serv
 	var client *http.Client
 	browser := http.DefaultTransport
 	if p != nil {
-		ca := filepath.Join(t.TempDir(), "ca.pem")
-		if err := os.WriteFile(ca, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: p.srv.Certificate().Raw}), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		network, err := netx.New(ca)
+		// Over HTTPS with a CA of its own, which Quai trusts through network.caFile, as an
+		// internal identity provider would be.
+		network, err := netx.New(p.CAFile(t))
 		if err != nil {
 			t.Fatal(err)
 		}
-		client, browser = network.Client(), p.srv.Client().Transport
+		client, browser = network.Client(), p.Transport()
 	}
-	srv.Config.Handler = api.New(api.Options{Version: "test", Env: cfg.Env, Logger: log, Store: s, Auth: auth.New(cfg, s, client, log)})
+	a := auth.New(cfg, s, client, log)
+	srv.Config.Handler = api.New(api.Options{Version: "test", Env: cfg.Env, Logger: log, Store: s, Auth: a})
 	srv.Start()
 	t.Cleanup(srv.Close)
 	jar, _ := cookiejar.New(nil)
-	return srv, &http.Client{Jar: jar, Transport: browser}, s
+	return env{srv: srv, c: &http.Client{Jar: jar, Transport: browser}, s: s, a: a}
 }
 
 type me struct {
@@ -178,6 +96,12 @@ type me struct {
 	Roles     []struct{ Role, Scope string }
 	Scopes    []string
 	CSRFToken string
+	StepUp    struct {
+		Satisfied bool
+		Reason    string
+		Until     *time.Time
+		MaxAge    int
+	}
 }
 
 func getMe(t *testing.T, c *http.Client, base string, header ...string) (me, int) {
@@ -217,8 +141,9 @@ func send(t *testing.T, c *http.Client, method, u string, body any, header ...st
 }
 
 func TestOIDCLogin(t *testing.T) {
-	p := newIDP(t)
-	p.claims = map[string]any{"preferred_username": "bob", "email": "bob@example.com", "email_verified": true, "groups": []string{"developers", "shop"}}
+	p := oidctest.New(t)
+	claims := map[string]any{"preferred_username": "bob", "email": "bob@example.com", "email_verified": true, "groups": []string{"developers", "shop"}}
+	p.SetClaims(claims)
 	srv, c := quai(t, p)
 
 	if _, status := getMe(t, c, srv.URL); status != http.StatusUnauthorized {
@@ -262,7 +187,8 @@ func TestOIDCLogin(t *testing.T) {
 	}
 
 	// An email the IdP says it has not verified is not kept: owners named by email would match it.
-	p.claims["email_verified"] = false
+	claims["email_verified"] = false
+	p.SetClaims(claims)
 	resp, _ = c.Get(srv.URL + "/auth/login")
 	resp.Body.Close()
 	if m, status := getMe(t, c, srv.URL); status != http.StatusOK || m.Name != "bob" || m.Email != "" {
@@ -275,7 +201,7 @@ func TestOIDCLogin(t *testing.T) {
 // owners named by email would match it. Without a name claim, a vouched-for email names the
 // person, and anything less refuses the login, saying which claims are missing.
 func TestOIDCEmail(t *testing.T) {
-	p := newIDP(t)
+	p := oidctest.New(t)
 	srv, c := quai(t, p)
 	const email = "erin@example.com"
 	for _, tt := range []struct {
@@ -302,14 +228,15 @@ func TestOIDCEmail(t *testing.T) {
 			"no preferred_username claim to name you by, nor an email claim", http.StatusForbidden}, // the sub claim names no one
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			p.claims = map[string]any{"preferred_username": "erin", "email": email, "groups": []string{"developers"}}
+			claims := map[string]any{"preferred_username": "erin", "email": email, "groups": []string{"developers"}}
 			for k, v := range tt.claims {
 				if v == nil {
-					delete(p.claims, k)
+					delete(claims, k)
 				} else {
-					p.claims[k] = v
+					claims[k] = v
 				}
 			}
+			p.SetClaims(claims)
 			jar, _ := cookiejar.New(nil)
 			browser := &http.Client{Jar: jar, Transport: c.Transport}
 			resp, err := browser.Get(srv.URL + "/auth/login")
@@ -341,8 +268,8 @@ func mustURL(s string) *url.URL {
 }
 
 func TestOIDCRefusals(t *testing.T) {
-	p := newIDP(t)
-	p.claims = map[string]any{"preferred_username": "bob"}
+	p := oidctest.New(t)
+	p.SetClaims(map[string]any{"preferred_username": "bob"})
 	srv, c := quai(t, p)
 	noRedirect := &http.Client{Jar: c.Jar, Transport: c.Transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 
@@ -372,7 +299,7 @@ func TestOIDCRefusals(t *testing.T) {
 		"expired":        func(c map[string]any) { c["exp"] = time.Now().Add(-time.Hour).Unix() },
 		"group overage":  func(c map[string]any) { c["_claim_names"] = map[string]any{"groups": "src1"} },
 	} {
-		p.tamper = tamper
+		p.Tamper(tamper)
 		if status := login(); status != http.StatusUnauthorized && status != http.StatusForbidden {
 			t.Errorf("%s: login = %d", name, status)
 		}
@@ -380,7 +307,7 @@ func TestOIDCRefusals(t *testing.T) {
 			t.Errorf("%s: signed in anyway", name)
 		}
 	}
-	p.tamper = nil
+	p.Tamper(nil)
 
 	// A code exchanged without the right PKCE verifier is refused by the provider.
 	resp, _ = noRedirect.Get(srv.URL + "/auth/login")
@@ -399,8 +326,8 @@ func TestOIDCRefusals(t *testing.T) {
 }
 
 func TestAPITokens(t *testing.T) {
-	p := newIDP(t)
-	p.claims = map[string]any{"preferred_username": "bob", "groups": []string{"developers"}}
+	p := oidctest.New(t)
+	p.SetClaims(map[string]any{"preferred_username": "bob", "groups": []string{"developers"}})
 	srv, c := quai(t, p)
 	resp, _ := c.Get(srv.URL + "/auth/login")
 	resp.Body.Close()

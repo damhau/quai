@@ -163,6 +163,7 @@ type Request struct {
 	Stacks              []string
 	Codeowners          []string
 	CodeownersUnmatched []string
+	StepUp              bool
 }
 
 type Review struct {
@@ -177,6 +178,9 @@ type Review struct {
 	ReviewerEmail    string
 	ReviewerAuthTime pgtype.Timestamptz
 	Teams            []string
+	ReviewerAcr      string
+	ReviewerAcrs     []string
+	StepUp           bool
 }
 
 type Run struct {

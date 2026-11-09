@@ -13,7 +13,7 @@ import (
 )
 
 const applyingRequests = `-- name: ApplyingRequests :many
-SELECT r.id, r.org_id, r.kind, r.action, r.target, r.type_name, r.blueprint, r.requester, r.reason, r.inputs, r.state, r.definitions_commit, r.base_commit, r.created_at, r.updated_at, r.number, r.requester_email, r.stack, r.rules, r.owners, r.stacks, r.codeowners, r.codeowners_unmatched FROM requests r
+SELECT r.id, r.org_id, r.kind, r.action, r.target, r.type_name, r.blueprint, r.requester, r.reason, r.inputs, r.state, r.definitions_commit, r.base_commit, r.created_at, r.updated_at, r.number, r.requester_email, r.stack, r.rules, r.owners, r.stacks, r.codeowners, r.codeowners_unmatched, r.step_up FROM requests r
 JOIN change_sets cs ON cs.request_id = r.id
 WHERE r.state = 'applying' AND cs.repository = $1 AND $2::text = ANY(r.stacks)
 `
@@ -57,6 +57,7 @@ func (q *Queries) ApplyingRequests(ctx context.Context, arg ApplyingRequestsPara
 			&i.Stacks,
 			&i.Codeowners,
 			&i.CodeownersUnmatched,
+			&i.StepUp,
 		); err != nil {
 			return nil, err
 		}
@@ -70,10 +71,10 @@ func (q *Queries) ApplyingRequests(ctx context.Context, arg ApplyingRequestsPara
 
 const createRequest = `-- name: CreateRequest :one
 INSERT INTO requests (id, kind, action, target, type_name, blueprint, requester, requester_email, reason, inputs, state,
-                      definitions_commit, base_commit, stack, rules, owners, stacks, codeowners, codeowners_unmatched)
+                      definitions_commit, base_commit, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, COALESCE($17::text[], '{}'),
-        COALESCE($18::text[], '{}'), COALESCE($19::text[], '{}'))
-RETURNING id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks, codeowners, codeowners_unmatched
+        COALESCE($18::text[], '{}'), COALESCE($19::text[], '{}'), $20)
+RETURNING id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up
 `
 
 type CreateRequestParams struct {
@@ -96,6 +97,7 @@ type CreateRequestParams struct {
 	Stacks              []string
 	Codeowners          []string
 	CodeownersUnmatched []string
+	StepUp              bool
 }
 
 func (q *Queries) CreateRequest(ctx context.Context, arg CreateRequestParams) (Request, error) {
@@ -119,6 +121,7 @@ func (q *Queries) CreateRequest(ctx context.Context, arg CreateRequestParams) (R
 		arg.Stacks,
 		arg.Codeowners,
 		arg.CodeownersUnmatched,
+		arg.StepUp,
 	)
 	var i Request
 	err := row.Scan(
@@ -145,12 +148,13 @@ func (q *Queries) CreateRequest(ctx context.Context, arg CreateRequestParams) (R
 		&i.Stacks,
 		&i.Codeowners,
 		&i.CodeownersUnmatched,
+		&i.StepUp,
 	)
 	return i, err
 }
 
 const getRequest = `-- name: GetRequest :one
-SELECT id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks, codeowners, codeowners_unmatched FROM requests WHERE id = $1
+SELECT id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up FROM requests WHERE id = $1
 `
 
 func (q *Queries) GetRequest(ctx context.Context, id uuid.UUID) (Request, error) {
@@ -180,12 +184,13 @@ func (q *Queries) GetRequest(ctx context.Context, id uuid.UUID) (Request, error)
 		&i.Stacks,
 		&i.Codeowners,
 		&i.CodeownersUnmatched,
+		&i.StepUp,
 	)
 	return i, err
 }
 
 const listRequests = `-- name: ListRequests :many
-SELECT id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks, codeowners, codeowners_unmatched FROM requests
+SELECT id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up FROM requests
 WHERE (cardinality($1::text[]) = 0 OR state = ANY ($1::text[]))
   AND ($2::text = '' OR requester = $2::text)
   AND ($3::text = '' OR target = $3::text)
@@ -239,6 +244,7 @@ func (q *Queries) ListRequests(ctx context.Context, arg ListRequestsParams) ([]R
 			&i.Stacks,
 			&i.Codeowners,
 			&i.CodeownersUnmatched,
+			&i.StepUp,
 		); err != nil {
 			return nil, err
 		}
@@ -268,7 +274,7 @@ func (q *Queries) SetRequestRules(ctx context.Context, arg SetRequestRulesParams
 const transitionRequest = `-- name: TransitionRequest :one
 UPDATE requests SET state = $1, updated_at = now()
 WHERE id = $2 AND state = $3
-RETURNING id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks, codeowners, codeowners_unmatched
+RETURNING id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up
 `
 
 type TransitionRequestParams struct {
@@ -306,6 +312,7 @@ func (q *Queries) TransitionRequest(ctx context.Context, arg TransitionRequestPa
 		&i.Stacks,
 		&i.Codeowners,
 		&i.CodeownersUnmatched,
+		&i.StepUp,
 	)
 	return i, err
 }

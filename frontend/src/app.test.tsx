@@ -2,7 +2,7 @@ import { screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { renderApp } from "@/test/render"
 import { state } from "@/test/server"
-import { localPath, oidcLoginURL } from "@/lib/auth"
+import { localPath, oidcLoginURL, stepUpLoginURL } from "@/lib/auth"
 
 test("the shell shows the navigation, the user and the catalog", async () => {
   renderApp("/")
@@ -43,11 +43,38 @@ test("a server without a database says nobody can sign in", async () => {
 })
 
 test("redirects stay on this site", () => {
-  expect(localPath("/requests/42")).toBe("/requests/42")
-  for (const bad of ["//evil.example.com", "https://evil.example.com", "/\\evil", 42, undefined]) {
-    expect(localPath(bad)).toBe("/")
+  for (const good of ["/requests/42", "/requests/42?review=approve", "/catalog/vm#prod", "/resources/infra-live%2Fvm%2Fprod%2Fweb-01"]) {
+    expect(localPath(good)).toBe(good)
+  }
+  const tab = String.fromCharCode(9)
+  const del = String.fromCharCode(0x7f)
+  for (const bad of [
+    "//evil.example.com",
+    "///evil.example.com",
+    "https://evil.example.com",
+    "javascript:alert(1)",
+    "requests/42",
+    "",
+    "/\\evil",
+    "/x\\y",
+    `/${tab}/evil.example.com`,
+    `/x${del}`,
+    "/%2F/evil.example.com",
+    "/%2f%2fevil.example.com",
+    "/%5Cevil.example.com",
+    "/%09/evil.example.com",
+    "/%252F/evil.example.com",
+    "/%25252F%25252Fevil.example.com",
+    "/%zz",
+    `/${"a".repeat(2048)}`,
+    42,
+    undefined,
+  ]) {
+    expect(localPath(bad), String(bad)).toBe("/")
   }
   expect(oidcLoginURL("/inventory?type=vm")).toBe("/auth/login?next=%2Finventory%3Ftype%3Dvm")
+  expect(stepUpLoginURL("/requests/42")).toBe("/auth/login?stepUp=1&next=%2Frequests%2F42")
+  expect(stepUpLoginURL("//evil.example.com")).toBe("/auth/login?stepUp=1&next=%2F")
 })
 
 test("signed in already, the login page switches to another user", async () => {

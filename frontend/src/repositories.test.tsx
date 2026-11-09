@@ -196,3 +196,37 @@ test("a connection declared in configuration is read-only; one managed in Quai i
   await waitFor(() => expect(router.state.location.pathname).toBe("/admin/repositories"))
   expect(repos.sent.some((s) => s.method === "DELETE" && s.path === "dns")).toBe(true)
 })
+
+test("with auth.stepUp.admin, changing a connection asks for a recent sign-in, before and after the server refuses", async () => {
+  state.user = "alice"
+  state.adminStepUp = true
+  state.stale = true
+  const user = userEvent.setup()
+  const { router } = renderApp("/admin/repositories/dns/edit")
+  const title = await screen.findByRole("textbox", { name: "Title" }, slow)
+  expect(screen.getByText("Changing repository connections needs a recent sign-in")).toBeInTheDocument()
+  await user.click(screen.getByRole("button", { name: "Sign in again" }))
+  await waitFor(() => expect(screen.queryByText("Changing repository connections needs a recent sign-in")).not.toBeInTheDocument())
+
+  // The server refuses a save all the same (the sign-in grew old meanwhile): sign in again, save again.
+  server.use(
+    http.put(
+      "*/api/v1/repositories/:name",
+      () =>
+        HttpResponse.json(
+          { type: "https://quai.dev/problems/step-up-required", status: 403, title: "Forbidden", detail: "this action needs a recent sign-in: you authenticated more than 5m0s ago; sign in again" },
+          { status: 403 },
+        ),
+      { once: true },
+    ),
+  )
+  await user.clear(title)
+  await user.type(title, "Name servers")
+  await user.click(screen.getByRole("button", { name: "Save" }))
+  expect(await screen.findByText(/you authenticated more than 5m0s ago/)).toBeInTheDocument()
+  await user.click(screen.getByRole("button", { name: "Sign in again" }))
+  await waitFor(() => expect(screen.queryByText(/you authenticated more than 5m0s ago/)).not.toBeInTheDocument())
+  await user.click(screen.getByRole("button", { name: "Save" }))
+  await waitFor(() => expect(router.state.location.pathname).toBe("/admin/repositories/dns"))
+  expect(repos.sent.find((s) => s.method === "PUT")?.body?.metadata.title).toBe("Name servers")
+})

@@ -193,6 +193,9 @@ func registerRepositories(a huma.API, opts Options) {
 		if _, err := authorize(ctx, authz.ManageRepository, authz.Object{Repository: in.Body.Metadata.Name}); err != nil {
 			return nil, err
 		}
+		if err := adminStepUp(ctx, opts, "repository.create", in.Body.Metadata.Name); err != nil {
+			return nil, err
+		}
 		c, err := reg.Create(ctx, in.Body)
 		if err != nil {
 			return nil, repositoryProblem(err)
@@ -207,6 +210,9 @@ func registerRepositories(a huma.API, opts Options) {
 		if _, err := authorize(ctx, authz.ManageRepository, authz.Object{Repository: in.Repository}); err != nil {
 			return nil, err
 		}
+		if err := adminStepUp(ctx, opts, "repository.update", in.Repository); err != nil {
+			return nil, err
+		}
 		c, err := reg.Update(ctx, in.Repository, in.Body)
 		if err != nil {
 			return nil, repositoryProblem(err)
@@ -219,6 +225,9 @@ func registerRepositories(a huma.API, opts Options) {
 		Summary: "Disconnect a repository managed through the API; its requests and history stay", Tags: tags, DefaultStatus: http.StatusNoContent,
 	}, func(ctx context.Context, in *repositoryInput) (*struct{}, error) {
 		if _, err := authorize(ctx, authz.ManageRepository, authz.Object{Repository: in.Repository}); err != nil {
+			return nil, err
+		}
+		if err := adminStepUp(ctx, opts, "repository.delete", in.Repository); err != nil {
 			return nil, err
 		}
 		if err := reg.Delete(ctx, in.Repository); err != nil {
@@ -250,6 +259,9 @@ func registerRepositories(a huma.API, opts Options) {
 		if _, err := authorize(ctx, authz.ManageRepository, authz.Object{Repository: in.Repository}); err != nil {
 			return nil, err
 		}
+		if err := adminStepUp(ctx, opts, "repository.install_webhook", in.Repository); err != nil {
+			return nil, err
+		}
 		repo, err := reg.Get(in.Repository)
 		if err != nil {
 			return nil, repositoryProblem(err)
@@ -277,6 +289,9 @@ func registerRepositories(a huma.API, opts Options) {
 		Description: "Returns a new token, once, and its SHA-256. Quai keeps neither: the hash goes in the secret spec.runner.reportToken.ref names, the token in the pipeline.",
 	}, func(ctx context.Context, in *repositoryInput) (*out[RunTokenView], error) {
 		if _, err := authorize(ctx, authz.ManageRepository, authz.Object{Repository: in.Repository}); err != nil {
+			return nil, err
+		}
+		if err := adminStepUp(ctx, opts, "run_token.create", in.Repository); err != nil {
 			return nil, err
 		}
 		b := make([]byte, 32)
@@ -410,4 +425,13 @@ func repositoryProblem(err error) error {
 		return huma.Error409Conflict(err.Error())
 	}
 	return Problem(err, "body")
+}
+
+// adminStepUp refuses a change to a repository connection when auth.stepUp.admin is set and the
+// caller's authentication does not satisfy a step-up now; it runs after the access check.
+func adminStepUp(ctx context.Context, opts Options, attempted, repository string) error {
+	if opts.Auth == nil || !opts.Auth.StepUp().Admin() {
+		return nil
+	}
+	return requireStepUp(ctx, opts.Auth.StepUp(), attempted, audit.Object{Type: "repository", ID: repository})
 }

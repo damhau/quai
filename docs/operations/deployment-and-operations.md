@@ -50,6 +50,11 @@ single pod with both roles.
   | `auth.roles` | | `- { group: sg-quai-admins, role: platform-admin, scope: global }`; scope can be `team:`, `repository:` or `catalog-item:` and a name |
   | `auth.teams` | | none: each group is the team of its own name. `- { group: sg-quai-*, team: "*" }` maps groups to teams, the first entry that matches deciding; once set, a group no entry matches is no team ([people and teams](#people-and-teams)) |
   | `auth.session.lifetime`, `.idleTimeout` | | `8h`, `30m` |
+  | `auth.stepUp` | | none: approval rules with `stepUp` still take only reviews from people who authenticated in the last five minutes, of any class; break-glass and repository changes need none ([step-up authentication](#step-up-authentication)) |
+  | `auth.stepUp.maxAge` | | `5m`: how long an authentication satisfies a step-up, from the ID token's `auth_time`; at least `1s` |
+  | `auth.stepUp.acrValues` | | none: any class. The `acr` values that count as strong enough, sent as `acr_values` and compared exactly with the ID token's `acr`; `oidc` only |
+  | `auth.stepUp.authContext` | | none. Entra ID's Conditional Access authentication context (`c1` to `c99`) a step-up asks for, which the ID token's `acrs` must hold; `oidc` only |
+  | `auth.stepUp.admin` | | `false`: when `true`, connecting, changing and disconnecting repositories, installing their webhooks and generating run tokens need a step-up |
   | `git.cacheDir`, `git.committer` | `QUAI_GIT_CACHE_DIR` | the user cache directory; `Quai <quai@localhost>` |
   | `git.signingKey.ref` | `QUAI_GIT_SIGNING_KEY_REF` | none: Quai's commits are unsigned. A reference to an SSH private key (`k8s:quai/signing-key#ssh-privatekey`) Quai signs its commits with; see [verifying them](../design/05-delivery-and-approvals.md#merge) |
   | `repositories.path` | `QUAI_REPOSITORIES_PATH` | none: a YAML file, or a directory of them, holding `Repository` documents ([repository connections](../design/01-repository-connections.md#repository-connection)); reconciled into the database at start-up, read-only through the API |
@@ -410,6 +415,52 @@ upgrade to the version with the directory.
   ```sql
   DELETE FROM users WHERE name = 'alice';
   ```
+
+### Step-up authentication
+
+Some actions take only a recent, and strong enough, authentication with the identity provider
+([design 08](../design/08-identity-access-tenancy.md#step-up)): reviewing a request whose approval
+asks for it (`approval.stepUp` in a type or blueprint, such as `"params.env == 'prod'"`), breaking
+glass whenever `auth.stepUp` is set, and changing repository connections with `auth.stepUp.admin`.
+Quai checks it on the server when the action is made, with what the ID token of the person's last
+sign-in said: its `auth_time` no older than `maxAge` (and no more than a minute in the future), its
+`acr` one of `acrValues`, its `acrs` holding `authContext`. Whatever is missing fails: an identity
+provider that sends no `auth_time` satisfies no step-up. An API token never does.
+
+```yaml
+auth:
+  stepUp:
+    maxAge: 5m
+    acrValues: [gold]   # Keycloak: an ACR mapped to a level of authentication
+    # authContext: c1   # Entra ID, instead of acrValues
+    admin: true
+```
+
+When the request page (or a repository page) needs a step-up, it says why and offers **Sign in
+again**: the browser goes through `/auth/login?stepUp=1` to the identity provider, asking it to
+authenticate the person again (`prompt=login`, `max_age`, with `acr_values` and the authentication
+context when set), and comes back to the page. A refusal is audited as `auth.step_up_refused`; the
+review keeps its reviewer's `auth_time`, `acr` and `acrs`. In development, the user switcher signs
+the person in again. Sessions from before the version with step-up have no authentication time:
+those people sign in again once to step up.
+
+**Entra ID.** Entra ID expresses "MFA for this action" with Conditional Access *authentication
+contexts*, and reports the contexts a sign-in satisfied in the `acrs` claim:
+
+1. In the Entra admin center, under Conditional Access, **Authentication contexts**, create one
+   (`c1`, "Quai approvals") and publish it to apps.
+2. Create a Conditional Access policy whose target is that authentication context, requiring
+   multifactor authentication (or an authentication strength), with the session control
+   **Sign-in frequency: Every time**, so that each step-up authenticates again.
+3. In Quai's app registration, **Token configuration**, add the optional claims `auth_time` and
+   `acrs` to the **ID** token: Quai reads the ID token, and without them no step-up succeeds.
+4. Set `auth.stepUp.authContext: c1`, not `acrValues`.
+
+Quai asks for the context with the `claims` request parameter
+(`{"id_token":{"acrs":{"essential":true,"value":"c1"}}}`); the ID token's `acrs` holds it only
+when the policy was satisfied. This round trip is tested against a fake identity provider that
+answers as Microsoft documents it, not yet against a real tenant ([open question
+49](../plan/open-questions.md#still-open)).
 
 ### Runners
 

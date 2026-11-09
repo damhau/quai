@@ -26,6 +26,7 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 	"github.com/damhau/quai/backend/internal/auth"
+	"github.com/damhau/quai/backend/internal/config"
 	"github.com/damhau/quai/backend/internal/repositories"
 	"github.com/damhau/quai/backend/internal/requests"
 	"github.com/damhau/quai/backend/internal/store"
@@ -122,7 +123,11 @@ func build(opts Options, all bool) (*chi.Mux, huma.API) {
 	a := humachi.New(r, cfg)
 	registerMeta(a, opts)
 	if all || opts.Store != nil {
-		registerIdentity(a, opts.Store)
+		su := auth.NewStepUp(config.Auth{}, opts.Store)
+		if opts.Auth != nil {
+			su = opts.Auth.StepUp()
+		}
+		registerIdentity(a, opts.Store, su)
 		registerAudit(a, opts.Store, opts.Logger)
 		dir := &auth.Directory{} // documenting the API: no mapping
 		if opts.Auth != nil {

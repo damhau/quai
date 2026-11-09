@@ -104,6 +104,7 @@ func work(ctx context.Context, cfg *config.Config, log *slog.Logger, s *store.St
 		svc = requests.New(s, reg, nil, log)
 		svc.UsePublicURL(cfg.Server.PublicURL)
 		svc.UseDirectory(auth.NewDirectory(cfg.Auth))
+		svc.UseStepUp(auth.NewStepUp(cfg.Auth, s))
 		hooks = ingest.New(s, reg, log)
 		hooks.UseHandler(svc)
 		workers = append(workers, svc.Workers, hooks.Workers)

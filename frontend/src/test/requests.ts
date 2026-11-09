@@ -17,6 +17,7 @@ export function pendingVM(): RequestView {
     requester: "bob",
     reason: "Capacity for the launch",
     state: "pending_approval",
+    stepUp: false,
     stack: "envs/prod",
     inputs: { cpu: 2 },
     createdAt: now,
@@ -46,7 +47,16 @@ function as(user: string | null, r: RequestView): RequestView {
   return { ...r, canReview: r.state === "pending_approval" && approver, canCancel: open && (user === "bob" || user === "alice"), canRetry: r.state === "failed" && user === "bob" }
 }
 
-export function requestHandlers(user: () => string | null) {
+/** stepUpRefusal is the server's answer to a review that needs a recent sign-in. */
+const stepUpRefusal = {
+  type: "https://quai.dev/problems/step-up-required",
+  title: "Forbidden",
+  status: 403,
+  detail: "this action needs a recent sign-in: you authenticated more than 5m0s ago; sign in again",
+}
+
+/** requestHandlers serves requests to user(); steppedUp says whether their sign-in is recent. */
+export function requestHandlers(user: () => string | null, steppedUp: () => boolean) {
   return [
     http.get("*/api/v1/requests", ({ request }) => {
       const view = new URL(request.url).searchParams.get("view") ?? "mine"
@@ -60,6 +70,7 @@ export function requestHandlers(user: () => string | null) {
     ),
     http.post("*/api/v1/requests/:id/review", async ({ request }) => {
       const { decision, comment } = (await request.json()) as { decision: string; comment?: string }
+      if (requests.current.stepUp && !steppedUp()) return HttpResponse.json(stepUpRefusal, { status: 403 })
       if (decision === "deny" && !comment)
         return HttpResponse.json({ status: 422, detail: "some fields need attention", errors: [{ location: "body.comment", message: "is required to deny: say what to change" }] }, { status: 422 })
       const r = requests.current
@@ -69,7 +80,7 @@ export function requestHandlers(user: () => string | null) {
         ...r,
         state: !approve ? "rejected" : rules.every((x) => x.satisfied) ? "approved" : "pending_approval",
         rules,
-        reviews: [...(r.reviews ?? []), { reviewer: user() ?? "", decision, comment, at: now }],
+        reviews: [...(r.reviews ?? []), { reviewer: user() ?? "", decision, comment, at: now, stepUp: r.stepUp || undefined }],
         events: [
           ...(r.events ?? []),
           approve ? { kind: "approve", actor: user() ?? "", data: null, at: now } : { kind: "rejected", actor: user() ?? "", data: null, at: now },

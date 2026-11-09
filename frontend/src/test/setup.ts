@@ -18,7 +18,7 @@ beforeAll(() => server.listen({ onUnhandledFrame: "error" }))
 afterEach(() => {
   cleanup()
   server.resetHandlers()
-  Object.assign(state, { user: "bob", auth: "dev", logouts: [] })
+  Object.assign(state, { user: "bob", auth: "dev", logouts: [], stale: false, adminStepUp: false })
   Object.assign(sent, { plans: [], requests: [] })
   resetRequests()
 })

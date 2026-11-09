@@ -66,7 +66,7 @@ func (s *Service) PlanReported(ctx context.Context, id uuid.UUID) error {
 		if err != nil {
 			return err
 		}
-		outcome := policy.Evaluate(decided, toReviews(bound(all, sets[0].Hash), s.dir), contextOf(r))
+		outcome := policy.Evaluate(decided, toReviews(counted(r, all, sets[0].Hash), s.dir), contextOf(r))
 		switch {
 		case r.State == PendingApproval && outcome.State == policy.Approved:
 			if _, err := q.TransitionRequest(ctx, db.TransitionRequestParams{ID: r.ID, FromState: PendingApproval, ToState: Approved}); err != nil {
@@ -76,7 +76,7 @@ func (s *Service) PlanReported(ctx context.Context, id uuid.UUID) error {
 				return err
 			}
 			if err := recordRequest(ctx, tx, r, "approved", map[string]any{"changeSet": sets[0].Hash, "reason": "the plan makes no rule that needs more approvals apply",
-				"approvals": approvalsOf(bound(all, sets[0].Hash))}); err != nil {
+				"approvals": approvalsOf(counted(r, all, sets[0].Hash))}); err != nil {
 				return err
 			}
 			return jobs.InsertTx(ctx, s.jobs, tx, DeliverArgs{RequestID: r.ID}, nil)

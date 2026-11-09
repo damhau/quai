@@ -7,6 +7,7 @@ import type { Document } from "@/api/generated/types.gen"
 import { AccessReport, Enforcement, InstallWebhook, RunToken } from "@/components/repositories/checks"
 import { ConnectionFields, DeliveryFields, RunnerFields, WebhookFields } from "@/components/repositories/repository-form"
 import { Problems } from "@/components/repositories/problems"
+import { AdminStepUp } from "@/components/step-up-prompt"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -71,6 +72,7 @@ function Wizard() {
           Connect a repository
         </h1>
       </header>
+      <AdminStepUp />
       <ol aria-label="Steps" className="flex flex-wrap gap-2 text-sm">
         {steps.map((s, i) => (
           <li
@@ -129,7 +131,7 @@ function Wizard() {
                 <dt className="text-muted-foreground">Delivery</dt>
                 <dd>{spec.delivery?.mode === "direct" ? "Direct commits" : `Pull requests, merged ${spec.delivery?.merge === "manual" ? "by a person" : "by Quai"}`}</dd>
               </dl>
-              {create.isError && <Problems error={create.error} />}
+              {create.isError && <Problems error={create.error} reset={create.reset} />}
               <Button type="button" className="w-fit" disabled={create.isPending} onClick={() => create.mutate({ body: pruned(doc) })}>
                 {create.isPending ? <Loader2 className="animate-spin" /> : <PlugZap />} Connect
               </Button>

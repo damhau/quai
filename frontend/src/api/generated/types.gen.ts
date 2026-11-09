@@ -713,6 +713,10 @@ export type MeOutputBody = {
      */
     scopes?: Array<string> | null;
     /**
+     * Whether the caller's authentication satisfies a step-up now
+     */
+    stepUp: StepUpView;
+    /**
      * The teams of the groups (auth.teams), which team ownership matches
      */
     teams: Array<string> | null;
@@ -829,6 +833,10 @@ export type PlanView = {
     repository: string;
     rules: Array<RuleView> | null;
     stack?: string;
+    /**
+     * The approvers must have signed in recently (step-up) to review it
+     */
+    stepUp?: boolean;
     target: string;
     type?: string;
     /**
@@ -954,6 +962,10 @@ export type RequestView = {
     rules: Array<RuleView> | null;
     stack?: string;
     state: string;
+    /**
+     * Reviews count only from people who signed in recently (step-up): the request page asks for it before approve works
+     */
+    stepUp: boolean;
     target: string;
     type?: string;
     updatedAt: string;
@@ -1082,11 +1094,19 @@ export type ReviewInputBody = {
 };
 
 export type ReviewView = {
+    /**
+     * The class of the reviewer's authentication, the ID token's acr
+     */
+    acr?: string;
     at: string;
     authTime?: string;
     comment?: string;
     decision: string;
     reviewer: string;
+    /**
+     * The reviewer's authentication satisfied the step-up when they reviewed
+     */
+    stepUp?: boolean;
 };
 
 export type RoleView = {
@@ -1265,6 +1285,26 @@ export type Spec = {
     sync?: Sync;
     url: string;
     webhooks?: Webhooks;
+};
+
+export type StepUpView = {
+    /**
+     * Changing repository connections needs a step-up (auth.stepUp.admin)
+     */
+    admin: boolean;
+    /**
+     * How long, in seconds, a sign-in satisfies a step-up
+     */
+    maxAge: number;
+    /**
+     * Why not: sign in again
+     */
+    reason?: string;
+    satisfied: boolean;
+    /**
+     * When it stops satisfying it, on the server's clock
+     */
+    until?: string;
 };
 
 export type Sync = {
@@ -1696,6 +1736,10 @@ export type MeOutputBodyWritable = {
      */
     scopes?: Array<string> | null;
     /**
+     * Whether the caller's authentication satisfies a step-up now
+     */
+    stepUp: StepUpView;
+    /**
      * The teams of the groups (auth.teams), which team ownership matches
      */
     teams: Array<string> | null;
@@ -1730,6 +1774,10 @@ export type PlanViewWritable = {
     repository: string;
     rules: Array<RuleView> | null;
     stack?: string;
+    /**
+     * The approvers must have signed in recently (step-up) to review it
+     */
+    stepUp?: boolean;
     target: string;
     type?: string;
     /**
@@ -1814,6 +1862,10 @@ export type RequestViewWritable = {
     rules: Array<RuleView> | null;
     stack?: string;
     state: string;
+    /**
+     * Reviews count only from people who signed in recently (step-up): the request page asks for it before approve works
+     */
+    stepUp: boolean;
     target: string;
     type?: string;
     updatedAt: string;

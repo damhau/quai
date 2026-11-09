@@ -48,8 +48,13 @@ type Identity struct {
 	CSRFToken string
 	// TokenID is the API token used, if any.
 	TokenID string
-	// AuthTime is when the person last authenticated with the IdP, for step-up checks.
+	// AuthTime is when the person last authenticated with the identity provider: the ID token's
+	// auth_time, zero when it had none (and for an API token); the development switcher's login.
 	AuthTime time.Time
+	// ACR and ACRS are the ID token's acr and Entra ID's acrs (authentication contexts): how the
+	// person authenticated, which step-ups check.
+	ACR  string
+	ACRS []string
 }
 
 type ctxKey struct{}
@@ -65,12 +70,16 @@ func WithIdentity(ctx context.Context, id Identity) context.Context {
 	return context.WithValue(ctx, ctxKey{}, id)
 }
 
-// sessionUser is what a session remembers about its user.
+// sessionUser is what a session remembers about its user. AuthTime is under auth_time since
+// P4-06: sessions from before, whose time could be the login's rather than the ID token's, have
+// none, and must sign in again to step up.
 type sessionUser struct {
 	Name     string    `json:"name"`
 	Email    string    `json:"email,omitempty"`
 	Groups   []string  `json:"groups"`
-	AuthTime time.Time `json:"authTime"`
+	AuthTime time.Time `json:"auth_time"`
+	ACR      string    `json:"acr,omitempty"`
+	ACRS     []string  `json:"acrs,omitempty"`
 }
 
 // login is a sign-in: the session's user, how they signed in, and the identity provider's
@@ -80,6 +89,7 @@ type login struct {
 	Method   string
 	Subject  string // the ID token's sub
 	ObjectID string // Entra ID's oid
+	StepUp   bool   // a sign-in again, to step up
 }
 
 // WebhooksPath is where Git platforms deliver webhooks: no sessions or tokens there, the
@@ -105,6 +115,7 @@ const (
 	keyNonce    = "oidc_nonce"
 	keyVerifier = "oidc_verifier"
 	keyNext     = "oidc_next"
+	keyStepUp   = "oidc_step_up"
 )
 
 // Authenticator signs people in and identifies requests.
@@ -115,6 +126,8 @@ type Authenticator struct {
 	store    *store.Store
 	client   *http.Client // reaches the identity provider; nil: the default
 	log      *slog.Logger
+	stepUp   *StepUp
+	now      func() time.Time
 
 	mu       sync.Mutex
 	provider *oidc.Provider
@@ -133,8 +146,18 @@ func New(cfg *config.Config, s *store.Store, client *http.Client, log *slog.Logg
 	sm.Cookie.SameSite = http.SameSiteLaxMode
 	sm.Cookie.Secure = cfg.Env == config.Production
 	sm.Cookie.Path = "/"
-	return &Authenticator{cfg: cfg.Auth, dir: NewDirectory(cfg.Auth), sessions: sm, store: s, client: client, log: log}
+	return &Authenticator{cfg: cfg.Auth, dir: NewDirectory(cfg.Auth), sessions: sm, store: s, client: client, log: log,
+		stepUp: NewStepUp(cfg.Auth, s), now: time.Now}
 }
+
+// UseClock sets the clock of step-ups and development logins, for tests.
+func (a *Authenticator) UseClock(now func() time.Time) {
+	a.now = now
+	a.stepUp.UseClock(now)
+}
+
+// StepUp returns what decides step-ups.
+func (a *Authenticator) StepUp() *StepUp { return a.stepUp }
 
 // Mode returns how people sign in: oidc or dev.
 func (a *Authenticator) Mode() string { return a.cfg.Mode }
@@ -199,6 +222,8 @@ func (a *Authenticator) sessionIdentity(ctx context.Context) (Identity, bool) {
 		Email:     u.Email,
 		CSRFToken: a.sessions.GetString(ctx, keyCSRF),
 		AuthTime:  u.AuthTime,
+		ACR:       u.ACR,
+		ACRS:      u.ACRS,
 	}, true
 }
 
@@ -287,7 +312,9 @@ func (a *Authenticator) oauth(ctx context.Context) (*oidc.Provider, *oauth2.Conf
 	}, nil
 }
 
-// login sends the browser to the identity provider, remembering what the callback must check.
+// login sends the browser to the identity provider, remembering what the callback must check and
+// where to go next, a path on this server. With stepUp=1, the person authenticates again for a
+// step-up (StepUp.stepUpOptions), then comes back to next: the decision they were making.
 func (a *Authenticator) login(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	_, oc, err := a.oauth(ctx)
@@ -295,12 +322,20 @@ func (a *Authenticator) login(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, r, err)
 		return
 	}
+	q := r.URL.Query()
 	state, nonce, verifier := random(24), random(24), oauth2.GenerateVerifier()
 	a.sessions.Put(ctx, keyState, state)
 	a.sessions.Put(ctx, keyNonce, nonce)
 	a.sessions.Put(ctx, keyVerifier, verifier)
-	a.sessions.Put(ctx, keyNext, localPath(r.URL.Query().Get("next")))
-	http.Redirect(w, r, oc.AuthCodeURL(state, oidc.Nonce(nonce), oauth2.S256ChallengeOption(verifier)), http.StatusFound)
+	a.sessions.Put(ctx, keyNext, localPath(q.Get("next")))
+	opts := []oauth2.AuthCodeOption{oidc.Nonce(nonce), oauth2.S256ChallengeOption(verifier)}
+	if q.Get("stepUp") == "1" {
+		a.sessions.Put(ctx, keyStepUp, true)
+		opts = append(opts, a.stepUp.stepUpOptions()...)
+	} else {
+		a.sessions.Remove(ctx, keyStepUp)
+	}
+	http.Redirect(w, r, oc.AuthCodeURL(state, opts...), http.StatusFound)
 }
 
 // callback finishes the login: it checks the state, exchanges the code with the PKCE verifier,
@@ -311,6 +346,7 @@ func (a *Authenticator) callback(w http.ResponseWriter, r *http.Request) {
 	nonce := a.sessions.PopString(ctx, keyNonce)
 	verifier := a.sessions.PopString(ctx, keyVerifier)
 	next := a.sessions.PopString(ctx, keyNext)
+	stepUp := a.sessions.PopBool(ctx, keyStepUp)
 	q := r.URL.Query()
 	if e := q.Get("error"); e != "" {
 		writeProblem(w, http.StatusUnauthorized, "the identity provider refused the login: "+e)
@@ -348,6 +384,14 @@ func (a *Authenticator) callback(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, http.StatusForbidden, err.Error())
 		return
 	}
+	u.StepUp = stepUp
+	if stepUp {
+		// The person is signed in either way; the action they come back to says why it still
+		// needs a step-up, and refuses it.
+		if why := a.stepUp.Check(Identity{Principal: authz.Principal{Name: u.Name}, AuthTime: u.AuthTime, ACR: u.ACR, ACRS: u.ACRS}); why != "" {
+			a.log.WarnContext(ctx, "login: the step-up is not satisfied", slog.String("user", u.Name), slog.String("reason", why))
+		}
+	}
 	if err := a.recordLogin(ctx, u); err != nil {
 		a.refuseOrFail(w, r, err)
 		return
@@ -383,7 +427,7 @@ func (a *Authenticator) userFromClaims(idt *oidc.IDToken) (login, error) {
 		return login{}, errors.New("your account is in more groups than the ID token can list; " +
 			"ask an administrator to emit only the groups assigned to Quai, or to use app roles")
 	}
-	u := login{sessionUser: sessionUser{AuthTime: time.Now(), Email: verifiedEmail(claims)}, Method: config.AuthOIDC, Subject: idt.Subject}
+	u := login{sessionUser: sessionUser{Email: verifiedEmail(claims)}, Method: config.AuthOIDC, Subject: idt.Subject}
 	u.ObjectID, _ = claims["oid"].(string)
 	names := slices.DeleteFunc(slices.Compact([]string{a.cfg.OIDC.NameClaim, "preferred_username"}), func(c string) bool { return c == "" })
 	for _, c := range names {
@@ -414,8 +458,21 @@ func (a *Authenticator) userFromClaims(idt *oidc.IDToken) (login, error) {
 	case string:
 		u.Groups = []string{g}
 	}
-	if at, ok := claims["auth_time"].(float64); ok {
+	// Only the identity provider says when and how the person authenticated: without auth_time,
+	// the session has no authentication time, and no step-up is satisfied.
+	if at, ok := claims["auth_time"].(float64); ok && at > 0 && at < 1<<40 {
 		u.AuthTime = time.Unix(int64(at), 0)
+	}
+	u.ACR, _ = claims["acr"].(string)
+	switch v := claims["acrs"].(type) {
+	case []any:
+		for _, c := range v {
+			if s, ok := c.(string); ok {
+				u.ACRS = append(u.ACRS, s)
+			}
+		}
+	case string:
+		u.ACRS = []string{v}
 	}
 	return u, nil
 }
@@ -441,7 +498,7 @@ func (a *Authenticator) devLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	du := a.cfg.Dev.Users[i]
-	u := login{sessionUser: sessionUser{Name: du.Name, Email: du.Email, Groups: du.Groups, AuthTime: time.Now().Truncate(time.Second)}, Method: config.AuthDev}
+	u := login{sessionUser: sessionUser{Name: du.Name, Email: du.Email, Groups: du.Groups, AuthTime: a.now().Truncate(time.Second)}, Method: config.AuthDev}
 	if err := a.recordLogin(r.Context(), u); err != nil {
 		a.refuseOrFail(w, r, err)
 		return
@@ -512,14 +569,6 @@ func random(n int) string {
 	b := make([]byte, n)
 	_, _ = rand.Read(b)
 	return base64.RawURLEncoding.EncodeToString(b)
-}
-
-// localPath keeps a redirect target only when it is a path on this server.
-func localPath(p string) string {
-	if !strings.HasPrefix(p, "/") || strings.HasPrefix(p, "//") || strings.HasPrefix(p, "/\\") || strings.ContainsAny(p, "\r\n") {
-		return "/"
-	}
-	return p
 }
 
 func writeProblem(w http.ResponseWriter, status int, detail string) {

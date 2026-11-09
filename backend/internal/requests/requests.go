@@ -25,6 +25,7 @@ import (
 	"github.com/damhau/quai/backend/internal/audit"
 	"github.com/damhau/quai/backend/internal/auth"
 	"github.com/damhau/quai/backend/internal/authz"
+	"github.com/damhau/quai/backend/internal/config"
 	"github.com/damhau/quai/backend/internal/engine/definitions"
 	"github.com/damhau/quai/backend/internal/engine/edit"
 	"github.com/damhau/quai/backend/internal/engine/expr"
@@ -73,12 +74,17 @@ type Service struct {
 	log       *slog.Logger
 	publicURL string          // for the links in pull requests; "" leaves them out
 	dir       *auth.Directory // the teams of the groups of reviews from before auth.teams
+	stepUp    *auth.StepUp
 }
 
 // New returns the request service. jobsClient inserts the delivery jobs.
 func New(s *store.Store, reg *repositories.Registry, jobsClient *jobs.Client, log *slog.Logger) *Service {
-	return &Service{store: s, reg: reg, jobs: jobsClient, log: log, dir: &auth.Directory{}}
+	return &Service{store: s, reg: reg, jobs: jobsClient, log: log, dir: &auth.Directory{}, stepUp: auth.NewStepUp(config.Auth{}, s)}
 }
+
+// UseStepUp gives the step-up settings of the configuration (auth.stepUp); without them, step-up
+// requests need an authentication of the last config.DefaultStepUpMaxAge.
+func (s *Service) UseStepUp(su *auth.StepUp) { s.stepUp = su }
 
 // UseDirectory gives the directory of the configuration (auth.teams), for the reviews that kept
 // no teams.
@@ -131,6 +137,9 @@ type Plan struct {
 	Inputs     map[string]any
 	// Unmigrated are the non-conforming resources a migrate request leaves as they are, and why.
 	Unmigrated []plan.Unmigrated
+	// StepUp says that the approvals must be made with a step-up: the stepUp condition of an
+	// approval block that applies held (docs/design/05-delivery-and-approvals.md#step-up-authentication).
+	StepUp bool
 	// Authorize is the access question the caller must answer yes before showing or submitting:
 	// on Object, and on each of Also (a migrate request operates every resource it covers).
 	Authorize authz.Action
@@ -285,6 +294,8 @@ func (s *Service) PlanType(ctx context.Context, who auth.Identity, in TypeInput)
 			}
 		}
 	}
+	// An action's approval replaces the type's rules, not its step-up (open question 50).
+	p.StepUp = needsStepUp(t.Spec.Approval, vars) || needsStepUp(approval, vars)
 	sets := []policy.RuleSet{{Source: policy.SourceFloor, Rules: repo.FloorRules, Vars: vars}, {Source: policy.SourceType, Rules: approval.Rules, Vars: vars}}
 	if p.Rules, err = policy.Match(sets...); err != nil {
 		return p, err
@@ -353,8 +364,11 @@ func (s *Service) PlanBlueprint(ctx context.Context, who auth.Identity, in Bluep
 		vars := expr.Vars{Inputs: r.Values, Params: anyMap(r.Params), User: user, Request: request}
 		sets = append(sets, policy.RuleSet{Source: policy.SourceFloor, Rules: repo.FloorRules, Vars: vars},
 			policy.RuleSet{Source: policy.SourceType, Rules: t.Spec.Approval.Rules, Vars: vars})
+		p.StepUp = p.StepUp || needsStepUp(t.Spec.Approval, vars)
 	}
-	sets = append(sets, policy.RuleSet{Source: policy.SourceBlueprint, Rules: b.Spec.Approval.Rules, Vars: expr.Vars{Inputs: inputs, User: user, Request: request}})
+	bvars := expr.Vars{Inputs: inputs, User: user, Request: request}
+	sets = append(sets, policy.RuleSet{Source: policy.SourceBlueprint, Rules: b.Spec.Approval.Rules, Vars: bvars})
+	p.StepUp = p.StepUp || needsStepUp(b.Spec.Approval, bvars)
 	if p.Rules, err = policy.Match(sets...); err != nil {
 		return p, err
 	}
@@ -459,6 +473,7 @@ func (s *Service) planMigrate(ctx context.Context, who auth.Identity, repo *repo
 		vars := expr.Vars{Inputs: next, Previous: r.Document, Params: anyMap(r.Params), User: user, Request: expr.Request{Kind: generate.Migrate}}
 		sets = append(sets, policy.RuleSet{Source: policy.SourceFloor, Rules: repo.FloorRules, Vars: vars},
 			policy.RuleSet{Source: policy.SourceType, Rules: t.Spec.Approval.Rules, Vars: vars})
+		p.StepUp = p.StepUp || needsStepUp(t.Spec.Approval, vars)
 	}
 	slices.Sort(owners)
 	p.Owners = slices.Compact(owners)
@@ -532,12 +547,15 @@ func (s *Service) PlanInstanceAction(ctx context.Context, who auth.Identity, in 
 		vars := expr.Vars{Inputs: r.Values, Previous: previous, Params: anyMap(r.Params), User: user, Request: request}
 		sets = append(sets, policy.RuleSet{Source: policy.SourceFloor, Rules: repo.FloorRules, Vars: vars},
 			policy.RuleSet{Source: policy.SourceType, Rules: t.Spec.Approval.Rules, Vars: vars})
+		p.StepUp = p.StepUp || needsStepUp(t.Spec.Approval, vars)
 	}
 	approval := b.Spec.Approval
 	if i := slices.IndexFunc(b.Spec.Actions, func(a definitions.BlueprintAction) bool { return a.Name == in.Action }); i >= 0 && b.Spec.Actions[i].Approval != nil {
 		approval = *b.Spec.Actions[i].Approval
 	}
-	sets = append(sets, policy.RuleSet{Source: policy.SourceBlueprint, Rules: approval.Rules, Vars: expr.Vars{Inputs: inst.Inputs, Action: inputs, User: user, Request: request}})
+	bvars := expr.Vars{Inputs: inst.Inputs, Action: inputs, User: user, Request: request}
+	sets = append(sets, policy.RuleSet{Source: policy.SourceBlueprint, Rules: approval.Rules, Vars: bvars})
+	p.StepUp = p.StepUp || needsStepUp(b.Spec.Approval, bvars) || needsStepUp(approval, bvars)
 	if p.Rules, err = policy.Match(sets...); err != nil {
 		return p, err
 	}
@@ -582,7 +600,7 @@ func (s *Service) Submit(ctx context.Context, who auth.Identity, p *Plan, reason
 			ID: uuid.New(), Kind: p.Kind, Action: p.Action, Target: p.Target, TypeName: p.Type, Blueprint: p.Blueprint,
 			Requester: who.Principal.Name, RequesterEmail: who.Email, Reason: reason, Inputs: inputs, State: state,
 			DefinitionsCommit: p.Commit, BaseCommit: p.Commit, Stack: p.Stack, Rules: rules, Owners: owners, Stacks: nonNil(p.Stacks),
-			Codeowners: nonNil(p.Codeowners.Entries), CodeownersUnmatched: nonNil(p.Codeowners.Unmatched),
+			Codeowners: nonNil(p.Codeowners.Entries), CodeownersUnmatched: nonNil(p.Codeowners.Unmatched), StepUp: p.StepUp,
 		})
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
@@ -720,6 +738,15 @@ func (s *Service) Review(ctx context.Context, who auth.Identity, id uuid.UUID, d
 	if decision == policy.Deny && strings.TrimSpace(comment) == "" {
 		return r, &schema.ValidationError{Fields: map[string]string{"comment": "is required to deny: say what to change"}}
 	}
+	// A step-up request's reviews, approvals and denials alike (open question 50), need the
+	// reviewer's authentication to satisfy the step-up now; the review keeps whether it did.
+	steppedUp := s.stepUp.Check(who) == ""
+	if r.StepUp {
+		if err := s.stepUp.Require(ctx, who, "request.review", audit.Object{Type: "request", ID: r.ID.String(), Resource: r.Target}); err != nil {
+			return r, err
+		}
+		steppedUp = true
+	}
 	sets, err := s.store.ListChangeSets(ctx, r.ID)
 	if err != nil {
 		return r, err
@@ -741,20 +768,28 @@ func (s *Service) Review(ctx context.Context, who auth.Identity, id uuid.UUID, d
 			Teams: nonNil(who.Principal.Teams), Decision: decision, Comment: comment, ChangeSetHash: sets[0].Hash,
 			ReviewerEmail:    pgtype.Text{String: who.Principal.Email, Valid: true},
 			ReviewerAuthTime: pgtype.Timestamptz{Time: who.AuthTime, Valid: !who.AuthTime.IsZero()},
+			ReviewerAcr:      who.ACR, ReviewerAcrs: nonNil(who.ACRS), StepUp: steppedUp,
 		}); err != nil {
 			return err
 		}
 		if err := event(ctx, q, r, decision, who.Principal.Name, map[string]any{"comment": comment}); err != nil {
 			return err
 		}
-		if err := recordRequest(ctx, tx, r, "reviewed", map[string]any{"decision": decision, "comment": audit.Personal(comment), "changeSet": sets[0].Hash}); err != nil {
+		details := map[string]any{"decision": decision, "comment": audit.Personal(comment), "changeSet": sets[0].Hash, "stepUp": steppedUp}
+		if who.ACR != "" {
+			details["acr"] = who.ACR
+		}
+		if len(who.ACRS) > 0 {
+			details["acrs"] = who.ACRS
+		}
+		if err := recordRequest(ctx, tx, r, "reviewed", details); err != nil {
 			return err
 		}
 		all, err := q.ListReviews(ctx, r.ID)
-		reviews := bound(all, sets[0].Hash)
 		if err != nil {
 			return err
 		}
+		reviews := counted(r, all, sets[0].Hash)
 		var rules []policy.Rule
 		_ = json.Unmarshal(r.Rules, &rules)
 		next = r
@@ -1206,29 +1241,48 @@ func event(ctx context.Context, q *db.Queries, r db.Request, kind, actor string,
 	return err
 }
 
-// reviews returns the request's reviews that count: those of its current change set. A review
-// is bound to the content it reviewed (docs/design/05-delivery-and-approvals.md#approvals-bound-to-content).
+// reviews returns the request's reviews that count (counted).
 func (s *Service) reviews(ctx context.Context, r db.Request) ([]db.Review, error) {
 	all, err := s.store.ListReviews(ctx, r.ID)
 	if err != nil {
 		return nil, err
 	}
 	sets, err := s.store.ListChangeSets(ctx, r.ID)
-	if err != nil || len(sets) == 0 {
-		return all, err
+	if err != nil {
+		return nil, err
 	}
-	return bound(all, sets[0].Hash), nil
+	hash := ""
+	if len(sets) > 0 {
+		hash = sets[0].Hash
+	}
+	return counted(r, all, hash), nil
 }
 
-// bound keeps the reviews of the change set hash.
-func bound(all []db.Review, hash string) []db.Review {
+// counted keeps the reviews of a request that count: those of the change set hash, its current
+// one ("": any), since a review is bound to the content it reviewed
+// (docs/design/05-delivery-and-approvals.md#approvals-bound-to-content); and on a step-up request,
+// those made with a step-up, as they recorded it when they were made.
+func counted(r db.Request, all []db.Review, hash string) []db.Review {
 	var out []db.Review
 	for _, v := range all {
-		if v.ChangeSetHash == hash {
+		if (hash == "" || v.ChangeSetHash == hash) && (!r.StepUp || v.StepUp) {
 			out = append(out, v)
 		}
 	}
 	return out
+}
+
+// needsStepUp reports whether an approval block's stepUp condition holds for vars. A condition
+// that cannot be evaluated holds: the stricter answer.
+func needsStepUp(a definitions.Approval, vars expr.Vars) bool {
+	if a.StepUp == "" {
+		return false
+	}
+	if a.StepUpCondition == nil {
+		return true
+	}
+	ok, err := a.StepUpCondition.Test(vars)
+	return ok || err != nil
 }
 
 func toReviews(rs []db.Review, dir *auth.Directory) []policy.Review {

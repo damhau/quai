@@ -81,7 +81,17 @@ func (a *Authenticator) recordLogin(ctx context.Context, u login) error {
 		case n == 0: // deactivated, or the name taken by another subject, since GetUser
 			return refusal{"your Quai account changed while you signed in; sign in again, or ask an administrator"}
 		}
-		events := []audit.Event{{Actor: actor, Action: "auth.login", Object: user, Details: map[string]any{"method": u.Method, "grants": grants}}}
+		details := map[string]any{"method": u.Method, "grants": grants}
+		if u.StepUp {
+			details["stepUp"] = true
+		}
+		if u.ACR != "" {
+			details["acr"] = u.ACR
+		}
+		if len(u.ACRS) > 0 {
+			details["acrs"] = u.ACRS
+		}
+		events := []audit.Event{{Actor: actor, Action: "auth.login", Object: user, Details: details}}
 		raw, err := q.LastLoginGrants(ctx, u.Name)
 		switch {
 		case errors.Is(err, pgx.ErrNoRows):

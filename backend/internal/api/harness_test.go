@@ -45,6 +45,7 @@ type harness struct {
 	store  *store.Store
 	reg    *repositories.Registry
 	ingest *ingest.Service
+	auth   *auth.Authenticator
 	log    *bytes.Buffer
 }
 
@@ -147,6 +148,8 @@ func start(t *testing.T, dir, spec string, opts repositories.Options, configure 
 	svc := requests.New(s, reg, nil, log)
 	svc.UsePublicURL(public)
 	svc.UseDirectory(auth.NewDirectory(cfg.Auth))
+	authn := auth.New(cfg, s, nil, log)
+	svc.UseStepUp(authn.StepUp())
 	hooks := ingest.New(s, reg, log)
 	hooks.UseHandler(svc)
 	worker, err := jobs.NewWorker(s.Pool, jobs.Options{Logger: log, Workers: func(w *river.Workers) { svc.Workers(w); hooks.Workers(w) }})
@@ -163,10 +166,10 @@ func start(t *testing.T, dir, spec string, opts repositories.Options, configure 
 		defer cancel()
 		_ = worker.StopAndCancel(ctx)
 	})
-	srv := httptest.NewServer(New(Options{Version: "test", Env: cfg.Env, Logger: log, Store: s, Auth: auth.New(cfg, s, nil, log), Repositories: reg, Requests: svc, PublicURL: public,
+	srv := httptest.NewServer(New(Options{Version: "test", Env: cfg.Env, Logger: log, Store: s, Auth: authn, Repositories: reg, Requests: svc, PublicURL: public,
 		Webhooks: hooks.Webhooks()}))
 	t.Cleanup(srv.Close)
-	return &harness{t: t, srv: srv, store: s, reg: reg, ingest: hooks, log: &logs}
+	return &harness{t: t, srv: srv, store: s, reg: reg, ingest: hooks, auth: authn, log: &logs}
 }
 
 // push commits a change to the repository as a person would.

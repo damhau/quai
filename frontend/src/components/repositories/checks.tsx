@@ -5,7 +5,8 @@ import { checkRepositoryEnforcementMutation, generateRunTokenMutation, installRe
 import type { AccessView, Document, EnforcementView } from "@/api/generated/types.gen"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
-import { problemMessage } from "@/lib/problems"
+import { StepUpRefusal } from "@/components/step-up-prompt"
+import { isStepUpRequired, problemMessage } from "@/lib/problems"
 import { checkTitles, protectionGuide, pruned } from "@/lib/repositories"
 
 /** AccessReport shows each check of the access test, with the permission a failed one needs, then
@@ -121,7 +122,8 @@ export function RunToken({ repository }: { repository: string }) {
       <Button type="button" variant="outline" className="w-fit" disabled={!repository || generate.isPending} onClick={() => generate.mutate({ path: { repository } })}>
         {generate.isPending ? <Loader2 className="animate-spin" /> : <KeyRound />} Generate a run token
       </Button>
-      {generate.isError && <p className="text-destructive text-sm">{problemMessage(generate.error)}</p>}
+      {generate.isError &&
+        (isStepUpRequired(generate.error) ? <StepUpRefusal error={generate.error} reset={generate.reset} /> : <p className="text-destructive text-sm">{problemMessage(generate.error)}</p>)}
       {generate.data && (
         <div className="grid gap-3 text-sm" aria-label="Run token">
           <p>Shown once: Quai keeps neither of these.</p>
@@ -156,7 +158,8 @@ export function InstallWebhook({ repository }: { repository: string }) {
       <Button type="button" variant="outline" className="w-fit" disabled={install.isPending} onClick={() => install.mutate({ path: { repository } })}>
         {install.isPending ? <Loader2 className="animate-spin" /> : <Webhook />} Install the webhook
       </Button>
-      {install.isError && <p className="text-destructive text-sm">{problemMessage(install.error)}</p>}
+      {install.isError &&
+        (isStepUpRequired(install.error) ? <StepUpRefusal error={install.error} reset={install.reset} /> : <p className="text-destructive text-sm">{problemMessage(install.error)}</p>)}
       {install.data &&
         (install.data.installed ? (
           <p className="text-sm" role="status">

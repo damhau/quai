@@ -226,6 +226,43 @@ type Auth struct {
 	Teams   []TeamMapping `yaml:"teams"`
 	Session Session       `yaml:"session"`
 	Dev     Dev           `yaml:"dev"`
+	// StepUp configures step-up authentication; nil: not configured, and only approval rules
+	// with stepUp ask for one, with the default maximum age.
+	StepUp *StepUp `yaml:"stepUp"`
+}
+
+// StepUp configures step-up authentication (docs/design/08-identity-access-tenancy.md#step-up):
+// how recently, and how, a person must have authenticated with the identity provider to approve
+// a request whose approval rules ask for it, to break glass, and, with Admin, to change
+// repository connections.
+type StepUp struct {
+	// MaxAge is how long an authentication satisfies a step-up: DefaultStepUpMaxAge by default.
+	// It is the ID token's auth_time that counts, never when Quai started the session.
+	MaxAge time.Duration `yaml:"maxAge"`
+	// ACRValues, when set, are sent as acr_values, and the ID token's acr must be one of them.
+	ACRValues []string `yaml:"acrValues"`
+	// AuthContext, when set, is the Entra ID Conditional Access authentication context (c1 to
+	// c99) requested in the claims parameter, which the ID token's acrs claim must contain.
+	AuthContext string `yaml:"authContext"`
+	// Admin makes changing repository connections need a step-up too.
+	Admin bool `yaml:"admin"`
+}
+
+// DefaultStepUpMaxAge is how long an authentication satisfies a step-up when auth.stepUp.maxAge
+// is not set (open question 49).
+const DefaultStepUpMaxAge = 5 * time.Minute
+
+// StepUpSettings returns the step-up settings in force: auth.stepUp with its defaults, or the
+// defaults alone when it is not set.
+func (a Auth) StepUpSettings() StepUp {
+	s := StepUp{}
+	if a.StepUp != nil {
+		s = *a.StepUp
+	}
+	if s.MaxAge == 0 {
+		s.MaxAge = DefaultStepUpMaxAge
+	}
+	return s
 }
 
 // OIDC configures login with an OpenID Connect provider (authorization code with PKCE).
@@ -652,6 +689,31 @@ func (a *Auth) validate(env string) error {
 	}
 	if a.Session.Lifetime < 0 || a.Session.IdleTimeout < 0 {
 		errs = append(errs, errors.New("auth.session durations must not be negative"))
+	}
+	if s := a.StepUp; s != nil {
+		errs = append(errs, s.validate(a.Mode))
+	}
+	return errors.Join(errs...)
+}
+
+var authContextRe = regexp.MustCompile(`^c([1-9]|[1-9][0-9])$`)
+
+func (s *StepUp) validate(mode string) error {
+	var errs []error
+	if s.MaxAge < 0 || (s.MaxAge > 0 && s.MaxAge < time.Second) {
+		errs = append(errs, fmt.Errorf("auth.stepUp.maxAge must be at least 1s, not %s", s.MaxAge))
+	}
+	for i, v := range s.ACRValues {
+		if v == "" || strings.ContainsAny(v, " \t\r\n") {
+			errs = append(errs, fmt.Errorf("auth.stepUp.acrValues[%d] must be a non-empty value without spaces, not %q", i, v))
+		}
+	}
+	if s.AuthContext != "" && !authContextRe.MatchString(s.AuthContext) {
+		errs = append(errs, fmt.Errorf("auth.stepUp.authContext must be an Entra ID authentication context, c1 to c99, not %q", s.AuthContext))
+	}
+	if mode == AuthDev && (len(s.ACRValues) > 0 || s.AuthContext != "") {
+		// The switcher authenticates nobody: no acr to check, so no step-up could ever succeed.
+		errs = append(errs, errors.New("auth.stepUp.acrValues and auth.stepUp.authContext need auth.mode oidc: the development switcher has no identity provider to ask"))
 	}
 	return errors.Join(errs...)
 }

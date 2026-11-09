@@ -1,6 +1,8 @@
-import { screen, within } from "@testing-library/react"
+import { screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
+import { browser } from "@/lib/auth"
 import { renderApp } from "@/test/render"
+import { pendingVM, requests } from "@/test/requests"
 import { state } from "@/test/server"
 
 const id = "11111111-1111-4111-8111-111111111111"
@@ -71,4 +73,63 @@ test("a request that does not exist says so", async () => {
   renderApp("/requests/22222222-2222-4222-8222-222222222222")
   expect(await screen.findByText("This page cannot be shown")).toBeInTheDocument()
   expect(screen.getByText("no such request")).toBeInTheDocument()
+})
+
+test("a request that needs a step-up asks the approver to sign in again before approve works, then comes back to the decision", async () => {
+  requests.current = { ...pendingVM(), stepUp: true }
+  state.user = "alice"
+  state.stale = true
+  const user = userEvent.setup()
+  const { router } = renderApp(`/requests/${id}`)
+  expect(await screen.findByText("Reviewing this request needs a recent sign-in")).toBeInTheDocument()
+  expect(screen.getByText("you authenticated more than 5m0s ago; sign in again")).toBeInTheDocument()
+  expect(screen.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument()
+  expect(screen.queryByRole("button", { name: "Deny" })).not.toBeInTheDocument()
+
+  // The development switcher signs alice in again, here.
+  await user.click(screen.getByRole("button", { name: "Sign in again" }))
+  expect(await screen.findByText(/This request needs a recent sign-in: yours counts until/)).toBeInTheDocument()
+  expect(router.state.location.pathname).toBe(`/requests/${id}`)
+  await user.click(screen.getByRole("button", { name: "Approve" }))
+  expect(await screen.findByText(/You approved this request/)).toBeInTheDocument()
+  expect(screen.getByText(/signed in recently/, { selector: "span" })).toBeInTheDocument()
+})
+
+test("the server decides: an approval it refuses for an old sign-in brings the prompt back", async () => {
+  requests.current = { ...pendingVM(), stepUp: true }
+  state.user = "alice"
+  const user = userEvent.setup()
+  renderApp(`/requests/${id}`)
+  const approve = await screen.findByRole("button", { name: "Approve" })
+  // While the page is open, alice's sign-in grows old: the page does not know, the server does.
+  state.stale = true
+  await user.click(approve)
+  expect(await screen.findByText("Reviewing this request needs a recent sign-in")).toBeInTheDocument()
+  expect(requests.current.reviews).toEqual([])
+})
+
+test("with the identity provider, signing in again leaves for it and comes back to the request", async () => {
+  requests.current = { ...pendingVM(), stepUp: true }
+  state.user = "alice"
+  state.auth = "oidc"
+  state.stale = true
+  const assign = vi.spyOn(browser, "assign").mockImplementation(() => {})
+  try {
+    const user = userEvent.setup()
+    renderApp(`/requests/${id}`)
+    await user.click(await screen.findByRole("button", { name: "Sign in again" }))
+    await waitFor(() => expect(assign).toHaveBeenCalledWith(`/auth/login?stepUp=1&next=${encodeURIComponent(`/requests/${id}`)}`))
+  } finally {
+    assign.mockRestore()
+  }
+})
+
+test("a request without step-up takes the review as before", async () => {
+  state.user = "alice"
+  state.stale = true
+  const user = userEvent.setup()
+  renderApp(`/requests/${id}`)
+  await user.click(await screen.findByRole("button", { name: "Approve" }))
+  expect(await screen.findByText(/You approved this request/)).toBeInTheDocument()
+  expect(screen.queryByText(/recent sign-in/)).not.toBeInTheDocument()
 })

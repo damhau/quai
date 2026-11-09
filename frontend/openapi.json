@@ -1931,6 +1931,10 @@
               "null"
             ]
           },
+          "stepUp": {
+            "$ref": "#/components/schemas/StepUpView",
+            "description": "Whether the caller's authentication satisfies a step-up now"
+          },
           "teams": {
             "description": "The teams of the groups (auth.teams), which team ownership matches",
             "items": {
@@ -1946,7 +1950,8 @@
           "name",
           "groups",
           "teams",
-          "roles"
+          "roles",
+          "stepUp"
         ],
         "type": "object"
       },
@@ -2260,6 +2265,10 @@
           },
           "stack": {
             "type": "string"
+          },
+          "stepUp": {
+            "description": "The approvers must have signed in recently (step-up) to review it",
+            "type": "boolean"
           },
           "target": {
             "type": "string"
@@ -2636,6 +2645,10 @@
           "state": {
             "type": "string"
           },
+          "stepUp": {
+            "description": "Reviews count only from people who signed in recently (step-up): the request page asks for it before approve works",
+            "type": "boolean"
+          },
           "target": {
             "type": "string"
           },
@@ -2662,6 +2675,7 @@
           "canReview",
           "canCancel",
           "canRetry",
+          "stepUp",
           "rules"
         ],
         "type": "object"
@@ -2984,6 +2998,10 @@
       "ReviewView": {
         "additionalProperties": false,
         "properties": {
+          "acr": {
+            "description": "The class of the reviewer's authentication, the ID token's acr",
+            "type": "string"
+          },
           "at": {
             "format": "date-time",
             "type": "string"
@@ -3000,6 +3018,10 @@
           },
           "reviewer": {
             "type": "string"
+          },
+          "stepUp": {
+            "description": "The reviewer's authentication satisfied the step-up when they reviewed",
+            "type": "boolean"
           }
         },
         "required": [
@@ -3527,6 +3549,38 @@
         "required": [
           "connector",
           "url"
+        ],
+        "type": "object"
+      },
+      "StepUpView": {
+        "additionalProperties": false,
+        "properties": {
+          "admin": {
+            "description": "Changing repository connections needs a step-up (auth.stepUp.admin)",
+            "type": "boolean"
+          },
+          "maxAge": {
+            "description": "How long, in seconds, a sign-in satisfies a step-up",
+            "format": "int64",
+            "type": "integer"
+          },
+          "reason": {
+            "description": "Why not: sign in again",
+            "type": "string"
+          },
+          "satisfied": {
+            "type": "boolean"
+          },
+          "until": {
+            "description": "When it stops satisfying it, on the server's clock",
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "satisfied",
+          "maxAge",
+          "admin"
         ],
         "type": "object"
       },

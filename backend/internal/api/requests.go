@@ -67,6 +67,7 @@ type PlanView struct {
 	// Unmigrated, for a migrate request: the non-conforming resources the migration leaves as
 	// they are, to fix in Git.
 	Unmigrated []UnmigratedView `json:"unmigrated,omitempty" doc:"For a migrate request: the non-conforming resources the type's migration does not fix, and why"`
+	StepUp     bool             `json:"stepUp,omitempty" doc:"The approvers must have signed in recently (step-up) to review it"`
 }
 
 // CodeownersView is who the Git platform names as owners of a request's paths (CODEOWNERS, or Azure
@@ -105,6 +106,8 @@ type ReviewView struct {
 	// AuthTime is when the reviewer last authenticated with the identity provider before
 	// reviewing; none with an API token.
 	AuthTime *time.Time `json:"authTime,omitempty"`
+	ACR      string     `json:"acr,omitempty" doc:"The class of the reviewer's authentication, the ID token's acr"`
+	StepUp   bool       `json:"stepUp,omitempty" doc:"The reviewer's authentication satisfied the step-up when they reviewed"`
 }
 
 // EventView is something that happened to a request.
@@ -136,6 +139,7 @@ type RequestView struct {
 	CanReview  bool            `json:"canReview"`
 	CanCancel  bool            `json:"canCancel"`
 	CanRetry   bool            `json:"canRetry"`
+	StepUp     bool            `json:"stepUp" doc:"Reviews count only from people who signed in recently (step-up): the request page asks for it before approve works"`
 	Rules      []RuleView      `json:"rules"`
 	Codeowners *CodeownersView `json:"codeowners,omitempty" doc:"When a rule's approvers include codeowners: the owners the Git platform named for the changed paths when the request was submitted"`
 	Reviews    []ReviewView    `json:"reviews,omitempty"`
@@ -437,7 +441,7 @@ func ruleViews(rules []policy.Rule, statuses []policy.Status) []RuleView {
 func planView(p *requests.Plan) PlanView {
 	v := PlanView{Kind: p.Kind, Action: p.Action, Target: p.Target, Repository: p.Repository, Type: p.Type, Blueprint: p.Blueprint,
 		Stack: p.Stack, Commit: p.Commit, Hash: p.ChangeSet.Hash, Changes: []ChangeView{}, Rules: ruleViews(p.Rules, nil),
-		Codeowners: codeownersView(p.Rules, p.Codeowners.Entries, p.Codeowners.Unmatched)}
+		Codeowners: codeownersView(p.Rules, p.Codeowners.Entries, p.Codeowners.Unmatched), StepUp: p.StepUp}
 	for _, c := range p.ChangeSet.Changes {
 		v.Changes = append(v.Changes, ChangeView{Path: c.Path, Op: c.Op, Diff: diffView(c)})
 	}
@@ -450,7 +454,7 @@ func planView(p *requests.Plan) PlanView {
 func requestView(ctx context.Context, svc *requests.Service, s *store.Store, r db.Request, me auth.Identity, detail bool) RequestView {
 	v := RequestView{ID: r.ID.String(), Number: r.Number, Kind: r.Kind, Action: r.Action, Target: r.Target, Repository: svc.Repository(ctx, r),
 		Type: r.TypeName, Blueprint: r.Blueprint, Requester: r.Requester, Reason: r.Reason, State: r.State, Stack: r.Stack,
-		CreatedAt: r.CreatedAt.Time, UpdatedAt: r.UpdatedAt.Time, CanReview: requests.CanReview(r, me.Principal)}
+		CreatedAt: r.CreatedAt.Time, UpdatedAt: r.UpdatedAt.Time, CanReview: requests.CanReview(r, me.Principal), StepUp: r.StepUp}
 	v.CanCancel = requests.Cancellable(r.State) && allowed(ctx, authz.CancelRequest, requestObject(ctx, svc, r))
 	// A failed apply is not retried: the change is in Git, the next apply reports on it.
 	v.CanRetry = r.State == requests.Failed && allowed(ctx, authz.RetryRequest, requestObject(ctx, svc, r)) && !svc.Landed(ctx, r)
@@ -475,7 +479,7 @@ func requestView(ctx context.Context, svc *requests.Service, s *store.Store, r d
 		}
 	}
 	for _, rv := range reviews {
-		rview := ReviewView{Reviewer: rv.Reviewer, Decision: rv.Decision, Comment: rv.Comment, At: rv.CreatedAt.Time}
+		rview := ReviewView{Reviewer: rv.Reviewer, Decision: rv.Decision, Comment: rv.Comment, At: rv.CreatedAt.Time, ACR: rv.ReviewerAcr, StepUp: rv.StepUp}
 		if rv.ReviewerAuthTime.Valid {
 			rview.AuthTime = &rv.ReviewerAuthTime.Time
 		}

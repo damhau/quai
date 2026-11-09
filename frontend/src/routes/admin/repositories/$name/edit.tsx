@@ -14,6 +14,7 @@ import {
 import type { ConnectionView, Document } from "@/api/generated/types.gen"
 import { RunToken } from "@/components/repositories/checks"
 import { Problems } from "@/components/repositories/problems"
+import { AdminStepUp } from "@/components/step-up-prompt"
 import { ConnectionFields, DeliveryFields, RunnerFields, WebhookFields } from "@/components/repositories/repository-form"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -47,6 +48,7 @@ function Edit() {
           Edit {data?.document.metadata.title || name}
         </h1>
       </header>
+      <AdminStepUp />
       {isPending && <Skeleton className="h-64" />}
       {error && (
         <Alert variant="destructive">
@@ -134,8 +136,8 @@ function EditForm({ connection }: { connection: ConnectionView }) {
           <WebhookFields doc={doc} onChange={setDoc} disabled={readOnly} />
         </CardContent>
       </Card>
-      {save.isError && <Problems error={save.error} />}
-      {remove.isError && <Problems error={remove.error} />}
+      {save.isError && <Problems error={save.error} reset={save.reset} />}
+      {remove.isError && <Problems error={remove.error} reset={remove.reset} />}
       {!readOnly && (
         <div className="flex flex-wrap gap-2">
           <Button type="submit" disabled={save.isPending}>

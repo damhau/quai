@@ -12,6 +12,7 @@ import (
 	"github.com/damhau/quai/backend/internal/auth"
 	"github.com/damhau/quai/backend/internal/authz"
 	"github.com/damhau/quai/backend/internal/config"
+	"github.com/damhau/quai/backend/internal/oidctest"
 	"github.com/damhau/quai/backend/internal/store/db"
 )
 
@@ -97,14 +98,14 @@ func TestDirectory(t *testing.T) {
 // them, with only an email it vouches for; a name held by another subject, and a deactivated
 // person, cannot sign in.
 func TestUsers(t *testing.T) {
-	p := newIDP(t)
+	p := oidctest.New(t)
 	srv, c, s := quaiWith(t, p, func(cfg *config.Config) {
 		cfg.Auth.Teams = []config.TeamMapping{{Group: "sh*", Team: "retail-*"}}
 	})
 	ctx := context.Background()
 	login := func(claims map[string]any) (*http.Client, int, string) {
 		t.Helper()
-		p.claims = claims
+		p.SetClaims(claims)
 		jar, _ := cookiejar.New(nil)
 		browser := &http.Client{Jar: jar, Transport: c.Transport}
 		resp, err := browser.Get(srv.URL + "/auth/login")

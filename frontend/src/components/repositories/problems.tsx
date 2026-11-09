@@ -1,8 +1,13 @@
+import { StepUpRefusal } from "@/components/step-up-prompt"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { isProblem, problemMessage } from "@/lib/problems"
+import { isProblem, isStepUpRequired, problemMessage } from "@/lib/problems"
 
-/** Problems shows an API error, with each problem of the document it lists. */
-export function Problems({ error }: { error: unknown }) {
+/**
+ * Problems shows an API error, with each problem of the document it lists; a change refused for
+ * want of a recent sign-in offers to sign in again, which clears the error (reset).
+ */
+export function Problems({ error, reset }: { error: unknown; reset?: () => void }) {
+  if (isStepUpRequired(error)) return <StepUpRefusal error={error} reset={reset} />
   const details = isProblem(error) ? (error.errors ?? []).map((d) => d.message ?? "") : []
   return (
     <Alert variant="destructive" role="alert">

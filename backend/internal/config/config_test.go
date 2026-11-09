@@ -235,6 +235,14 @@ func TestAuth(t *testing.T) {
 		"a star the group lacks":    {file: "auth: { teams: [{ group: sg-shop, team: \"*\" }] }\n", want: "only when its group has one"},
 		"nameless dev user":         {file: "auth: { dev: { users: [{ groups: [a] }] } }\n", want: "every user needs a name"},
 		"negative session":          {file: "auth: { session: { idleTimeout: -1m } }\n", want: "must not be negative"},
+		"step-up under a second":    {file: "auth: { stepUp: { maxAge: 500ms } }\n", want: "auth.stepUp.maxAge must be at least 1s"},
+		"negative step-up":          {file: "auth: { stepUp: { maxAge: -5m } }\n", want: "auth.stepUp.maxAge must be at least 1s"},
+		"an empty acr":              {env: oidcEnv, file: "auth: { stepUp: { acrValues: [\"\"] } }\n", want: "auth.stepUp.acrValues[0] must be a non-empty value"},
+		"an acr with a space":       {env: oidcEnv, file: "auth: { stepUp: { acrValues: [\"a b\"] } }\n", want: "without spaces"},
+		"a bad context":             {env: oidcEnv, file: "auth: { stepUp: { authContext: c100 } }\n", want: "c1 to c99"},
+		"a context named":           {env: oidcEnv, file: "auth: { stepUp: { authContext: mfa } }\n", want: "c1 to c99"},
+		"acr values in dev":         {file: "auth: { stepUp: { acrValues: [mfa] } }\n", want: "need auth.mode oidc"},
+		"a context in dev":          {file: "auth: { stepUp: { authContext: c1 } }\n", want: "need auth.mode oidc"},
 	} {
 		p := ""
 		if tt.file != "" {
@@ -243,6 +251,35 @@ func TestAuth(t *testing.T) {
 		if _, err := Load(p, env(tt.env)); err == nil || !strings.Contains(err.Error(), tt.want) {
 			t.Errorf("%s: error = %v, want %q", name, err, tt.want)
 		}
+	}
+}
+
+// oidcEnv configures OIDC login.
+var oidcEnv = map[string]string{"QUAI_AUTH_MODE": "oidc", "QUAI_AUTH_OIDC_ISSUER": "https://idp", "QUAI_AUTH_OIDC_CLIENT_ID": "q", "QUAI_AUTH_OIDC_REDIRECT_URL": "https://q/cb"}
+
+// TestStepUp: auth.stepUp is optional; when set, its maxAge defaults to five minutes (open
+// question 49).
+func TestStepUp(t *testing.T) {
+	c, err := Load("", env(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Auth.StepUp != nil || c.Auth.StepUpSettings().MaxAge != DefaultStepUpMaxAge || DefaultStepUpMaxAge != 5*time.Minute {
+		t.Errorf("no step-up = %+v, %+v", c.Auth.StepUp, c.Auth.StepUpSettings())
+	}
+	p := write(t, "auth: { stepUp: { admin: true } }\n")
+	if c, err = Load(p, env(nil)); err != nil {
+		t.Fatal(err)
+	}
+	if s := c.Auth.StepUpSettings(); c.Auth.StepUp == nil || !s.Admin || s.MaxAge != 5*time.Minute {
+		t.Errorf("step-up without maxAge = %+v", s)
+	}
+	p = write(t, "auth: { stepUp: { maxAge: 10m, acrValues: [\"http://schemas.openid.net/pape/policies/2007/06/multi-factor\", mfa], authContext: c42 } }\n")
+	if c, err = Load(p, env(oidcEnv)); err != nil {
+		t.Fatal(err)
+	}
+	if s := c.Auth.StepUpSettings(); s.MaxAge != 10*time.Minute || len(s.ACRValues) != 2 || s.AuthContext != "c42" || s.Admin {
+		t.Errorf("step-up = %+v", s)
 	}
 }
 

@@ -12,9 +12,39 @@ export function isUnauthorized(error: unknown): boolean {
   return typeof error === "object" && error !== null && "status" in error && error.status === 401
 }
 
-/** localPath keeps a redirect target only when it is a path on this site. */
+/** maxLocalPath is the longest redirect target kept, as on the server. */
+const maxLocalPath = 2048
+
+/** hasControl reports whether s holds a control character, which browsers drop from URLs. */
+function hasControl(s: string): boolean {
+  for (const c of s) {
+    const n = c.codePointAt(0) ?? 0
+    if (n < 0x20 || (n >= 0x7f && n < 0xa0)) return true
+  }
+  return false
+}
+
+/**
+ * localPath keeps a redirect target only when it is a path on this site, as the server does when
+ * a login starts: it starts with a single /, holds no backslash and no control character, however
+ * many times it is percent-decoded (/%2F/evil.example.com is //evil.example.com to some). Anything
+ * else is /.
+ */
 export function localPath(next: unknown): string {
-  return typeof next === "string" && next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/\\") ? next : "/"
+  if (typeof next !== "string" || next.length > maxLocalPath || !next.startsWith("/")) return "/"
+  let s = next
+  for (let i = 0; i < 4; i++) {
+    if (s.startsWith("//") || s.includes("\\") || hasControl(s)) return "/"
+    let decoded: string
+    try {
+      decoded = decodeURIComponent(s)
+    } catch {
+      return "/"
+    }
+    if (decoded === s) return next
+    s = decoded
+  }
+  return "/"
 }
 
 function url(path: string) {
@@ -52,7 +82,33 @@ export function oidcLoginURL(next: string): string {
   return `/auth/login?next=${encodeURIComponent(localPath(next))}`
 }
 
+/** browser leaves this page for another; tests replace assign, since jsdom does not navigate. */
+export const browser = { assign: (href: string) => window.location.assign(href) }
+
 /** oidcLogin sends the browser to the identity provider. */
 export function oidcLogin(next: string) {
-  window.location.assign(oidcLoginURL(next))
+  browser.assign(oidcLoginURL(next))
+}
+
+/**
+ * stepUpLoginURL is where the browser signs in again, for an action that needs a recent sign-in
+ * (step-up): the identity provider authenticates the person again, then the browser comes back to
+ * next.
+ */
+export function stepUpLoginURL(next: string): string {
+  return `/auth/login?stepUp=1&next=${encodeURIComponent(localPath(next))}`
+}
+
+/**
+ * stepUp signs the person in again for an action that needs a recent sign-in. With the identity
+ * provider the browser leaves, and comes back to next; with the development switcher, the same
+ * person signs in again here, and everything read with the old session is read again.
+ */
+export async function stepUp(queryClient: QueryClient, auth: string | undefined, name: string, next: string): Promise<void> {
+  if (auth === "oidc") {
+    browser.assign(stepUpLoginURL(next))
+    return
+  }
+  await devLogin(queryClient, name)
+  await queryClient.invalidateQueries()
 }

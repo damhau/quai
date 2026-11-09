@@ -52,7 +52,18 @@ type MeOutput struct {
 		Roles     []RoleView `json:"roles"`
 		Scopes    []string   `json:"scopes,omitempty" doc:"The API token's scopes, when the call uses one"`
 		CSRFToken string     `json:"csrfToken,omitempty" doc:"Send it as X-CSRF-Token on requests that change something"`
+		StepUp    StepUpView `json:"stepUp" doc:"Whether the caller's authentication satisfies a step-up now"`
 	}
+}
+
+// StepUpView says whether the caller's authentication satisfies a step-up now: the server checks
+// again when the action is made.
+type StepUpView struct {
+	Satisfied bool       `json:"satisfied"`
+	Reason    string     `json:"reason,omitempty" doc:"Why not: sign in again"`
+	Until     *time.Time `json:"until,omitempty" doc:"When it stops satisfying it, on the server's clock"`
+	MaxAge    int        `json:"maxAge" doc:"How long, in seconds, a sign-in satisfies a step-up"`
+	Admin     bool       `json:"admin" doc:"Changing repository connections needs a step-up (auth.stepUp.admin)"`
 }
 
 // TokenView is an API token as listed: never the token itself.
@@ -95,7 +106,7 @@ type TokenIDInput struct {
 	ID string `path:"id" format:"uuid"`
 }
 
-func registerIdentity(a huma.API, s *store.Store) {
+func registerIdentity(a huma.API, s *store.Store, su *auth.StepUp) {
 	// authz: public — it describes only the caller, and says 401 to nobody.
 	huma.Register(a, huma.Operation{
 		OperationID: "get-me", Method: http.MethodGet, Path: Prefix + "/me",
@@ -113,6 +124,11 @@ func registerIdentity(a huma.API, s *store.Store) {
 		out.Body.Roles = []RoleView{}
 		for _, g := range id.Principal.Grants {
 			out.Body.Roles = append(out.Body.Roles, RoleView{Role: string(g.Role), Scope: auth.ScopeName(g.Scope)})
+		}
+		out.Body.StepUp = StepUpView{Reason: su.Check(id), MaxAge: int(su.MaxAge() / time.Second), Admin: su.Admin()}
+		if out.Body.StepUp.Reason == "" {
+			until := su.Until(id)
+			out.Body.StepUp.Satisfied, out.Body.StepUp.Until = true, &until
 		}
 		return out, nil
 	})

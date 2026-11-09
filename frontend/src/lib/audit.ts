@@ -26,6 +26,7 @@ const labels: Record<string, string> = {
   "auth.login": "Signed in",
   "auth.logout": "Signed out",
   "auth.grants_changed": "Roles changed",
+  "auth.step_up_refused": "Refused: sign-in not recent enough",
   "token.created": "API token created",
   "token.revoked": "API token revoked",
   "run_token.created": "Run token generated",

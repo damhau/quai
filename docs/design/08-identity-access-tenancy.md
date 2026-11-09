@@ -37,11 +37,38 @@ How it works in the server:
 
 ### Step-up
 
-Some actions (approving prod changes, break-glass, admin changes) can require a
-recent authentication. Quai checks the ID token's `auth_time` against a
-configured maximum age and, if the IdP supports it, `acr` for MFA. If either is
-too old or too weak, the UI redirects through the IdP with `max_age` (and
-`acr_values`) and resumes the action afterwards.
+Some actions require a recent, and strong enough, authentication (P4-06): reviewing a request
+whose approval asks for it ([design 05](05-delivery-and-approvals.md#step-up-authentication)),
+break-glass whenever `auth.stepUp` is configured (P4-17), and, with `auth.stepUp.admin`,
+connecting, changing and disconnecting repositories, installing their webhooks and generating
+their run tokens.
+
+- **What counts** is what the identity provider said in the ID token of the person's last sign-in,
+  kept in the session: its `auth_time`, no older than `auth.stepUp.maxAge` (five minutes by
+  default) and no more than a minute in the future (the clocks' skew); its `acr`, exactly one of
+  `auth.stepUp.acrValues` when they are set; its `acrs`, holding `auth.stepUp.authContext` (Entra
+  ID) when it is set. Anything missing fails: OIDC Core requires `auth_time` when `max_age` is
+  asked for, and a token without it, or without the `acr` or context asked for, satisfies no
+  step-up though the person is signed in. The time Quai created the session never counts. An API
+  token never steps up ([open question 49](../plan/open-questions.md#still-open)).
+- **On the server**, when the action is made: `auth.StepUp.Require` checks the caller with the
+  server's clock, records a refusal as `auth.step_up_refused` (what was attempted, on what, why)
+  and returns a `403` problem of type `https://quai.dev/problems/step-up-required`, whose detail
+  says why. Break-glass calls the same check. `GET /api/v1/me` says whether the caller's
+  authentication satisfies a step-up now, why not, until when, and whether repository changes
+  need one, for the UI to ask before the action rather than after.
+- **The round trip.** The UI's **Sign in again** goes to `/auth/login?stepUp=1&next=<the page>`:
+  a login like any other (state, nonce and PKCE verifier bound to the session, ID token
+  verified, session renewed) that also sends `prompt=login` and `max_age` (so that the provider
+  authenticates the person again and says when), `acr_values` when configured, and, for Entra ID,
+  the authentication context in the `claims` parameter
+  (`{"id_token":{"acrs":{"essential":true,"value":"c1"}}}`). The browser comes back to `next`, a
+  path on Quai validated when the login starts: it must start with a single `/`, and hold no
+  backslash, no control character, and no `//` once percent-decoded, however many times; anything
+  else is `/`. The login is audited with `stepUp` and the ID token's `acr` and `acrs`. With the
+  development switcher, signing in again steps up; `acrValues` and `authContext` need `oidc`.
+- **A review keeps** the `auth_time`, `acr` and `acrs` it was made with, and whether they
+  satisfied the step-up then: that is what counts, not the session's later state.
 
 ## Directory
 
@@ -111,7 +138,7 @@ too old or too weak, the UI redirects through the IdP with `max_age` (and
   no email, and a person named as a code owner matches only through a `user:` entry of the
   repository's mapping (groups match through `group:` entries either way).
 - The `manager` attribute is not in tokens; it is read from Microsoft Graph (`/users/{id}/manager`) at login, or left out if Graph is not allowed (then `manager` approvers are unavailable and Quai says so).
-- **Step-up:** Entra Conditional Access *authentication contexts* express "MFA required for this action". Quai requests the context for prod approvals and break-glass, checks the `acrs` claim in the returned token, and combines it with `max_age` for recent sign-in.
+- **Step-up:** Entra Conditional Access *authentication contexts* express "MFA required for this action". Quai requests the context (`auth.stepUp.authContext`) for step-up approvals, break-glass and, with `auth.stepUp.admin`, repository changes, checks the `acrs` claim in the returned ID token, and combines it with `max_age` and `prompt=login` for a recent sign-in. The registration must add the optional claims `auth_time` and `acrs` to the ID token, and the Conditional Access policy on the context should set the sign-in frequency to every time ([operations guide](../operations/deployment-and-operations.md#step-up-authentication)).
 
 ## Tenancy
 

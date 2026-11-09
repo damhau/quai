@@ -143,6 +143,7 @@ export const submitted: RequestView = {
   requester: "bob",
   reason: "Needed for the launch",
   state: "pending",
+  stepUp: false,
   inputs: {},
   createdAt: "2026-10-27T10:00:00Z",
   updatedAt: "2026-10-27T10:00:00Z",

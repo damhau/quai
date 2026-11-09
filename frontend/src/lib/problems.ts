@@ -19,6 +19,14 @@ export function fieldErrors(e: unknown, prefix: string): Record<string, string> 
   return out
 }
 
+/** stepUpProblemType is the type of the problem refusing an action for want of a recent sign-in. */
+export const stepUpProblemType = "https://quai.dev/problems/step-up-required"
+
+/** isStepUpRequired reports whether an API error asks the person to sign in again (step-up). */
+export function isStepUpRequired(e: unknown): boolean {
+  return isProblem(e) && e.type === stepUpProblemType
+}
+
 export function hasFieldErrors(e: unknown): boolean {
   return isProblem(e) && (e.errors?.length ?? 0) > 0
 }
