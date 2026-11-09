@@ -13,6 +13,11 @@ import (
 // grants, through auth.roles, each with the group that gives it. It reads the configuration only,
 // so a change of the mapping applies at the next request. The zero Directory maps nothing: each
 // group is the team of its name and gives no role.
+//
+// Without auth.teams, each group is the team of its own name. With it, only the groups an entry
+// matches are teams (open question 20): a group named like a team (a self-service group, another
+// department's) does not make its members that team. A last entry {group: "*", team: "*"} brings
+// the fallback back.
 type Directory struct {
 	teams []config.TeamMapping
 	roles []config.RoleMapping
@@ -23,19 +28,23 @@ func NewDirectory(cfg config.Auth) *Directory {
 	return &Directory{teams: cfg.Teams, roles: cfg.Roles}
 }
 
-// Team returns the team of a group: the team of the first auth.teams entry that matches it, or,
-// when none does, the group's own name.
-func (d *Directory) Team(group string) string {
+// Team returns the team of a group: without auth.teams, the group's own name; with it, the team of
+// the first entry that matches the group, and none (false) when no entry does.
+func (d *Directory) Team(group string) (string, bool) {
+	if len(d.teams) == 0 {
+		return group, true
+	}
 	for _, m := range d.teams {
 		if team, ok := teamOf(m, group); ok {
-			return team
+			return team, true
 		}
 	}
-	return group
+	return "", false
 }
 
 // teamOf returns the team m maps group to, if m matches it: its group is the group's name, or a
-// pattern whose * matches one or more characters, which a * in its team stands for.
+// pattern whose * matches one or more characters, which a * in its team stands for ("*" alone
+// matches every group, and a team "*" is then the group's name).
 func teamOf(m config.TeamMapping, group string) (string, bool) {
 	before, after, star := strings.Cut(m.Group, "*")
 	if !star {
@@ -47,14 +56,13 @@ func teamOf(m config.TeamMapping, group string) (string, bool) {
 	return strings.Replace(m.Team, "*", group[len(before):len(group)-len(after)], 1), true
 }
 
-// Teams returns the teams of groups, sorted, each once.
+// Teams returns the teams of groups, sorted, each once; nil when they make no team.
 func (d *Directory) Teams(groups []string) []string {
-	if len(groups) == 0 {
-		return nil
-	}
-	out := make([]string, 0, len(groups))
+	var out []string
 	for _, g := range groups {
-		out = append(out, d.Team(g))
+		if team, ok := d.Team(g); ok {
+			out = append(out, team)
+		}
 	}
 	slices.Sort(out)
 	return slices.Compact(out)

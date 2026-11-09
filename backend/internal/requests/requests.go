@@ -71,13 +71,18 @@ type Service struct {
 	reg       *repositories.Registry
 	jobs      *jobs.Client
 	log       *slog.Logger
-	publicURL string // for the links in pull requests; "" leaves them out
+	publicURL string          // for the links in pull requests; "" leaves them out
+	dir       *auth.Directory // the teams of the groups of reviews from before auth.teams
 }
 
 // New returns the request service. jobsClient inserts the delivery jobs.
 func New(s *store.Store, reg *repositories.Registry, jobsClient *jobs.Client, log *slog.Logger) *Service {
-	return &Service{store: s, reg: reg, jobs: jobsClient, log: log}
+	return &Service{store: s, reg: reg, jobs: jobsClient, log: log, dir: &auth.Directory{}}
 }
+
+// UseDirectory gives the directory of the configuration (auth.teams), for the reviews that kept
+// no teams.
+func (s *Service) UseDirectory(d *auth.Directory) { s.dir = d }
 
 // UseJobs sets the client that inserts jobs, for a worker whose client is made after the
 // service its workers use.
@@ -632,7 +637,7 @@ func (s *Service) Reviews(ctx context.Context, r db.Request) ([]db.Review, polic
 	}
 	var rules []policy.Rule
 	_ = json.Unmarshal(r.Rules, &rules)
-	return reviews, policy.Evaluate(rules, toReviews(reviews), contextOf(r)), nil
+	return reviews, policy.Evaluate(rules, toReviews(reviews, s.dir), contextOf(r)), nil
 }
 
 // contextOf is what the policy needs to know of a request to decide it.
@@ -712,7 +717,7 @@ func (s *Service) Review(ctx context.Context, who auth.Identity, id uuid.UUID, d
 		var rules []policy.Rule
 		_ = json.Unmarshal(r.Rules, &rules)
 		next = r
-		switch policy.Evaluate(rules, toReviews(reviews), contextOf(r)).State {
+		switch policy.Evaluate(rules, toReviews(reviews, s.dir), contextOf(r)).State {
 		case policy.Approved:
 			if next, err = q.TransitionRequest(ctx, db.TransitionRequestParams{ID: r.ID, FromState: PendingApproval, ToState: Approved}); err != nil {
 				return err
@@ -1185,13 +1190,15 @@ func bound(all []db.Review, hash string) []db.Review {
 	return out
 }
 
-func toReviews(rs []db.Review) []policy.Review {
+func toReviews(rs []db.Review, dir *auth.Directory) []policy.Review {
 	out := make([]policy.Review, len(rs))
 	for i, r := range rs {
 		out[i] = policy.Review{Reviewer: r.Reviewer, Email: r.ReviewerEmail, Groups: r.Groups, Teams: r.Teams, Decision: r.Decision}
 		if r.Teams == nil {
-			// A review from before auth.teams (migration 00019): each group was the team of its name.
-			out[i].Teams = r.Groups
+			// A review from before auth.teams (migration 00019) kept only its groups: their teams
+			// are what auth.teams makes of them now, each group's name without it. Set later, the
+			// mapping must not leave an unmapped group the team it was.
+			out[i].Teams = dir.Teams(r.Groups)
 		}
 	}
 	return out

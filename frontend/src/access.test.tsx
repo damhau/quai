@@ -20,7 +20,8 @@ test("auditors read who has which roles, from which groups, and download it as C
   expect(within(bob).getByText("bob@acme.ch")).toBeInTheDocument()
   expect(within(bob).getByText("sub sub-bob")).toBeInTheDocument()
   expect(within(bob).getByText("Active")).toBeInTheDocument()
-  expect(within(bob).getAllByText("developers, shop")).toHaveLength(2) // groups, and the teams of their names
+  expect(within(bob).getByText("developers, shop")).toBeInTheDocument()
+  expect(within(bob).getByText("None")).toBeInTheDocument() // no team: auth.teams maps neither group
   const operator = within(bob).getByText("operator").closest("li") as HTMLElement
   expect(operator).toHaveTextContent("operator · team:shop")
   expect(within(operator).getByText("from shop")).toBeInTheDocument()

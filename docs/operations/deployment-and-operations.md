@@ -48,7 +48,7 @@ single pod with both roles.
   | `auth.oidc.issuer`, `.clientID`, `.clientSecret`, `.redirectURL` | `QUAI_AUTH_OIDC_ISSUER`, `_CLIENT_ID`, `_CLIENT_SECRET`, `_REDIRECT_URL` | required for `oidc`; https in production |
   | `auth.oidc.scopes`, `.nameClaim`, `.groupsClaim` | | `openid profile email`, `preferred_username`, `groups` |
   | `auth.roles` | | `- { group: sg-quai-admins, role: platform-admin, scope: global }`; scope can be `team:`, `repository:` or `catalog-item:` and a name |
-  | `auth.teams` | | none: each group is the team of its own name. `- { group: sg-quai-*, team: "*" }` maps groups to teams, the first entry that matches deciding ([people and teams](#people-and-teams)) |
+  | `auth.teams` | | none: each group is the team of its own name. `- { group: sg-quai-*, team: "*" }` maps groups to teams, the first entry that matches deciding; once set, a group no entry matches is no team ([people and teams](#people-and-teams)) |
   | `auth.session.lifetime`, `.idleTimeout` | | `8h`, `30m` |
   | `git.cacheDir`, `git.committer` | `QUAI_GIT_CACHE_DIR` | the user cache directory; `Quai <quai@localhost>` |
   | `git.signingKey.ref` | `QUAI_GIT_SIGNING_KEY_REF` | none: Quai's commits are unsigned. A reference to an SSH private key (`k8s:quai/signing-key#ssh-privatekey`) Quai signs its commits with; see [verifying them](../design/05-delivery-and-approvals.md#merge) |
@@ -364,8 +364,12 @@ auth:
 ```
 
 A group is a name or a pattern with one `*`, which matches one or more characters (with their
-case); a `*` in the team stands for what it matched. A group no entry matches is the team of its
-own name, as before `auth.teams`. Teams and roles are worked out from the groups on every
+case); a `*` in the team stands for what it matched. Without `auth.teams`, each group is the team
+of its own name. Once it is set, **a group no entry matches is no team**: someone in a group that
+happens to be named `shop` (a self-service group, another department's) is not in the team `shop`,
+does not own its resources nor approve as its owner. That group still counts for `auth.roles` and
+for `group:` entries. To keep the old behavior for the groups no other entry maps, end the list
+with `- { group: "*", team: "*" }`. Teams and roles are worked out from the groups on every
 request, so a change applies at once, to sessions and API tokens alike; a token acts with the groups
 its owner had when creating it.
 

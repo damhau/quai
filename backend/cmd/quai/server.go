@@ -104,6 +104,7 @@ func serve(ctx context.Context, cfg *config.Config, log *slog.Logger, ln net.Lis
 			}
 			opts.Requests = requests.New(s, reg, ins, log)
 			opts.Requests.UsePublicURL(cfg.Server.PublicURL)
+			opts.Requests.UseDirectory(auth.NewDirectory(cfg.Auth))
 			hooks := ingest.New(s, reg, log)
 			hooks.UseJobs(ins)
 			opts.Webhooks, opts.WebhookHost, opts.PublicURL = hooks.Webhooks(), cfg.Webhooks.Host, cfg.Server.PublicURL

@@ -56,12 +56,16 @@ too old or too weak, the UI redirects through the IdP with `max_age` (and
   ([open question 20](../plan/open-questions.md#still-open)): a list of `{group, team}`, where the
   group is a name or a pattern with one `*` (one or more characters, with their case) and a `*` in
   the team stands for what it matched (`{group: sg-quai-*, team: "*"}`: `sg-quai-shop` is the team
-  `shop`). The first entry that matches a group decides its team; a group no entry matches is the
-  team of its own name. A person's teams are worked out from their groups on every request, as
+  `shop`). The first entry that matches a group decides its team. Without `auth.teams`, each group
+  is the team of its own name, as before P4-04. With it, **only the groups an entry matches are
+  teams**: a group no entry matches makes no team, so that a group that happens to share a team's
+  name (a self-service group, another department's) does not make its members that team's owners
+  and approvers; it still counts for `group:` entries and `auth.roles`. A last entry
+  `{group: "*", team: "*"}` brings the fallback back. A person's teams are worked out from their groups on every request, as
   their roles are, and decide ownership by a team (`ownership: { team: shop }`), `team:` owner
   entries (for `owners` approvers and operating) and the inventory's "owned by me". `group:`
   entries match groups, never teams. A review keeps the reviewer's teams, as it keeps their groups;
-  a review from before P4-04 counts its groups as its teams.
+  a review from before P4-04, which kept only groups, has the teams `auth.teams` makes of them now.
 - **Access report.** Auditors and platform admins read every person in the directory, and every
   owner of an API token that still works, with their groups, teams, roles by scope and the groups
   that give each, their tokens (a token acts with the groups its owner had when creating it, so it
@@ -166,8 +170,8 @@ far). Decisions the roles do not spell out:
 - Anyone can read and cancel their own requests; reviewing needs access to the
   request, and the request's approval rules decide whose review counts.
 - Operating a resource needs the operator role and ownership: the owner, a member
-  of the owning team (a group `auth.teams` maps to it, or the group of its name when no entry
-  matches that group), or a platform admin.
+  of the owning team (in a group `auth.teams` maps to it; without `auth.teams`, in the group of its
+  name), or a platform admin.
 - The access report needs the auditor role (or platform admin), at the global scope; an API token
   cannot read it.
 - Entitlements are group patterns (`group:data-*`) or names (`user:zoe`); an empty

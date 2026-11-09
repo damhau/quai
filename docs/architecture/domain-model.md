@@ -31,7 +31,7 @@ erDiagram
 | Term | Meaning | Where it lives |
 | --- | --- | --- |
 | **Organization** | One Quai installation's tenant. A single organization per install for v1; several for managed-service providers later. | DB |
-| **Team** | A group of people that owns resources and catalog items. Mapped to IdP groups by `auth.teams`; a group no entry maps is the team of its own name. | Configuration and the IdP's groups |
+| **Team** | A group of people that owns resources and catalog items. Mapped to IdP groups by `auth.teams`: once it is set, only the groups it matches are teams; without it, each group is the team of its own name. | Configuration and the IdP's groups |
 | **User** | A person who signed in: name, verified email, groups, the IdP's identifiers, last login, deactivated or not. The access report lists them. | DB (`users`), from each login; SCIM from P4-15 |
 | **Repository** | A connection to one Git repository: connector (Azure DevOps, GitHub…), URL, credentials, delivery mode, runner. See [repository connections](../design/01-repository-connections.md). | DB, optionally config-as-code |
 | **Definitions** | Resource types (and optionally blueprints) stored in a repository under `.quai/`. Versioned by commit. | Git |

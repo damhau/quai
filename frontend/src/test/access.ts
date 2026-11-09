@@ -1,7 +1,8 @@
 import { http, HttpResponse } from "msw"
 import type { AccessReportView } from "@/api/generated/types.gen"
 
-// A fake of the access report: its people, and how many times it was read.
+// A fake of the access report: its people, and how many times it was read. Its auth.teams maps
+// sg-quai-<name> to the team <name>, so the other groups are no team.
 
 const report = (): AccessReportView => ({
   generatedAt: "2026-11-09T08:00:00Z",
@@ -9,7 +10,7 @@ const report = (): AccessReportView => ({
     {
       name: "=HYPERLINK(\"https://evil.example.com\")",
       groups: ["@SUM(A1)"],
-      teams: ["@SUM(A1)"],
+      teams: [],
       roles: [{ role: "viewer", scope: "global", groups: ["@SUM(A1)"] }],
       tokens: [],
       state: "active",
@@ -20,8 +21,9 @@ const report = (): AccessReportView => ({
       name: "bob",
       email: "bob@acme.ch",
       subject: "sub-bob",
+      // In a group named shop, which auth.teams does not map: no team, the role it gives notwithstanding.
       groups: ["developers", "shop"],
-      teams: ["developers", "shop"],
+      teams: [],
       roles: [
         { role: "operator", scope: "team:shop", groups: ["shop"] },
         { role: "requester", scope: "global", groups: ["developers"] },

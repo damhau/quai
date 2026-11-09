@@ -66,7 +66,7 @@ func (s *Service) PlanReported(ctx context.Context, id uuid.UUID) error {
 		if err != nil {
 			return err
 		}
-		outcome := policy.Evaluate(decided, toReviews(bound(all, sets[0].Hash)), contextOf(r))
+		outcome := policy.Evaluate(decided, toReviews(bound(all, sets[0].Hash), s.dir), contextOf(r))
 		switch {
 		case r.State == PendingApproval && outcome.State == policy.Approved:
 			if _, err := q.TransitionRequest(ctx, db.TransitionRequestParams{ID: r.ID, FromState: PendingApproval, ToState: Approved}); err != nil {

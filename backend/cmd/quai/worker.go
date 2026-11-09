@@ -13,6 +13,7 @@ import (
 
 	"github.com/damhau/quai/backend/internal/audit/keeper"
 	"github.com/damhau/quai/backend/internal/audit/siem"
+	"github.com/damhau/quai/backend/internal/auth"
 	"github.com/damhau/quai/backend/internal/config"
 	"github.com/damhau/quai/backend/internal/gitx"
 	"github.com/damhau/quai/backend/internal/ingest"
@@ -102,6 +103,7 @@ func work(ctx context.Context, cfg *config.Config, log *slog.Logger, s *store.St
 		defer reg.Close()
 		svc = requests.New(s, reg, nil, log)
 		svc.UsePublicURL(cfg.Server.PublicURL)
+		svc.UseDirectory(auth.NewDirectory(cfg.Auth))
 		hooks = ingest.New(s, reg, log)
 		hooks.UseHandler(svc)
 		workers = append(workers, svc.Workers, hooks.Workers)

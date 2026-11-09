@@ -146,6 +146,7 @@ func start(t *testing.T, dir, spec string, opts repositories.Options, configure 
 	}
 	svc := requests.New(s, reg, nil, log)
 	svc.UsePublicURL(public)
+	svc.UseDirectory(auth.NewDirectory(cfg.Auth))
 	hooks := ingest.New(s, reg, log)
 	hooks.UseHandler(svc)
 	worker, err := jobs.NewWorker(s.Pool, jobs.Options{Logger: log, Workers: func(w *river.Workers) { svc.Workers(w); hooks.Workers(w) }})

@@ -36,23 +36,40 @@ func TestDirectory(t *testing.T) {
 		"sg-quai-shop-ops":   "shop",
 		"sg-quai-shop":       "shop",
 		"sg-quai-blog":       "blog",
-		"sg-quai-":           "sg-quai-", // * matches one character at least: unmapped
+		"sg-quai-":           "", // * matches one character at least
 		"db-admins":          "admins-db",
 		"ad-data-rw":         "data",
-		"ad-rw":              "ad-rw",
+		"ad-rw":              "",
 		"Platform Engineers": "platform",
-		"platform engineers": "platform engineers", // names are matched with their case
-		"developers":         "developers",         // unmapped: the team of its name
+		"platform engineers": "", // names are matched with their case
+		"developers":         "", // no entry maps it: no team, its name notwithstanding
+		"shop":               "",
 	} {
-		if got := d.Team(group); got != team {
-			t.Errorf("Team(%q) = %q, want %q", group, got, team)
+		if got, ok := d.Team(group); got != team || ok != (team != "") {
+			t.Errorf("Team(%q) = %q, %v, want %q", group, got, ok, team)
 		}
 	}
-	if got := d.Teams([]string{"sg-quai-shop-ops", "developers", "sg-quai-shop", "db-admins"}); !slices.Equal(got, []string{"admins-db", "developers", "shop"}) {
+	if got := d.Teams([]string{"sg-quai-shop-ops", "developers", "sg-quai-shop", "db-admins", "shop"}); !slices.Equal(got, []string{"admins-db", "shop"}) {
 		t.Errorf("Teams = %v", got)
+	}
+	if got := d.Teams([]string{"developers"}); got != nil {
+		t.Errorf("Teams of unmapped groups = %v", got)
 	}
 	if got := d.Teams(nil); got != nil {
 		t.Errorf("Teams(nil) = %v", got)
+	}
+
+	// A last entry {group: "*", team: "*"} makes the groups no other entry maps the teams of their names.
+	all := auth.NewDirectory(config.Auth{Teams: []config.TeamMapping{{Group: "sg-quai-*", Team: "*"}, {Group: "*", Team: "*"}}})
+	if got := all.Teams([]string{"sg-quai-shop", "developers", "x"}); !slices.Equal(got, []string{"developers", "shop", "x"}) {
+		t.Errorf("Teams with a catch-all = %v", got)
+	}
+	if got, ok := all.Team(""); ok {
+		t.Errorf("Team(\"\") = %q", got) // * matches one character at least
+	}
+	// "*" alone in the team is what the group's * matched; around it, a name.
+	if got, _ := auth.NewDirectory(config.Auth{Teams: []config.TeamMapping{{Group: "*", Team: "team-*"}}}).Team("web"); got != "team-web" {
+		t.Errorf("Team = %q", got)
 	}
 	shop := authz.Grant{Role: authz.Operator, Scope: authz.Scope{Kind: authz.ScopeTeam, Name: "shop"}}
 	want := []auth.Granted{
@@ -66,10 +83,13 @@ func TestDirectory(t *testing.T) {
 	if got := auth.ScopeName(shop.Scope) + " " + auth.ScopeName(authz.Global); got != "team:shop global" {
 		t.Errorf("ScopeName = %s", got)
 	}
-	// The zero directory maps nothing.
+	// Without auth.teams, each group is the team of its name; the zero directory maps nothing.
 	var zero auth.Directory
-	if zero.Team("shop") != "shop" || zero.Grants([]string{"developers"}) != nil {
+	if team, ok := zero.Team("shop"); team != "shop" || !ok || zero.Grants([]string{"developers"}) != nil {
 		t.Error("the zero directory maps")
+	}
+	if got := zero.Teams([]string{"shop", "developers", "shop"}); !slices.Equal(got, []string{"developers", "shop"}) {
+		t.Errorf("Teams without auth.teams = %v", got)
 	}
 }
 
@@ -106,8 +126,8 @@ func TestUsers(t *testing.T) {
 	if status != http.StatusOK {
 		t.Fatalf("login = %d %s", status, body)
 	}
-	// The teams come from auth.teams: shop is mapped, developers is the team of its name.
-	if m, _ := getMe(t, browser, srv.URL); !slices.Equal(m.Teams, []string{"developers", "retail-op"}) {
+	// The teams come from auth.teams: shop is mapped, developers no team.
+	if m, _ := getMe(t, browser, srv.URL); !slices.Equal(m.Teams, []string{"retail-op"}) {
 		t.Errorf("me = %+v", m)
 	}
 	u, err := s.GetUser(ctx, "bob")

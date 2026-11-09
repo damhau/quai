@@ -22,7 +22,9 @@ config:
       redirectURL: https://quai.example.com/auth/callback
     roles:
       - { group: platform-admins, role: platform-admin, scope: global }
-    # Teams own resources; without an entry, a group is the team of its own name
+    # Teams own resources. Without teams, each group is the team of its own name; with it, only
+    # the groups an entry matches are teams, the first match deciding; a last entry
+    # { group: "*", team: "*" } keeps the others as the teams of their names
     # (docs/operations/deployment-and-operations.md#people-and-teams).
     # teams:
     #   - { group: sg-quai-*, team: "*" }
