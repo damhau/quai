@@ -140,7 +140,7 @@ func registerHistory(a huma.API, reg *repositories.Registry, s *store.Store) {
 				return nil, err
 			}
 			for _, inst := range instances(snap) {
-				if _, err := authorize(ctx, authz.ReadInventory, authz.Object{Repository: repo.Name, Owner: inst.Owner}); err == nil {
+				if _, err := authorize(ctx, authz.ReadInventory, ownedObject(repo.Name, inst.Blueprint, inst.Owner)); err == nil {
 					views = append(views, inst)
 				}
 			}
@@ -165,7 +165,7 @@ func registerHistory(a huma.API, reg *repositories.Registry, s *store.Store) {
 			if inst.Blueprint != in.Blueprint || inst.Name != in.Name {
 				continue
 			}
-			if _, err := authorize(ctx, authz.ReadInventory, authz.Object{Repository: in.Repository, Owner: inst.Owner}); err != nil {
+			if _, err := authorize(ctx, authz.ReadInventory, ownedObject(in.Repository, inst.Blueprint, inst.Owner)); err != nil {
 				return nil, err
 			}
 			repo, _ := reg.Get(in.Repository)

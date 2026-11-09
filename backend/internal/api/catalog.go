@@ -438,7 +438,7 @@ func registerCatalog(a huma.API, reg *repositories.Registry, s *store.Store) {
 			if i < 0 {
 				return nil, huma.Error404NotFound("no instance " + in.Name + "/" + in.Instance)
 			}
-			if _, err := authorize(ctx, authz.ReadInventory, authz.Object{Repository: in.Repository, Owner: all[i].Owner}); err != nil {
+			if _, err := authorize(ctx, authz.ReadInventory, ownedObject(in.Repository, in.Name, all[i].Owner)); err != nil {
 				return nil, err
 			}
 		} else if err := describable(ctx, in.Repository, in.Name, b.Spec.Entitlements); err != nil {

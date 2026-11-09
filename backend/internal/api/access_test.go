@@ -166,6 +166,65 @@ func TestUnmappedTeams(t *testing.T) {
 	}
 }
 
+// TestTeamInstances: a team's blueprint instances are read through the team, as its resources
+// are: by its members, and by those whose viewer role is the team's; a person's instance by that
+// person, as before. Everyone here is a requester (so may browse the catalog) and no viewer, so
+// only ownership or a team-scoped role lets them read an instance.
+func TestTeamInstances(t *testing.T) {
+	t.Parallel()
+	for name, c := range map[string]struct {
+		teams []config.TeamMapping
+		group string // tess's group, which makes her a member of the team shop
+	}{
+		"with auth.teams":    {[]config.TeamMapping{{Group: "acme-shop-ops", Team: "shop"}, {Group: "acme-*", Team: "*"}}, "acme-shop"},
+		"without auth.teams": {nil, "shop"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			h := teamsHarness(t, func(cfg *config.Config) {
+				cfg.Auth.Teams = c.teams
+				cfg.Auth.Dev.Users = append(cfg.Auth.Dev.Users,
+					config.DevUser{Name: "tess", Groups: []string{c.group}},
+					config.DevUser{Name: "vic", Groups: []string{"shop-readers"}},
+					config.DevUser{Name: "nina", Groups: []string{"outsiders"}})
+				cfg.Auth.Roles = append(cfg.Auth.Roles,
+					config.RoleMapping{Group: c.group, Role: "requester"},
+					config.RoleMapping{Group: "shop-readers", Role: "requester"},
+					config.RoleMapping{Group: "shop-readers", Role: "viewer", Scope: "team:shop"},
+					config.RoleMapping{Group: "outsiders", Role: "requester"})
+			})
+			record := func(name, owner string) string {
+				return "apiVersion: quai.dev/v1beta1\nkind: Instance\nmetadata: { name: " + name + ", blueprint: app-servers, blueprintVersion: 1.0.0, owner: \"" + owner + "\" }\n" +
+					"spec:\n  inputs: { environment: dev, app: " + name + " }\n  resources: {}\n"
+			}
+			h.pushFiles(map[string]string{
+				".quai/instances/app-servers/shop-team.yaml": record("shop-team", "team:shop"),
+				".quai/instances/app-servers/nina-own.yaml":  record("nina-own", "nina"),
+			})
+
+			for who, sees := range map[string]string{"tess": "shop-team", "vic": "shop-team", "nina": "nina-own"} {
+				u := h.as(who)
+				var list []InstanceView
+				if status, body := u.do(http.MethodGet, Prefix+"/instances", nil, &list); status != http.StatusOK || len(list) != 1 || list[0].Name != sees {
+					t.Errorf("%s lists %d %s, want only %s", who, status, body, sees)
+				}
+				for _, inst := range []string{"shop-team", "nina-own"} {
+					want := http.StatusForbidden
+					if inst == sees {
+						want = http.StatusOK
+					}
+					if status, body := u.do(http.MethodGet, Prefix+"/instances/infra-live/app-servers/"+inst, nil, nil); status != want {
+						t.Errorf("%s opening %s = %d %s, want %d", who, inst, status, body, want)
+					}
+					if status, body := u.do(http.MethodGet, Prefix+"/repositories/infra-live/blueprints/app-servers?instance="+inst, nil, nil); status != want {
+						t.Errorf("%s's blueprint page for %s = %d %s, want %d", who, inst, status, body, want)
+					}
+				}
+			}
+		})
+	}
+}
+
 // TestAccessReport: auditors and platform admins read who can do what, and download it as CSV
 // with every cell a spreadsheet would compute neutralized.
 func TestAccessReport(t *testing.T) {
