@@ -115,6 +115,17 @@ export type ActionView = {
     title?: string;
 };
 
+export type ArchiveInputBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * The IDs of the requests whose bundles the archive holds
+     */
+    requests: Array<string> | null;
+};
+
 export type AuditActorView = {
     /**
      * When the person last authenticated with the identity provider
@@ -564,7 +575,7 @@ export type CreateTokenInputBody = {
     readonly $schema?: string;
     expiresInDays?: number;
     name: string;
-    scopes: Array<'catalog:read' | 'inventory:read' | 'requests:read' | 'requests:write'> | null;
+    scopes: Array<'catalog:read' | 'inventory:read' | 'requests:read' | 'requests:write' | 'evidence:read'> | null;
 };
 
 export type CreatedTokenOutputBody = {
@@ -892,6 +903,18 @@ export type EventView = {
      * The request it happened to, on a resource's timeline
      */
     request?: string;
+};
+
+export type EvidenceRequestView = {
+    breakGlass: boolean;
+    createdAt: string;
+    id: string;
+    kind: string;
+    number: number;
+    repository: string;
+    requester: string;
+    state: string;
+    target: string;
 };
 
 export type FloorRule = {
@@ -1294,6 +1317,10 @@ export type RequestView = {
      */
     canBreakGlass: boolean;
     canCancel: boolean;
+    /**
+     * The caller may download the request's evidence bundle
+     */
+    canDownloadEvidence?: boolean;
     canRetry: boolean;
     /**
      * You may review it now, in your own right or on someone's behalf
@@ -1710,6 +1737,18 @@ export type Runner = {
     reportToken?: SecretRef;
 };
 
+export type SampleOutputBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    requests: Array<EvidenceRequestView> | null;
+    /**
+     * More requests match than the limit: narrow the period
+     */
+    truncated: boolean;
+};
+
 export type ScanView = {
     blueprints: number;
     commit: string;
@@ -2011,6 +2050,13 @@ export type AccessViewWritable = {
     scan?: ScanView;
 };
 
+export type ArchiveInputBodyWritable = {
+    /**
+     * The IDs of the requests whose bundles the archive holds
+     */
+    requests: Array<string> | null;
+};
+
 export type AuditPageViewWritable = {
     checkpoint?: AuditCheckpointView;
     events: Array<AuditEventView> | null;
@@ -2142,7 +2188,7 @@ export type ConnectionViewWritable = {
 export type CreateTokenInputBodyWritable = {
     expiresInDays?: number;
     name: string;
-    scopes: Array<'catalog:read' | 'inventory:read' | 'requests:read' | 'requests:write'> | null;
+    scopes: Array<'catalog:read' | 'inventory:read' | 'requests:read' | 'requests:write' | 'evidence:read'> | null;
 };
 
 export type CreatedTokenOutputBodyWritable = {
@@ -2471,6 +2517,10 @@ export type RequestViewWritable = {
      */
     canBreakGlass: boolean;
     canCancel: boolean;
+    /**
+     * The caller may download the request's evidence bundle
+     */
+    canDownloadEvidence?: boolean;
     canRetry: boolean;
     /**
      * You may review it now, in your own right or on someone's behalf
@@ -2732,6 +2782,14 @@ export type RunViewWritable = {
     status: string;
     summary?: RunSummary;
     url?: string;
+};
+
+export type SampleOutputBodyWritable = {
+    requests: Array<EvidenceRequestView> | null;
+    /**
+     * More requests match than the limit: narrow the period
+     */
+    truncated: boolean;
 };
 
 export type TokenListOutputBodyWritable = {
@@ -3109,6 +3167,78 @@ export type ListEventsResponses = {
 };
 
 export type ListEventsResponse = ListEventsResponses[keyof ListEventsResponses];
+
+export type DownloadEvidenceArchiveData = {
+    body: ArchiveInputBodyWritable;
+    path?: never;
+    query?: never;
+    url: '/api/v1/evidence/archive';
+};
+
+export type DownloadEvidenceArchiveErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type DownloadEvidenceArchiveError = DownloadEvidenceArchiveErrors[keyof DownloadEvidenceArchiveErrors];
+
+export type DownloadEvidenceArchiveResponses = {
+    /**
+     * A ZIP archive
+     */
+    200: Blob | File;
+};
+
+export type DownloadEvidenceArchiveResponse = DownloadEvidenceArchiveResponses[keyof DownloadEvidenceArchiveResponses];
+
+export type ListEvidenceRequestsData = {
+    body?: never;
+    path?: never;
+    query: {
+        /**
+         * Requests created at or after this time
+         */
+        since: string;
+        /**
+         * Requests created before this time: at most 366 days after since
+         */
+        until: string;
+        /**
+         * Only the requests of this repository
+         */
+        repository?: string;
+        /**
+         * Only the requests in this state
+         */
+        state?: 'pending_approval' | 'approved' | 'rejected' | 'cancelled' | 'stale' | 'merging' | 'applying' | 'applied' | 'failed' | 'expired';
+        /**
+         * Only the requests merged by break-glass
+         */
+        breakGlass?: boolean;
+        limit?: number;
+    };
+    url: '/api/v1/evidence/requests';
+};
+
+export type ListEvidenceRequestsErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ListEvidenceRequestsError = ListEvidenceRequestsErrors[keyof ListEvidenceRequestsErrors];
+
+export type ListEvidenceRequestsResponses = {
+    /**
+     * OK
+     */
+    200: SampleOutputBody;
+};
+
+export type ListEvidenceRequestsResponse = ListEvidenceRequestsResponses[keyof ListEvidenceRequestsResponses];
 
 export type ListInstancesData = {
     body?: never;
@@ -4293,6 +4423,41 @@ export type CheckChatLinkResponses = {
 };
 
 export type CheckChatLinkResponse = CheckChatLinkResponses[keyof CheckChatLinkResponses];
+
+export type GetRequestEvidenceData = {
+    body?: never;
+    path: {
+        /**
+         * The request's ID
+         */
+        id: string;
+    };
+    query?: {
+        /**
+         * The JSON bundle, the evidence, or its PDF summary
+         */
+        format?: 'json' | 'pdf';
+    };
+    url: '/api/v1/requests/{id}/evidence';
+};
+
+export type GetRequestEvidenceErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type GetRequestEvidenceError = GetRequestEvidenceErrors[keyof GetRequestEvidenceErrors];
+
+export type GetRequestEvidenceResponses = {
+    /**
+     * The bundle, or its PDF summary
+     */
+    200: Blob | File;
+};
+
+export type GetRequestEvidenceResponse = GetRequestEvidenceResponses[keyof GetRequestEvidenceResponses];
 
 export type RetryRequestData = {
     body?: never;

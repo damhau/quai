@@ -47,6 +47,7 @@ Status: Draft · 2026-11-09
 | A leaver keeps acting: an open session, an API token, a delegation, a pending approval, a chat link | A SCIM deactivation acts at once: the session epoch moves, so sessions end at their next request; API tokens and delegations, given and received, are revoked; requests not delivered are cancelled; their reviews, and reviews on their behalf, of requests still waiting are voided and the approvers notified again; chat links need their session; nothing is sent to them; their sign-ins are refused. Reactivation restores none of it ([question 86](../plan/open-questions.md#still-open)). A deactivation by hand (the database) refuses sessions and tokens while it lasts. |
 | Break-glass abused: a person merges their own change, or one that changed after they looked, with a stolen session or a token; it bypasses more than Quai; its record lost or its review closed early; its reason injects markup | Its own role, never implied by platform admin; never the requester, the requester's delegate or a definition author the separation excludes; a browser session only (tokens refused, CSRF), a step-up whenever `auth.stepUp` is configured, a deactivated person refused. The call carries the change set and head the page showed, refused when they changed; it goes through the one delivery (the gate, the merge lock, the head pinned) and lifts only Quai's approvals and change windows, never the platform's protection, other checks or `waitForChecks`. The record, its review, the audit event and the alert are written with the state change, under the row lock, before any platform call, so its merge is not taken for a bypass and survives a crash. Reason and incident bounded, control, line-separator and bidirectional characters refused; the reason never reaches the platform or the alerts, and is shown as text; `quai/approval` says "Break-glass by <name>" within 140 characters. Alerts at once to security and the owning team, on every channel, that preferences cannot mute; a review closed only by two different reviewers, never the breaker or the requester, never withdrawn, reminded daily ([break-glass](05-delivery-and-approvals.md#break-glass), [questions 94 to 99](../plan/open-questions.md#still-open)). |
 | Tampering with the audit log | Append-only table, insert-only database role, hash chain, signed checkpoints, export to SIEM. |
+| An evidence bundle forged or edited, or one that tells its reader more than they may see | A bundle carries the request's events as the log holds them and the segments of the log up to signed checkpoints; `quai audit verify --bundle`, with the public key the auditor holds, checks every hash, link and signature, and the summary against the events: a changed byte, a removed event, a swapped checkpoint or an edited summary field fails, by name. The proof (other requests' events, with pseudonyms) goes only to auditors of the whole platform and platform admins, in a session; others, and every API token, get the request's own events. IP addresses, emails, plan values and secrets are never in a bundle. Downloads go through authorization and are audited; the sample's filters are validated and the archive bounded (50 requests, 256 MiB, two at once), its names made from request numbers. The PDF draws plain text without links or scripts, and clips hostile input. **Residual:** a bundle cut down to fewer events and segments still verifies; the full export is the completeness check ([evidence bundle](#evidence-bundle)). |
 | Supply chain | Small dependency set, `go.sum` and the Go checksum database, `govulncheck`, SBOM, signed images and provenance (see below). |
 
 ## Secrets
@@ -138,7 +139,7 @@ changes, executor calls, configuration changes.
   can see a gap and verify the chain ([export to a SIEM](#export-to-a-siem)). A webhook comes in
   Phase 7.
 
-What is recorded, by action (P4-01, P4-02, P4-06, P4-08, P4-09, P4-11, P4-13, P4-15, P4-17; executor calls and
+What is recorded, by action (P4-01, P4-02, P4-06, P4-08, P4-09, P4-11, P4-13, P4-15, P4-17, P4-18; executor calls and
 configuration changes come with their features):
 
 | Action | Actor | When |
@@ -175,6 +176,7 @@ configuration changes come with their features):
 | `definitions.commit` | Quai | the first definitions of a repository, and each commit that changes them: the commit, its author (a pseudonym), the definitions it changes |
 | `audit.verified`, `audit.broken` | Quai | the daily verification: the events and checkpoints verified, and where and why it broke |
 | `audit.pruned` | Quai | events pruned: how many, and the checkpoint the chain starts from |
+| `evidence.downloaded` | the person, or their token | an evidence bundle downloaded (P4-18), about the request (object type `evidence`, its ID) or `archive` for a sample: the format (`json`, `pdf`, `zip`), the requests and how many (`count`), and whether it carried the proof (`proof`) ([evidence bundle](#evidence-bundle)) |
 
 Slack's interaction requests are not audited: they carry no Quai identity and change nothing, and
 anyone can send one. Refusals are logged (`a Slack interaction request was refused`, with the reason
@@ -248,20 +250,136 @@ destination lags ([the runbook](../operations/deployment-and-operations.md#when-
 
 ### Evidence bundle
 
-For each request, a downloadable bundle (JSON plus a PDF summary): the request
-and reason, the diff, definitions commit, plan summary and policy results,
-approvals with authentication times, merge commit, apply result, and the audit
-events with their hashes. It is what an auditor asks for in a change-management
-sample, and what Quai attaches to ITSM change requests.
+For each request, a download (P4-18): `GET /api/v1/requests/{id}/evidence`, a JSON bundle, or
+with `?format=pdf` its PDF summary. It is what an auditor asks for in a change-management sample,
+and what Quai attaches to ITSM change requests (P4-20). The request page offers both to whoever
+may download them; the *Evidence* page lists a period's requests for auditors and downloads a
+sample of them as one archive.
 
-For a request merged by break-glass (P4-17), the bundle (P4-18) carries the break-glass record in
-place of the approvals it lacked: who broke glass, their authentication time, `acr` and step-up,
-the incident, the reason, the change set and head it was broken for, the state it was broken from,
+**What it holds.** One JSON document, `bundleVersion` 1, its keys in a fixed order, made from one
+read-only snapshot of the database, so the same state gives the same bytes but `generatedAt`:
+
+- `request`: its number, kind, action, type or blueprint, repository, target, stack, requester,
+  reason, state, inputs, when it was created, submitted and last changed, the definitions and base
+  commits, the approval expiry, its owners, its approval rules as its page shows them (approvers,
+  how many, the approvals that count and on whose behalf) and its separation of duties.
+- `changeSets`: per repository, the change set's hash and the commit it reached, and each change:
+  path, operation, the content before and after (base64 when it is not UTF-8), the SHA-256 of the
+  content after, and the diff.
+- `plans` and `applies`: each stack's latest plan and apply: status, commit, run, times, the
+  summary (add, change, destroy), the policy results, the cost, and the resource changes
+  (addresses, actions, the names of the attributes that change, never their values).
+- `approvals`: every review: who, in which groups, the decision and comment, the change set it
+  was for, when, the authentication time, `acr` and step-up, the delegation it used (its ID, the
+  delegator, the delegate, the period), and whether it was voided.
+- `delivery`: the branch, pull request, head and merge commit, and the merge commit's trailers
+  (`Approved-by`, `Break-glass-by`, …), read from the repository's mirror, each email address
+  in them replaced by `<address left out>`.
+- `breakGlass`: below.
+- `events`: the request's audit events as the log holds them (`seq`, `at`, actor, action, object,
+  details, `prev`, `hash`), personal data as pseudonyms.
+- `personal`: the clear value and the salt of each pseudonym in the request's own events (the
+  requester, reviewers, delegators, the breaker, signers, the reason, comments), so the verifier
+  makes the pseudonym again; a value pseudonymization erased is not there, and its pseudonym
+  stays.
+- `proof`: the segments of the log that prove the events, the events nothing proves yet and why,
+  and the bound.
+- `notes`: what the bundle leaves out, and what its reader must know (an open post-incident
+  review, trailers that could not be read).
+
+Left out: IP addresses (even of the request's own events, which keep the pseudonym), email
+addresses, plan values and outputs, and secrets of any kind (webhook secrets, tokens, SCIM token
+hashes, executor credentials) ([open question 103](../plan/open-questions.md#still-open)).
+
+For a request merged by break-glass (P4-17), the bundle carries the break-glass record in place of
+the approvals it lacked: who broke glass, their authentication time, `acr` and step-up, the
+incident, the reason, the change set and head it was broken for, the state it was broken from,
 whether it lifted a change window, and when; the post-incident review with each sign-off (who, in
 which capacity, the comment, when, with what authentication), whether and when it closed; the
 `Break-glass-by` and `Break-glass-incident` trailers of the merge commit; and the
 `request.break_glass*` audit events with their hashes. A bundle of a broken request whose review
-is still open says so.
+is still open says so, in its notes and on the PDF's first page.
+
+**The proof.** An event's hash covers its content and the event before, and a signed checkpoint
+an event's hash, so a checkpoint covers every event up to it. A request's events are scattered
+through the log: the bundle proves each by the run of the log from it to the first signed
+checkpoint at or after it, whose records, other requests' events included, link its hash to the
+checkpoint's. The request's events are grouped by that checkpoint, one segment per group (`from`,
+`to`, the checkpoint, and the records of the other events in between; the request's own events are
+not repeated). Other events are there as the log holds them, with pseudonyms, never their clear
+values. The chain's format does not change: a segment is a slice of what `quai audit export`
+writes.
+
+- **Bound.** At most 5,000 records of other events in a bundle (`proof.bound`), the cheapest
+  groups first; the events past it are unproven, "beyond the bundle's bound", and the full export
+  proves them. Measured on a log of 600 events an hour (a sign-in every six seconds, other
+  requests among them), five events in two segments took 1,203 records and 1,166 KiB: about 1 KiB
+  a record, so a proof is at most about 5 MB ([open question 101](../plan/open-questions.md#still-open)).
+- **Not yet.** An event no signed checkpoint follows is unproven, "no signed checkpoint follows it
+  yet": the worker signs every hour. With no checkpoint at all (no signing key,
+  `audit.checkpoints.signingKey`), nothing is proven and the bundle says so; Quai never signs with
+  a key it made on the fly.
+- **Only for those who read the log.** The segments hold other requests' events (their IDs,
+  resources, actions, times, commits, states, error texts, and pseudonyms), which only auditors of
+  the whole platform and platform admins read: a bundle downloaded in their session carries the
+  proof; anyone else's, and any API token's, carries the request's own events and hashes,
+  `proof.omitted` saying why ([open question 102](../plan/open-questions.md#still-open)).
+
+**Verifying.** `quai audit verify --bundle bundle.json --key audit-key.pub` checks, offline:
+
+- each event of the request: that it is about the request, in increasing `seq`, its hash the hash
+  of its content;
+- each clear personal value against its pseudonym, and that an event names it;
+- each segment: its range, every `seq` in it once (a missing one is an event removed), none of the
+  request's events among its records (one there is an event the bundle's events leave out), each
+  record's hash, each `prev` link through the records and the request's events, that it ends at
+  its checkpoint, the checkpoint's signature with a key given, and its hash the last record's;
+- the change sets: each content's SHA-256 and diff, and the change set's hash computed again from
+  its changes;
+- the summary against the events where they overlap: the submission (kind, action, type,
+  blueprint, repository, definitions commit, reason, requester), the state once final, each
+  review (the decision, change set, authentication time, reviewer, comment, delegation, step-up),
+  the merge commit, and the break-glass (breaker, reason, incident, change set, head, state,
+  authentication time, the sign-offs, whether the review closed, the trailers).
+
+It prints what it verified, and exits with status 1 naming what fails ("event seq 41
+(request.reviewed): its hash is not the hash of its content: the event was changed", "segment 1
+(seq 40 to 57): seq 49 is missing: an event was removed", "… the events were changed, or the
+checkpoint swapped", "the summary's reason … is not the one event seq 40 (request.submitted)
+records: the summary was edited"), and when an event is unproven, unless `--allow-unproven`
+([open question 105](../plan/open-questions.md#still-open)).
+
+**What it does not prove.** That the bundle holds every event of the request: whoever removes a
+whole segment with its events and the parts of the summary they back makes a smaller bundle that
+verifies. The export of the whole log, verified with `quai audit verify`, is the completeness
+check; the bundle's events are found in it by `seq` and hash. The change set's hash covers each
+change's content after, not before: the content before is as Quai read it from the base commit,
+and a note says so. A request's state changed by an outside edit (`modified_outside_quai`) has no
+audit event: the state is checked only once final.
+
+**Who downloads.** A request's bundle: auditors (of the platform, or of its repository), platform
+admins, its requester and its owners (the owner, the members of the owning team); an API token
+needs the `evidence:read` scope (`requests:read` is not enough). A sample's list and archive:
+auditors of the platform or of the repository, and platform admins. Every download is an audit
+event, `evidence.downloaded` ([open question 100](../plan/open-questions.md#still-open)).
+
+**Sampling.** `GET /api/v1/evidence/requests?since=…&until=…` lists the requests created in a
+period of at most 366 days, oldest first, by repository, state and break-glass, at most `limit`
+(at most 500; `truncated` when more match). `POST /api/v1/evidence/archive` with up to 50 request
+IDs streams a ZIP: `request-<number>.json` and `request-<number>.pdf` for each, and
+`manifest.json` (the version, when, whether with the proof, each file's request, size and
+SHA-256, and the requests left out and why). Names come from the requests' numbers only. At most
+256 MiB in all, and at most two archives made at once per server (429 with `Retry-After`)
+([open question 106](../plan/open-questions.md#still-open)).
+
+**The PDF summary** is made in Go (fpdf; no browser, no network, no other program): the request,
+its rules and reviews, the changes with their diff (cut at 400 lines), the plans and applies, the
+delivery and its trailers, the break-glass and its review, the audit events with their hashes (the
+first 300), the proof and the notes, and how to verify the JSON. Text from requests is drawn as
+plain text, never as links, annotations or scripts; control, format and bidirectional characters
+are dropped and each value clipped (2,000 characters, 40 lines). The core fonts draw
+Windows-1252: other characters are drawn as `?` ([open question
+104](../plan/open-questions.md#still-open)). The JSON is the record.
 
 ## Commit signing and attribution
 
@@ -286,6 +404,7 @@ Candidate mappings, to be confirmed with each customer's compliance team.
 | Access control and reviews (A.5.15–A.5.18) | IdP-based authentication, role scopes, role changes in the audit log, SCIM deprovisioning, the access report (every person, their groups, teams, roles by scope and the group that gives each, their live API tokens; a page and a CSV) for periodic reviews ([directory](08-identity-access-tenancy.md#directory)) |
 | Logging and monitoring (A.8.15, A.8.16) | Hash-chained audit log, SIEM export (a break-glass, a bypass and lost enforcement as warnings), alerts on bypass and break-glass |
 | Emergency changes (ISO 27001 A.8.32, SOC 2 CC8.1, ITIL emergency change) | Break-glass: a dedicated role, a reason and an incident reference, step-up, the content bound, the platform's own protection kept, an immediate alert, and a post-incident review that two reviewers other than the breaker and requester sign off, listed and reminded until it closes |
+| Audit evidence (ISO 27001 A.5.28 collection of evidence, SOC 2 CC4.1 and CC8.1 change samples) | An evidence bundle per request, verifiable offline against the signed checkpoints with the public key alone; a period's requests sampled by repository, state and break-glass, their bundles downloaded as one archive with a manifest of their hashes; each download audited |
 | Outsourcing and data location (FINMA outsourcing rules, Swiss nFADP, GDPR) | Self-hosted, no outbound telemetry, data residency under customer control |
 
 ## Security engineering

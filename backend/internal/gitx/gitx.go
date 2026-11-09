@@ -742,6 +742,25 @@ func (m *Mirror) Show(ctx context.Context, commit string) (string, error) {
 	return m.git(ctx, "", "show", "--format=%H%n%an <%ae>%n%aI%n%n%B", commit)
 }
 
+// Trailers returns the trailers of a commit's message, one "Key: value" line each, as git reads
+// them; ErrNotFound when the mirror does not have the commit.
+func (m *Mirror) Trailers(ctx context.Context, commit string) ([]string, error) {
+	if err := checkCommit(commit); err != nil {
+		return nil, err
+	}
+	out, err := m.git(ctx, "", "show", "-s", "--format=%(trailers:only,unfold)", commit)
+	if err != nil {
+		return nil, fmt.Errorf("commit %.12s: %w", commit, ErrNotFound)
+	}
+	lines := []string{}
+	for _, l := range strings.Split(out, "\n") {
+		if l = strings.TrimSpace(l); l != "" {
+			lines = append(lines, l)
+		}
+	}
+	return lines, nil
+}
+
 var (
 	shaRe = regexp.MustCompile(`^[0-9a-f]{7,64}$`)
 	refRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$`)

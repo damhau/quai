@@ -314,6 +314,105 @@ func (q *Queries) ListApprovedRequests(ctx context.Context) ([]Request, error) {
 	return items, nil
 }
 
+const listEvidenceRequests = `-- name: ListEvidenceRequests :many
+SELECT r.id, r.org_id, r.kind, r.action, r.target, r.type_name, r.blueprint, r.requester, r.reason, r.inputs, r.state, r.definitions_commit, r.base_commit, r.created_at, r.updated_at, r.number, r.requester_email, r.stack, r.rules, r.owners, r.stacks, r.codeowners, r.codeowners_unmatched, r.step_up, r.manager, r.manager_reason, r.separation, r.submitted_at, r.expiry, r.expires_at, r.reminded_at, r.escalated_at, r.expiry_warned_at, r.window_subjects, r.window_held_at, r.window_reason, r.break_glass_at, r.break_glass_by,
+  COALESCE((SELECT c.repository FROM change_sets c WHERE c.request_id = r.id ORDER BY c.repository LIMIT 1), '')::text AS repository,
+  EXISTS (SELECT 1 FROM break_glass b WHERE b.request_id = r.id) AS broken
+FROM requests r
+WHERE r.created_at >= $1 AND r.created_at < $2
+  AND ($3::text = '' OR r.state = $3::text)
+  AND ($4::text = '' OR EXISTS (SELECT 1 FROM change_sets c WHERE c.request_id = r.id AND c.repository = $4::text))
+  AND (NOT $5::bool OR EXISTS (SELECT 1 FROM break_glass b WHERE b.request_id = r.id))
+ORDER BY r.created_at, r.id
+LIMIT $6
+`
+
+type ListEvidenceRequestsParams struct {
+	Since      pgtype.Timestamptz
+	Until      pgtype.Timestamptz
+	State      string
+	Repository string
+	BreakGlass bool
+	MaxRows    int32
+}
+
+type ListEvidenceRequestsRow struct {
+	Request    Request
+	Repository string
+	Broken     bool
+}
+
+// Requests created in a period, oldest first, of a repository, in a state and broken by
+// break-glass when asked: an auditor's sample, with each request's repository (its first change
+// set's, as ListChangeSets orders them) and whether glass was broken for it.
+func (q *Queries) ListEvidenceRequests(ctx context.Context, arg ListEvidenceRequestsParams) ([]ListEvidenceRequestsRow, error) {
+	rows, err := q.db.Query(ctx, listEvidenceRequests,
+		arg.Since,
+		arg.Until,
+		arg.State,
+		arg.Repository,
+		arg.BreakGlass,
+		arg.MaxRows,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListEvidenceRequestsRow{}
+	for rows.Next() {
+		var i ListEvidenceRequestsRow
+		if err := rows.Scan(
+			&i.Request.ID,
+			&i.Request.OrgID,
+			&i.Request.Kind,
+			&i.Request.Action,
+			&i.Request.Target,
+			&i.Request.TypeName,
+			&i.Request.Blueprint,
+			&i.Request.Requester,
+			&i.Request.Reason,
+			&i.Request.Inputs,
+			&i.Request.State,
+			&i.Request.DefinitionsCommit,
+			&i.Request.BaseCommit,
+			&i.Request.CreatedAt,
+			&i.Request.UpdatedAt,
+			&i.Request.Number,
+			&i.Request.RequesterEmail,
+			&i.Request.Stack,
+			&i.Request.Rules,
+			&i.Request.Owners,
+			&i.Request.Stacks,
+			&i.Request.Codeowners,
+			&i.Request.CodeownersUnmatched,
+			&i.Request.StepUp,
+			&i.Request.Manager,
+			&i.Request.ManagerReason,
+			&i.Request.Separation,
+			&i.Request.SubmittedAt,
+			&i.Request.Expiry,
+			&i.Request.ExpiresAt,
+			&i.Request.RemindedAt,
+			&i.Request.EscalatedAt,
+			&i.Request.ExpiryWarnedAt,
+			&i.Request.WindowSubjects,
+			&i.Request.WindowHeldAt,
+			&i.Request.WindowReason,
+			&i.Request.BreakGlassAt,
+			&i.Request.BreakGlassBy,
+			&i.Repository,
+			&i.Broken,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPendingApproval = `-- name: ListPendingApproval :many
 SELECT id, org_id, kind, action, target, type_name, blueprint, requester, reason, inputs, state, definitions_commit, base_commit, created_at, updated_at, number, requester_email, stack, rules, owners, stacks, codeowners, codeowners_unmatched, step_up, manager, manager_reason, separation, submitted_at, expiry, expires_at, reminded_at, escalated_at, expiry_warned_at, window_subjects, window_held_at, window_reason, break_glass_at, break_glass_by FROM requests WHERE state = 'pending_approval' ORDER BY submitted_at, id
 `

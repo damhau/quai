@@ -16,6 +16,7 @@ import (
 
 	"github.com/damhau/quai/backend/internal/audit"
 	"github.com/damhau/quai/backend/internal/audit/keeper"
+	"github.com/damhau/quai/backend/internal/evidence"
 	"github.com/damhau/quai/backend/internal/pgtest"
 	"github.com/damhau/quai/backend/internal/store/db"
 )
@@ -150,5 +151,92 @@ func TestAuditExportVerify(t *testing.T) {
 		if _, _, err := runAudit(t, "", args...); err == nil {
 			t.Errorf("%s: no error", name)
 		}
+	}
+}
+
+// TestAuditVerifyBundle: quai audit verify --bundle checks a request's bundle offline with the
+// public key: it passes on one Quai made, fails on an edited one, and on unproven events unless
+// --allow-unproven.
+func TestAuditVerifyBundle(t *testing.T) {
+	ctx := context.Background()
+	s := pgtest.Store(t)
+	dir := t.TempDir()
+	pub, key, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pubPEM, _ := audit.MarshalPublicKey(pub)
+	keyFile := writeFile(t, dir, "audit.pub", string(pubPEM))
+	_, otherKey, _ := ed25519.GenerateKey(rand.Reader)
+	otherPEM, _ := audit.MarshalPublicKey(otherKey.Public().(ed25519.PublicKey))
+	otherFile := writeFile(t, dir, "other.pub", string(otherPEM))
+	id := "0b9d5a52-6c1e-4f43-9d0e-6f1f1c1a2b3c"
+	record := func(action string, details map[string]any) {
+		t.Helper()
+		if err := s.Tx(ctx, func(tx pgx.Tx, _ *db.Queries) error {
+			return audit.Add(ctx, tx, audit.Event{Actor: audit.Actor{Type: audit.User, ID: "Bob Builder", IP: "10.0.0.2"}, Action: action,
+				Object: audit.Object{Type: "request", ID: id}, Details: details})
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write := func(name string) (string, *evidence.Bundle) {
+		t.Helper()
+		a, err := evidence.Prove(ctx, s.Queries, id, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		b := &evidence.Bundle{BundleVersion: evidence.Version, GeneratedAt: "2026-11-02T12:00:00.000Z", Quai: "test",
+			Request: evidence.Request{ID: id, Number: 7, Kind: "create", Repository: "infra-live", Requester: "Bob Builder", Reason: "A new VM.",
+				State: "pending_approval", Inputs: json.RawMessage(`{}`), Owners: []string{}, Rules: []evidence.Rule{}},
+			ChangeSets: []evidence.ChangeSet{}, Plans: []evidence.Run{}, Approvals: []evidence.Approval{}, Applies: []evidence.Run{},
+			Events: a.Events, Personal: a.Personal, Proof: a.Proof, Notes: []string{}}
+		data, err := evidence.Marshal(b)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return writeFile(t, dir, name, string(data)), b
+	}
+	record("request.submitted", map[string]any{"kind": "create", "repository": "infra-live", "reason": audit.Personal("A new VM.")})
+	if _, _, err := audit.SignLatest(ctx, s.Queries, key, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	proven, b := write("proven.json")
+
+	if out, _, err := runAudit(t, "", "verify", "--bundle", proven, "--key", keyFile); err != nil ||
+		out != "request #7 "+id+": 1 event, 1 proven by 1 checkpoint (seq 1) with no records of other events\nthe bundle verifies\n" {
+		t.Errorf("verify --bundle = %q, %v", out, err)
+	}
+	data, _ := os.ReadFile(proven)
+	if out, _, err := runAudit(t, string(data), "verify", "--bundle", "-", "--key", keyFile); err != nil || !strings.HasSuffix(out, "the bundle verifies\n") {
+		t.Errorf("verify --bundle - = %q, %v", out, err)
+	}
+	if _, _, err := runAudit(t, "", "verify", "--bundle", proven, "--key", otherFile); err == nil || !strings.Contains(err.Error(), "checkpoint") {
+		t.Errorf("verified with another key: %v", err)
+	}
+	if _, _, err := runAudit(t, "", "verify", "--bundle", proven); err == nil || !strings.Contains(err.Error(), "--key is needed") {
+		t.Errorf("verified without a key: %v", err)
+	}
+
+	// An edited bundle: the reason in its summary.
+	b.Request.Reason = "Nothing to see."
+	edited, _ := evidence.Marshal(b)
+	if _, _, err := runAudit(t, string(edited), "verify", "--bundle", "-", "--key", keyFile); err == nil || !strings.Contains(err.Error(), "the summary's reason") {
+		t.Errorf("an edited bundle: %v", err)
+	}
+	if _, _, err := runAudit(t, `{"bundleVersion":2}`, "verify", "--bundle", "-", "--key", keyFile); err == nil || !strings.Contains(err.Error(), "version 2") {
+		t.Errorf("a bundle of another version: %v", err)
+	}
+
+	// An event after the latest checkpoint is unproven: an error unless accepted.
+	record("request.reminded", map[string]any{})
+	unproven, _ := write("unproven.json")
+	if out, _, err := runAudit(t, "", "verify", "--bundle", unproven, "--key", keyFile); err == nil || !strings.Contains(err.Error(), "1 event of the request unproven") ||
+		!strings.Contains(out, "unproven: seq 2: no signed checkpoint follows it yet") {
+		t.Errorf("an unproven event = %q, %v", out, err)
+	}
+	if out, _, err := runAudit(t, "", "verify", "--bundle", unproven, "--key", keyFile, "--allow-unproven"); err != nil ||
+		!strings.HasSuffix(out, "the bundle verifies, with 1 event of the request unproven\n") {
+		t.Errorf("--allow-unproven = %q, %v", out, err)
 	}
 }

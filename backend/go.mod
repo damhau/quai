@@ -8,6 +8,7 @@ require (
 	cel.dev/cel-go v0.33.0
 	cel.dev/expr v0.25.2
 	code.gitea.io/sdk/gitea v0.25.1
+	codeberg.org/go-pdf/fpdf v0.12.0
 	github.com/Masterminds/semver/v3 v3.5.0
 	github.com/alexedwards/scs/pgxstore v0.0.0-20251002162104-209de6e426de
 	github.com/alexedwards/scs/v2 v2.9.0
@@ -53,6 +54,7 @@ require (
 	k8s.io/apiextensions-apiserver v0.37.0
 	k8s.io/apimachinery v0.37.2
 	k8s.io/client-go v0.37.2
+	rsc.io/pdf v0.1.1
 	sigs.k8s.io/controller-runtime v0.25.2
 )
 

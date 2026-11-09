@@ -95,6 +95,7 @@ container image:
 | `quai schema from-terraform` | Draft a JSON Schema from module variables |
 | `quai audit export` | Write the audit log in JSON lines, its checkpoints then its events, to verify it offline ([audit log](09-security-and-compliance.md#audit-log)) |
 | `quai audit verify` | Verify an export of the audit log offline: the hash chain, the checkpoints' signatures with the public keys (`--key`), and the audit repository's checkpoints (`--anchors`); names the first `seq` that fails |
+| `quai audit verify --bundle` | Verify a request's evidence bundle offline (its JSON download, a file or `-`): its events, the segments of the log to checkpoints signed with a `--key`, the clear personal values against their pseudonyms, the change sets, and the summary against the events; exits with status 1 on a failure, and on an unproven event unless `--allow-unproven` ([evidence bundle](09-security-and-compliance.md#evidence-bundle)) |
 
 ## AI agents (MCP)
 

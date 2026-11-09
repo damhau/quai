@@ -5,15 +5,18 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/damhau/quai/backend/internal/audit"
 	"github.com/damhau/quai/backend/internal/config"
+	"github.com/damhau/quai/backend/internal/evidence"
 	"github.com/damhau/quai/backend/internal/store"
 )
 
@@ -74,14 +77,23 @@ func newAuditExportCmd() *cobra.Command {
 
 func newAuditVerifyCmd() *cobra.Command {
 	var keyFiles, anchorPaths []string
+	var bundle string
+	var allowUnproven bool
 	cmd := &cobra.Command{
 		Use:   "verify [export]",
-		Short: "Verify an export of the audit log, offline",
+		Short: "Verify an export of the audit log, or a request's evidence bundle, offline",
 		Long: "Verifies an export of the audit log (quai audit export, or GET /api/v1/audit/export; standard\n" +
 			"input without a file, or -): each event's hash, each link to the event before, each checkpoint's\n" +
 			"signature with the public keys --key gives, and that each checkpoint is its event's hash. With\n" +
 			"--anchors, the checkpoints committed to the audit repository too: one beyond the export's last\n" +
-			"event means events were lost. Names the first seq where the log fails, and exits with status 1.",
+			"event means events were lost. Names the first seq where the log fails, and exits with status 1.\n\n" +
+			"With --bundle, verifies a request's evidence bundle (its JSON download) instead: each of the\n" +
+			"request's events, each segment of the log from its events to a checkpoint signed with a --key,\n" +
+			"that no segment leaves out an event of the request, the clear personal values against their\n" +
+			"pseudonyms, the change sets against their content, and the summary against the events: the\n" +
+			"submission, the state, the reviews, the merge commit and the break-glass. Exits with status 1\n" +
+			"when anything fails, and when an event is unproven (no checkpoint follows it yet, or the\n" +
+			"bundle carries no proof) unless --allow-unproven.",
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			keys := audit.Keys{}
@@ -95,6 +107,12 @@ func newAuditVerifyCmd() *cobra.Command {
 					return fmt.Errorf("--key %s: %w", f, err)
 				}
 				keys.Add(pubs...)
+			}
+			if bundle != "" {
+				if len(args) > 0 || len(anchorPaths) > 0 {
+					return errors.New("--bundle verifies a bundle alone: no export, no --anchors")
+				}
+				return verifyBundle(cmd.InOrStdin(), cmd.OutOrStdout(), bundle, keys, allowUnproven)
 			}
 			v := audit.NewVerifier(keys)
 			anchors := 0
@@ -139,7 +157,62 @@ func newAuditVerifyCmd() *cobra.Command {
 	}
 	cmd.Flags().StringArrayVar(&keyFiles, "key", nil, "a PEM file of public keys checkpoints are signed with (openssl pkey -pubout); repeat it for the keys before a rotation")
 	cmd.Flags().StringArrayVar(&anchorPaths, "anchors", nil, "a checkout of the audit repository, or a checkpoint file from it")
+	cmd.Flags().StringVar(&bundle, "bundle", "", "a request's evidence bundle, its JSON download, to verify instead of an export (- for standard input)")
+	cmd.Flags().BoolVar(&allowUnproven, "allow-unproven", false, "with --bundle, accept events no checkpoint proves: they are listed, and the exit status is 0")
 	return cmd
+}
+
+// verifyBundle verifies an evidence bundle and says what it found: an error when anything
+// fails, or an event is unproven and allowUnproven is not set.
+func verifyBundle(stdin io.Reader, out io.Writer, path string, keys audit.Keys, allowUnproven bool) error {
+	if len(keys) == 0 && !allowUnproven {
+		return errors.New("--key is needed to verify a bundle's checkpoints (or --allow-unproven, to check its events and summary only)")
+	}
+	in := stdin
+	if path != "-" {
+		f, err := os.Open(path) // #nosec G304 -- the file the user names
+		if err != nil {
+			return err
+		}
+		defer func() { _ = f.Close() }()
+		in = f
+	}
+	b, err := evidence.Parse(in)
+	if err != nil {
+		return fmt.Errorf("%s: %w", path, err)
+	}
+	r := evidence.Verify(b, keys)
+	fmt.Fprintf(out, "request %s: %s, %d proven by %s", r.Request, plural(r.Events, "event"), r.Proven, plural(len(r.Checkpoints), "checkpoint"))
+	if len(r.Checkpoints) > 0 {
+		fmt.Fprintf(out, " (seq %s) with %s of other events", joinSeqs(r.Checkpoints), plural(r.Records, "record"))
+	}
+	fmt.Fprintln(out)
+	for _, u := range r.Unproven {
+		fmt.Fprintf(out, "unproven: seq %d: %s\n", u.Seq, u.Reason)
+	}
+	for _, n := range r.Notes {
+		fmt.Fprintf(out, "note: %s\n", n)
+	}
+	switch {
+	case !r.OK():
+		return fmt.Errorf("the bundle does not verify:\n  %s", strings.Join(r.Failures, "\n  "))
+	case len(r.Unproven) > 0 && !allowUnproven:
+		return fmt.Errorf("%s of the request unproven (--allow-unproven accepts them)", plural(len(r.Unproven), "event"))
+	}
+	if len(r.Unproven) > 0 {
+		fmt.Fprintf(out, "the bundle verifies, with %s of the request unproven\n", plural(len(r.Unproven), "event"))
+		return nil
+	}
+	fmt.Fprintln(out, "the bundle verifies")
+	return nil
+}
+
+func joinSeqs(seqs []int64) string {
+	s := make([]string, len(seqs))
+	for i, q := range seqs {
+		s[i] = strconv.FormatInt(q, 10)
+	}
+	return strings.Join(s, ", ")
 }
 
 // readAnchors adds the checkpoints of the audit repository at path, a checkout or one of its

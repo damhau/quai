@@ -73,6 +73,9 @@ var TokenScopes = map[string][]Action{
 	"inventory:read": {ReadInventory},
 	"requests:read":  {ReadRequest},
 	"requests:write": {ReadRequest, CreateRequest, CancelRequest, RetryRequest, ReviewRequest, OperateResource},
+	// evidence:read downloads evidence bundles, never with the proof's segments of the audit log,
+	// which no token reads (open question 102).
+	"evidence:read": {ReadEvidence, SampleEvidence},
 }
 
 // Action is what the principal wants to do.
@@ -106,6 +109,10 @@ const (
 	ReadBreakGlass Action = "break-glass.read"
 	// SignOffBreakGlass signs off the post-incident review of a request merged by break-glass.
 	SignOffBreakGlass Action = "break-glass.sign-off"
+	// ReadEvidence downloads a request's evidence bundle (docs/design/09-security-and-compliance.md#evidence-bundle).
+	ReadEvidence Action = "evidence.read"
+	// SampleEvidence lists requests for an audit sample and downloads their bundles as one archive.
+	SampleEvidence Action = "evidence.sample"
 )
 
 // Object is what the action is on. Fields that do not apply are empty.
@@ -261,6 +268,16 @@ func Authorize(_ context.Context, p Principal, a Action, o Object) (Decision, er
 	case ReadBreakGlass:
 		if !p.has(Auditor, o) {
 			return deny("the break-glass reviews are for platform admins and auditors"), nil
+		}
+	case ReadEvidence:
+		// Auditors for the requests of their scope; the requester and the owners for their own
+		// (open question 102). Whether the bundle carries its proof is ReadAudit's.
+		if !p.has(Auditor, o) && o.Requester != p.Name && !p.owns(o) {
+			return deny("an evidence bundle is for auditors, platform admins, and the request's requester and owners"), nil
+		}
+	case SampleEvidence:
+		if !p.has(Auditor, o) {
+			return deny("sampling requests' evidence needs the auditor role"), nil
 		}
 	case SignOffBreakGlass:
 		// Who signs off a post-incident review (open question 27); never the breaker nor the

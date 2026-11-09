@@ -197,6 +197,13 @@ func TestCommitAndPush(t *testing.T) {
 	if out, err := m.Show(ctx, sha); err != nil || !strings.Contains(out, "+cpu: 8") {
 		t.Errorf("show = %q, %v", out, err)
 	}
+	want := []string{"Quai-Request: #1042 3b6f2a8c", "Quai-Change-Set: sha256:9f2c", "Quai-Stack: envs/prod", "Requested-by: Bob Builder <bob@example.com>"}
+	if trailers, err := m.Trailers(ctx, sha); err != nil || !slices.Equal(trailers, want) {
+		t.Errorf("trailers = %q, %v", trailers, err)
+	}
+	if _, err := m.Trailers(ctx, strings.Repeat("0", 40)); !errors.Is(err, ErrNotFound) {
+		t.Errorf("the trailers of a commit the mirror lacks: %v", err)
+	}
 	if name, email, err := m.Author(ctx, sha); err != nil || name != "Bob Builder" || email != "bob@example.com" {
 		t.Errorf("author = %q %q, %v", name, email, err)
 	}
@@ -285,6 +292,9 @@ func TestRefusals(t *testing.T) {
 		}
 		if _, err := m.Show(ctx, c); err == nil {
 			t.Errorf("Show(%q) succeeded", c)
+		}
+		if _, err := m.Trailers(ctx, c); err == nil {
+			t.Errorf("Trailers(%q) succeeded", c)
 		}
 	}
 	if _, err := m.CommitAndPush(ctx, Commit{Branch: "missing", Message: "m\n"}); !errors.Is(err, ErrNotFound) {

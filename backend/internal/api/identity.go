@@ -81,7 +81,7 @@ type TokenView struct {
 type CreateTokenInput struct {
 	Body struct {
 		Name          string   `json:"name" minLength:"1" maxLength:"63" pattern:"^[a-z0-9][a-z0-9-]*$"`
-		Scopes        []string `json:"scopes" minItems:"1" uniqueItems:"true" enum:"catalog:read,inventory:read,requests:read,requests:write"`
+		Scopes        []string `json:"scopes" minItems:"1" uniqueItems:"true" enum:"catalog:read,inventory:read,requests:read,requests:write,evidence:read"`
 		ExpiresInDays int      `json:"expiresInDays,omitempty" minimum:"1" maximum:"365" default:"90"`
 	}
 }

@@ -17,6 +17,7 @@ import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as AdminAccessRouteImport } from './routes/admin/access'
 import { Route as AdminAuditRouteImport } from './routes/admin/audit'
 import { Route as AdminBreakGlassRouteImport } from './routes/admin/break-glass'
+import { Route as AdminEvidenceRouteImport } from './routes/admin/evidence'
 import { Route as DesignerIndexRouteImport } from './routes/designer/index'
 import { Route as InventoryIndexRouteImport } from './routes/inventory/index'
 import { Route as RequestsIndexRouteImport } from './routes/requests/index'
@@ -73,6 +74,11 @@ const AdminAuditRoute = AdminAuditRouteImport.update({
 const AdminBreakGlassRoute = AdminBreakGlassRouteImport.update({
   id: '/admin/break-glass',
   path: '/admin/break-glass',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminEvidenceRoute = AdminEvidenceRouteImport.update({
+  id: '/admin/evidence',
+  path: '/admin/evidence',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DesignerIndexRoute = DesignerIndexRouteImport.update({
@@ -178,6 +184,7 @@ export interface FileRoutesByFullPath {
   '/admin/access': typeof AdminAccessRoute
   '/admin/audit': typeof AdminAuditRoute
   '/admin/break-glass': typeof AdminBreakGlassRoute
+  '/admin/evidence': typeof AdminEvidenceRoute
   '/requests/$id': typeof RequestsIdRoute
   '/designer/': typeof DesignerIndexRoute
   '/inventory/': typeof InventoryIndexRoute
@@ -205,6 +212,7 @@ export interface FileRoutesByTo {
   '/admin/access': typeof AdminAccessRoute
   '/admin/audit': typeof AdminAuditRoute
   '/admin/break-glass': typeof AdminBreakGlassRoute
+  '/admin/evidence': typeof AdminEvidenceRoute
   '/requests/$id': typeof RequestsIdRoute
   '/designer': typeof DesignerIndexRoute
   '/inventory': typeof InventoryIndexRoute
@@ -233,6 +241,7 @@ export interface FileRoutesById {
   '/admin/access': typeof AdminAccessRoute
   '/admin/audit': typeof AdminAuditRoute
   '/admin/break-glass': typeof AdminBreakGlassRoute
+  '/admin/evidence': typeof AdminEvidenceRoute
   '/requests/$id': typeof RequestsIdRoute
   '/designer/': typeof DesignerIndexRoute
   '/inventory/': typeof InventoryIndexRoute
@@ -262,6 +271,7 @@ export interface FileRouteTypes {
     | '/admin/access'
     | '/admin/audit'
     | '/admin/break-glass'
+    | '/admin/evidence'
     | '/requests/$id'
     | '/designer/'
     | '/inventory/'
@@ -289,6 +299,7 @@ export interface FileRouteTypes {
     | '/admin/access'
     | '/admin/audit'
     | '/admin/break-glass'
+    | '/admin/evidence'
     | '/requests/$id'
     | '/designer'
     | '/inventory'
@@ -316,6 +327,7 @@ export interface FileRouteTypes {
     | '/admin/access'
     | '/admin/audit'
     | '/admin/break-glass'
+    | '/admin/evidence'
     | '/requests/$id'
     | '/designer/'
     | '/inventory/'
@@ -344,6 +356,7 @@ export interface RootRouteChildren {
   AdminAccessRoute: typeof AdminAccessRoute
   AdminAuditRoute: typeof AdminAuditRoute
   AdminBreakGlassRoute: typeof AdminBreakGlassRoute
+  AdminEvidenceRoute: typeof AdminEvidenceRoute
   RequestsIdRoute: typeof RequestsIdRoute
   DesignerIndexRoute: typeof DesignerIndexRoute
   InventoryIndexRoute: typeof InventoryIndexRoute
@@ -419,6 +432,13 @@ declare module '@tanstack/react-router' {
       path: '/admin/break-glass'
       fullPath: '/admin/break-glass'
       preLoaderRoute: typeof AdminBreakGlassRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/evidence': {
+      id: '/admin/evidence'
+      path: '/admin/evidence'
+      fullPath: '/admin/evidence'
+      preLoaderRoute: typeof AdminEvidenceRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/designer/': {
@@ -552,6 +572,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminAccessRoute: AdminAccessRoute,
   AdminAuditRoute: AdminAuditRoute,
   AdminBreakGlassRoute: AdminBreakGlassRoute,
+  AdminEvidenceRoute: AdminEvidenceRoute,
   RequestsIdRoute: RequestsIdRoute,
   DesignerIndexRoute: DesignerIndexRoute,
   InventoryIndexRoute: InventoryIndexRoute,

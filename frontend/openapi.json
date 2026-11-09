@@ -309,6 +309,37 @@
         ],
         "type": "object"
       },
+      "ArchiveInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/api/v1/schemas/ArchiveInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "requests": {
+            "description": "The IDs of the requests whose bundles the archive holds",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "type": [
+              "array",
+              "null"
+            ],
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "requests"
+        ],
+        "type": "object"
+      },
       "AuditActorView": {
         "additionalProperties": false,
         "properties": {
@@ -1461,7 +1492,8 @@
                 "catalog:read",
                 "inventory:read",
                 "requests:read",
-                "requests:write"
+                "requests:write",
+                "evidence:read"
               ],
               "type": "string"
             },
@@ -2302,6 +2334,52 @@
           "kind",
           "data",
           "at"
+        ],
+        "type": "object"
+      },
+      "EvidenceRequestView": {
+        "additionalProperties": false,
+        "properties": {
+          "breakGlass": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "number": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "repository": {
+            "type": "string"
+          },
+          "requester": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "number",
+          "repository",
+          "target",
+          "kind",
+          "state",
+          "requester",
+          "breakGlass",
+          "createdAt"
         ],
         "type": "object"
       },
@@ -3368,6 +3446,10 @@
           "canCancel": {
             "type": "boolean"
           },
+          "canDownloadEvidence": {
+            "description": "The caller may download the request's evidence bundle",
+            "type": "boolean"
+          },
           "canRetry": {
             "type": "boolean"
           },
@@ -4390,6 +4472,38 @@
             "$ref": "#/components/schemas/SecretRef"
           }
         },
+        "type": "object"
+      },
+      "SampleOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/api/v1/schemas/SampleOutputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "requests": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceRequestView"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "truncated": {
+            "description": "More requests match than the limit: narrow the period",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "requests",
+          "truncated"
+        ],
         "type": "object"
       },
       "ScanView": {
@@ -5543,6 +5657,162 @@
         "summary": "List what happened lately",
         "tags": [
           "Requests"
+        ]
+      }
+    },
+    "/api/v1/evidence/archive": {
+      "post": {
+        "description": "Each request's JSON bundle and PDF summary, named by its number, and a manifest of the files with their SHA-256, and of the requests left out and why: at most 50 requests and 256 MiB. Two archives are made at once; a third waits (429).",
+        "operationId": "download-evidence-archive",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ArchiveInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/zip": {
+                "schema": {
+                  "contentMediaType": "application/octet-stream",
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "A ZIP archive"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Download the evidence bundles of a sample's requests as one ZIP archive (auditors)",
+        "tags": [
+          "Evidence"
+        ]
+      }
+    },
+    "/api/v1/evidence/requests": {
+      "get": {
+        "description": "Oldest first, at most limit. An auditor of a repository lists its requests only.",
+        "operationId": "list-evidence-requests",
+        "parameters": [
+          {
+            "description": "Requests created at or after this time",
+            "explode": false,
+            "in": "query",
+            "name": "since",
+            "required": true,
+            "schema": {
+              "description": "Requests created at or after this time",
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Requests created before this time: at most 366 days after since",
+            "explode": false,
+            "in": "query",
+            "name": "until",
+            "required": true,
+            "schema": {
+              "description": "Requests created before this time: at most 366 days after since",
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only the requests of this repository",
+            "explode": false,
+            "in": "query",
+            "name": "repository",
+            "schema": {
+              "description": "Only the requests of this repository",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only the requests in this state",
+            "explode": false,
+            "in": "query",
+            "name": "state",
+            "schema": {
+              "description": "Only the requests in this state",
+              "enum": [
+                "pending_approval",
+                "approved",
+                "rejected",
+                "cancelled",
+                "stale",
+                "merging",
+                "applying",
+                "applied",
+                "failed",
+                "expired"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only the requests merged by break-glass",
+            "explode": false,
+            "in": "query",
+            "name": "breakGlass",
+            "schema": {
+              "description": "Only the requests merged by break-glass",
+              "type": "boolean"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 100,
+              "format": "int64",
+              "maximum": 500,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SampleOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List the requests of an audit sample: by period, repository, state and break-glass (auditors)",
+        "tags": [
+          "Evidence"
         ]
       }
     },
@@ -7558,6 +7828,74 @@
         "summary": "Check the link of an approval card in chat",
         "tags": [
           "Requests"
+        ]
+      }
+    },
+    "/api/v1/requests/{id}/evidence": {
+      "get": {
+        "description": "The JSON bundle is the evidence: verify it offline with quai audit verify --bundle and the checkpoints' public key. Its proof, the segments of the audit log up to a signed checkpoint, is for auditors of all repositories and platform admins signed in (docs/design/09-security-and-compliance.md#evidence-bundle). Each download is an audit event.",
+        "operationId": "get-request-evidence",
+        "parameters": [
+          {
+            "description": "The request's ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "The request's ID",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The JSON bundle, the evidence, or its PDF summary",
+            "explode": false,
+            "in": "query",
+            "name": "format",
+            "schema": {
+              "default": "json",
+              "description": "The JSON bundle, the evidence, or its PDF summary",
+              "enum": [
+                "json",
+                "pdf"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "contentMediaType": "application/octet-stream",
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "application/pdf": {
+                "schema": {
+                  "contentMediaType": "application/octet-stream",
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "The bundle, or its PDF summary"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Download a request's evidence bundle, in JSON or as a PDF summary (auditors, platform admins, its requester and owners)",
+        "tags": [
+          "Evidence"
         ]
       }
     },

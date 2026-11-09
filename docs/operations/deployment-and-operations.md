@@ -323,6 +323,67 @@ naming their files). The restored cursors make the export send again the `seq` t
 has from the lost events, with other hashes, and the worker logs `the audit log changed after it
 was exported`: keep both in the SIEM.
 
+#### Evidence for auditors
+
+Each request has an evidence bundle: what was asked and why, the diff, the plans and policy
+results, the reviews with their authentication times and delegations, the merge commit and its
+trailers, the applies, the break-glass and its review, and the request's audit events with their
+hashes and the segments of the log that prove them ([evidence bundle](../design/09-security-and-compliance.md#evidence-bundle)).
+
+- **One request**: the **Evidence** card of its page, **JSON bundle** (the evidence, to verify)
+  and **PDF summary** (to read). Auditors, platform admins, the requester and the owners may
+  download it; with an API token, `GET /api/v1/requests/<id>/evidence` (`?format=pdf`) and the
+  `evidence:read` scope.
+- **A sample**: **Evidence** in the navigation (auditors and platform admins). Pick the period
+  (at most 366 days), the repository, the state and whether merged by break-glass, **List**, tick
+  up to 50 requests and **Download as an archive**: a ZIP of `request-<number>.json` and
+  `request-<number>.pdf` for each, and `manifest.json` with each file's SHA-256 and the requests
+  left out. An auditor of one repository samples that repository. Two archives are made at once
+  per server; a third is refused for a minute (429).
+
+Only auditors of the whole platform and platform admins get the proof, downloading in their
+session: it holds other requests' events, with their personal data as pseudonyms. A bundle
+downloaded by anyone else, or with an API token, says `proof.omitted`; its events are checked
+against the export instead.
+
+To verify a bundle offline, with the checkpoints' public key (the operator gives it to the
+auditors, [the checkpoint key](#the-checkpoint-key)):
+
+```bash
+quai audit verify --bundle request-42.json --key audit-key.pub
+# request #42 3b6f2a8c-…: 9 events, 9 proven by 2 checkpoints (seq 18240, 18310) with 412 records of other events
+# the bundle verifies
+```
+
+It checks each event's hash, each segment of the log from the request's events to a signed
+checkpoint (no event missing, none of the request's left out, every link), each checkpoint's
+signature, the clear personal values against their pseudonyms, the change sets against their
+content, and the summary (the submission, the state, the reviews, the merge commit, the
+break-glass) against the events. It exits with status 1 naming what fails:
+
+| Message | What happened |
+| --- | --- |
+| `event seq … its hash is not the hash of its content: the event was changed` | An event of the request was edited |
+| `segment … seq … is missing: an event was removed` | An event was taken out of the segment |
+| `segment … the record was changed`, `… does not chain on seq …` | An event of the segment was edited, inserted or moved |
+| `segment … the checkpoint at seq … does not hold`, `… the events were changed, or the checkpoint swapped` | A checkpoint forged or taken from elsewhere, or signed with a key not given (`--key` again with the keys before a rotation) |
+| `segment … is an event of the request that the bundle's events leave out` | An event of the request was removed from the bundle |
+| `the summary's … is not the one event seq … records: the summary was edited`, `the summary has … reviews, the events …` | The summary was changed: the events are what counts |
+| `change set …: its hash is not the hash of its changes` | A change was edited, added or removed |
+| `personal: the clear value given for … is not the one its pseudonym was made of` | A name, reason or comment was changed |
+
+An **unproven** event (listed with its reason) also exits with status 1, unless
+`--allow-unproven`, which ends with `the bundle verifies, with N events of the request unproven`: no signed checkpoint follows it yet (download the bundle again after the next
+hourly checkpoint), the audit log has no checkpoint at all (no signing key configured), the
+bundle carries no proof (not downloaded by an auditor of the whole platform), or its proof passes
+the bundle's bound. Then verify it with the whole log: `quai audit export`, `quai audit verify`,
+and find the bundle's events in the export by `seq` and hash. The same holds for completeness: a
+bundle cut down to fewer events and segments still verifies, the export shows every event of the
+request (`object.id`).
+
+Every download is in the audit log as `evidence.downloaded`: who, which requests, the format, and
+whether it carried the proof.
+
 #### Exporting to a SIEM
 
 `audit.export` lists the SIEMs the worker sends the audit log to, at least once and in order: a

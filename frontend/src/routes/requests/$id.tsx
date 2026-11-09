@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import { createFileRoute, Link } from "@tanstack/react-router"
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query"
-import { AlertCircle, BellOff, CalendarClock, Check, GitPullRequest, Hourglass, KeyRound, MessageSquare, RotateCcw, UserX, X } from "lucide-react"
+import { AlertCircle, BellOff, CalendarClock, Check, FileBraces, FileText, GitPullRequest, Hourglass, KeyRound, MessageSquare, RotateCcw, UserX, X } from "lucide-react"
 import {
   cancelRequestMutation,
   getMeOptions,
@@ -23,13 +23,14 @@ import { Plans } from "@/components/requests/plans"
 import { StateBadge } from "@/components/requests/state-badge"
 import { StepUpPrompt } from "@/components/step-up-prompt"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Textarea } from "@/components/ui/textarea"
 import { chatChannels, chatLinkOf, useChatLink } from "@/lib/chat-link"
 import { capacitiesOf, onBehalf, when } from "@/lib/delegations"
+import { evidenceURL } from "@/lib/evidence"
 import { ago } from "@/lib/format"
 import { fieldErrors, hasFieldErrors, isStepUpRequired, problemMessage } from "@/lib/problems"
 import { eventText, inProgress, requestTitle, runURL } from "@/lib/requests"
@@ -193,9 +194,39 @@ function RequestPage() {
               </ol>
             </CardContent>
           </Card>
+          {r.canDownloadEvidence && <EvidenceCard request={r} />}
         </div>
       </div>
     </div>
+  )
+}
+
+/**
+ * EvidenceCard downloads the request's evidence bundle (docs/design/09-security-and-compliance.md#evidence-bundle):
+ * its JSON, to verify offline, and its PDF summary.
+ */
+function EvidenceCard({ request: r }: { request: RequestView }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Evidence</CardTitle>
+      </CardHeader>
+      <CardContent className="grid gap-3">
+        <p className="text-muted-foreground text-sm">
+          The request, its changes, reviews, delivery and applies, with its audit events, to verify offline with <code className="font-mono">quai audit verify --bundle</code>.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <a href={evidenceURL(r.id, "json")} download className={buttonVariants({ variant: "outline", size: "sm" })}>
+            <FileBraces />
+            JSON bundle
+          </a>
+          <a href={evidenceURL(r.id, "pdf")} download className={buttonVariants({ variant: "outline", size: "sm" })}>
+            <FileText />
+            PDF summary
+          </a>
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 

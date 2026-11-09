@@ -85,3 +85,18 @@ WHERE r.state = 'pending_approval' AND EXISTS (
     SELECT 1 FROM reviews v WHERE v.request_id = r.id AND v.voided_at IS NULL
       AND (v.reviewer = sqlc.arg(name) OR v.on_behalf_of = sqlc.arg(name)))
 ORDER BY r.submitted_at, r.id;
+
+-- name: ListEvidenceRequests :many
+-- Requests created in a period, oldest first, of a repository, in a state and broken by
+-- break-glass when asked: an auditor's sample, with each request's repository (its first change
+-- set's, as ListChangeSets orders them) and whether glass was broken for it.
+SELECT sqlc.embed(r),
+  COALESCE((SELECT c.repository FROM change_sets c WHERE c.request_id = r.id ORDER BY c.repository LIMIT 1), '')::text AS repository,
+  EXISTS (SELECT 1 FROM break_glass b WHERE b.request_id = r.id) AS broken
+FROM requests r
+WHERE r.created_at >= sqlc.arg(since) AND r.created_at < sqlc.arg(until)
+  AND (sqlc.arg(state)::text = '' OR r.state = sqlc.arg(state)::text)
+  AND (sqlc.arg(repository)::text = '' OR EXISTS (SELECT 1 FROM change_sets c WHERE c.request_id = r.id AND c.repository = sqlc.arg(repository)::text))
+  AND (NOT sqlc.arg(break_glass)::bool OR EXISTS (SELECT 1 FROM break_glass b WHERE b.request_id = r.id))
+ORDER BY r.created_at, r.id
+LIMIT sqlc.arg(max_rows);

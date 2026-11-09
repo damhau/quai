@@ -117,3 +117,17 @@ ORDER BY d.destination;
 -- name: LastAuditVerification :one
 -- The outcome of the last verification of the chain, which the worker records.
 SELECT * FROM audit_events WHERE action = ANY ('{audit.verified,audit.broken}'::text[]) ORDER BY seq DESC LIMIT 1;
+
+-- name: RequestAuditEvents :many
+-- A request's own events, those about it as their object, in seq order: its evidence bundle's.
+SELECT * FROM audit_events WHERE object ->> 'type' = 'request' AND object ->> 'id' = sqlc.arg(id)::text
+ORDER BY seq LIMIT sqlc.arg(max_rows);
+
+-- name: AuditEventsBetween :many
+-- The events from a seq to another, both included, in seq order: a segment of an evidence
+-- bundle's proof.
+SELECT * FROM audit_events WHERE seq >= sqlc.arg(from_seq) AND seq <= sqlc.arg(to_seq) ORDER BY seq;
+
+-- name: AuditCheckpointsFrom :many
+-- The checkpoints at or after a seq, in seq order.
+SELECT * FROM audit_checkpoints WHERE seq >= $1 ORDER BY seq, key;

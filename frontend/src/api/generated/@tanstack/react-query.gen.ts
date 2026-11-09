@@ -3,8 +3,8 @@
 import { type InfiniteData, infiniteQueryOptions, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { breakGlass, cancelRequest, checkChatLink, checkDrift, checkRepositoryEnforcement, createDelegation, createRepository, createToken, deleteRepository, exportAccessReport, exportAuditLog, generateRunToken, getAccessReport, getBlueprint, getInstance, getMe, getMeta, getPreferences, getRepository, getRequest, getResource, getType, installRepositoryWebhook, listAuditEvents, listBreakGlass, listCatalog, listDelegations, listEvents, listInstances, listInventory, listMyDelegations, listRepositories, listRepositoryConnections, listRequests, listRuns, listTokens, type Options, planBlueprint, planInstanceAction, planType, previewBlueprint, previewDefinitions, previewType, publishBlueprint, reportFluxEvent, reportRun, repositoryCommit, repositoryHealth, repositoryLog, requestBlueprint, requestInstanceAction, requestType, retryRequest, reviewRequest, revokeDelegation, revokeToken, signOffBreakGlass, syncRepository, testRepositoryAccess, updatePreferences, updateRepository } from '../sdk.gen';
-import type { BreakGlassData, BreakGlassError, BreakGlassResponse, CancelRequestData, CancelRequestError, CancelRequestResponse, CheckChatLinkData, CheckChatLinkError, CheckChatLinkResponse, CheckDriftData, CheckDriftError, CheckDriftResponse, CheckRepositoryEnforcementData, CheckRepositoryEnforcementError, CheckRepositoryEnforcementResponse, CreateDelegationData, CreateDelegationError, CreateDelegationResponse, CreateRepositoryData, CreateRepositoryError, CreateRepositoryResponse, CreateTokenData, CreateTokenError, CreateTokenResponse, DeleteRepositoryData, DeleteRepositoryError, DeleteRepositoryResponse, ExportAccessReportData, ExportAccessReportError, ExportAccessReportResponse, ExportAuditLogData, ExportAuditLogError, ExportAuditLogResponse, GenerateRunTokenData, GenerateRunTokenError, GenerateRunTokenResponse, GetAccessReportData, GetAccessReportError, GetAccessReportResponse, GetBlueprintData, GetBlueprintError, GetBlueprintResponse, GetInstanceData, GetInstanceError, GetInstanceResponse, GetMeData, GetMeError, GetMeResponse, GetMetaData, GetMetaError, GetMetaResponse, GetPreferencesData, GetPreferencesError, GetPreferencesResponse, GetRepositoryData, GetRepositoryError, GetRepositoryResponse, GetRequestData, GetRequestError, GetRequestResponse, GetResourceData, GetResourceError, GetResourceResponse, GetTypeData, GetTypeError, GetTypeResponse, InstallRepositoryWebhookData, InstallRepositoryWebhookError, InstallRepositoryWebhookResponse, ListAuditEventsData, ListAuditEventsError, ListAuditEventsResponse, ListBreakGlassData, ListBreakGlassError, ListBreakGlassResponse, ListCatalogData, ListCatalogError, ListCatalogResponse, ListDelegationsData, ListDelegationsError, ListDelegationsResponse, ListEventsData, ListEventsError, ListEventsResponse, ListInstancesData, ListInstancesError, ListInstancesResponse, ListInventoryData, ListInventoryError, ListInventoryResponse, ListMyDelegationsData, ListMyDelegationsError, ListMyDelegationsResponse, ListRepositoriesData, ListRepositoriesError, ListRepositoriesResponse, ListRepositoryConnectionsData, ListRepositoryConnectionsError, ListRepositoryConnectionsResponse, ListRequestsData, ListRequestsError, ListRequestsResponse, ListRunsData, ListRunsError, ListRunsResponse, ListTokensData, ListTokensError, ListTokensResponse, PlanBlueprintData, PlanBlueprintError, PlanBlueprintResponse, PlanInstanceActionData, PlanInstanceActionError, PlanInstanceActionResponse, PlanTypeData, PlanTypeError, PlanTypeResponse, PreviewBlueprintData, PreviewBlueprintError, PreviewBlueprintResponse, PreviewDefinitionsData, PreviewDefinitionsError, PreviewDefinitionsResponse, PreviewTypeData, PreviewTypeError, PreviewTypeResponse, PublishBlueprintData, PublishBlueprintError, PublishBlueprintResponse, ReportFluxEventData, ReportFluxEventError, ReportFluxEventResponse, ReportRunData, ReportRunError, ReportRunResponse, RepositoryCommitData, RepositoryCommitError, RepositoryCommitResponse, RepositoryHealthData, RepositoryHealthError, RepositoryHealthResponse, RepositoryLogData, RepositoryLogError, RepositoryLogResponse, RequestBlueprintData, RequestBlueprintError, RequestBlueprintResponse, RequestInstanceActionData, RequestInstanceActionError, RequestInstanceActionResponse, RequestTypeData, RequestTypeError, RequestTypeResponse, RetryRequestData, RetryRequestError, RetryRequestResponse, ReviewRequestData, ReviewRequestError, ReviewRequestResponse, RevokeDelegationData, RevokeDelegationError, RevokeDelegationResponse, RevokeTokenData, RevokeTokenError, RevokeTokenResponse, SignOffBreakGlassData, SignOffBreakGlassError, SignOffBreakGlassResponse, SyncRepositoryData, SyncRepositoryError, SyncRepositoryResponse, TestRepositoryAccessData, TestRepositoryAccessError, TestRepositoryAccessResponse, UpdatePreferencesData, UpdatePreferencesError, UpdatePreferencesResponse, UpdateRepositoryData, UpdateRepositoryError, UpdateRepositoryResponse } from '../types.gen';
+import { breakGlass, cancelRequest, checkChatLink, checkDrift, checkRepositoryEnforcement, createDelegation, createRepository, createToken, deleteRepository, downloadEvidenceArchive, exportAccessReport, exportAuditLog, generateRunToken, getAccessReport, getBlueprint, getInstance, getMe, getMeta, getPreferences, getRepository, getRequest, getRequestEvidence, getResource, getType, installRepositoryWebhook, listAuditEvents, listBreakGlass, listCatalog, listDelegations, listEvents, listEvidenceRequests, listInstances, listInventory, listMyDelegations, listRepositories, listRepositoryConnections, listRequests, listRuns, listTokens, type Options, planBlueprint, planInstanceAction, planType, previewBlueprint, previewDefinitions, previewType, publishBlueprint, reportFluxEvent, reportRun, repositoryCommit, repositoryHealth, repositoryLog, requestBlueprint, requestInstanceAction, requestType, retryRequest, reviewRequest, revokeDelegation, revokeToken, signOffBreakGlass, syncRepository, testRepositoryAccess, updatePreferences, updateRepository } from '../sdk.gen';
+import type { BreakGlassData, BreakGlassError, BreakGlassResponse, CancelRequestData, CancelRequestError, CancelRequestResponse, CheckChatLinkData, CheckChatLinkError, CheckChatLinkResponse, CheckDriftData, CheckDriftError, CheckDriftResponse, CheckRepositoryEnforcementData, CheckRepositoryEnforcementError, CheckRepositoryEnforcementResponse, CreateDelegationData, CreateDelegationError, CreateDelegationResponse, CreateRepositoryData, CreateRepositoryError, CreateRepositoryResponse, CreateTokenData, CreateTokenError, CreateTokenResponse, DeleteRepositoryData, DeleteRepositoryError, DeleteRepositoryResponse, DownloadEvidenceArchiveData, DownloadEvidenceArchiveError, DownloadEvidenceArchiveResponse, ExportAccessReportData, ExportAccessReportError, ExportAccessReportResponse, ExportAuditLogData, ExportAuditLogError, ExportAuditLogResponse, GenerateRunTokenData, GenerateRunTokenError, GenerateRunTokenResponse, GetAccessReportData, GetAccessReportError, GetAccessReportResponse, GetBlueprintData, GetBlueprintError, GetBlueprintResponse, GetInstanceData, GetInstanceError, GetInstanceResponse, GetMeData, GetMeError, GetMeResponse, GetMetaData, GetMetaError, GetMetaResponse, GetPreferencesData, GetPreferencesError, GetPreferencesResponse, GetRepositoryData, GetRepositoryError, GetRepositoryResponse, GetRequestData, GetRequestError, GetRequestEvidenceData, GetRequestEvidenceError, GetRequestEvidenceResponse, GetRequestResponse, GetResourceData, GetResourceError, GetResourceResponse, GetTypeData, GetTypeError, GetTypeResponse, InstallRepositoryWebhookData, InstallRepositoryWebhookError, InstallRepositoryWebhookResponse, ListAuditEventsData, ListAuditEventsError, ListAuditEventsResponse, ListBreakGlassData, ListBreakGlassError, ListBreakGlassResponse, ListCatalogData, ListCatalogError, ListCatalogResponse, ListDelegationsData, ListDelegationsError, ListDelegationsResponse, ListEventsData, ListEventsError, ListEventsResponse, ListEvidenceRequestsData, ListEvidenceRequestsError, ListEvidenceRequestsResponse, ListInstancesData, ListInstancesError, ListInstancesResponse, ListInventoryData, ListInventoryError, ListInventoryResponse, ListMyDelegationsData, ListMyDelegationsError, ListMyDelegationsResponse, ListRepositoriesData, ListRepositoriesError, ListRepositoriesResponse, ListRepositoryConnectionsData, ListRepositoryConnectionsError, ListRepositoryConnectionsResponse, ListRequestsData, ListRequestsError, ListRequestsResponse, ListRunsData, ListRunsError, ListRunsResponse, ListTokensData, ListTokensError, ListTokensResponse, PlanBlueprintData, PlanBlueprintError, PlanBlueprintResponse, PlanInstanceActionData, PlanInstanceActionError, PlanInstanceActionResponse, PlanTypeData, PlanTypeError, PlanTypeResponse, PreviewBlueprintData, PreviewBlueprintError, PreviewBlueprintResponse, PreviewDefinitionsData, PreviewDefinitionsError, PreviewDefinitionsResponse, PreviewTypeData, PreviewTypeError, PreviewTypeResponse, PublishBlueprintData, PublishBlueprintError, PublishBlueprintResponse, ReportFluxEventData, ReportFluxEventError, ReportFluxEventResponse, ReportRunData, ReportRunError, ReportRunResponse, RepositoryCommitData, RepositoryCommitError, RepositoryCommitResponse, RepositoryHealthData, RepositoryHealthError, RepositoryHealthResponse, RepositoryLogData, RepositoryLogError, RepositoryLogResponse, RequestBlueprintData, RequestBlueprintError, RequestBlueprintResponse, RequestInstanceActionData, RequestInstanceActionError, RequestInstanceActionResponse, RequestTypeData, RequestTypeError, RequestTypeResponse, RetryRequestData, RetryRequestError, RetryRequestResponse, ReviewRequestData, ReviewRequestError, ReviewRequestResponse, RevokeDelegationData, RevokeDelegationError, RevokeDelegationResponse, RevokeTokenData, RevokeTokenError, RevokeTokenResponse, SignOffBreakGlassData, SignOffBreakGlassError, SignOffBreakGlassResponse, SyncRepositoryData, SyncRepositoryError, SyncRepositoryResponse, TestRepositoryAccessData, TestRepositoryAccessError, TestRepositoryAccessResponse, UpdatePreferencesData, UpdatePreferencesError, UpdatePreferencesResponse, UpdateRepositoryData, UpdateRepositoryError, UpdateRepositoryResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -265,6 +265,45 @@ export const listEventsOptions = (options?: Options<ListEventsData>) => queryOpt
         return data;
     },
     queryKey: listEventsQueryKey(options)
+});
+
+/**
+ * Download the evidence bundles of a sample's requests as one ZIP archive (auditors)
+ *
+ * Each request's JSON bundle and PDF summary, named by its number, and a manifest of the files with their SHA-256, and of the requests left out and why: at most 50 requests and 256 MiB. Two archives are made at once; a third waits (429).
+ */
+export const downloadEvidenceArchiveMutation = (options?: Partial<Options<DownloadEvidenceArchiveData>>): UseMutationOptions<DownloadEvidenceArchiveResponse, DownloadEvidenceArchiveError, Options<DownloadEvidenceArchiveData>> => {
+    const mutationOptions: UseMutationOptions<DownloadEvidenceArchiveResponse, DownloadEvidenceArchiveError, Options<DownloadEvidenceArchiveData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await downloadEvidenceArchive({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const listEvidenceRequestsQueryKey = (options: Options<ListEvidenceRequestsData>) => createQueryKey('listEvidenceRequests', options);
+
+/**
+ * List the requests of an audit sample: by period, repository, state and break-glass (auditors)
+ *
+ * Oldest first, at most limit. An auditor of a repository lists its requests only.
+ */
+export const listEvidenceRequestsOptions = (options: Options<ListEvidenceRequestsData>) => queryOptions<ListEvidenceRequestsResponse, ListEvidenceRequestsError, ListEvidenceRequestsResponse, ReturnType<typeof listEvidenceRequestsQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await listEvidenceRequests({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: listEvidenceRequestsQueryKey(options)
 });
 
 export const listInstancesQueryKey = (options?: Options<ListInstancesData>) => createQueryKey('listInstances', options);
@@ -1038,6 +1077,26 @@ export const checkChatLinkMutation = (options?: Partial<Options<CheckChatLinkDat
     };
     return mutationOptions;
 };
+
+export const getRequestEvidenceQueryKey = (options: Options<GetRequestEvidenceData>) => createQueryKey('getRequestEvidence', options);
+
+/**
+ * Download a request's evidence bundle, in JSON or as a PDF summary (auditors, platform admins, its requester and owners)
+ *
+ * The JSON bundle is the evidence: verify it offline with quai audit verify --bundle and the checkpoints' public key. Its proof, the segments of the audit log up to a signed checkpoint, is for auditors of all repositories and platform admins signed in (docs/design/09-security-and-compliance.md#evidence-bundle). Each download is an audit event.
+ */
+export const getRequestEvidenceOptions = (options: Options<GetRequestEvidenceData>) => queryOptions<GetRequestEvidenceResponse, GetRequestEvidenceError, GetRequestEvidenceResponse, ReturnType<typeof getRequestEvidenceQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getRequestEvidence({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getRequestEvidenceQueryKey(options)
+});
 
 /**
  * Deliver a failed request again

@@ -374,8 +374,8 @@ approval is recorded as "by X on behalf of Y". As built (P4-13, [open questions 
   timeline, a rejection included), the audit log (`request.reviewed` and `request.approved`
   carry `onBehalfOf` and the delegation's ID), and the commit's
   `Approved-by: fiona (on behalf of alice)` trailers, each value one line without control
-  characters or line separators, so that no name adds a trailer. The evidence bundle does not
-  exist yet (P4-18); it will name both as well.
+  characters or line separators, so that no name adds a trailer. The evidence bundle names both,
+  with the delegation and its period ([evidence bundle](09-security-and-compliance.md#evidence-bundle)).
 - **Notifications.** During the period, a delegator's "approval needed" goes to their delegate
   instead, saying on whose behalf, when the delegate may review the request for them; otherwise,
   or once the delegate has reviewed it, it stays with the delegator. It goes no further, whatever
@@ -633,7 +633,7 @@ Management):
 
 - On submit, Quai creates a change request (standard change for catalog items marked as pre-approved; normal change otherwise) with the diff, plan summary and risk fields.
 - The `external: servicenow` rule is satisfied when the change request reaches an approved state.
-- On apply, Quai moves the change request to implemented and closes it, attaching the evidence bundle (see [security and compliance](09-security-and-compliance.md#evidence-bundle)).
+- On apply, Quai moves the change request to implemented and closes it, attaching the evidence bundle (see [security and compliance](09-security-and-compliance.md#evidence-bundle)): the JSON and its PDF summary without the proof, the request's own events with their hashes, as an API token downloads it, since the change request's readers are not all auditors of the whole platform ([open question 102](../plan/open-questions.md#still-open)).
 - If the change request is rejected or cancelled, the Quai request is rejected.
 
 ## Notifications

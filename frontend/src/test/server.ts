@@ -4,6 +4,7 @@ import { accessHandlers, resetAccess } from "./access"
 import { auditHandlers, resetAudit } from "./audit"
 import { catalogHandlers } from "./catalog"
 import { delegationHandlers, resetDelegations } from "./delegations"
+import { evidenceHandlers, resetEvidence } from "./evidence"
 import { gitHandlers, published } from "./git"
 import { inventoryHandlers } from "./inventory"
 import { repositoryHandlers, resetRepositories } from "./repositories"
@@ -26,12 +27,13 @@ function stepUpView() {
     : { satisfied: true, until: "2026-10-27T10:05:00Z", maxAge: 300, admin: state.adminStepUp }
 }
 
-const users: Record<string, string[]> = { bob: ["developers"], alice: ["platform-admins"], dana: ["auditors"], dave: ["oncall"] }
+const users: Record<string, string[]> = { bob: ["developers"], alice: ["platform-admins"], dana: ["auditors"], dave: ["oncall"], rita: ["live-auditors"] }
 // Verified emails from the identity provider: dana has none.
 const emails: Record<string, string> = { bob: "bob@acme.ch", alice: "alice@acme.ch", dave: "dave@acme.ch" }
 const roles: Record<string, { role: string; scope: string }[]> = {
   alice: [{ role: "platform-admin", scope: "global" }],
   dana: [{ role: "auditor", scope: "global" }],
+  rita: [{ role: "auditor", scope: "repository:infra-live" }],
   dave: [
     { role: "viewer", scope: "global" },
     { role: "break-glass", scope: "global" },
@@ -48,6 +50,7 @@ export function resetRequests() {
   resetAccess()
   resetPreferences()
   resetDelegations()
+  resetEvidence()
 }
 
 export const server = setupServer(
@@ -74,6 +77,7 @@ export const server = setupServer(
   ...gitHandlers,
   ...repositoryHandlers,
   ...auditHandlers,
+  ...evidenceHandlers,
   ...accessHandlers(() => (state.user ? (roles[state.user] ?? []) : null)),
   ...preferencesHandlers(() => state.user),
   ...delegationHandlers(

@@ -79,6 +79,37 @@ func (q *Queries) AuditCheckpoints(ctx context.Context) ([]AuditCheckpoint, erro
 	return items, nil
 }
 
+const auditCheckpointsFrom = `-- name: AuditCheckpointsFrom :many
+SELECT seq, hash, at, key, signature FROM audit_checkpoints WHERE seq >= $1 ORDER BY seq, key
+`
+
+// The checkpoints at or after a seq, in seq order.
+func (q *Queries) AuditCheckpointsFrom(ctx context.Context, seq int64) ([]AuditCheckpoint, error) {
+	rows, err := q.db.Query(ctx, auditCheckpointsFrom, seq)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AuditCheckpoint{}
+	for rows.Next() {
+		var i AuditCheckpoint
+		if err := rows.Scan(
+			&i.Seq,
+			&i.Hash,
+			&i.At,
+			&i.Key,
+			&i.Signature,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const auditClock = `-- name: AuditClock :one
 SELECT date_trunc('milliseconds', clock_timestamp())::timestamptz AS at
 `
@@ -90,6 +121,47 @@ func (q *Queries) AuditClock(ctx context.Context) (pgtype.Timestamptz, error) {
 	var at pgtype.Timestamptz
 	err := row.Scan(&at)
 	return at, err
+}
+
+const auditEventsBetween = `-- name: AuditEventsBetween :many
+SELECT seq, at, actor, action, object, details, prev, hash, recorded FROM audit_events WHERE seq >= $1 AND seq <= $2 ORDER BY seq
+`
+
+type AuditEventsBetweenParams struct {
+	FromSeq int64
+	ToSeq   int64
+}
+
+// The events from a seq to another, both included, in seq order: a segment of an evidence
+// bundle's proof.
+func (q *Queries) AuditEventsBetween(ctx context.Context, arg AuditEventsBetweenParams) ([]AuditEvent, error) {
+	rows, err := q.db.Query(ctx, auditEventsBetween, arg.FromSeq, arg.ToSeq)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AuditEvent{}
+	for rows.Next() {
+		var i AuditEvent
+		if err := rows.Scan(
+			&i.Seq,
+			&i.At,
+			&i.Actor,
+			&i.Action,
+			&i.Object,
+			&i.Details,
+			&i.Prev,
+			&i.Hash,
+			&i.Recorded,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const auditEventsFrom = `-- name: AuditEventsFrom :many
@@ -497,4 +569,45 @@ func (q *Queries) PruneAudit(ctx context.Context) (PruneAuditRow, error) {
 	var i PruneAuditRow
 	err := row.Scan(&i.Checkpoint, &i.Events)
 	return i, err
+}
+
+const requestAuditEvents = `-- name: RequestAuditEvents :many
+SELECT seq, at, actor, action, object, details, prev, hash, recorded FROM audit_events WHERE object ->> 'type' = 'request' AND object ->> 'id' = $1::text
+ORDER BY seq LIMIT $2
+`
+
+type RequestAuditEventsParams struct {
+	ID      string
+	MaxRows int32
+}
+
+// A request's own events, those about it as their object, in seq order: its evidence bundle's.
+func (q *Queries) RequestAuditEvents(ctx context.Context, arg RequestAuditEventsParams) ([]AuditEvent, error) {
+	rows, err := q.db.Query(ctx, requestAuditEvents, arg.ID, arg.MaxRows)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AuditEvent{}
+	for rows.Next() {
+		var i AuditEvent
+		if err := rows.Scan(
+			&i.Seq,
+			&i.At,
+			&i.Actor,
+			&i.Action,
+			&i.Object,
+			&i.Details,
+			&i.Prev,
+			&i.Hash,
+			&i.Recorded,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

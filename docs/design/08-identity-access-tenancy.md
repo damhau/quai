@@ -32,7 +32,8 @@ How it works in the server:
   every `POST`, `PUT`, `PATCH` or `DELETE` with a session must send it as `X-CSRF-Token`.
 - API tokens look like `quai_…`, are sent as `Authorization: Bearer`, act with the groups
   their owner had when creating them, and are narrowed by their scopes (`catalog:read`,
-  `inventory:read`, `requests:read`, `requests:write`). A token cannot create tokens.
+  `inventory:read`, `requests:read`, `requests:write`, `evidence:read`). A token cannot create
+  tokens.
 - `POST /auth/logout` ends the session.
 
 ### Step-up
@@ -353,6 +354,12 @@ far). Decisions the roles do not spell out:
   name), or a platform admin.
 - The access report needs the auditor role (or platform admin), at the global scope; an API token
   cannot read it.
+- A request's evidence bundle is for auditors (of the platform, or at the request's scope),
+  platform admins, its requester and its owners; an API token needs `evidence:read`. Its proof,
+  the segments of the audit log holding other requests' events, only for those who read the whole
+  audit log (auditors of the platform, platform admins), in a session. Listing a sample of
+  requests and downloading their archive needs the auditor role at the repository's scope, or
+  platform admin ([evidence bundle](09-security-and-compliance.md#evidence-bundle)).
 - Anyone signed in delegates their own approvals and revokes their own delegations, in a browser
   session: no scope allows it to an API token. Revoking someone else's needs the platform admin
   role; no one makes a delegation for someone else

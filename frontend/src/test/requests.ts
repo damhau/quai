@@ -105,6 +105,7 @@ function as(user: string | null, r: RequestView): RequestView {
       !r.cannotBreakGlass &&
       (r.state === "pending_approval" || (r.state === "approved" && !!r.changeWindow?.held)),
     breakGlass: breakGlassAs(user, r),
+    canDownloadEvidence: user !== null && (user === r.requester || user === "alice" || user === "dana") ? true : undefined,
   }
 }
 

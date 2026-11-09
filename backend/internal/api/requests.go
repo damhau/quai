@@ -234,6 +234,8 @@ type RequestView struct {
 	ChangeWindow *ChangeWindowView `json:"changeWindow,omitempty" doc:"What the change windows that apply to it say, while it is pending approval, approved or merging; absent when none applies"`
 	// RequesterNotNotified is set when notifications are configured and do not reach the requester.
 	RequesterNotNotified bool `json:"requesterNotNotified,omitempty" doc:"Notifications do not reach the requester: Quai knows no verified email of theirs"`
+	// CanDownloadEvidence: the caller may download the request's evidence bundle (in detail).
+	CanDownloadEvidence bool `json:"canDownloadEvidence,omitempty" doc:"The caller may download the request's evidence bundle"`
 	// ChangeSet is the content's identity, which a break-glass carries back.
 	ChangeSet string `json:"changeSet,omitempty" doc:"The hash of the change set it holds now"`
 	// CanBreakGlass and CannotBreakGlass are the caller's, as a member of the break-glass role.
@@ -695,6 +697,7 @@ func requestView(ctx context.Context, svc *requests.Service, s *store.Store, r d
 		return v
 	}
 	v.ChangeWindow = changeWindowView(ctx, svc, r)
+	v.CanDownloadEvidence = allowed(ctx, authz.ReadEvidence, svc.BreakGlassObject(ctx, r))
 	// Who notifications do not reach (docs/design/05-delivery-and-approvals.md#notifications).
 	if requester, rules, ok, err := svc.Unnotified(ctx, r); err == nil && ok {
 		v.RequesterNotNotified = requester
