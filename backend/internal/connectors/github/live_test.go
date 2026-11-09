@@ -575,7 +575,19 @@ func TestLiveForks(t *testing.T) {
 		}
 		time.Sleep(time.Second)
 	}
-	if _, _, err := s.Client.Git.CreateRef(ctx, s.Org, forkName, gh.CreateRef{Ref: "refs/heads/" + shared, SHA: forkMain.GetObject().GetSHA()}); err != nil {
+	// A fork whose branch reads may still refuse a new one for a while: 422 "Reference update
+	// failed" until GitHub has finished copying it.
+	deadline = time.Now().Add(time.Minute)
+	for {
+		_, _, err = s.Client.Git.CreateRef(ctx, s.Org, forkName, gh.CreateRef{Ref: "refs/heads/" + shared, SHA: forkMain.GetObject().GetSHA()})
+		var refused *gh.ErrorResponse
+		if err == nil || !errors.As(err, &refused) || refused.Response == nil || refused.Response.StatusCode != http.StatusUnprocessableEntity ||
+			refused.Message != "Reference update failed" || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(time.Second)
+	}
+	if err != nil {
 		t.Fatal(err)
 	}
 	forkHead, err := s.AddFiles(ctx, forkName, shared, "From the fork", map[string]string{"fork.txt": "fork\n"})
