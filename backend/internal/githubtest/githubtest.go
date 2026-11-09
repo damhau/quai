@@ -288,10 +288,12 @@ type Delivery struct {
 }
 
 // Deliveries waits until GitHub recorded deliveries for a repository that enough accepts, and
-// returns them, oldest first, without redeliveries.
+// returns them, oldest first, without redeliveries. GitHub records them in its own time: usually
+// within seconds, but on 2026-11-09 a few took over two minutes in two runs out of three, with
+// nothing on its status page, so the wait is four.
 func (s *Sandbox) Deliveries(t *testing.T, repositoryID int64, enough func([]Delivery) bool) []Delivery {
 	t.Helper()
-	return s.DeliveriesWithin(t, 2*time.Minute, repositoryID, enough)
+	return s.DeliveriesWithin(t, 4*time.Minute, repositoryID, enough)
 }
 
 // DeliveriesWithin is Deliveries, waiting up to timeout.
