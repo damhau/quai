@@ -133,6 +133,5 @@ HCL's alignment padding (see verification), so realigning it is not a change.
 | --- | --- |
 | Corpus tests | A directory of real-world files (anonymized from pilot repositories, Kubernetes manifests, Helm values, tfvars) with edits and expected outputs. Grows with every bug. |
 | Golden tests | Per generator and per format: input values → exact expected bytes. |
-| Fuzzing (`go test -fuzz`) | Random documents and random edits. Invariants: the result parses; decodes to the intended value; bytes outside the region are unchanged; applying the same edit twice is a no-op. |
 | Round-trip on customer repositories | `quai lint` checks `write(read(file))` is a zero diff for every existing resource before a type is accepted. |
 | Prototype parity | The TypeScript `patchYaml` tests are ported as the first Go tests, so the port starts from proven behaviour. |

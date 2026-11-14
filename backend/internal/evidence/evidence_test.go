@@ -325,31 +325,3 @@ func TestProofBound(t *testing.T) {
 		t.Errorf("report beyond the bound = %+v", r)
 	}
 }
-
-// FuzzParse: Parse and Verify never panic, whatever the bytes.
-func FuzzParse(f *testing.F) {
-	key := ed25519.NewKeyFromSeed(bytes.Repeat([]byte{7}, 32))
-	keys := audit.Keys{}
-	keys.Add(key.Public().(ed25519.PublicKey))
-	r := audit.Record{Seq: 1, At: "2026-11-02T09:00:00.000Z", Actor: json.RawMessage(`{"type":"system","id":"quai"}`), Action: "request.submitted",
-		Object: json.RawMessage(`{"type":"request","id":"` + requestID + `"}`), Details: json.RawMessage(`{"kind":"update"}`), Prev: audit.Genesis}
-	r.Hash, _ = r.Digest()
-	c, _ := audit.Sign(key, 1, r.Hash, time.Date(2026, 11, 2, 10, 0, 0, 0, time.UTC))
-	b := &evidence.Bundle{BundleVersion: evidence.Version, Request: evidence.Request{ID: requestID, Kind: "update"}, Events: []audit.Record{r},
-		ChangeSets: []evidence.ChangeSet{{Hash: plan.Hash([]plan.Change{change}), Changes: []evidence.Change{evidence.NewChange(change)}}},
-		Proof:      evidence.Proof{Segments: []evidence.Segment{{From: 1, To: 1, Checkpoint: c, Records: []audit.Record{}}}}}
-	seed, _ := evidence.Marshal(b)
-	f.Add(seed)
-	f.Add([]byte(`{"bundleVersion":1}`))
-	f.Add([]byte(`{"bundleVersion":1,"proof":{"segments":[{"from":1,"to":9000000000000000000}]}}`))
-	f.Fuzz(func(t *testing.T, data []byte) {
-		b, err := evidence.Parse(bytes.NewReader(data))
-		if err != nil {
-			return
-		}
-		_ = evidence.Verify(b, keys)
-		if _, err := evidence.PDF(b); err != nil {
-			t.Errorf("PDF of a bundle that parses: %v", err)
-		}
-	})
-}

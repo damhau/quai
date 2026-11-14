@@ -35,8 +35,8 @@ func Edit(src []byte, want any) ([]byte, error) { return EditWith(src, want, doc
 // theirs.
 func EditWith(src []byte, want any, opts document.Options) (out []byte, err error) {
 	// The parser's positions are not trustworthy on every input. A bug that lets one through as
-	// an out-of-range offset must refuse the edit, not crash the caller; the fuzz target treats
-	// such a refusal as a failure.
+	// an out-of-range offset must refuse the edit, not crash the caller; the sweep treats such
+	// a refusal as a failure.
 	defer func() {
 		if r := recover(); r != nil {
 			out, err = nil, refuse(nil, "%s: %v", internalError, r)

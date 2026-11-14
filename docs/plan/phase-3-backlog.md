@@ -178,11 +178,13 @@ Their hermetic counterparts (the connector's answers, signatures and events,
      rule requiring code owners' review.
    - **15:** a repository webhook per connection, not the app's own webhook.
    - **16:** people's own pull requests completed with the platform owners' policy bypass.
-6. **Fuzzing in CI: found in this review, fixed in 3671bba.** [Testing](../engineering/testing.md)
-   and [backend](../engineering/backend.md#quality-gates) asked for 60 s per editor fuzz target
-   on every push and an hour nightly, but no workflow ran `go test -fuzz`: each push ran the
-   targets on their seed corpora only. `backend.yml` now has a fuzz job per editor (YAML, JSON,
-   HCL), 60 s each, and `fuzz.yml` runs each for an hour nightly. Before, P3-01 and P3-02 fuzzed
+6. **Fuzzing: found in this review, then removed.** [Testing](../engineering/testing.md) and
+   [backend](../engineering/backend.md#quality-gates) asked for 60 s per editor fuzz target on
+   every push and an hour nightly, but no workflow ran `go test -fuzz`: each push ran the targets
+   on their seed corpora only. 3671bba added the jobs. Their first nightly run found an HCL editor
+   bug, fixed in b02d512: removing an entry that shares its line with another gave an internal
+   error, not a refusal. The owner then had fuzzing removed for now: the fuzz targets, their kept
+   inputs and the jobs are gone, and the docs no longer ask for it. Before, P3-01 and P3-02 fuzzed
    locally: `FuzzJSONEdit` 9.7 million executions clean in 60 s, `FuzzHCLEdit` 4.4 million after
    the two inputs it found were kept as regressions.
 7. **Edges seen in the live runs.**

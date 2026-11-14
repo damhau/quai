@@ -5,7 +5,6 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-	"unicode"
 	"unicode/utf8"
 )
 
@@ -46,30 +45,6 @@ func TestParseFilter(t *testing.T) {
 	if _, err := parseFilter(`a eq "1" and b eq "2" and c eq "3" and d eq "4" and e eq "5"`, "a", "b", "c", "d", "e"); err == nil {
 		t.Error("five comparisons")
 	}
-}
-
-// FuzzParseFilter: whatever the filter, the parser does not panic, and what it accepts compares
-// allowed attributes, each once, to values without control characters.
-func FuzzParseFilter(f *testing.F) {
-	for _, s := range []string{`userName eq "a"`, `id eq "1" and members eq "2"`, `externalId eq "é\"\\"`, `x`, `userName eq "`} {
-		f.Add(s)
-	}
-	f.Fuzz(func(t *testing.T, s string) {
-		got, err := parseFilter(s, "username", "id", "members")
-		if err != nil {
-			return
-		}
-		if len(got) == 0 || len(got) > maxClauses || len(s) > maxFilter {
-			t.Fatalf("%q = %+v", s, got)
-		}
-		seen := map[string]bool{}
-		for _, c := range got {
-			if seen[c.attr] || (c.attr != "username" && c.attr != "id" && c.attr != "members") || strings.ContainsFunc(c.value, unicode.IsControl) {
-				t.Fatalf("%q = %+v", s, got)
-			}
-			seen[c.attr] = true
-		}
-	})
 }
 
 // TestDecodeObject: one object, its keys folded, none twice, a bounded number of them.

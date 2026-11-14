@@ -139,5 +139,4 @@ after a query or migration changes. Generated code is excluded from gosec, whose
 heuristics flag SQL that mentions tokens.
 
 Store and API tests start their own embedded PostgreSQL ([testing](testing.md)), so
-`go test` runs them too. Plus a fuzzing smoke run of the editors
-(`go test -fuzz=. -fuzztime=60s` per fuzz target).
+`go test` runs them too.

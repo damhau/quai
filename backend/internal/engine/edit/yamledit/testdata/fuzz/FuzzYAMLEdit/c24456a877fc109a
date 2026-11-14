@@ -1,6 +1,0 @@
-go test fuzz v1
-[]byte("-\t\v-")
-uint(95)
-byte('ò')
-string("0")
-int64(-1)

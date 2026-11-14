@@ -51,9 +51,6 @@ make quick     # tier 1, before each commit: build, vet, and the changed package
 make check     # tier 2, as CI runs it: build, vet, staticcheck, gosec, govulncheck, sqlc diff, go test -race
 make generate  # regenerate internal/store/db after changing queries or migrations
 go test ./internal/engine/...            # fast loop on the engine
-go test -fuzz=FuzzYAMLEdit -fuzztime=60s ./internal/engine/edit/yamledit
-go test -fuzz=FuzzJSONEdit -fuzztime=60s ./internal/engine/edit/jsonedit
-go test -fuzz=FuzzHCLEdit -fuzztime=60s ./internal/engine/edit/hcledit
 ```
 
 Frontend (from `frontend/`, Node 22.12+):

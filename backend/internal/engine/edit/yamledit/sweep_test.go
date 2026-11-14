@@ -204,3 +204,19 @@ func report(t *testing.T, title string, counts map[string]int) {
 		t.Logf("  %7d  %s", counts[k], k)
 	}
 }
+
+// nodePaths appends the paths of every node in doc, collections included, in a stable order.
+func nodePaths(doc any, p path, out []path) []path {
+	out = append(out, slices.Clone(p))
+	switch d := doc.(type) {
+	case map[string]any:
+		for _, k := range sortedKeys(d) {
+			out = nodePaths(d[k], p.Key(k), out)
+		}
+	case []any:
+		for i, item := range d {
+			out = nodePaths(item, p.Index(i), out)
+		}
+	}
+	return out
+}

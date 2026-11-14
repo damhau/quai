@@ -469,24 +469,6 @@ func TestParse(t *testing.T) {
 	}
 }
 
-func FuzzParse(f *testing.F) {
-	sys := strings.Repeat("0", 32)
-	f.Add([]byte(`{"sys_id": {"value": "` + sys + `"}, "state": {"value": "-2"}, "approval": {"value": "approved"}}`))
-	f.Add([]byte(`{"sys_id": "` + sys + `", "state": 3.0, "approval": "rejected", "__meta": {"ignoredFields": ["x"]}}`))
-	f.Fuzz(func(t *testing.T, b []byte) {
-		r, err := Parse(b)
-		if err != nil {
-			return
-		}
-		if !SysIDRe.MatchString(r.SysID) {
-			t.Fatalf("a record with sys_id %q", r.SysID)
-		}
-		if o, _ := r.Outcome(); o == Approved && (r.Approval != "approved" || r.State != "-2" && r.State != "-1") {
-			t.Fatalf("approved from %+v", r)
-		}
-	})
-}
-
 func TestText(t *testing.T) {
 	for _, tt := range []struct {
 		in   string
@@ -509,21 +491,4 @@ func TestText(t *testing.T) {
 			t.Errorf("Text(%q, %d) = %q, want %q", tt.in, tt.max, got, tt.want)
 		}
 	}
-}
-
-func FuzzText(f *testing.F) {
-	f.Add("[code]x[/code]", 50)
-	f.Add("<a href=x>&amp;</a>", 10)
-	f.Fuzz(func(t *testing.T, s string, max int) {
-		if max < 1 || max > 5000 {
-			return
-		}
-		got := Text(s, max)
-		if codeTag.MatchString(got) || strings.ContainsAny(got, "<>") {
-			t.Fatalf("Text(%q) = %q holds markup", s, got)
-		}
-		if n := len([]rune(got)); n > max {
-			t.Fatalf("Text(%q, %d) has %d characters", s, max, n)
-		}
-	})
 }
