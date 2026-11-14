@@ -97,6 +97,8 @@ func TestEdit(t *testing.T) {
 		{"an empty file", "", "", set(p{"vms"}, map[string]any{"web01": map[string]any{"cpu": 4}}), "vms = {\n  web01 = {\n    cpu = 4\n  }\n}\n"},
 		{"an unformatted file stays as it is", "a   =   1\nb=2\n", "", set(p{"b"}, 3, p{"c"}, 4), "a   =   1\nb=3\nc = 4\n"},
 		{"CRLF line endings", "a = 1\r\nb = 2\r\n", "", set(p{"c"}, 3), "a = 1\r\nb = 2\r\nc = 3\r\n"},
+		{"an entry with a line of its own, beside entries sharing one", "o = {\n  a = 1, b = 2\n  c = 3\n}\n", "", del(p{"o", "c"}),
+			"o = {\n  a = 1, b = 2\n}\n"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			doc, _, err := Decode([]byte(tt.src), tt.block)
@@ -147,6 +149,14 @@ func TestRefusals(t *testing.T) {
 		{"no locals block", "a = 1\n", "locals", map[string]any{}, "no locals block"},
 		{"two locals blocks", "locals {\n}\nlocals {\n}\n", "locals", map[string]any{}, "2 locals blocks"},
 		{"a byte-order mark", "\xef\xbb\xbfa = 1\n", "", map[string]any{}, "byte-order mark"},
+		// Taking the entry's lines would take the code beside it, or the closing brace; a key added
+		// after the code would go inside them.
+		{"removing an entry that shares its line with code, a key added", "o = {\n  a = var.a, b = 1\n}\n", "",
+			map[string]any{"o": map[string]any{"c": 2}}, "$.o.b: it shares a line with another entry"},
+		{"removing an entry that shares its line with another", "o = {\n  a = 1, b = 2\n  c = 3\n}\n", "",
+			map[string]any{"o": map[string]any{"a": 1, "c": 3}}, "$.o.b: it shares a line with another entry"},
+		{"removing the last entry, on the closing brace's line", "o = {\n  a = 1\n  b = 2 }\n", "",
+			map[string]any{"o": map[string]any{"a": 1}}, "$.o.b: it shares a line with another entry or the closing bracket"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := Edit([]byte(tt.src), tt.block, tt.want)

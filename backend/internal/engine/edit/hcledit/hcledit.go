@@ -16,8 +16,9 @@
 //
 // New entries go on a line of their own after their siblings in a multi-line object, tuple or
 // body, and after them on the line in a one-line one; a removed entry takes its lines, and its own
-// comments, with it. A file that hclwrite.Format (terraform fmt's formatter) leaves as it is stays
-// so: the result is formatted, which only realigns the touched groups' equals signs.
+// comments, with it, and is refused when another entry or the closing bracket shares them. A file
+// that hclwrite.Format (terraform fmt's formatter) leaves as it is stays so: the result is
+// formatted, which only realigns the touched groups' equals signs.
 package hcledit
 
 import (
@@ -612,6 +613,22 @@ func (f *file) containerEdits(n *node, at document.Path, removed map[int]bool, a
 		// Nothing of a one-line container stays, code included: it is written anew.
 		return []textEdit{{start: n.start, end: n.end, text: s.render(document.ValueAt(want, at), indent(f.src, n.start), f.inMultiline(at), s.rank)}}, nil
 	}
+	if multiline && !n.body {
+		// Taking a removed entry's lines would take whatever shares them: another entry on its
+		// line (a = 1, b = 2), a value defined in code among them, or the closing bracket after
+		// it (b = 2 }). Such a removal is refused. (A body's attributes always end their lines;
+		// an object or tuple that loses every entry is replaced whole by Diff, or keeps its code.)
+		for i := range starts {
+			if !removed[i] || f.ownsLines(n, starts, ends, i) {
+				continue
+			}
+			p := at.Index(i)
+			if n.object {
+				p = at.Key(n.members[i].key)
+			}
+			return nil, refuse(p, "it shares a line with another entry or the closing bracket, so it cannot be removed with its lines")
+		}
+	}
 	if multiline {
 		// A removed entry takes its lines, and the comment lines right above it unless it is the
 		// first entry, whose comments usually describe the container.
@@ -713,6 +730,20 @@ func (f *file) containerEdits(n *node, at document.Path, removed map[int]bool, a
 		}
 	}
 	return out, nil
+}
+
+// ownsLines reports whether the i-th entry of the object or tuple n, from starts[i] to ends[i],
+// has its lines to itself: the entry before it ends on an earlier line, and the next entry, or
+// the closing bracket after the last, starts on a later one.
+func (f *file) ownsLines(n *node, starts, ends []int, i int) bool {
+	if i > 0 && ends[i-1] >= lineStart(f.src, starts[i]) {
+		return false
+	}
+	next := n.end - 1 // the closing bracket
+	if i+1 < len(starts) {
+		next = starts[i+1]
+	}
+	return next >= nextLine(f.src, ends[i])
 }
 
 // oneLineContainer reports whether the i-th entry of n is an object or a tuple written on one
