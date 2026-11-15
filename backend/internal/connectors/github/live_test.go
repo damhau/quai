@@ -598,13 +598,23 @@ func TestLiveForks(t *testing.T) {
 		time.Sleep(time.Second)
 	}
 	// A fork whose branch reads may still refuse a new one for a while: 422 "Reference update
-	// failed" until GitHub has finished copying it.
+	// failed" until GitHub has finished copying it, or a server error (500, live, 2026-11-15),
+	// after which the branch may have been made all the same.
+	base := forkMain.GetObject().GetSHA()
 	deadline = time.Now().Add(time.Minute)
 	for {
-		_, _, err = s.Client.Git.CreateRef(ctx, s.Org, forkName, gh.CreateRef{Ref: "refs/heads/" + shared, SHA: forkMain.GetObject().GetSHA()})
-		var refused *gh.ErrorResponse
-		if err == nil || !errors.As(err, &refused) || refused.Response == nil || refused.Response.StatusCode != http.StatusUnprocessableEntity ||
-			refused.Message != "Reference update failed" || time.Now().After(deadline) {
+		_, _, err = s.Client.Git.CreateRef(ctx, s.Org, forkName, gh.CreateRef{Ref: "refs/heads/" + shared, SHA: base})
+		var answer *gh.ErrorResponse
+		if err == nil || !errors.As(err, &answer) || answer.Response == nil || time.Now().After(deadline) {
+			break
+		}
+		if answer.Response.StatusCode >= http.StatusInternalServerError {
+			t.Logf("asked again after a server error: %v", err)
+			if made, _, readErr := s.Client.Git.GetRef(ctx, s.Org, forkName, "heads/"+shared); readErr == nil && made.GetObject().GetSHA() == base {
+				err = nil
+				break
+			}
+		} else if answer.Response.StatusCode != http.StatusUnprocessableEntity || answer.Message != "Reference update failed" {
 			break
 		}
 		time.Sleep(time.Second)
