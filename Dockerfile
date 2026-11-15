@@ -15,7 +15,7 @@ RUN npx vite build
 # The packages of other modules that the binaries import, listed from the source. The build
 # below copies the list, which Docker caches by its content: the layer compiling those packages
 # stays cached while the list and go.sum do not change, and a commit compiles only Quai's own.
-FROM golang:1.27.3-alpine@sha256:d200d2dd76b03a99b52651fd1325aff7dcd35422c35c01bac56571b0507f3deb AS deps
+FROM golang:1.27.4-alpine@sha256:0a5f7fe796599ff487605987432e7619ae45beeb2fba4c2ce0b907879932aebf AS deps
 ENV CGO_ENABLED=0 GOTOOLCHAIN=local GOFLAGS=-trimpath
 WORKDIR /src/backend
 COPY backend/go.mod backend/go.sum ./
@@ -24,7 +24,7 @@ COPY backend/ ./
 RUN go list -e -deps -f '{{if not .Standard}}{{.ImportPath}}{{end}}' ./cmd/quai ./tools/fakerunner \
   | grep -v '^github.com/damhau/quai/' | sort > /deps.txt
 
-FROM golang:1.27.3-alpine@sha256:d200d2dd76b03a99b52651fd1325aff7dcd35422c35c01bac56571b0507f3deb AS backend
+FROM golang:1.27.4-alpine@sha256:0a5f7fe796599ff487605987432e7619ae45beeb2fba4c2ce0b907879932aebf AS backend
 ENV CGO_ENABLED=0 GOTOOLCHAIN=local GOFLAGS=-trimpath
 WORKDIR /src/backend
 COPY backend/go.mod backend/go.sum ./
