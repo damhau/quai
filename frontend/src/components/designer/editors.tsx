@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { Plus, Trash2 } from "lucide-react"
-import { metadata, properties, rules, withMetadata, withProperties, withRules, type InputType, type Property, type Rule } from "@/components/designer/blueprint"
+import { inputTypes, metadata, properties, rules, withMetadata, withProperties, withRules, type InputType, type Property, type Rule } from "@/components/designer/blueprint"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
@@ -47,8 +47,6 @@ export function AboutEditor({ isNew }: { isNew: boolean }) {
   )
 }
 
-const types: InputType[] = ["string", "integer", "number", "boolean"]
-
 /** InputsEditor edits the fields of the blueprint's form, which become its input schema. */
 export function InputsEditor() {
   const ps = properties(useDesigner((s) => s.draft))
@@ -81,22 +79,26 @@ export function InputsEditor() {
                 <NameCell key={p.name} index={i} name={p.name} taken={(n) => ps.some((q, j) => j !== i && q.name === n)} onRename={(name) => set(i, { name })} />
               </TableCell>
               <TableCell>
-                <NativeSelect aria-label={`Field ${i + 1}: type`} value={p.type} onChange={(e) => set(i, { type: e.target.value as InputType })}>
-                  {types.map((t) => (
-                    <NativeSelectOption key={t} value={t}>
-                      {t}
-                    </NativeSelectOption>
-                  ))}
-                </NativeSelect>
+                {p.kept !== undefined ? (
+                  <span className="text-muted-foreground text-sm">{p.kept}</span>
+                ) : (
+                  <NativeSelect aria-label={`Field ${i + 1}: type`} value={p.type} onChange={(e) => set(i, { type: e.target.value as InputType })}>
+                    {inputTypes.map((t) => (
+                      <NativeSelectOption key={t} value={t}>
+                        {t}
+                      </NativeSelectOption>
+                    ))}
+                  </NativeSelect>
+                )}
               </TableCell>
               <TableCell>
-                <Input aria-label={`Field ${i + 1}: title`} value={p.title} onChange={(e) => set(i, { title: e.target.value })} />
+                <Input aria-label={`Field ${i + 1}: title`} disabled={p.kept !== undefined} value={p.title} onChange={(e) => set(i, { title: e.target.value })} />
               </TableCell>
               <TableCell>
-                <Input aria-label={`Field ${i + 1}: default`} value={p.default} onChange={(e) => set(i, { default: e.target.value })} />
+                <Input aria-label={`Field ${i + 1}: default`} disabled={p.kept !== undefined} value={p.default} onChange={(e) => set(i, { default: e.target.value })} />
               </TableCell>
               <TableCell>
-                <Input aria-label={`Field ${i + 1}: options`} placeholder="a, b, c" value={p.options} onChange={(e) => set(i, { options: e.target.value })} />
+                <Input aria-label={`Field ${i + 1}: options`} disabled={p.kept !== undefined} placeholder="a, b, c" value={p.options} onChange={(e) => set(i, { options: e.target.value })} />
               </TableCell>
               <TableCell>
                 <Checkbox aria-label={`Field ${i + 1}: required`} checked={p.required} onCheckedChange={(c) => set(i, { required: c === true })} />
@@ -113,7 +115,7 @@ export function InputsEditor() {
       <Button type="button" variant="outline" size="sm" className="w-fit" onClick={add}>
         <Plus /> Add a field
       </Button>
-      <p className="text-muted-foreground text-xs">Resources read these fields as inputs.&lt;name&gt;. Defaults and options take the field's type.</p>
+      <p className="text-muted-foreground text-xs">Resources read these fields as inputs.&lt;name&gt;. Defaults and options take the field's type. A field of another type (a list, an object) is kept as written: edit it in the blueprint's file.</p>
     </div>
   )
 }

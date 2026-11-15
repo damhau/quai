@@ -17,10 +17,14 @@ export type Rule = { name: string; when?: string; approvers: string[]; min?: num
 
 export type InputType = "string" | "integer" | "number" | "boolean"
 
+export const inputTypes: InputType[] = ["string", "integer", "number", "boolean"]
+
 /** Property is one field of the blueprint's form, as the inputs editor shows it. */
 export type Property = {
   name: string
   type: InputType
+  /** The type as written when the editor has no control for it (a list, an object): such a field is published as written, never converted. */
+  kept?: string
   title: string
   required: boolean
   /** The default and the options, as typed: converted to the field's type when written. */
@@ -152,13 +156,14 @@ export function properties(d: Doc): Property[] {
   const names = [...order.filter((n) => n in props), ...Object.keys(props).filter((n) => !order.includes(n))]
   return names.map((name) => {
     const s = obj(props[name])
-    const type = (["string", "integer", "number", "boolean"].includes(s.type as string) ? s.type : "string") as InputType
+    const editable = inputTypes.includes(s.type as InputType)
     return {
       name,
-      type,
+      type: editable ? (s.type as InputType) : "string",
+      kept: editable ? undefined : Array.isArray(s.type) ? s.type.join(" or ") : typeof s.type === "string" ? s.type : "any type",
       title: text(s.title),
       required: required.includes(name),
-      default: text(s.default),
+      default: editable || s.default === undefined ? text(s.default) : JSON.stringify(s.default),
       options: Array.isArray(s.enum) ? s.enum.map(text).join(", ") : "",
       schema: s,
     }
@@ -184,6 +189,10 @@ export function withProperties(d: Doc, ps: Property[]): Doc {
   const inputs = obj(spec(d).inputs)
   const props: Record<string, unknown> = {}
   for (const p of ps) {
+    if (p.kept !== undefined) {
+      props[p.name] = p.schema
+      continue
+    }
     const s: Record<string, unknown> = { ...p.schema, type: p.type, title: p.title || undefined }
     const options = p.options
       .split(",")

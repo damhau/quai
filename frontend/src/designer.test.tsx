@@ -62,15 +62,30 @@ test("editing a blueprint keeps what the designer does not edit, and shows why p
   await user.type(id, "database{Enter}")
   expect(await screen.findByRole("group", { name: "Resource database" })).toBeInTheDocument()
 
+  // A list field has no control in the inputs editor: editing another field keeps it as written.
+  await user.click(screen.getByRole("tab", { name: "Form" }))
+  expect(screen.getByRole("textbox", { name: "Field 6: title" })).toBeDisabled()
+  expect(screen.getByRole("textbox", { name: "Field 6: default" })).toHaveValue('["web"]')
+  expect(screen.queryByRole("combobox", { name: "Field 6: type" })).not.toBeInTheDocument()
+  await user.click(screen.getByRole("checkbox", { name: "Field 4: required" }))
+
   await user.click(screen.getByRole("button", { name: "Publish" }))
   await waitFor(() => expect(published.blueprints).toHaveLength(1))
-  const spec = published.blueprints[0]!.spec as { resources: { id: string; dependsOn?: string[] }[]; actions: unknown[]; ui: unknown }
+  const spec = published.blueprints[0]!.spec as {
+    resources: { id: string; dependsOn?: string[] }[]
+    actions: unknown[]
+    ui: unknown
+    inputs: { properties: Record<string, unknown>; required: string[] }
+  }
+  expect(spec.inputs.properties.tags).toEqual({ type: "array", title: "Tags", items: { type: "string" }, default: ["web"] })
+  expect(spec.inputs.required).toEqual(["environment", "app", "withDatabase"])
   expect(spec.resources.map((r) => r.id)).toEqual(["web", "database"])
   expect(spec.resources[0]!.dependsOn).toEqual(["database"])
   expect(spec.actions).toHaveLength(1)
   expect(spec.ui).toMatchObject({ fields: { dbDiskGb: { visibleIf: "inputs.withDatabase" } } })
 
   // Removing every resource makes a blueprint the server refuses.
+  await user.click(screen.getByRole("tab", { name: "Resources" }))
   await user.click(screen.getByRole("button", { name: "Remove database" }))
   await user.click(within(screen.getByRole("navigation", { name: "Resources" })).getByRole("button", { name: "web" }))
   await user.click(screen.getByRole("button", { name: "Remove web" }))

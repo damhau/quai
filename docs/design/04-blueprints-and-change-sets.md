@@ -78,7 +78,9 @@ definition change. Until pull-request delivery exists, publishing checks that th
 blueprint loads against the repository's types and commits it to the branch
 (`PUT /repositories/{repository}/blueprints/{name}`, for repository admins); the
 file is written from its decoded form, so comments in a hand-written blueprint
-do not survive a publish from the designer. The definition holds no layout: the
+do not survive a publish from the designer. A form field the designer has no
+control for (a list, an object, a field without a type) is published as
+written. The definition holds no layout: the
 canvas places each resource after those it depends on.
 
 Edges express ordering and naming, not runtime data. Quai can wire values known

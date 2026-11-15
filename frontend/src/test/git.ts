@@ -11,12 +11,14 @@ const commits = [
   { sha: "0f1e2d3c4b5a69788796a5b4c3d2e1f001234567", author: "Platform team", email: "p@example.com", date: "2026-10-20T08:00:00Z", subject: "the existing infrastructure" },
 ]
 
+const appServersSchema = appServers.schema as { properties: Record<string, unknown> }
+
 export const appServersDefinition = {
   apiVersion: "quai.dev/v1beta1",
   kind: "Blueprint",
   metadata: { name: "app-servers", title: "Application servers", version: "1.0.0", category: "Applications" },
   spec: {
-    inputs: appServers.schema,
+    inputs: { ...appServersSchema, properties: { ...appServersSchema.properties, tags: { type: "array", title: "Tags", items: { type: "string" }, default: ["web"] } } },
     ui: { order: ["environment", "app", "webCpu", "withDatabase", "dbDiskGb"], fields: { dbDiskGb: { visibleIf: "inputs.withDatabase" } } },
     resources: [
       { id: "web", type: { name: "vm" }, params: { env: "${{ inputs.environment }}", name: "${{ inputs.app + '-web01' }}" }, values: { cpu: "${{ inputs.webCpu }}" }, dependsOn: ["db"] },
