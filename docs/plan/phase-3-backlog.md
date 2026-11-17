@@ -1,6 +1,6 @@
 # Phase 3: how autonomous sessions work
 
-Status: In review · 2026-11-09 (P3-19 waits on the owner; Phase 4: [Phase 4 backlog](phase-4-backlog.md))
+Status: Done · 2026-11-17 (Phase 4: [Phase 4 backlog](phase-4-backlog.md))
 
 The tasks for [Phase 3](roadmap.md#phase-3-generators-and-locators-5-weeks) are GitHub issues in
 milestone [M2 Beta](https://github.com/damhau/quai/milestones) labelled `phase:3` and
@@ -65,12 +65,13 @@ pilot repository `pilot-infra`. Phase 3 adds:
 - **P3-19** (the pilot's types) works on the stand-in `pilot-infra` with synthetic data: there is
   no pilot repository (the owner's decision of 2026-10-30, in
   [open questions](open-questions.md#decided)). Its pull requests are completed in order, as in
-  P2-13. They are open, ready, on `pilot-infra`, each on the one before: !407 (the pipelines plan
+  P2-13. They were opened on `pilot-infra`, each on the one before: !407 (the pipelines plan
   and apply every stack under `stacks/`, and lint with the image of `0a2e052`), !408 (namespaces
   and quotas), !409 (DNS records), !410 (firewall rules). Their build validation runs, 173 to 176,
   passed: on !410, `quai lint` (5 types, 30 resources, no problems) and `quai lint --plan` on each
-  of the eight stacks' plans. They wait on [open question 16](open-questions.md#still-open), as
-  `quai/approval` binds every pull request since P2-13. The types and data are copied in
+  of the eight stacks' plans. As `quai/approval` binds every pull request since P2-13
+  ([open question 16](open-questions.md#still-open)), the owner completed them with a policy
+  bypass, on 2026-11-15. The types and data are copied in
   `examples/pilot-infra`, which `TestPilotTypes` and `TestPilotConcurrentEntries` request on
   Gitea.
 - **P3-21** (Phase 3 review): write the report the issue describes, commit with `refs`, comment
@@ -99,7 +100,8 @@ Tiers 2 and 3 were green on `ece1b9b` (2026-11-09, about 20:40 UTC): on the push
 (42692815253); dispatched, `kind` (42692812971), `e2e` (42692818394) and `live` (42692825265),
 whose GitHub job passed 183 tests and subtests and skipped one,
 `TestLiveConformance/4-status-identity` (item 4), and whose Azure DevOps job passed. The commits
-after it change CI and docs only.
+after it change CI and docs only. The push's `packaging` run does not scan the image: the scan was
+dispatched on `c99d2e2`, whose image is `ece1b9b`'s, and passed (42696548658, P4-23).
 
 **The exit, part by part.**
 
@@ -156,6 +158,8 @@ Their hermetic counterparts (the connector's answers, signatures and events,
    on `pilot-infra` and Quai posts it only on its own, so only an owner's policy bypass completes
    them, in order. Then the types are on `main`, and each can be requested through Quai there,
    two on one file included. Until then #133 and the epic #53 stay open. Their Gitea tests pass.
+   (The owner completed them on 2026-11-15, apply run 626 passing, closed #53 that day and #133 on
+   2026-11-17. The types were not requested through Quai on `pilot-infra` itself.)
 2. **The GitHub sandbox's webhook.** The app's webhook points at `example.com`, which GitHub
    cannot connect to: it records each delivery as "failed to connect to host", 502. On
    2026-11-09, from about 01:00 to 10:30 UTC, GitHub recorded deliveries late, by up to 49
